@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import click
 
-from kb.commands.common import require_initialized
-from kb.models.command_models import CommandContext, CommandSpec
+from src.commands.common import require_initialized
+from src.models.command_models import CommandContext, CommandSpec
 
 
 SUMMARY = "Compile source pages and refresh the wiki index and activity log."

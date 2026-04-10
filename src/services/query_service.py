@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from kb.models.wiki_models import SearchResult
-from kb.services.search_service import SearchService
+from src.models.wiki_models import SearchResult
+from src.services.search_service import SearchService
 
 
 @dataclass

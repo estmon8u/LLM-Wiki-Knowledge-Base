@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import shutil
 
-from kb.services.project_service import ProjectPaths
+from src.services.project_service import ProjectPaths
 
 
 @dataclass

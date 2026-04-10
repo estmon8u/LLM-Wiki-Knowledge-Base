@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from kb.providers.base import ProviderRequest, ProviderResponse, TextProvider
-from kb.services.search_service import _extract_snippet
+from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
+from src.services.search_service import _extract_snippet
 
 
 def test_extract_snippet_uses_matching_window_and_fallback() -> None:

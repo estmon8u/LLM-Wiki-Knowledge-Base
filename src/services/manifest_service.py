@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any, Optional
 
-from kb.models.source_models import RawSourceRecord
-from kb.services.project_service import ProjectPaths, utc_now_iso
+from src.models.source_models import RawSourceRecord
+from src.services.project_service import ProjectPaths, utc_now_iso
 
 
 class ManifestService:

@@ -5,18 +5,18 @@ from typing import Optional
 
 import click
 
-from kb.models.command_models import CommandContext, CommandSpec
+from src.models.command_models import CommandContext, CommandSpec
 
 
 COMMAND_MODULES = {
-    "compile": "kb.commands.compile",
-    "export-vault": "kb.commands.export_vault",
-    "ingest": "kb.commands.ingest",
-    "init": "kb.commands.init",
-    "lint": "kb.commands.lint",
-    "query": "kb.commands.query",
-    "search": "kb.commands.search",
-    "status": "kb.commands.status",
+    "compile": "src.commands.compile",
+    "export-vault": "src.commands.export_vault",
+    "ingest": "src.commands.ingest",
+    "init": "src.commands.init",
+    "lint": "src.commands.lint",
+    "query": "src.commands.query",
+    "search": "src.commands.search",
+    "status": "src.commands.status",
 }
 
 

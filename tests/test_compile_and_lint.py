@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 
-from kb.models.wiki_models import LintIssue, LintReport
-from kb.services.compile_service import _markdown_paragraphs, _strip_frontmatter
-from kb.services.lint_service import _split_frontmatter
+from src.models.wiki_models import LintIssue, LintReport
+from src.services.compile_service import _markdown_paragraphs, _strip_frontmatter
+from src.services.lint_service import _split_frontmatter
 
 
 def _ingest_source(test_project, relative_path: str, content: str):

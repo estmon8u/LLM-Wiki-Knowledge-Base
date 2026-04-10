@@ -5,22 +5,22 @@ import types
 import click
 import pytest
 
-from kb.cli import _extract_project_root, build_runtime_context
-from kb.commands.common import echo_kv, require_initialized
-from kb.engine.command_registry import (
+from src.cli import _extract_project_root, build_runtime_context
+from src.commands.common import echo_kv, require_initialized
+from src.engine.command_registry import (
     build_command_specs,
     get_click_command,
     list_command_names,
     resolve_command_name,
 )
-from kb.engine.tool_registry import (
+from src.engine.tool_registry import (
     _lint_wiki,
     _read_manifest,
     _search_wiki,
     _unsupported,
     build_tool_specs,
 )
-from kb.models.tool_models import ToolContext
+from src.models.tool_models import ToolContext
 
 
 def test_command_registry_resolves_aliases_and_lists_names() -> None:

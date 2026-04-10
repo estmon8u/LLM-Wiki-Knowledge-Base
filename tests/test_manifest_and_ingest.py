@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from kb.models.source_models import RawSourceRecord
-from kb.services.ingest_service import _extract_title
-from kb.services.project_service import utc_now_iso
+from src.models.source_models import RawSourceRecord
+from src.services.ingest_service import _extract_title
+from src.services.project_service import utc_now_iso
 
 
 def test_raw_source_record_round_trip_serialization() -> None:

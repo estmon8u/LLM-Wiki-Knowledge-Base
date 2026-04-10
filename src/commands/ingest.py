@@ -4,8 +4,8 @@ from pathlib import Path
 
 import click
 
-from kb.commands.common import require_initialized
-from kb.models.command_models import CommandContext, CommandSpec
+from src.commands.common import require_initialized
+from src.models.command_models import CommandContext, CommandSpec
 
 
 SUMMARY = "Ingest a markdown or text source into the raw corpus."

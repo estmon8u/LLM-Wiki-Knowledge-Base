@@ -4,14 +4,14 @@ from pathlib import Path
 
 import click
 
-from kb.services import build_services
-from kb.services.config_service import (
+from src.services import build_services
+from src.services.config_service import (
     ConfigService,
     DEFAULT_CONFIG,
     DEFAULT_SCHEMA,
     _deep_merge,
 )
-from kb.services.project_service import (
+from src.services.project_service import (
     ProjectService,
     build_project_paths,
     discover_project_root,

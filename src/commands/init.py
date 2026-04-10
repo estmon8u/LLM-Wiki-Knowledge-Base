@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import click
 
-from kb.models.command_models import CommandContext, CommandSpec
+from src.models.command_models import CommandContext, CommandSpec
 
 
 SUMMARY = "Create the project folders, config, schema, and manifest files."

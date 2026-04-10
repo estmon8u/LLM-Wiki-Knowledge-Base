@@ -4,7 +4,7 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from kb.cli import main
+from src.cli import main
 
 
 def test_init_creates_expected_project_files() -> None:

@@ -5,11 +5,11 @@ from typing import Optional
 
 import click
 
-from kb.engine.command_registry import build_command_specs, get_click_command
-from kb.models.command_models import CommandContext
-from kb.services import build_services
-from kb.services.config_service import ConfigService
-from kb.services.project_service import build_project_paths, discover_project_root
+from src.engine.command_registry import build_command_specs, get_click_command
+from src.models.command_models import CommandContext
+from src.services import build_services
+from src.services.config_service import ConfigService
+from src.services.project_service import build_project_paths, discover_project_root
 
 
 def build_runtime_context(project_root: Path, *, verbose: bool) -> CommandContext:

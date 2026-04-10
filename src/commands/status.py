@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import click
 
-from kb.commands.common import echo_kv
-from kb.models.command_models import CommandContext, CommandSpec
+from src.commands.common import echo_kv
+from src.models.command_models import CommandContext, CommandSpec
 
 
 SUMMARY = "Show high-level project, corpus, and compile state."

@@ -6,10 +6,10 @@ from typing import Any, Dict, Optional, Tuple
 
 import yaml
 
-from kb.models.source_models import RawSourceRecord
-from kb.models.wiki_models import LintIssue, LintReport
-from kb.services.manifest_service import ManifestService
-from kb.services.project_service import ProjectPaths, slugify
+from src.models.source_models import RawSourceRecord
+from src.models.wiki_models import LintIssue, LintReport
+from src.services.manifest_service import ManifestService
+from src.services.project_service import ProjectPaths, slugify
 
 
 WIKI_LINK_PATTERN = re.compile(r"\[\[([^\]|#]+)")

@@ -6,7 +6,7 @@ from typing import Any
 
 import yaml
 
-from kb.services.project_service import ProjectPaths
+from src.services.project_service import ProjectPaths
 
 
 DEFAULT_CONFIG: dict[str, Any] = {

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from kb.models.wiki_models import StatusSnapshot
-from kb.services.manifest_service import ManifestService
-from kb.services.project_service import ProjectPaths
+from src.models.wiki_models import StatusSnapshot
+from src.services.manifest_service import ManifestService
+from src.services.project_service import ProjectPaths
 
 
 class StatusService:

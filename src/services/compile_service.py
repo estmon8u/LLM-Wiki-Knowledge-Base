@@ -6,9 +6,9 @@ from typing import Any
 
 import yaml
 
-from kb.models.source_models import RawSourceRecord
-from kb.services.manifest_service import ManifestService
-from kb.services.project_service import ProjectPaths, utc_now_iso
+from src.models.source_models import RawSourceRecord
+from src.services.manifest_service import ManifestService
+from src.services.project_service import ProjectPaths, utc_now_iso
 
 
 @dataclass

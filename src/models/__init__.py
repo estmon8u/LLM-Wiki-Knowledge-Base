@@ -1,9 +1,9 @@
 """Core datamodels used across the CLI, engine, and services."""
 
-from kb.models.command_models import CommandContext, CommandResult, CommandSpec
-from kb.models.source_models import RawSourceRecord
-from kb.models.tool_models import ToolContext, ToolResult, ToolSpec
-from kb.models.wiki_models import LintIssue, LintReport, SearchResult, StatusSnapshot
+from src.models.command_models import CommandContext, CommandResult, CommandSpec
+from src.models.source_models import RawSourceRecord
+from src.models.tool_models import ToolContext, ToolResult, ToolSpec
+from src.models.wiki_models import LintIssue, LintReport, SearchResult, StatusSnapshot
 
 __all__ = [
     "CommandContext",

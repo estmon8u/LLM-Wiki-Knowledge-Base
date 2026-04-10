@@ -4,7 +4,7 @@ from typing import Optional, Union
 
 import click
 
-from kb.models.command_models import CommandContext
+from src.models.command_models import CommandContext
 
 
 def require_initialized(command_context: CommandContext) -> None:

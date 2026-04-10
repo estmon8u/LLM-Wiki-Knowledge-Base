@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from kb.models.tool_models import ToolContext, ToolResult, ToolSpec
+from src.models.tool_models import ToolContext, ToolResult, ToolSpec
 
 
 def build_tool_specs() -> tuple[ToolSpec, ...]:

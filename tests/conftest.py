@@ -6,11 +6,11 @@ from typing import Any
 
 import pytest
 
-from kb.models.command_models import CommandContext
-from kb.services import build_services
-from kb.services.config_service import ConfigService
-from kb.services.manifest_service import ManifestService
-from kb.services.project_service import (
+from src.models.command_models import CommandContext
+from src.services import build_services
+from src.services.config_service import ConfigService
+from src.services.manifest_service import ManifestService
+from src.services.project_service import (
     ProjectPaths,
     ProjectService,
     build_project_paths,

@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
-from kb.models.wiki_models import SearchResult
-from kb.services.project_service import ProjectPaths
+from src.models.wiki_models import SearchResult
+from src.services.project_service import ProjectPaths
 
 
 class SearchService:
