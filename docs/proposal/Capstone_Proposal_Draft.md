@@ -1,0 +1,95 @@
+# CSC 675 Capstone in AI: CLI for Building and Maintaining a Citation-Grounded Markdown Knowledge Base from Heterogeneous Technical Documents
+
+Date: 04/10/2026
+
+Team Members:
+
+- Esteban Montelongo
+- <EMONTEL1@depaul.edu>
+
+Project Type: Individual project
+
+This document is the cleaner working proposal draft for the capstone.
+It is intended to stay aligned with the course instructions, the post-presentation feedback cycle, and the broader notes in [MyIdeas.md](../../../Resources/Research/MyIdeas.md).
+
+The MVP is intentionally narrow in domain even though it is broader in input format. It targets a curated technical corpus about AI agents, coding agents, LLM tooling, and related knowledge-base system design. The system is intended to accept heterogeneous document types, but each source is first converted into a canonical markdown or plain-text representation before it enters the compile and query pipeline. The prototype will validate that workflow on a representative subset of formats rather than claiming perfect support for every file format from the start.
+
+## 1. Goals and Anticipated Outcomes
+
+The main goal of this project is to design and implement a command-line application that builds and maintains a citation-grounded markdown knowledge base from a curated set of technical research documents. Instead of handling every incoming data type through a separate downstream workflow, the system will normalize each accepted document into a canonical markdown or plain-text form and then compile that normalized corpus into a structured wiki. The domain will remain narrow: AI agents, coding agents, LLM tooling, and related knowledge-base system design. The system will ingest those sources, compile a structured markdown wiki, answer questions from that maintained knowledge base through a CLI, and export the result into an Obsidian-friendly vault.
+
+The project also has a research goal. The central research question is whether a maintained markdown knowledge-base workflow built from normalized heterogeneous documents improves organization, traceability, freshness, and reuse of prior research when compared with simpler alternatives such as direct prompting over raw files and a basic vector-based RAG baseline. A secondary goal is to study whether a bounded, maintenance-first workflow can make LLM-assisted synthesis more trustworthy by tracking source provenance, recording which converter produced the canonical text, surfacing stale pages when sources change, and keeping deletion or archival under human control.
+
+The project will be measured against concrete technical targets. The prototype should implement core CLI commands such as `kb init`, `kb ingest`, `kb compile`, `kb search`, `kb query`, `kb lint`, `kb status`, and `kb export-vault`. It should process a realistic sample corpus of at least 20 to 30 technical documents drawn from a representative mix of formats such as markdown, README or HTML-style docs, transcript text, and document formats that need extraction before normalization. It should maintain local searchable metadata, source hashes, and converter metadata, and generate a wiki that includes source pages, concept pages where useful, an index, and an activity log. It should also answer a benchmark set of 10 to 15 research questions using citations to compiled wiki pages, and it should detect when source changes make compiled pages stale or require review.
+
+The anticipated outcomes are a working CLI prototype, a sample maintained knowledge base built from collected research materials, an Obsidian-friendly vault export, and an evaluation package showing where the maintenance-first markdown workflow is stronger or weaker than direct prompting and a simple RAG baseline. A successful result is not simply a working chatbot. A successful result is a repeatable workflow that accumulates research over time, keeps summaries and links current, flags outdated pages, and produces outputs that are useful for both study and final project reporting.
+
+### Evaluation Plan
+
+Evaluation will use functional, maintenance-oriented, qualitative, and comparative measures. Functionally, all core commands must complete their intended workflows without manual file editing. Structurally, the compiled wiki should maintain valid links, current index data, explicit source citations, and clear traceability from raw source to generated page. Conversion quality will be judged by whether the normalized markdown or text preserves enough structure and content to support compilation and citation. Maintenance tests will check whether the system can detect stale pages after source changes, surface review items, and preserve a clear audit trail for refresh decisions. Qualitatively, answer quality will be judged on a benchmark set of research questions using a rubric for relevance, completeness, and citation traceability. Comparatively, the maintained wiki will be assessed against direct prompting over raw documents and a simple vector-based RAG workflow.
+
+The following criteria define success for the proposal:
+
+- the core CLI workflows run end to end on the sample heterogeneous technical corpus;
+- the system produces a navigable markdown wiki and Obsidian-friendly vault export;
+- compiled pages maintain explicit source citations and provenance metadata;
+- the normalization pipeline preserves enough content fidelity for compiled pages and cited answers to remain useful;
+- selected source edits cause the system to flag affected pages as stale or needing review;
+- at least 80 percent of benchmark answers include verifiable citations to compiled pages; and
+- the final evaluation clearly explains where the maintenance-first workflow improves on, matches, or falls short of direct prompting and a simple RAG baseline.
+
+## 2. Motivation
+
+The original motivation for this project comes from Andrej Karpathy's idea that LLMs can be used not only to answer questions, but also to maintain a persistent and compounding body of knowledge in markdown. That idea fits well with the way technical research is often collected in practice: README files, design notes, documentation pages, transcripts, exported notes, PDFs, and curated markdown notes accumulate over time, but they are rarely transformed into a maintainable, reusable knowledge artifact. This project addresses that gap by asking whether an LLM-assisted wiki can function as a better long-term research companion than one-off prompting or purely retrieval-driven pipelines for a narrow technical domain with heterogeneous source formats.
+
+The project is also motivated by maintenance and traceability. Standard RAG workflows can retrieve relevant passages, but they still tend to emphasize transient question answering over persistent synthesis. They also do not naturally solve freshness problems when source documents change. In contrast, a maintained markdown wiki has the potential to preserve source context, concept relationships, historical updates, and review status in a form that is easier to inspect, audit, refresh, and reuse. For this project, the hard problem is not only generating pages once, but keeping those pages trustworthy over time.
+
+Finally, the project is personally and professionally meaningful because it combines software engineering, evaluation, and a research workflow I could keep using after the course. Building a CLI-first application is a realistic but technically meaningful stretch goal, and the result could be useful beyond this course for students, researchers, and developers who need a structured way to transform a growing technical document collection into reusable knowledge rather than disconnected notes.
+
+## 3. Resources and Feasibility
+
+The most realistic implementation path is to build the prototype as a Python CLI using Click and Poetry. Browzy.ai will serve as the main reference for the raw-to-compile-to-query pipeline, markdown storage layout, incremental compilation, retrieval from compiled pages, and linting. OpenClaude will serve as the main reference for command registration, provider normalization, tool contracts, and the separation between setup, orchestration, and session state. In the proposed implementation, original files remain stored in the raw layer, but each document is normalized into canonical markdown or plain text before search, compilation, and query. SQLite or SQLite FTS will support searchable metadata and retrieval, and a small schema file such as `kb.schema.md` can steer compilation rules without turning the system into a large prompt-only application.
+
+The project resources are realistic for an individual capstone. Development will use Python 3, Click, Poetry, Markdown files, Git, Obsidian-compatible markdown conventions, SQLite, pytest, Black, and GitHub Actions. The ingest path will also need format detection and per-type conversion into canonical markdown or text. Model access will come from either one OpenAI-compatible API or a local model through Ollama, with the provider layer kept intentionally small. The dataset will be a curated corpus of technical references on AI agents, coding agents, LLM tooling, and knowledge-base systems, stored in multiple source formats but normalized into a common internal representation. Direct prompting and a simple vector-based RAG workflow will serve as the main comparison baselines. A graph export or graph-oriented comparison, if attempted at all, will be treated as stretch work rather than core scope.
+
+This scope is feasible because it does not attempt to reproduce either reference project in full, and it does not require every source format to be handled with a custom downstream workflow. The first version only needs a bounded set of source converters that normalize heterogeneous documents into a common markdown or text form, plus one or two model providers and a deterministic workflow for ingest, compile, search, query, lint, and export. That limitation keeps the capstone focused on the main research and engineering question while still leaving room for a meaningful comparison with simpler baselines.
+
+### Backup Plans
+
+If resources become limited, the scope can be reduced without breaking the central research question. If support for some source formats becomes too noisy, the prototype can freeze on the subset of formats that normalize cleanly enough for citation-grounded compilation. If cross-document concept pages become unreliable, the project can keep source pages as the primary artifact and reduce concept-page generation. If model cost or reliability becomes a constraint, the project can use a smaller evaluation corpus and rely more heavily on a local Ollama model. If comparison work expands beyond a manageable level, the graph track will be dropped completely and the project will focus on direct prompting plus a simple RAG baseline. If advanced reporting outputs become too time-consuming, the final deliverables will remain focused on the maintained wiki, cited query responses, maintenance findings, and the evaluation report.
+
+## 4. Project Activities / Methods
+
+The project will follow an explicit layered workflow rather than one large agent loop. The raw layer will store original source documents and a manifest of ingested sources. After type detection, each document will be normalized into a canonical markdown or plain-text form. The manifest will record source path, ingest time, content hash, normalized artifact path, converter used, and related metadata so the system can later tell whether a compiled page may be stale or whether a conversion should be reviewed. The wiki layer will store generated source pages, concept pages where useful, an index, and an activity log. A vault layer will export Obsidian-friendly notes, backlinks, and frontmatter where useful. Inside the application code, the CLI will be split into commands, services, providers, tools, and shared types so that setup, ingestion, normalization, compilation, querying, linting, and export remain separate and testable.
+
+The expected workflow is as follows. First, `kb ingest` will detect source type, convert the document into canonical markdown or plain text, store the original file in `raw/`, store the normalized representation, update the manifest, and record searchable metadata plus a source hash. Second, `kb compile` will create or refresh source pages, generate concept pages where justified, regenerate the wiki index, and append to the activity log. Those compiled pages should preserve explicit citations or provenance references back to the source corpus. Third, `kb search` and `kb query` will retrieve ranked sections from compiled wiki pages rather than querying raw files directly, and `kb query` will produce a cited answer from that prepared context. Fourth, `kb lint` will detect broken links, orphan pages, missing citations, stale pages whose sources changed, or structural gaps that require review. Fifth, `kb status` will summarize corpus size, compile state, conversion state, and maintenance findings. Finally, `kb export-vault` will write an Obsidian-friendly vault view of the maintained knowledge base.
+
+The maintenance component will remain human-reviewed. The system may flag a page as stale, outdated, or needing archival, but it will not silently delete knowledge. This keeps the workflow auditable and addresses the core maintenance concern in the project. The LLM-assisted component will also remain intentionally constrained. Instead of giving the model broad autonomy, the system will expose a small internal action layer for tasks such as extracting summaries, updating concept pages, searching the wiki, and producing cited answers. This keeps model use explicit, bounded, and testable.
+
+This is an individual project, so all responsibilities remain with one team member. I will be responsible for system design, implementation, testing, evaluation, documentation, and presentation preparation. Keeping the project individual supports a narrower and more defensible scope, which is more important for this capstone than maximizing feature breadth.
+
+## 5. Work Plan / Timeline and Milestones
+
+The work plan moves from architecture and storage decisions to pipeline behavior and then to evaluation and polish. These phases are milestone targets rather than hard gates. If a milestone is completed early, the next planned milestone will begin immediately while the overall scope remains controlled.
+
+| Phase | Target Time | Activities | Tangible Milestone |
+| --- | --- | --- | --- |
+| Proposal and design | Apr 10 to Apr 17 | Finalize the target domain, define the canonical markdown and text representation, freeze the initial supported converter set, freeze the command list, define provenance and maintenance rules, and finalize the evaluation rubric | Proposal package and technical design ready |
+| CLI foundation | Apr 18 to May 1 | Set up project structure, config handling, command registry, provider boundary, and manifest model with source metadata, hashes, and converter metadata | Working CLI skeleton with initialization and ingest scaffolding |
+| Ingestion and compilation | May 2 to May 15 | Implement type detection, representative source converters, source hashing, source pages, concept-page generation where useful, index generation, activity log updates, and vault export | System can build and refresh a markdown wiki from a representative multi-format corpus |
+| Query and maintenance workflow | May 16 to May 29 | Implement search, ranked context building, cited answering, broken-link checks, stale-page detection, and maintenance reporting | Benchmark questions can be answered and stale pages can be surfaced for review |
+| Evaluation | May 30 to Jun 5 | Run benchmark question set, perform source-change maintenance tests, compare against direct prompting and basic RAG, and summarize findings | Evaluation results and maintenance comparison notes completed |
+| Final polish and reporting | Jun 6 to Jun 12 | Improve usability, stabilize bugs, prepare demo corpus, and finalize report and presentation materials | Final demo and submission materials ready |
+
+These milestones are measurable because each one corresponds to a concrete artifact or behavior: a working CLI skeleton, a provenance-aware ingest pipeline, a generated wiki, a cited query workflow, a maintenance report, an evaluation report, and a polished final demonstration.
+
+## 6. Bibliography
+
+1. Karpathy, Andrej. "LLM Knowledge Bases Tweet." X, 2 Apr. 2026. [Tweet URL](https://x.com/karpathy/status/2039805659525644595). Accessed 5 Apr. 2026.
+2. Karpathy, Andrej. "LLM Wiki." GitHub Gist, 2026. [Gist URL](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f). Accessed 5 Apr. 2026.
+3. Gitlawb. OpenClaude. 2026. Local workspace snapshot in [../../../Resources/openclaude/README.md](../../../Resources/openclaude/README.md). Accessed 5 Apr. 2026.
+4. Kanukollu, Vihari. browzy.ai. 2026. [Repository](https://github.com/VihariKanukollu/browzy.ai). Accessed 5 Apr. 2026.
+5. Pallets. Click Documentation. 2026. [Docs](https://click.palletsprojects.com/). Accessed 5 Apr. 2026.
+6. Python Software Foundation. Python 3 Documentation. 2026. [Docs](https://docs.python.org/3/). Accessed 5 Apr. 2026.
+7. SQLite Documentation. 2026. [Docs](https://www.sqlite.org/docs.html). Accessed 5 Apr. 2026.
+8. Obsidian. Obsidian Help. 2026. [Docs](https://obsidian.md/help/). Accessed 5 Apr. 2026.
