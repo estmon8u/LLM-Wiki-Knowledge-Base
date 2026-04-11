@@ -44,8 +44,10 @@ class CompileService:
                 skipped_count += 1
                 continue
 
-            raw_path = self.paths.root / source.raw_path
-            contents = raw_path.read_text(encoding="utf-8")
+            canonical_path = self.paths.root / (
+                source.normalized_path or source.raw_path
+            )
+            contents = canonical_path.read_text(encoding="utf-8")
             compiled_at = utc_now_iso()
             article_text = self._render_source_page(source, contents, compiled_at)
             article_path.parent.mkdir(parents=True, exist_ok=True)
@@ -82,7 +84,12 @@ class CompileService:
             "ingested_at": source.ingested_at,
             "tags": [],
         }
+        if source.normalized_path is not None:
+            frontmatter["normalized_path"] = source.normalized_path
         yaml_frontmatter = yaml.safe_dump(frontmatter, sort_keys=False).strip()
+        canonical_file_line = ""
+        if source.normalized_path is not None:
+            canonical_file_line = f"- Canonical file: `{source.normalized_path}`\n"
         return (
             f"---\n{yaml_frontmatter}\n---\n\n"
             f"# {source.title}\n\n"
@@ -91,6 +98,7 @@ class CompileService:
             "## Source Details\n\n"
             f"- Source ID: `{source.source_id}`\n"
             f"- Raw file: `{source.raw_path}`\n"
+            f"{canonical_file_line}"
             f"- Origin: `{source.origin}`\n"
             f"- Ingested at: `{source.ingested_at}`\n\n"
             "## Key Excerpt\n\n"

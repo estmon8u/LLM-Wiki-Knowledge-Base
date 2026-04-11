@@ -23,6 +23,7 @@ class ProjectPaths:
     schema_file: Path
     raw_dir: Path
     raw_sources_dir: Path
+    raw_normalized_dir: Path
     raw_manifest_file: Path
     wiki_dir: Path
     wiki_sources_dir: Path
@@ -59,6 +60,7 @@ def build_project_paths(root: Path) -> ProjectPaths:
         schema_file=resolved_root / "kb.schema.md",
         raw_dir=raw_dir,
         raw_sources_dir=raw_dir / "sources",
+        raw_normalized_dir=raw_dir / "normalized",
         raw_manifest_file=raw_dir / "_manifest.json",
         wiki_dir=wiki_dir,
         wiki_sources_dir=wiki_dir / "sources",
@@ -86,6 +88,7 @@ class ProjectService:
             self.paths.root,
             self.paths.raw_dir,
             self.paths.raw_sources_dir,
+            self.paths.raw_normalized_dir,
             self.paths.wiki_dir,
             self.paths.wiki_sources_dir,
             self.paths.wiki_concepts_dir,

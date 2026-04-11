@@ -17,6 +17,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "storage": {
         "raw_dir": "raw/sources",
+        "raw_normalized_dir": "raw/normalized",
         "wiki_sources_dir": "wiki/sources",
         "wiki_concepts_dir": "wiki/concepts",
         "vault_dir": "vault/obsidian",

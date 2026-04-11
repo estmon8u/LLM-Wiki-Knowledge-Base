@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from src.models.source_models import RawSourceRecord
-from src.services.ingest_service import _extract_title
+from src.services.normalization_service import _extract_title
 from src.services.project_service import utc_now_iso
 
 
@@ -17,6 +17,7 @@ def test_raw_source_record_round_trip_serialization() -> None:
         origin="origin.md",
         source_type="file",
         raw_path="raw/sources/sample.md",
+        normalized_path="raw/normalized/sample.md",
         content_hash="hash",
         ingested_at=utc_now_iso(),
         compiled_at=utc_now_iso(),
@@ -98,19 +99,46 @@ def test_ingest_service_copies_source_and_updates_manifest(test_project) -> None
     assert result.created is True
     assert result.source is not None
     assert result.source.slug == "example-document"
+    assert result.source.normalized_path == "raw/normalized/example-document.md"
     assert result.source.metadata["ingest_mode"] == "direct-canonical-text"
     assert result.source.metadata["canonical_text_format"] == ".md"
     assert (test_project.root / result.source.raw_path).exists()
+    assert (test_project.root / result.source.normalized_path).exists()
     assert (
         test_project.services["manifest"].list_sources()[0].title == "Example Document"
     )
 
 
+def test_ingest_service_converts_html_and_stores_normalized_markdown(
+    test_project,
+) -> None:
+    source_path = test_project.write_file(
+        "notes/example.html",
+        "<html><body><h1>HTML Research Note</h1><p>Useful converted text.</p></body></html>",
+    )
+    ingest_service = test_project.services["ingest"]
+
+    result = ingest_service.ingest_path(source_path)
+
+    assert result.created is True
+    assert result.source is not None
+    assert result.source.slug == "html-research-note"
+    assert result.source.raw_path == "raw/sources/html-research-note.html"
+    assert result.source.normalized_path == "raw/normalized/html-research-note.md"
+    assert result.source.metadata["ingest_mode"] == "markitdown-convert"
+    assert result.source.metadata["converter"] == "markitdown"
+    normalized_text = (test_project.root / result.source.normalized_path).read_text(
+        encoding="utf-8"
+    )
+    assert "HTML Research Note" in normalized_text
+    assert "Useful converted text." in normalized_text
+
+
 def test_ingest_service_rejects_missing_and_unsupported_sources(test_project) -> None:
     ingest_service = test_project.services["ingest"]
     unsupported = test_project.write_file(
-        "notes/data.pdf",
-        "%PDF",
+        "notes/data.bin",
+        "binary-ish",
     )
 
     with pytest.raises(FileNotFoundError):
@@ -118,7 +146,7 @@ def test_ingest_service_rejects_missing_and_unsupported_sources(test_project) ->
 
     with pytest.raises(
         ValueError,
-        match="already-normalized markdown and plain-text files",
+        match="Supported ingest inputs are canonical text",
     ):
         ingest_service.ingest_path(unsupported)
 

@@ -291,6 +291,8 @@ class TuiService:
         if result.source is not None:
             lines.append(f"- slug: {result.source.slug}")
             lines.append(f"- raw path: {result.source.raw_path}")
+            if result.source.normalized_path is not None:
+                lines.append(f"- normalized path: {result.source.normalized_path}")
         return "\n".join(lines)
 
     def _run_compile(self, argument_text: str) -> str:

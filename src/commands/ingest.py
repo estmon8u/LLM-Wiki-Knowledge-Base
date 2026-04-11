@@ -8,7 +8,7 @@ from src.commands.common import require_initialized
 from src.models.command_models import CommandContext, CommandSpec
 
 
-SUMMARY = "Ingest a markdown or text source into the raw corpus."
+SUMMARY = "Ingest and normalize a source file into the raw corpus."
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
@@ -33,5 +33,7 @@ def create_command() -> click.Command:
         if result.source is not None:
             click.echo(f"- slug: {result.source.slug}")
             click.echo(f"- raw path: {result.source.raw_path}")
+            if result.source.normalized_path is not None:
+                click.echo(f"- normalized path: {result.source.normalized_path}")
 
     return command

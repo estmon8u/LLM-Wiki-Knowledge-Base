@@ -31,7 +31,8 @@
 | `src/services/project_service.py` | Project layout and initialization helpers |
 | `src/services/config_service.py` | Config loading and defaults |
 | `src/services/manifest_service.py` | Raw-source manifest read/write behavior |
-| `src/services/ingest_service.py` | Current direct-text ingest for already-normalized markdown/plain-text inputs and source registration |
+| `src/services/normalization_service.py` | Canonical-text normalization for direct text inputs and bounded MarkItDown-backed converters |
+| `src/services/ingest_service.py` | Raw-source copy, normalized-artifact write, duplicate detection, and source registration |
 | `src/services/compile_service.py` | Derived wiki generation |
 | `src/services/search_service.py` | Search over compiled artifacts |
 | `src/services/query_service.py` | Query answer assembly from maintained wiki context |
@@ -53,7 +54,7 @@
 
 | File | Responsibility |
 | --- | --- |
-| `pyproject.toml` | Dependency pins, including prompt-toolkit for the full-screen terminal workspace, plus CLI entrypoint, Black config, pytest and coverage settings |
+| `pyproject.toml` | Dependency pins, including prompt-toolkit and MarkItDown, plus CLI entrypoint, Black config, pytest and coverage settings |
 | `.github/workflows/tests.yml` | CI for Poetry install, Black, pytest, and coverage artifact upload |
 | `tests/` | Unit, CLI, and regression coverage for the current command/service surface |
 
@@ -63,4 +64,4 @@
 - Prefer extending existing services over adding duplicate helper modules.
 - Interactive terminal features should call existing services instead of creating a second business-logic path.
 - Treat CI and formatter config as part of the architecture because they enforce the supported workflow.
-- When heterogeneous document support is added, keep converter-backed normalization separate from the current direct-text ingest path.
+- Keep converter-backed normalization in a dedicated service instead of mixing converter logic directly into command handlers or compile.

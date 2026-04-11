@@ -118,6 +118,31 @@ def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
         assert Path("vault/obsidian/sources/sample-research-note.md").exists()
 
 
+def test_end_to_end_cli_flow_for_local_html_source() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.html").write_text(
+            "<html><body><h1>HTML Research Note</h1>"
+            "<p>Traceability survives conversion.</p></body></html>",
+            encoding="utf-8",
+        )
+
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        ingest_result = runner.invoke(main, ["ingest", "sample.html"])
+        assert ingest_result.exit_code == 0
+        assert "Ingested HTML Research Note" in ingest_result.output
+        assert "raw/normalized/html-research-note.md" in ingest_result.output
+
+        compile_result = runner.invoke(main, ["compile"])
+        assert compile_result.exit_code == 0
+        assert "Compiled 1 source page(s)" in compile_result.output
+
+        search_result = runner.invoke(main, ["search", "traceability"])
+        assert search_result.exit_code == 0
+        assert "wiki/sources/html-research-note.md" in search_result.output
+
+
 def test_search_and_query_show_empty_messages_when_no_results() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
@@ -151,13 +176,13 @@ def test_search_and_query_require_terms() -> None:
 def test_ingest_reports_click_error_for_unsupported_file_type() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
-        Path("sample.pdf").write_text("not really a pdf", encoding="utf-8")
+        Path("sample.bin").write_text("not a supported source", encoding="utf-8")
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        result = runner.invoke(main, ["ingest", "sample.pdf"])
+        result = runner.invoke(main, ["ingest", "sample.bin"])
 
         assert result.exit_code != 0
-        assert "already-normalized markdown and plain-text files" in result.output
+        assert "Supported ingest inputs are canonical text" in result.output
 
 
 def test_lint_returns_nonzero_when_errors_exist() -> None:

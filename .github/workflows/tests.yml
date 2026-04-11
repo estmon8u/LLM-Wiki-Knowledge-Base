@@ -20,13 +20,13 @@ jobs:
       - name: Install Poetry
         run: |
           python3 -m pip install --user --upgrade pip
-          python3 -m pip install --user "poetry==1.5.1"
+          python3 -m pip install --user "poetry==2.3.3"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.11.9"
           cache: "poetry"
           cache-dependency-path: poetry.lock
 

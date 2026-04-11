@@ -53,6 +53,7 @@ def test_build_project_paths_uses_expected_layout(tmp_path: Path) -> None:
 
     assert paths.config_file == tmp_path / "kb.config.yaml"
     assert paths.raw_manifest_file == tmp_path / "raw" / "_manifest.json"
+    assert paths.raw_normalized_dir == tmp_path / "raw" / "normalized"
     assert paths.vault_obsidian_dir == tmp_path / "vault" / "obsidian"
     assert paths.graph_exports_dir == tmp_path / "graph" / "exports"
 
@@ -66,6 +67,7 @@ def test_project_service_creates_structure_and_relative_paths(
 
     created = project_service.ensure_structure()
     assert "raw" in created
+    assert "raw/normalized" in created
     assert "wiki/sources" in created
     assert project_service.ensure_structure() == []
 

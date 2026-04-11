@@ -9,11 +9,8 @@ import uuid
 
 from src.models.source_models import RawSourceRecord
 from src.services.manifest_service import ManifestService
+from src.services.normalization_service import NormalizationService
 from src.services.project_service import ProjectPaths, slugify, utc_now_iso
-
-
-SUPPORTED_CANONICAL_TEXT_SUFFIXES = {".md", ".markdown", ".txt"}
-DIRECT_CANONICAL_TEXT_INGEST_MODE = "direct-canonical-text"
 
 
 @dataclass
@@ -25,23 +22,25 @@ class IngestResult:
 
 
 class IngestService:
-    def __init__(self, paths: ProjectPaths, manifest_service: ManifestService) -> None:
+    def __init__(
+        self,
+        paths: ProjectPaths,
+        manifest_service: ManifestService,
+        normalization_service: Optional[NormalizationService] = None,
+    ) -> None:
         self.paths = paths
         self.manifest_service = manifest_service
+        self.normalization_service = normalization_service or NormalizationService()
 
     def ingest_path(self, raw_input_path: Path) -> IngestResult:
         source_path = raw_input_path.resolve()
         if not source_path.exists():
             raise FileNotFoundError(f"Source file not found: {source_path}")
-        if source_path.suffix.lower() not in SUPPORTED_CANONICAL_TEXT_SUFFIXES:
-            raise ValueError(
-                "The current scaffold only ingests already-normalized markdown and plain-text files. "
-                "Future converters should normalize other document types before ingest."
-            )
 
-        contents = source_path.read_text(encoding="utf-8")
-        normalized = contents.rstrip() + "\n"
-        content_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+        normalized = self.normalization_service.normalize_path(source_path)
+        content_hash = hashlib.sha256(
+            normalized.normalized_text.encode("utf-8")
+        ).hexdigest()
 
         duplicate = self.manifest_service.find_by_hash(content_hash)
         if duplicate is not None:
@@ -52,11 +51,19 @@ class IngestService:
                 message=f"Duplicate source skipped: {duplicate.title}",
             )
 
-        title = _extract_title(normalized, source_path)
+        title = normalized.title
         slug = self._unique_slug(slugify(title))
-        destination = self.paths.raw_sources_dir / f"{slug}{source_path.suffix.lower()}"
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source_path, destination)
+        raw_destination = (
+            self.paths.raw_sources_dir / f"{slug}{source_path.suffix.lower()}"
+        )
+        raw_destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_path, raw_destination)
+
+        normalized_destination = (
+            self.paths.raw_normalized_dir / f"{slug}{normalized.normalized_suffix}"
+        )
+        normalized_destination.parent.mkdir(parents=True, exist_ok=True)
+        normalized_destination.write_text(normalized.normalized_text, encoding="utf-8")
 
         source = RawSourceRecord(
             source_id=str(uuid.uuid4()),
@@ -64,13 +71,16 @@ class IngestService:
             title=title,
             origin=str(source_path),
             source_type="file",
-            raw_path=destination.relative_to(self.paths.root).as_posix(),
+            raw_path=raw_destination.relative_to(self.paths.root).as_posix(),
+            normalized_path=normalized_destination.relative_to(
+                self.paths.root
+            ).as_posix(),
             content_hash=content_hash,
             ingested_at=utc_now_iso(),
             metadata={
                 "original_name": source_path.name,
-                "ingest_mode": DIRECT_CANONICAL_TEXT_INGEST_MODE,
-                "canonical_text_format": source_path.suffix.lower(),
+                "source_extension": source_path.suffix.lower(),
+                **normalized.metadata,
             },
         )
         self.manifest_service.save_source(source)
@@ -88,13 +98,3 @@ class IngestService:
         while f"{base_slug}-{index}" in existing:
             index += 1
         return f"{base_slug}-{index}"
-
-
-def _extract_title(contents: str, source_path: Path) -> str:
-    for line in contents.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("#"):
-            return stripped.lstrip("# ").strip()
-        if stripped:
-            return stripped[:80]
-    return source_path.stem.replace("_", " ").replace("-", " ").title()

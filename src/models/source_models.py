@@ -16,6 +16,7 @@ class RawSourceRecord:
     ingested_at: str
     compiled_at: Optional[str] = None
     compiled_from_hash: Optional[str] = None
+    normalized_path: Optional[str] = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -30,6 +31,7 @@ class RawSourceRecord:
             origin=payload["origin"],
             source_type=payload["source_type"],
             raw_path=payload["raw_path"],
+            normalized_path=payload.get("normalized_path"),
             content_hash=payload["content_hash"],
             ingested_at=payload["ingested_at"],
             compiled_at=payload.get("compiled_at"),

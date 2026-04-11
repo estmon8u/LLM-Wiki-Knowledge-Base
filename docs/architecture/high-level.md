@@ -6,14 +6,14 @@ The project is a CLI-first workflow for building and maintaining a persistent ma
 
 It now supports both one-shot commands and a prompt-toolkit full-screen terminal workspace through `kb tui`, while still staying inside the same command/service architecture.
 
-The long-term architecture accepts heterogeneous source documents through a normalization step into canonical markdown or plain text. The current scaffold keeps ingest intentionally narrower and directly accepts only sources that are already in those canonical text formats.
+The architecture accepts heterogeneous source documents through a normalization step into canonical markdown or plain text. The current implementation now includes an initial MarkItDown-backed converter path for a representative subset of born-digital formats while keeping OCR-style image extraction out of scope for now.
 
 The product goal is not to act like a general-purpose coding agent. The goal is to ingest source material, compile a reusable wiki, answer questions from the compiled wiki with traceability, and export an Obsidian-friendly vault.
 
 ## Core User Flow
 
 1. Initialize a project workspace.
-2. Ingest curated source documents or converter-produced canonical text into the raw layer.
+2. Ingest supported source documents, store the originals, and normalize them into canonical markdown or plain text in the raw layer.
 3. Compile source pages, concept pages, and indexes into the wiki layer.
 4. Search and query the compiled wiki instead of querying raw files directly.
 5. Lint the maintained knowledge base for broken structure or stale content.
@@ -23,7 +23,7 @@ The product goal is not to act like a general-purpose coding agent. The goal is 
 
 ## Data Domains
 
-- `raw/` stores source-of-truth input files and manifest metadata.
+- `raw/` stores source-of-truth input files, normalized canonical artifacts, and manifest metadata.
 - `wiki/` stores generated source pages, index data, and compile logs.
 - `vault/` stores export-ready Obsidian-friendly markdown.
 - `graph/` is optional and should stay evaluation-oriented rather than becoming the primary storage layer.
