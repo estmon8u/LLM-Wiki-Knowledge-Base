@@ -5,8 +5,18 @@ from pathlib import Path
 import pytest
 
 from src.models.source_models import RawSourceRecord
+from src.services.ingest_service import IngestService
+from src.services.normalization_service import NormalizationService
 from src.services.normalization_service import _extract_title
 from src.services.project_service import utc_now_iso
+
+
+class FakePdfConverter:
+    def __init__(self, markdown: str) -> None:
+        self.markdown = markdown
+
+    def convert_local(self, source_path: Path) -> str:
+        return self.markdown
 
 
 def test_raw_source_record_round_trip_serialization() -> None:
@@ -101,6 +111,7 @@ def test_ingest_service_copies_source_and_updates_manifest(test_project) -> None
     assert result.source.slug == "example-document"
     assert result.source.normalized_path == "raw/normalized/example-document.md"
     assert result.source.metadata["ingest_mode"] == "direct-canonical-text"
+    assert result.source.metadata["normalization_route"] == "markdown-passthrough"
     assert result.source.metadata["canonical_text_format"] == ".md"
     assert (test_project.root / result.source.raw_path).exists()
     assert (test_project.root / result.source.normalized_path).exists()
@@ -127,11 +138,41 @@ def test_ingest_service_converts_html_and_stores_normalized_markdown(
     assert result.source.normalized_path == "raw/normalized/html-research-note.md"
     assert result.source.metadata["ingest_mode"] == "markitdown-convert"
     assert result.source.metadata["converter"] == "markitdown"
+    assert result.source.metadata["normalization_route"] == "markitdown-born-digital"
     normalized_text = (test_project.root / result.source.normalized_path).read_text(
         encoding="utf-8"
     )
     assert "HTML Research Note" in normalized_text
     assert "Useful converted text." in normalized_text
+
+
+def test_ingest_service_routes_pdf_sources_through_docling(test_project) -> None:
+    source_path = test_project.write_file("notes/example.pdf", "not-a-real-pdf")
+    normalization_service = NormalizationService(
+        pdf_converter=FakePdfConverter(
+            "# PDF Research Note\n\nUseful extracted text.\n"
+        )
+    )
+    ingest_service = IngestService(
+        test_project.paths,
+        test_project.services["manifest"],
+        normalization_service,
+    )
+
+    result = ingest_service.ingest_path(source_path)
+
+    assert result.created is True
+    assert result.source is not None
+    assert result.source.slug == "pdf-research-note"
+    assert result.source.raw_path == "raw/sources/pdf-research-note.pdf"
+    assert result.source.normalized_path == "raw/normalized/pdf-research-note.md"
+    assert result.source.metadata["ingest_mode"] == "docling-pdf-convert"
+    assert result.source.metadata["converter"] == "docling"
+    assert result.source.metadata["normalization_route"] == "docling-pdf"
+    normalized_text = (test_project.root / result.source.normalized_path).read_text(
+        encoding="utf-8"
+    )
+    assert "Useful extracted text." in normalized_text
 
 
 def test_ingest_service_rejects_missing_and_unsupported_sources(test_project) -> None:

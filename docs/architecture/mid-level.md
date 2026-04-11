@@ -29,7 +29,7 @@
 
 | Stage | Input | Output |
 | --- | --- | --- |
-| Ingest | canonical markdown/plain-text files and a bounded MarkItDown-backed converter subset | raw source copy, normalized artifact, and manifest metadata |
+| Ingest | canonical markdown/plain-text files, Docling-routed PDFs, and a bounded MarkItDown-backed born-digital subset | raw source copy, normalized artifact, and manifest metadata |
 | Compile | normalized canonical text plus manifest metadata | source pages, concept pages, wiki index, compile log |
 | Search | compiled wiki artifacts | ranked matches |
 | Query | user question plus compiled context | cited answer based on maintained wiki |
@@ -39,7 +39,7 @@
 
 ## Current Ingest Scope
 
-- The current implementation ingests `.md`, `.markdown`, and `.txt` files directly and also supports a bounded MarkItDown-backed subset of formats such as HTML, CSV, Office documents, notebooks, EPUB, and PDFs.
+- The current implementation ingests `.md`, `.markdown`, and `.txt` files directly, routes `.pdf` files through Docling, and uses MarkItDown for a bounded born-digital subset such as HTML, CSV, Office documents, notebooks, and EPUB.
 - OCR-backed ingest is still deferred and should arrive as a provider-backed fallback, with Mistral OCR as the current preferred OCR path for scanned or image-heavy inputs.
 
 ## Structural Rules

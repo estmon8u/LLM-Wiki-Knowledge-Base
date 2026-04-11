@@ -6,7 +6,7 @@ The project is a CLI-first workflow for building and maintaining a persistent ma
 
 It now supports both one-shot commands and a prompt-toolkit full-screen terminal workspace through `kb tui`, while still staying inside the same command/service architecture.
 
-The architecture accepts heterogeneous source documents through a normalization step into canonical markdown or plain text. The current implementation now includes an initial MarkItDown-backed converter path for a representative subset of born-digital formats. OCR-style image extraction and optional LLM-assisted reconstruction remain out of the default ingest path for now and are reserved for a later provider-backed fallback, with Mistral OCR as the current leading OCR candidate.
+The architecture accepts heterogeneous source documents through a normalization step into canonical markdown or plain text. The current implementation now routes canonical markdown and plain text directly, uses Docling for PDFs, and uses MarkItDown for the remaining bounded subset of born-digital formats. OCR-style image extraction and optional LLM-assisted reconstruction remain out of the default ingest path for now and are reserved for a later provider-backed fallback, with Mistral OCR as the current leading OCR candidate.
 
 The product goal is not to act like a general-purpose coding agent. The goal is to ingest source material, compile a reusable wiki, answer questions from the compiled wiki with traceability, and export an Obsidian-friendly vault.
 

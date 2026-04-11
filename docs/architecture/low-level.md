@@ -31,7 +31,7 @@
 | `src/services/project_service.py` | Project layout and initialization helpers |
 | `src/services/config_service.py` | Config loading and defaults |
 | `src/services/manifest_service.py` | Raw-source manifest read/write behavior |
-| `src/services/normalization_service.py` | Canonical-text normalization for direct text inputs and bounded MarkItDown-backed converters |
+| `src/services/normalization_service.py` | Document-type normalization routing for direct text inputs, Docling-backed PDFs, and bounded MarkItDown-backed born-digital converters |
 | `src/services/ingest_service.py` | Raw-source copy, normalized-artifact write, duplicate detection, and source registration |
 | `src/services/compile_service.py` | Derived wiki generation |
 | `src/services/search_service.py` | Search over compiled artifacts |
@@ -54,7 +54,7 @@
 
 | File | Responsibility |
 | --- | --- |
-| `pyproject.toml` | Dependency pins, including prompt-toolkit and MarkItDown, plus CLI entrypoint, Black config, pytest and coverage settings |
+| `pyproject.toml` | Dependency pins, including prompt-toolkit, Docling, and MarkItDown, plus CLI entrypoint, Black config, pytest and coverage settings |
 | `.github/workflows/tests.yml` | CI for Poetry install, Black, pytest, and coverage artifact upload |
 | `tests/` | Unit, CLI, and regression coverage for the current command/service surface |
 
