@@ -17,11 +17,13 @@ COMMAND_MODULES = {
     "query": "src.commands.query",
     "search": "src.commands.search",
     "status": "src.commands.status",
+    "tui": "src.commands.tui",
 }
 
 
 ALIASES = {
     "export_vault": "export-vault",
+    "repl": "tui",
 }
 
 

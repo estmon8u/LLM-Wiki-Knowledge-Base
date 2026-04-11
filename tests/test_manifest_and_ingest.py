@@ -98,6 +98,8 @@ def test_ingest_service_copies_source_and_updates_manifest(test_project) -> None
     assert result.created is True
     assert result.source is not None
     assert result.source.slug == "example-document"
+    assert result.source.metadata["ingest_mode"] == "direct-canonical-text"
+    assert result.source.metadata["canonical_text_format"] == ".md"
     assert (test_project.root / result.source.raw_path).exists()
     assert (
         test_project.services["manifest"].list_sources()[0].title == "Example Document"
@@ -114,7 +116,10 @@ def test_ingest_service_rejects_missing_and_unsupported_sources(test_project) ->
     with pytest.raises(FileNotFoundError):
         ingest_service.ingest_path(test_project.root / "missing.md")
 
-    with pytest.raises(ValueError):
+    with pytest.raises(
+        ValueError,
+        match="already-normalized markdown and plain-text files",
+    ):
         ingest_service.ingest_path(unsupported)
 
 
