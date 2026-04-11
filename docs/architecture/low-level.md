@@ -1,0 +1,66 @@
+# Low-Level Architecture
+
+## Key Entry And Registry Files
+
+| File | Responsibility |
+| --- | --- |
+| `src/cli.py` | Builds the CLI entrypoint and runtime context |
+| `src/engine/command_registry.py` | Registers the available CLI commands |
+| `src/engine/tool_registry.py` | Holds the internal tool boundary for future agent-style actions |
+| `src/providers/base.py` | Defines the provider abstraction placeholder |
+
+## Current Command Files
+
+| File | Responsibility |
+| --- | --- |
+| `src/commands/common.py` | Shared command helpers |
+| `src/commands/init.py` | Project initialization behavior |
+| `src/commands/ingest.py` | Source ingest command |
+| `src/commands/compile.py` | Wiki compilation command |
+| `src/commands/search.py` | Search command |
+| `src/commands/query.py` | Query command |
+| `src/commands/lint.py` | Lint command |
+| `src/commands/status.py` | Status command |
+| `src/commands/export_vault.py` | Vault export command |
+| `src/commands/tui.py` | Persistent terminal workspace command |
+
+## Current Service Files
+
+| File | Responsibility |
+| --- | --- |
+| `src/services/project_service.py` | Project layout and initialization helpers |
+| `src/services/config_service.py` | Config loading and defaults |
+| `src/services/manifest_service.py` | Raw-source manifest read/write behavior |
+| `src/services/ingest_service.py` | Current direct-text ingest for already-normalized markdown/plain-text inputs and source registration |
+| `src/services/compile_service.py` | Derived wiki generation |
+| `src/services/search_service.py` | Search over compiled artifacts |
+| `src/services/query_service.py` | Query answer assembly from maintained wiki context |
+| `src/services/lint_service.py` | Structural validation and maintenance findings |
+| `src/services/export_service.py` | Vault export generation |
+| `src/services/status_service.py` | Project and corpus status reporting |
+| `src/services/tui_service.py` | Terminal workspace orchestration over the existing services |
+
+## Current Model Files
+
+| File | Responsibility |
+| --- | --- |
+| `src/models/command_models.py` | Command-facing dataclasses and result types |
+| `src/models/source_models.py` | Source metadata models |
+| `src/models/tool_models.py` | Tool-facing data structures |
+| `src/models/wiki_models.py` | Wiki-oriented dataclasses |
+
+## Supporting Project Files
+
+| File | Responsibility |
+| --- | --- |
+| `pyproject.toml` | Dependency pins, CLI entrypoint, Black config, pytest and coverage settings |
+| `.github/workflows/tests.yml` | CI for Poetry install, Black, pytest, and coverage artifact upload |
+| `tests/` | Unit, CLI, and regression coverage for the current command/service surface |
+
+## Low-Level Guardrails
+
+- Keep file additions aligned with the current layer split instead of mixing CLI, service, and model logic.
+- Prefer extending existing services over adding duplicate helper modules.
+- Interactive terminal features should call existing services instead of creating a second business-logic path.
+- Treat CI and formatter config as part of the architecture because they enforce the supported workflow.
+- When heterogeneous document support is added, keep converter-backed normalization separate from the current direct-text ingest path.
