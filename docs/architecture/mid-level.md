@@ -40,7 +40,7 @@
 ## Current Ingest Scope
 
 - The current implementation ingests `.md`, `.markdown`, and `.txt` files directly and also supports a bounded MarkItDown-backed subset of formats such as HTML, CSV, Office documents, notebooks, EPUB, and PDFs.
-- OCR-backed ingest and broader heterogeneous coverage are still deferred.
+- OCR-backed ingest is still deferred and should arrive as a provider-backed fallback, with Mistral OCR as the current preferred OCR path for scanned or image-heavy inputs.
 
 ## Structural Rules
 
@@ -50,5 +50,6 @@
 - Static preview rendering and the full-screen terminal session should share the same underlying pane state where practical.
 - Raw sources remain the source of truth; compiled pages are derived artifacts.
 - Compile should prefer the normalized canonical artifact when one exists rather than reparsing the original raw source.
+- Optional LLM-based cleanup or reconstruction should remain an explicit provider-mediated step instead of a silent default ingest behavior.
 - Query behavior should prefer the compiled wiki over direct raw-file prompting.
 - Evaluation features should remain clearly separated from the core CLI workflow.
