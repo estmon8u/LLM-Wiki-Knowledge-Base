@@ -21,16 +21,39 @@ def create_command() -> click.Command:
         multiple=True,
         help="Run one or more TUI commands non-interactively and exit.",
     )
+    @click.option(
+        "--snapshot",
+        is_flag=True,
+        help="Render a static preview of the current terminal workspace and exit.",
+    )
+    @click.option("--snapshot-width", default=120, show_default=True, type=int)
+    @click.option("--snapshot-height", default=36, show_default=True, type=int)
     @click.pass_obj
     def command(
-        command_context: CommandContext, scripted_commands: tuple[str, ...]
+        command_context: CommandContext,
+        scripted_commands: tuple[str, ...],
+        snapshot: bool,
+        snapshot_width: int,
+        snapshot_height: int,
     ) -> None:
         tui_service = TuiService(command_context)
         if scripted_commands:
             summary = tui_service.run_scripted(scripted_commands)
-            click.echo(summary.transcript)
+            if snapshot:
+                click.echo(
+                    tui_service.render(
+                        width=snapshot_width,
+                        height=snapshot_height,
+                    )
+                )
+            else:
+                click.echo(summary.transcript)
             if summary.had_errors:
                 raise click.exceptions.Exit(1)
+            return
+
+        if snapshot:
+            click.echo(tui_service.render(width=snapshot_width, height=snapshot_height))
             return
 
         try:

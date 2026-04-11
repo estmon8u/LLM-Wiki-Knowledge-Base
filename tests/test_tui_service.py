@@ -3,6 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from prompt_toolkit.input import create_pipe_input
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.output import DummyOutput
 
 from src.models.wiki_models import LintIssue, LintReport
 from src.services.tui_service import TuiService
@@ -19,7 +22,8 @@ def test_tui_service_render_supports_stacked_and_split_layouts(
     assert "KB Terminal Workspace" in stacked
     assert "Project" in stacked
     assert "Session" in stacked
-    assert "Any plain sentence is treated as a query request." in split
+    assert "Active Pane: Session" in split
+    assert "plain text => query" in split
     assert "initialized: false" in split
 
 
@@ -69,8 +73,8 @@ def test_tui_service_clear_resets_transcript(uninitialized_project) -> None:
     summary = service.run_scripted(["status", "clear", ":help"])
 
     assert summary.had_errors is False
-    assert "Transcript cleared. Type :help for commands." in summary.transcript
-    assert "Use :command syntax for explicit actions" in summary.transcript
+    assert "Transcript cleared. Use Tab to move between panes." in summary.transcript
+    assert ":pane <session|status|search|citations|history|help>" in summary.transcript
     assert "initialized: false" not in summary.transcript
 
 
@@ -95,6 +99,18 @@ def test_tui_service_init_can_be_repeated_without_new_scaffold(
 
     assert summary.had_errors is False
     assert "project already had the required scaffold" in summary.transcript
+
+
+def test_tui_service_supports_pane_switching_and_history_view(test_project) -> None:
+    service = TuiService(test_project.command_context)
+
+    summary = service.run_scripted([":pane history", ":pane help"])
+
+    assert summary.had_errors is False
+    assert service.active_pane == "help"
+    assert "Focused history pane." in summary.transcript
+    history_lines = service._history_pane_lines()
+    assert any(":pane history" in line for line in history_lines)
 
 
 def test_tui_service_validates_ingest_search_and_query_arguments(test_project) -> None:
@@ -127,6 +143,7 @@ def test_tui_service_supports_search_lint_and_export_commands(test_project) -> N
     )
     assert "score=" in search_summary.transcript
     assert "No wiki pages matched that query." in search_summary.transcript
+    assert service.active_pane == "search"
 
     lint_summary = service.run_scripted(["lint"])
     assert "No lint issues found." in lint_summary.transcript
@@ -147,6 +164,8 @@ def test_tui_service_private_helpers_cover_dispatch_and_formatting_paths(
     resolved = service._resolve_user_path(f'"{absolute_source}"')
 
     assert resolved == absolute_source
+    assert service._run_pane("status") == "Focused status pane."
+    assert service.active_pane == "status"
 
     report = LintReport(
         issues=[
@@ -186,7 +205,138 @@ def test_tui_service_private_helpers_cover_dispatch_and_formatting_paths(
     assert "broken-link" in lint_output
 
     service.messages = []
-    assert service._session_panel_lines(20) == ["No session output yet."]
+    service.active_pane = "session"
+    assert service._pane_lines() == ["No session output yet."]
 
     with pytest.raises(ValueError, match="Unknown TUI command"):
         service._dispatch("bogus", "")
+
+
+def test_tui_service_builds_interactive_application_and_keybindings(
+    uninitialized_project,
+) -> None:
+    service = TuiService(uninitialized_project.command_context)
+    with create_pipe_input() as pipe_input:
+        application = service._build_interactive_application(
+            input_stream=pipe_input,
+            output_stream=DummyOutput(),
+        )
+
+    assert application is service._application
+    assert service._input_field is not None
+    assert service._sidebar_area is not None
+    assert service._main_area is not None
+    assert "KB Terminal Workspace" in service._header_text()
+    assert "plain text => query" in service._footer_text()
+    assert "KB Terminal Workspace ready" in service._pane_text()
+
+    bindings = service._build_key_bindings(KeyBindings())
+
+    class FakeLayout:
+        def __init__(self) -> None:
+            self.focus_calls = 0
+
+        def focus(self, _: object) -> None:
+            self.focus_calls += 1
+
+    class FakeApp:
+        def __init__(self) -> None:
+            self.layout = FakeLayout()
+            self.exited = False
+
+        def exit(self) -> None:
+            self.exited = True
+
+    class FakeEvent:
+        def __init__(self) -> None:
+            self.app = FakeApp()
+
+    def run_binding(key_name: str) -> FakeEvent:
+        event = FakeEvent()
+        for binding in bindings.bindings:
+            values = [getattr(key, "value", str(key)) for key in binding.keys]
+            if values == [key_name]:
+                binding.handler(event)
+                return event
+        raise AssertionError(f"Binding not found for {key_name}")
+
+    run_binding("c-i")
+    assert service.active_pane == "status"
+
+    run_binding("s-tab")
+    assert service.active_pane == "session"
+
+    run_binding("f1")
+    assert service.active_pane == "help"
+
+    run_binding("f2")
+    assert service.active_pane == "status"
+
+    run_binding("f3")
+    assert service.active_pane == "search"
+
+    run_binding("f4")
+    assert service.active_pane == "citations"
+
+    run_binding("f5")
+    assert service.active_pane == "session"
+
+    run_binding("f6")
+    assert service.active_pane == "history"
+
+    refresh_event = run_binding("c-r")
+    assert "Status snapshot refreshed." in service.serialize_transcript()
+    assert refresh_event.app.layout.focus_calls > 0
+
+    clear_event = run_binding("c-l")
+    assert (
+        "Transcript cleared. Use Tab to move between panes."
+        in service.serialize_transcript()
+    )
+    assert clear_event.app.layout.focus_calls > 0
+
+    quit_event = run_binding("c-q")
+    assert quit_event.app.exited is True
+
+
+def test_tui_service_accept_buffer_exits_when_command_requests_shutdown(
+    uninitialized_project,
+) -> None:
+    service = TuiService(uninitialized_project.command_context)
+
+    class FakeBuffer:
+        def __init__(self, text: str) -> None:
+            self.text = text
+            self.reset_called = False
+
+        def reset(self) -> None:
+            self.reset_called = True
+
+    class FakeLayout:
+        def __init__(self) -> None:
+            self.focus_calls = 0
+
+        def focus(self, _: object) -> None:
+            self.focus_calls += 1
+
+    class FakeApplication:
+        def __init__(self) -> None:
+            self.layout = FakeLayout()
+            self.exited = False
+            self.invalidated = False
+
+        def exit(self) -> None:
+            self.exited = True
+
+        def invalidate(self) -> None:
+            self.invalidated = True
+
+    service._input_field = object()
+    service._application = FakeApplication()
+
+    buffer = FakeBuffer("quit")
+    keep_running = service._accept_buffer(buffer)
+
+    assert keep_running is False
+    assert buffer.reset_called is True
+    assert service._application.exited is True

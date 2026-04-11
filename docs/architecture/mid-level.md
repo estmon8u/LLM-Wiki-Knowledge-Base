@@ -6,7 +6,7 @@
 | --- | --- |
 | `src/cli.py` | CLI entrypoint and application bootstrap |
 | `src/commands/` | Thin user-facing command wrappers |
-| `src/services/` | Deterministic ingest, compile, lint, search, query, export, status, config, manifest, and terminal-workspace orchestration |
+| `src/services/` | Deterministic ingest, compile, lint, search, query, export, status, config, manifest, and prompt-toolkit terminal-workspace orchestration |
 | `src/models/` | Shared command, source, tool, and wiki dataclasses |
 | `src/engine/` | Command and tool registry boundaries |
 | `src/providers/` | Future provider abstraction layer |
@@ -35,7 +35,7 @@
 | Query | user question plus compiled context | cited answer based on maintained wiki |
 | Lint | compiled wiki and metadata | structural findings and maintenance signals |
 | Export | compiled wiki | Obsidian-friendly vault view |
-| Terminal workspace | user input plus existing services | persistent terminal session for repeated commands and questions |
+| Terminal workspace | user input plus existing services | full-screen terminal session with panes, history, and repeated commands/questions |
 
 ## Current Ingest Scope
 
@@ -47,6 +47,7 @@
 - Commands should stay thin and delegate quickly.
 - Services should remain deterministic unless the feature explicitly requires model-backed synthesis.
 - `kb tui` should remain a thin orchestration layer over existing services instead of duplicating command business logic.
+- Static preview rendering and the full-screen terminal session should share the same underlying pane state where practical.
 - Raw sources remain the source of truth; compiled pages are derived artifacts.
 - Query behavior should prefer the compiled wiki over direct raw-file prompting.
 - Evaluation features should remain clearly separated from the core CLI workflow.

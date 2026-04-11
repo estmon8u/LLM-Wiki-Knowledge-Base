@@ -22,7 +22,7 @@
 | `src/commands/lint.py` | Lint command |
 | `src/commands/status.py` | Status command |
 | `src/commands/export_vault.py` | Vault export command |
-| `src/commands/tui.py` | Persistent terminal workspace command |
+| `src/commands/tui.py` | Persistent terminal workspace command and snapshot preview entrypoint |
 
 ## Current Service Files
 
@@ -38,7 +38,7 @@
 | `src/services/lint_service.py` | Structural validation and maintenance findings |
 | `src/services/export_service.py` | Vault export generation |
 | `src/services/status_service.py` | Project and corpus status reporting |
-| `src/services/tui_service.py` | Terminal workspace orchestration over the existing services |
+| `src/services/tui_service.py` | Prompt-toolkit terminal workspace orchestration, pane state, history, and snapshot rendering |
 
 ## Current Model Files
 
@@ -53,7 +53,7 @@
 
 | File | Responsibility |
 | --- | --- |
-| `pyproject.toml` | Dependency pins, CLI entrypoint, Black config, pytest and coverage settings |
+| `pyproject.toml` | Dependency pins, including prompt-toolkit for the full-screen terminal workspace, plus CLI entrypoint, Black config, pytest and coverage settings |
 | `.github/workflows/tests.yml` | CI for Poetry install, Black, pytest, and coverage artifact upload |
 | `tests/` | Unit, CLI, and regression coverage for the current command/service surface |
 

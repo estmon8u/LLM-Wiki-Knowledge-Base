@@ -245,3 +245,49 @@ def test_tui_script_mode_returns_nonzero_when_script_has_errors() -> None:
 
         assert result.exit_code == 1
         assert "Project not initialized. Run :init first." in result.output
+
+
+def test_tui_snapshot_renders_without_interactive_terminal() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(main, ["tui", "--snapshot"])
+
+    assert result.exit_code == 0
+    assert "KB Terminal Workspace" in result.output
+    assert "Active Pane: Session" in result.output
+
+
+def test_tui_snapshot_renders_preview_after_scripted_commands() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Sample Research Note\n\n"
+            "Markdown-first knowledge bases preserve source traceability.\n\n"
+            "They can be linted for broken links and missing citations.\n",
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(
+            main,
+            [
+                "tui",
+                "--command",
+                "init",
+                "--command",
+                "ingest sample.md",
+                "--command",
+                "compile",
+                "--command",
+                "How does traceability help?",
+                "--snapshot",
+                "--snapshot-width",
+                "120",
+                "--snapshot-height",
+                "32",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "KB Terminal Workspace" in result.output
+        assert "Active Pane: Citations" in result.output
+        assert "Question: How does traceability help?" in result.output

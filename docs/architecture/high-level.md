@@ -4,7 +4,7 @@
 
 The project is a CLI-first workflow for building and maintaining a persistent markdown knowledge base from a curated source corpus.
 
-It now supports both one-shot commands and a persistent terminal workspace through `kb tui`, while still staying inside the same command/service architecture.
+It now supports both one-shot commands and a prompt-toolkit full-screen terminal workspace through `kb tui`, while still staying inside the same command/service architecture.
 
 The long-term architecture accepts heterogeneous source documents through a normalization step into canonical markdown or plain text. The current scaffold keeps ingest intentionally narrower and directly accepts only sources that are already in those canonical text formats.
 
@@ -33,6 +33,7 @@ The product goal is not to act like a general-purpose coding agent. The goal is 
 - Commands expose user-facing CLI behavior.
 - Services own deterministic business logic.
 - The terminal workspace is a UI layer over the same services rather than a separate execution path.
+- Snapshot previews and full-screen interaction should reflect the same pane state and command results.
 - Models hold shared dataclasses and typed results.
 - Engine modules register commands and tools.
 - Providers abstract future model-backed behavior behind a small boundary.
