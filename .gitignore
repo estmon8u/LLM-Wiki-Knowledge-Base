@@ -5,4 +5,12 @@ __pycache__/
 .coverage
 coverage.xml
 htmlcov/
-copilot_memory/
+.vscode/settings.json
+
+# Private local private files and folders
+.github/copilot-instructions.md
+.github/skills/
+.github/instructions/
+.github/prompts/
+.github/agents/
+.github/hooks/

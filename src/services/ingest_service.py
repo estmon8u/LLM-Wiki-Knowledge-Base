@@ -12,7 +12,8 @@ from src.services.manifest_service import ManifestService
 from src.services.project_service import ProjectPaths, slugify, utc_now_iso
 
 
-SUPPORTED_TEXT_SUFFIXES = {".md", ".markdown", ".txt"}
+SUPPORTED_CANONICAL_TEXT_SUFFIXES = {".md", ".markdown", ".txt"}
+DIRECT_CANONICAL_TEXT_INGEST_MODE = "direct-canonical-text"
 
 
 @dataclass
@@ -32,9 +33,10 @@ class IngestService:
         source_path = raw_input_path.resolve()
         if not source_path.exists():
             raise FileNotFoundError(f"Source file not found: {source_path}")
-        if source_path.suffix.lower() not in SUPPORTED_TEXT_SUFFIXES:
+        if source_path.suffix.lower() not in SUPPORTED_CANONICAL_TEXT_SUFFIXES:
             raise ValueError(
-                "Only markdown and text files are supported in the initial scaffold."
+                "The current scaffold only ingests already-normalized markdown and plain-text files. "
+                "Future converters should normalize other document types before ingest."
             )
 
         contents = source_path.read_text(encoding="utf-8")
@@ -65,7 +67,11 @@ class IngestService:
             raw_path=destination.relative_to(self.paths.root).as_posix(),
             content_hash=content_hash,
             ingested_at=utc_now_iso(),
-            metadata={"original_name": source_path.name},
+            metadata={
+                "original_name": source_path.name,
+                "ingest_mode": DIRECT_CANONICAL_TEXT_INGEST_MODE,
+                "canonical_text_format": source_path.suffix.lower(),
+            },
         )
         self.manifest_service.save_source(source)
         return IngestResult(
