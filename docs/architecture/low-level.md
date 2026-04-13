@@ -22,7 +22,6 @@
 | `src/commands/lint.py` | Lint command |
 | `src/commands/status.py` | Status command |
 | `src/commands/export_vault.py` | Vault export command |
-| `src/commands/tui.py` | Persistent terminal workspace command and snapshot preview entrypoint |
 
 ## Current Service Files
 
@@ -39,7 +38,6 @@
 | `src/services/lint_service.py` | Structural validation and maintenance findings |
 | `src/services/export_service.py` | Vault export generation |
 | `src/services/status_service.py` | Project and corpus status reporting |
-| `src/services/tui_service.py` | Prompt-toolkit terminal workspace orchestration, pane state, history, and snapshot rendering |
 
 ## Current Model Files
 
@@ -54,7 +52,7 @@
 
 | File | Responsibility |
 | --- | --- |
-| `pyproject.toml` | Dependency pins, including prompt-toolkit, Docling, and MarkItDown, plus CLI entrypoint, Black config, pytest and coverage settings |
+| `pyproject.toml` | Dependency pins, including Docling and MarkItDown, plus CLI entrypoint, Black config, pytest and coverage settings |
 | `.github/workflows/tests.yml` | CI for Poetry install, Black, pytest, and coverage artifact upload |
 | `tests/` | Unit, CLI, and regression coverage for the current command/service surface |
 
@@ -62,6 +60,5 @@
 
 - Keep file additions aligned with the current layer split instead of mixing CLI, service, and model logic.
 - Prefer extending existing services over adding duplicate helper modules.
-- Interactive terminal features should call existing services instead of creating a second business-logic path.
 - Treat CI and formatter config as part of the architecture because they enforce the supported workflow.
 - Keep converter-backed normalization in a dedicated service instead of mixing converter logic directly into command handlers or compile.

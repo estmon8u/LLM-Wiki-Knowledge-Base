@@ -46,7 +46,6 @@ def test_help_lists_core_commands() -> None:
         "query",
         "status",
         "export-vault",
-        "tui",
     ):
         assert command_name in result.output
 
@@ -218,101 +217,3 @@ def test_cli_supports_explicit_project_root_option(tmp_path: Path) -> None:
     assert ingest_result.exit_code == 0
     assert status_result.exit_code == 0
     assert "source_count: 1" in status_result.output
-
-
-def test_tui_requires_interactive_terminal_without_scripted_commands() -> None:
-    runner = CliRunner()
-
-    result = runner.invoke(main, ["tui"])
-
-    assert result.exit_code != 0
-    assert "requires an interactive terminal" in result.output
-
-
-def test_tui_script_mode_runs_core_workflow() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        Path("sample.md").write_text(
-            "# Sample Research Note\n\n"
-            "Markdown-first knowledge bases preserve source traceability.\n\n"
-            "They can be linted for broken links and missing citations.\n",
-            encoding="utf-8",
-        )
-
-        result = runner.invoke(
-            main,
-            [
-                "tui",
-                "--command",
-                "init",
-                "--command",
-                "ingest sample.md",
-                "--command",
-                "compile",
-                "--command",
-                "How does traceability help?",
-                "--command",
-                "quit",
-            ],
-        )
-
-        assert result.exit_code == 0
-        assert "KB Terminal Workspace" in result.output
-        assert "Ingested Sample Research Note" in result.output
-        assert "Compiled 1 source page(s)" in result.output
-        assert "Citations:" in result.output
-
-
-def test_tui_script_mode_returns_nonzero_when_script_has_errors() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        result = runner.invoke(main, ["tui", "--command", "compile"])
-
-        assert result.exit_code == 1
-        assert "Project not initialized. Run :init first." in result.output
-
-
-def test_tui_snapshot_renders_without_interactive_terminal() -> None:
-    runner = CliRunner()
-
-    result = runner.invoke(main, ["tui", "--snapshot"])
-
-    assert result.exit_code == 0
-    assert "KB Terminal Workspace" in result.output
-    assert "Active Pane: Session" in result.output
-
-
-def test_tui_snapshot_renders_preview_after_scripted_commands() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        Path("sample.md").write_text(
-            "# Sample Research Note\n\n"
-            "Markdown-first knowledge bases preserve source traceability.\n\n"
-            "They can be linted for broken links and missing citations.\n",
-            encoding="utf-8",
-        )
-
-        result = runner.invoke(
-            main,
-            [
-                "tui",
-                "--command",
-                "init",
-                "--command",
-                "ingest sample.md",
-                "--command",
-                "compile",
-                "--command",
-                "How does traceability help?",
-                "--snapshot",
-                "--snapshot-width",
-                "120",
-                "--snapshot-height",
-                "32",
-            ],
-        )
-
-        assert result.exit_code == 0
-        assert "KB Terminal Workspace" in result.output
-        assert "Active Pane: Citations" in result.output
-        assert "Question: How does traceability help?" in result.output
