@@ -262,3 +262,19 @@ poetry run pytest tests --cov=src --cov-report=term-missing
 ```
 
 Coverage must stay at or above 98%.
+
+### Real corpus smoke test
+
+To exercise the full CLI against a real source corpus in a disposable project root:
+
+```bash
+poetry run python scripts/run_real_corpus_smoke.py \
+    --raw-root path/to/raw-corpus \
+    --project-root path/to/disposable-project
+```
+
+The script runs `help`, `init`, `status`, `ingest`, `diff`, `compile`, `search`, `query`, `lint`, and `export-vault`, writes a consolidated log file under the disposable project root, and exits nonzero if any supported-source ingest fails, lint reports errors, or another command fails unexpectedly.
+
+Unsupported files found under the raw corpus are probed separately to confirm they are rejected cleanly.
+
+This is a manual smoke-test workflow, not a GitHub Actions dependency. The tracked pytest coverage only exercises the smoke-test script against a temporary corpus created inside the test itself.

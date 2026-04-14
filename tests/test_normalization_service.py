@@ -112,6 +112,37 @@ def test_pdf_document_converter_uses_provided_converter(tmp_path: Path) -> None:
     assert result == "# Wrapped PDF\n\nExported text.\n"
 
 
+def test_pdf_document_converter_uses_ascii_temp_copy_for_unicode_paths(
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "karpathy’s-note.pdf"
+    source_path.write_text("not-a-real-pdf", encoding="utf-8")
+
+    class UnicodeSensitiveDoclingConverter:
+        def __init__(self) -> None:
+            self.paths: list[Path] = []
+
+        def convert(self, source_path: Path) -> SimpleNamespace:
+            self.paths.append(source_path)
+            if not str(source_path).isascii():
+                raise RuntimeError("unicode path not supported")
+            return SimpleNamespace(
+                document=SimpleNamespace(
+                    export_to_markdown=lambda: "# Unicode Safe PDF\n\nConverted text.\n"
+                )
+            )
+
+    inner_converter = UnicodeSensitiveDoclingConverter()
+
+    result = PdfDocumentConverter(inner_converter).convert_local(source_path)
+
+    assert result == "# Unicode Safe PDF\n\nConverted text.\n"
+    assert len(inner_converter.paths) == 1
+    assert inner_converter.paths[0] != source_path
+    assert inner_converter.paths[0].suffix == ".pdf"
+    assert str(inner_converter.paths[0]).isascii()
+
+
 def test_pdf_document_converter_lazy_loads_docling_converter(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

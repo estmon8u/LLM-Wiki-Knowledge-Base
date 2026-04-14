@@ -12,7 +12,7 @@ from src.services.manifest_service import ManifestService
 from src.services.project_service import ProjectPaths, slugify
 
 
-WIKI_LINK_PATTERN = re.compile(r"\[\[([^\]|#]+)")
+WIKI_LINK_PATTERN = re.compile(r"\[\[([^\]\|#\n]+)(?:#[^\]\|\n]+)?(?:\|[^\]\n]+)?\]\]")
 
 
 class LintService:

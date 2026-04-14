@@ -160,6 +160,43 @@ def test_lint_service_reports_missing_fields_empty_summary_and_orphan_page(
     assert "orphan-page" in codes
 
 
+def test_lint_service_ignores_malformed_timestamp_markdown_links(
+    test_project,
+) -> None:
+    test_project.write_file(
+        "wiki/sources/target-page.md",
+        "---\n"
+        "title: Target Page\n"
+        "summary: A real wiki target\n"
+        "source_id: target-1\n"
+        "source_hash: hash-1\n"
+        "---\n\n"
+        "# Target Page\n",
+    )
+    test_project.write_file(
+        "wiki/sources/reference.md",
+        "---\n"
+        "title: Reference\n"
+        "summary: References a valid page and a timestamp markdown link\n"
+        "source_id: reference-1\n"
+        "source_hash: hash-2\n"
+        "---\n\n"
+        "# Reference\n\n"
+        "See [[00:00](http://example.com)] and [[target-page]].\n",
+    )
+
+    report = test_project.services["lint"].lint()
+
+    assert not any(
+        issue.code == "broken-link" and "00:00" in issue.message
+        for issue in report.issues
+    )
+    assert not any(
+        issue.code == "broken-link" and "target-page" in issue.message
+        for issue in report.issues
+    )
+
+
 def test_lint_report_properties_count_issue_severities() -> None:
     report = LintReport(
         issues=[

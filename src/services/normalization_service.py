@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from importlib.metadata import version as package_version
 from pathlib import Path
+import shutil
+from tempfile import TemporaryDirectory
 from typing import Any, Optional
 
 from markitdown import __version__ as markitdown_version
@@ -47,13 +49,30 @@ class PdfDocumentConverter:
         self._converter = converter
 
     def convert_local(self, source_path: Path) -> str:
+        conversion_path, temp_dir = self._prepare_conversion_path(source_path)
         try:
-            result = self._converter_instance().convert(source_path)
+            result = self._converter_instance().convert(conversion_path)
         except Exception as error:
             raise ValueError(
                 f"Docling could not convert {source_path.name}: {error}"
             ) from error
+        finally:
+            if temp_dir is not None:
+                temp_dir.cleanup()
         return result.document.export_to_markdown()
+
+    def _prepare_conversion_path(
+        self, source_path: Path
+    ) -> tuple[Path, Optional[TemporaryDirectory[str]]]:
+        if str(source_path).isascii():
+            return source_path, None
+
+        # Docling can reject some Windows Unicode paths, so stage the PDF in a
+        # temporary ASCII-only location before conversion.
+        temp_dir = TemporaryDirectory(prefix="kb-docling-")
+        temp_path = Path(temp_dir.name) / f"input{source_path.suffix.lower()}"
+        shutil.copyfile(source_path, temp_path)
+        return temp_path, temp_dir
 
     def _converter_instance(self) -> Any:
         if self._converter is None:
