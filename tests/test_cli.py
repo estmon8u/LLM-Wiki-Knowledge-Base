@@ -43,6 +43,7 @@ def test_help_lists_core_commands() -> None:
         "compile",
         "diff",
         "lint",
+        "review",
         "search",
         "query",
         "status",
@@ -251,3 +252,70 @@ def test_cli_supports_explicit_project_root_option(tmp_path: Path) -> None:
     assert ingest_result.exit_code == 0
     assert status_result.exit_code == 0
     assert "source_count: 1" in status_result.output
+
+
+def test_query_save_prompt_creates_analysis_page() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Sample\n\nTraceability and citation evidence.\n",
+            encoding="utf-8",
+        )
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["ingest", "sample.md"]).exit_code == 0
+        assert runner.invoke(main, ["compile"]).exit_code == 0
+
+        result = runner.invoke(
+            main,
+            ["query", "How", "does", "traceability", "work?"],
+            input="y\n",
+        )
+
+        assert result.exit_code == 0
+        assert "Saved analysis page:" in result.output
+        assert Path("wiki/concepts").exists()
+        analysis_files = list(Path("wiki/concepts").glob("*.md"))
+        assert len(analysis_files) == 1
+        content = analysis_files[0].read_text(encoding="utf-8")
+        assert "type: analysis" in content
+
+
+def test_review_command_runs_and_reports_mode() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["review"])
+
+        assert result.exit_code == 0
+        assert "Review mode: heuristic" in result.output
+        assert "No review issues found." in result.output
+
+
+def test_review_command_reports_overlapping_topics() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        Path("wiki/sources").mkdir(parents=True, exist_ok=True)
+        Path("wiki/sources/alpha.md").write_text(
+            "knowledge base traceability citation markdown wiki compile ingest lint",
+            encoding="utf-8",
+        )
+        Path("wiki/sources/beta.md").write_text(
+            "knowledge base traceability citation markdown wiki compile query lint",
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(main, ["review"])
+
+        assert result.exit_code == 0
+        assert "overlapping-topics" in result.output
+
+
+def test_review_requires_initialization() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        result = runner.invoke(main, ["review"])
+
+        assert result.exit_code != 0
+        assert "Project not initialized" in result.output

@@ -44,6 +44,24 @@ def test_query_service_returns_answer_with_citations(test_project) -> None:
     assert "traceability appears here" in answer.answer
 
 
+def test_query_service_save_answer_writes_analysis_page(test_project) -> None:
+    test_project.write_file("wiki/sources/citations.md", "traceability appears here")
+    answer = test_project.services["query"].answer_question("traceability")
+
+    saved_path = test_project.services["query"].save_answer(
+        "How does traceability work?", answer
+    )
+
+    assert saved_path.startswith("wiki/concepts/")
+    assert saved_path.endswith(".md")
+    full_path = test_project.root / saved_path
+    assert full_path.exists()
+    content = full_path.read_text(encoding="utf-8")
+    assert "How does traceability work?" in content
+    assert "type: analysis" in content
+    assert "Citations" in content
+
+
 def test_export_service_copies_all_markdown_files(test_project) -> None:
     test_project.write_file("wiki/sources/a.md", "A")
     test_project.write_file("wiki/index.md", "Index")

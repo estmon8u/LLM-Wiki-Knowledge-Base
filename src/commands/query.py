@@ -21,7 +21,9 @@ def create_command() -> click.Command:
     @click.option("--limit", default=3, show_default=True, type=int)
     @click.pass_obj
     def command(
-        command_context: CommandContext, question_terms: tuple[str, ...], limit: int
+        command_context: CommandContext,
+        question_terms: tuple[str, ...],
+        limit: int,
     ) -> None:
         require_initialized(command_context)
         if not question_terms:
@@ -35,5 +37,12 @@ def create_command() -> click.Command:
             click.echo("Citations:")
             for citation in answer.citations:
                 click.echo(f"- {citation.title} [{citation.path}]")
+        if answer.citations:
+            try:
+                if click.confirm("\nSave this answer as an analysis page?"):
+                    saved_path = query_service.save_answer(question, answer)
+                    click.echo(f"Saved analysis page: {saved_path}")
+            except (click.Abort, EOFError):
+                pass
 
     return command

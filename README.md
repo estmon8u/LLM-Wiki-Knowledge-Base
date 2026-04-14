@@ -35,17 +35,21 @@ poetry run kb search "knowledge base traceability"
 
 # 5. Ask a question with citations
 poetry run kb query "How does the wiki handle stale pages?"
+# → After showing the answer, you'll be prompted to save it as an analysis page
 
-# 6. Check wiki health
+# 6. Check wiki health (deterministic structural checks)
 poetry run kb lint
 
-# 7. See project status
+# 7. Run semantic review for contradictions and terminology drift
+poetry run kb review
+
+# 8. See project status
 poetry run kb status
 
-# 8. Preview what needs compiling
+# 9. Preview what needs compiling
 poetry run kb diff
 
-# 9. Export to an Obsidian-friendly vault
+# 10. Export to an Obsidian-friendly vault
 poetry run kb export-vault
 ```
 
@@ -142,6 +146,8 @@ poetry run kb query --limit 5 "What normalization converters are supported?"
 
 Returns an answer assembled from the best-matching wiki pages, followed by a Citations section listing which pages were used.
 
+After displaying the answer, if citations are present the command prompts `Save this answer as an analysis page? [y/N]`. Accepting writes a markdown analysis page to `wiki/concepts/` with YAML frontmatter (`type: analysis`), the question, a timestamp, and backlinks to the cited source pages. Saved analysis pages make your explorations compound in the wiki instead of disappearing in terminal history. In non-interactive contexts the prompt is silently skipped.
+
 ### `kb lint`
 
 Run structural lint checks over the maintained wiki.
@@ -192,6 +198,23 @@ Displays each source with a status tag:
 
 Followed by summary counts for new, changed, and up-to-date sources.
 
+### `kb review`
+
+Run semantic review checks for contradictions and terminology drift across the maintained wiki.
+
+```bash
+poetry run kb review
+```
+
+Currently uses deterministic heuristics (no LLM required). When a provider is configured, the review pass can delegate to a model for deeper contradiction detection.
+
+Checks for:
+
+- **Overlapping topics** — Source pages with heavily overlapping terminology that may benefit from a shared concept page.
+- **Terminology variants** — The same root term appearing in different forms across pages (e.g., `knowledge-base` vs `knowledgebase`).
+
+This is the semantic complement to `kb lint`. Lint checks structural health deterministically; review checks content-level coherence and is designed to grow into a model-backed pass.
+
 ### `kb export-vault`
 
 Export the compiled wiki into the Obsidian-friendly vault folder.
@@ -233,6 +256,7 @@ project-root/
 │   └── normalized/         # Canonical markdown/text artifacts
 ├── wiki/
 │   ├── sources/            # Generated source pages
+│   ├── concepts/           # Saved analysis pages and future concept pages
 │   ├── index.md            # Wiki index (human-readable)
 │   ├── _index.json         # Wiki index (machine-readable)
 │   └── log.md              # Compile activity log
@@ -273,7 +297,7 @@ poetry run python scripts/run_real_corpus_smoke.py \
     --project-root path/to/disposable-project
 ```
 
-The script runs `help`, `init`, `status`, `ingest`, `diff`, `compile`, `search`, `query`, `lint`, and `export-vault`, writes a consolidated log file under the disposable project root, and exits nonzero if any supported-source ingest fails, lint reports errors, or another command fails unexpectedly.
+The script runs `help`, `init`, `status`, `ingest`, `diff`, `compile`, `search`, `query`, `lint`, `review`, and `export-vault`, writes a consolidated log file under the disposable project root, and exits nonzero if any supported-source ingest fails, lint reports errors, or another command fails unexpectedly.
 
 Unsupported files found under the raw corpus are probed separately to confirm they are rejected cleanly.
 

@@ -20,6 +20,7 @@
 | `src/commands/diff.py` | Pre-compile source diff command |
 | `src/commands/search.py` | Search command |
 | `src/commands/query.py` | Query command |
+| `src/commands/review.py` | Semantic review command |
 | `src/commands/lint.py` | Lint command |
 | `src/commands/status.py` | Status command |
 | `src/commands/export_vault.py` | Vault export command |
@@ -36,7 +37,8 @@
 | `src/services/compile_service.py` | Derived wiki generation |
 | `src/services/diff_service.py` | Pre-compile source diff reporting |
 | `src/services/search_service.py` | Search over compiled artifacts |
-| `src/services/query_service.py` | Query answer assembly from maintained wiki context |
+| `src/services/query_service.py` | Query answer assembly from maintained wiki context; optional save-to-wiki for analysis pages |
+| `src/services/review_service.py` | Semantic review checks: topic overlap, terminology variants, future contradiction detection |
 | `src/services/lint_service.py` | Structural validation and maintenance findings |
 | `src/services/export_service.py` | Vault export generation |
 | `src/services/status_service.py` | Project and corpus status reporting |

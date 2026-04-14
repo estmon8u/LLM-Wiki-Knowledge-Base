@@ -13,6 +13,7 @@ from src.services.lint_service import LintService
 from src.services.manifest_service import ManifestService
 from src.services.project_service import ProjectPaths, ProjectService
 from src.services.query_service import QueryService
+from src.services.review_service import ReviewService
 from src.services.search_service import SearchService
 from src.services.status_service import StatusService
 
@@ -31,6 +32,7 @@ def build_services(paths: ProjectPaths, config: dict[str, Any]) -> dict[str, Any
         "lint": LintService(paths, config, manifest_service),
         "search": search_service,
         "status": StatusService(paths, manifest_service),
-        "query": QueryService(search_service),
+        "query": QueryService(paths, search_service),
         "export": ExportService(paths),
+        "review": ReviewService(paths),
     }

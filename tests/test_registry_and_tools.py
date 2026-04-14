@@ -16,6 +16,7 @@ from src.engine.command_registry import (
 from src.engine.tool_registry import (
     _lint_wiki,
     _read_manifest,
+    _review_wiki,
     _search_wiki,
     _unsupported,
     build_tool_specs,
@@ -42,7 +43,17 @@ def test_command_registry_returns_click_commands_and_specs(test_project) -> None
 
 @pytest.mark.parametrize(
     "command_name",
-    ["init", "status", "ingest", "compile", "lint", "search", "query", "export-vault"],
+    [
+        "init",
+        "status",
+        "ingest",
+        "compile",
+        "lint",
+        "review",
+        "search",
+        "query",
+        "export-vault",
+    ],
 )
 def test_each_registered_command_has_a_click_command(command_name: str) -> None:
     command = get_click_command(command_name)
@@ -102,6 +113,7 @@ def test_build_tool_specs_contains_expected_contracts() -> None:
         "ReadManifest",
         "IngestSource",
         "LintWiki",
+        "ReviewWiki",
         "ExportVault",
     ]
     assert specs[0].is_concurrency_safe is True
@@ -149,6 +161,23 @@ def test_read_manifest_and_lint_tools_return_structured_payloads(test_project) -
     assert any(
         issue["code"] == "stale-source-page" for issue in lint_result.data["issues"]
     )
+
+
+def test_review_wiki_tool_returns_structured_payload(test_project) -> None:
+    tool_context = ToolContext(
+        project_root=str(test_project.root),
+        config=test_project.config,
+        session_state={},
+        services=test_project.services,
+        messages=[],
+        cancel_requested=lambda: False,
+    )
+
+    result = _review_wiki({}, tool_context)
+
+    assert result.ok is True
+    assert result.data["mode"] == "heuristic"
+    assert isinstance(result.data["issues"], list)
 
 
 def test_unsupported_tool_reports_stubbed_execution(test_project) -> None:

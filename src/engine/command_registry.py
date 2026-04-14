@@ -16,6 +16,7 @@ COMMAND_MODULES = {
     "init": "src.commands.init",
     "lint": "src.commands.lint",
     "query": "src.commands.query",
+    "review": "src.commands.review",
     "search": "src.commands.search",
     "status": "src.commands.status",
 }

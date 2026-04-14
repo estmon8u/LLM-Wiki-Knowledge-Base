@@ -14,14 +14,16 @@ The product goal is not to act like a general-purpose coding agent. The goal is 
 2. Ingest supported source documents, store the originals, and normalize them into canonical markdown or plain text in the raw layer.
 3. Compile source pages, concept pages, and indexes into the wiki layer.
 4. Search and query the compiled wiki instead of querying raw files directly.
-5. Lint the maintained knowledge base for broken structure or stale content.
-6. Export the wiki into an Obsidian-friendly vault.
-7. Optionally compare the maintained wiki against simpler RAG or graph-style baselines.
+5. Optionally save useful query answers back into the wiki as persistent analysis pages.
+6. Lint the maintained knowledge base for broken structure or stale content (deterministic).
+7. Review the maintained knowledge base for contradictions, terminology drift, and topic overlap (semantic; heuristic fallback when no provider is configured).
+8. Export the wiki into an Obsidian-friendly vault.
+9. Optionally compare the maintained wiki against simpler RAG or graph-style baselines.
 
 ## Data Domains
 
 - `raw/` stores source-of-truth input files, normalized canonical artifacts, and manifest metadata.
-- `wiki/` stores generated source pages, index data, and compile logs.
+- `wiki/` stores generated source pages, saved analysis pages, index data, and compile logs.
 - `vault/` stores export-ready Obsidian-friendly markdown.
 - `graph/` is optional and should stay evaluation-oriented rather than becoming the primary storage layer.
 

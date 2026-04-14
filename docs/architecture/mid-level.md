@@ -6,7 +6,7 @@
 | --- | --- |
 | `src/cli.py` | CLI entrypoint and application bootstrap |
 | `src/commands/` | Thin user-facing command wrappers |
-| `src/services/` | Deterministic normalization, ingest, compile, diff, lint, search, query, export, status, config, and manifest services |
+| `src/services/` | Deterministic normalization, ingest, compile, diff, lint, review, search, query, export, status, config, and manifest services |
 | `src/models/` | Shared command, source, tool, and wiki dataclasses |
 | `src/engine/` | Command and tool registry boundaries |
 | `src/providers/` | Future provider abstraction layer |
@@ -21,6 +21,7 @@
 | `src/commands/diff.py` | `src/services/diff_service.py` |
 | `src/commands/search.py` | `src/services/search_service.py` |
 | `src/commands/query.py` | `src/services/query_service.py` |
+| `src/commands/review.py` | `src/services/review_service.py` |
 | `src/commands/lint.py` | `src/services/lint_service.py` |
 | `src/commands/status.py` | `src/services/status_service.py` |
 | `src/commands/export_vault.py` | `src/services/export_service.py` |
@@ -33,8 +34,9 @@
 | Compile | normalized canonical text plus manifest metadata | source pages, concept pages, wiki index, compile log |
 | Diff | manifest metadata plus compile state | pre-compile source status preview |
 | Search | compiled wiki artifacts | ranked matches |
-| Query | user question plus compiled context | cited answer based on maintained wiki |
+| Query | user question plus compiled context | cited answer based on maintained wiki; optionally saved as an analysis page |
 | Lint | compiled wiki and metadata | structural findings and maintenance signals |
+| Review | compiled wiki pages | semantic findings: topic overlap, terminology variants, future contradiction detection |
 | Export | compiled wiki | Obsidian-friendly vault view |
 
 ## Current Ingest Scope
@@ -46,6 +48,7 @@
 
 - Commands should stay thin and delegate quickly.
 - Services should remain deterministic unless the feature explicitly requires model-backed synthesis.
+- `kb lint` checks structural health deterministically; `kb review` checks content-level coherence and is designed to grow into a model-backed pass.
 - Raw sources remain the source of truth; compiled pages are derived artifacts.
 - Compile should prefer the normalized canonical artifact when one exists rather than reparsing the original raw source.
 - Optional LLM-based cleanup or reconstruction should remain an explicit provider-mediated step instead of a silent default ingest behavior.

@@ -34,6 +34,13 @@ def build_tool_specs() -> tuple[ToolSpec, ...]:
             run=_lint_wiki,
         ),
         ToolSpec(
+            name="ReviewWiki",
+            summary="Run semantic review checks for contradictions and terminology.",
+            access_level="read",
+            is_concurrency_safe=True,
+            run=_review_wiki,
+        ),
+        ToolSpec(
             name="ExportVault",
             summary="Export wiki pages into the vault.",
             access_level="export",
@@ -81,6 +88,26 @@ def _lint_wiki(_: dict[str, object], tool_context: ToolContext) -> ToolResult:
                 }
                 for issue in report.issues
             ]
+        },
+    )
+
+
+def _review_wiki(_: dict[str, object], tool_context: ToolContext) -> ToolResult:
+    report = tool_context.services["review"].review()
+    return ToolResult(
+        ok=True,
+        content=f"Found {report.issue_count} review issue(s) ({report.mode} mode).",
+        data={
+            "mode": report.mode,
+            "issues": [
+                {
+                    "severity": issue.severity,
+                    "code": issue.code,
+                    "pages": issue.pages,
+                    "message": issue.message,
+                }
+                for issue in report.issues
+            ],
         },
     )
 

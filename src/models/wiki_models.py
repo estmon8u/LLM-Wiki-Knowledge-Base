@@ -47,6 +47,24 @@ class StatusSnapshot:
 
 
 @dataclass
+class ReviewIssue:
+    severity: str
+    code: str
+    pages: list[str]
+    message: str
+
+
+@dataclass
+class ReviewReport:
+    issues: list[ReviewIssue] = field(default_factory=list)
+    mode: str = "heuristic"
+
+    @property
+    def issue_count(self) -> int:
+        return len(self.issues)
+
+
+@dataclass
 class DiffEntry:
     source_id: str
     slug: str
