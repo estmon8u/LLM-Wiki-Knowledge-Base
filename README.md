@@ -162,6 +162,8 @@ Checks for:
 - Missing heading fragments for links such as `[[Page#Section]]` and `[text](page.md#section)`
 - Duplicate page titles, repeated headings, skipped heading levels, and multiple H1 headings
 - Missing frontmatter or provenance metadata on compiled pages
+- Typed frontmatter validation: string, date (ISO format), and list fields
+- Empty compiled pages that have no body content beyond headings
 - Orphan pages with no inbound wiki or markdown links
 - Stale compiled pages whose source hash changed
 - Other structural issues

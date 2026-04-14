@@ -22,6 +22,20 @@ MARKDOWN_LINK_PATTERN = re.compile(
 )
 ATX_HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 EXTERNAL_LINK_PATTERN = re.compile(r"^[a-z][a-z0-9+.-]*:", re.IGNORECASE)
+ISO_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?)?")
+
+_FIELD_TYPE_SPEC: Dict[str, str] = {
+    "title": "string",
+    "summary": "string",
+    "source_id": "string",
+    "raw_path": "string",
+    "source_hash": "string",
+    "origin": "string",
+    "normalized_path": "string",
+    "compiled_at": "date",
+    "ingested_at": "date",
+    "tags": "list",
+}
 
 
 @dataclass
@@ -98,11 +112,13 @@ class LintService:
                                 message="Summary field is empty.",
                             )
                         )
+                    issues.extend(self._lint_frontmatter_types(state))
 
                 normalized_title = state.page_title.casefold().strip()
                 page_titles.setdefault(normalized_title, []).append(state)
 
             issues.extend(self._lint_heading_structure(state))
+            issues.extend(self._lint_empty_page(state))
             issues.extend(
                 self._lint_links(
                     state,
@@ -150,6 +166,76 @@ class LintService:
             issues.extend(self._lint_manifest_state(source))
 
         return LintReport(issues=issues)
+
+    def _lint_frontmatter_types(self, page_state: _PageState) -> list[LintIssue]:
+        issues: list[LintIssue] = []
+        if page_state.frontmatter is None:
+            return issues
+        for field_name, expected in _FIELD_TYPE_SPEC.items():
+            if field_name not in page_state.frontmatter:
+                continue
+            value = page_state.frontmatter[field_name]
+            if expected == "string":
+                if not isinstance(value, str):
+                    issues.append(
+                        LintIssue(
+                            severity="warning",
+                            code="invalid-field-type",
+                            path=page_state.relative_path,
+                            message=(
+                                f"Frontmatter field '{field_name}' should be a "
+                                f"string but got {type(value).__name__}."
+                            ),
+                        )
+                    )
+            elif expected == "date":
+                raw = str(value).strip()
+                if not ISO_DATE_PATTERN.match(raw):
+                    issues.append(
+                        LintIssue(
+                            severity="warning",
+                            code="invalid-date-format",
+                            path=page_state.relative_path,
+                            message=(
+                                f"Frontmatter field '{field_name}' does not look "
+                                f"like an ISO date: '{raw}'."
+                            ),
+                        )
+                    )
+            elif expected == "list":
+                if not isinstance(value, list):
+                    issues.append(
+                        LintIssue(
+                            severity="warning",
+                            code="invalid-field-type",
+                            path=page_state.relative_path,
+                            message=(
+                                f"Frontmatter field '{field_name}' should be a "
+                                f"list but got {type(value).__name__}."
+                            ),
+                        )
+                    )
+        return issues
+
+    def _lint_empty_page(self, page_state: _PageState) -> list[LintIssue]:
+        if page_state.file_path.parent not in {
+            self.paths.wiki_sources_dir,
+            self.paths.wiki_concepts_dir,
+        }:
+            return []
+        for line in page_state.content.splitlines():
+            stripped = line.strip()
+            if not stripped or ATX_HEADING_PATTERN.match(stripped):
+                continue
+            return []
+        return [
+            LintIssue(
+                severity="warning",
+                code="empty-page",
+                path=page_state.relative_path,
+                message="Page has no body content beyond headings.",
+            )
+        ]
 
     def _lint_heading_structure(self, page_state: _PageState) -> list[LintIssue]:
         issues: list[LintIssue] = []

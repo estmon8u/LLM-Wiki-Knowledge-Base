@@ -39,7 +39,7 @@
 | `src/services/search_service.py` | Search over compiled artifacts |
 | `src/services/query_service.py` | Query answer assembly from maintained wiki context; optional save-to-wiki for analysis pages |
 | `src/services/review_service.py` | Semantic review checks: topic overlap, terminology variants, future contradiction detection |
-| `src/services/lint_service.py` | Structural validation for wiki links, markdown links, fragments, headings, titles, and maintenance findings |
+| `src/services/lint_service.py` | Structural validation for wiki links, markdown links, fragments, headings, titles, typed frontmatter, empty pages, and maintenance findings |
 | `src/services/export_service.py` | Vault export generation |
 | `src/services/status_service.py` | Project and corpus status reporting |
 

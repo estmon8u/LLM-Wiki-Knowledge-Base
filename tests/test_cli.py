@@ -247,6 +247,32 @@ def test_lint_reports_markdown_link_and_heading_errors_at_cli() -> None:
         assert "multiple-h1" in result.output
 
 
+def test_lint_reports_frontmatter_type_and_empty_page_at_cli() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        Path("wiki/sources").mkdir(parents=True, exist_ok=True)
+        Path("wiki/sources/bad-types.md").write_text(
+            "---\n"
+            "title: 123\n"
+            "summary: OK\n"
+            "source_id: id-1\n"
+            "raw_path: raw/file.md\n"
+            "source_hash: hash-1\n"
+            "compiled_at: not-a-date\n"
+            "tags: not-a-list\n"
+            "---\n\n"
+            "# Bad Types\n",
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(main, ["lint"])
+
+        assert "invalid-field-type" in result.output
+        assert "invalid-date-format" in result.output
+        assert "empty-page" in result.output
+
+
 def test_diff_requires_initialization() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():

@@ -35,7 +35,7 @@
 | Diff | manifest metadata plus compile state | pre-compile source status preview |
 | Search | compiled wiki artifacts | ranked matches |
 | Query | user question plus compiled context | cited answer based on maintained wiki; optionally saved as an analysis page |
-| Lint | compiled wiki and metadata | structural findings for links, fragments, headings, titles, and maintenance signals |
+| Lint | compiled wiki and metadata | structural findings for links, fragments, headings, titles, typed frontmatter, empty pages, and maintenance signals |
 | Review | compiled wiki pages | semantic findings: topic overlap, terminology variants, future contradiction detection |
 | Export | compiled wiki | Obsidian-friendly vault view |
 

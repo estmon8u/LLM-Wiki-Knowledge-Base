@@ -301,6 +301,82 @@ def test_lint_service_reports_heading_structure_and_duplicate_titles(
     assert "duplicate-title" in codes
 
 
+def test_lint_service_reports_invalid_frontmatter_types(test_project) -> None:
+    test_project.write_file(
+        "wiki/sources/bad-types.md",
+        "---\n"
+        "title: 123\n"
+        "summary: Valid string\n"
+        "source_id: id-1\n"
+        "raw_path: raw/file.md\n"
+        "source_hash: hash-1\n"
+        "compiled_at: 2026-04-14T00:00:00Z\n"
+        "tags: not-a-list\n"
+        "---\n\n"
+        "# Bad Types\n\nBody.\n",
+    )
+
+    report = test_project.services["lint"].lint()
+    type_issues = [i for i in report.issues if i.code == "invalid-field-type"]
+
+    assert len(type_issues) >= 2
+    fields = " ".join(i.message for i in type_issues)
+    assert "title" in fields
+    assert "tags" in fields
+
+
+def test_lint_service_reports_invalid_date_format(test_project) -> None:
+    test_project.write_file(
+        "wiki/sources/bad-date.md",
+        "---\n"
+        "title: Bad Date\n"
+        "summary: Summary\n"
+        "source_id: id-1\n"
+        "raw_path: raw/file.md\n"
+        "source_hash: hash-1\n"
+        "compiled_at: not-a-date\n"
+        "ingested_at: also bad\n"
+        "---\n\n"
+        "# Bad Date\n\nBody.\n",
+    )
+
+    report = test_project.services["lint"].lint()
+    date_issues = [i for i in report.issues if i.code == "invalid-date-format"]
+
+    assert len(date_issues) >= 2
+    fields = " ".join(i.message for i in date_issues)
+    assert "compiled_at" in fields
+    assert "ingested_at" in fields
+
+
+def test_lint_service_reports_empty_page(test_project) -> None:
+    test_project.write_file(
+        "wiki/sources/empty-body.md",
+        _compiled_page("Empty Body", ""),
+    )
+    test_project.write_file(
+        "wiki/sources/headings-only.md",
+        "---\n"
+        "title: Headings Only\n"
+        "summary: Summary\n"
+        "source_id: id-1\n"
+        "raw_path: raw/file.md\n"
+        "source_hash: hash-1\n"
+        "compiled_at: 2026-04-14T00:00:00Z\n"
+        "---\n\n"
+        "# Headings Only\n\n"
+        "## Sub Heading\n",
+    )
+
+    report = test_project.services["lint"].lint()
+    empty_issues = [i for i in report.issues if i.code == "empty-page"]
+
+    assert len(empty_issues) >= 2
+    paths = {i.path for i in empty_issues}
+    assert "wiki/sources/empty-body.md" in paths
+    assert "wiki/sources/headings-only.md" in paths
+
+
 def test_lint_report_properties_count_issue_severities() -> None:
     report = LintReport(
         issues=[
