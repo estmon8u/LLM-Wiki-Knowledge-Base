@@ -17,8 +17,9 @@ The product goal is not to act like a general-purpose coding agent. The goal is 
 5. Optionally save useful query answers back into the wiki as persistent analysis pages.
 6. Lint the maintained knowledge base for broken structure or stale content (deterministic).
 7. Review the maintained knowledge base for contradictions, terminology drift, and topic overlap (semantic; heuristic fallback when no provider is configured).
-8. Export the wiki into an Obsidian-friendly vault.
-9. Optionally compare the maintained wiki against simpler RAG or graph-style baselines.
+8. Optionally fix lint and review issues via `kb fix`: deterministic fixes apply directly, LLM-backed fixes show a diff for user approval.
+9. Export the wiki into an Obsidian-friendly vault.
+10. Optionally compare the maintained wiki against simpler RAG or graph-style baselines.
 
 ## Data Domains
 
