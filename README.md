@@ -42,7 +42,10 @@ poetry run kb lint
 # 7. See project status
 poetry run kb status
 
-# 8. Export to an Obsidian-friendly vault
+# 8. Preview what needs compiling
+poetry run kb diff
+
+# 9. Export to an Obsidian-friendly vault
 poetry run kb export-vault
 ```
 
@@ -172,6 +175,22 @@ Displays:
 - `compiled_source_count` — number of compiled source pages
 - `concept_page_count` — number of concept pages
 - `last_compile_at` — timestamp of the last compile
+
+### `kb diff`
+
+Show a pre-compile preview of source status: new (not yet compiled), changed (source modified since last compile), or up-to-date.
+
+```bash
+poetry run kb diff
+```
+
+Displays each source with a status tag:
+
+- `[NEW]` — ingested but not yet compiled
+- `[CHANGED]` — source content changed since last compile
+- `[OK]` — compiled and up-to-date
+
+Followed by summary counts for new, changed, and up-to-date sources.
 
 ### `kb export-vault`
 

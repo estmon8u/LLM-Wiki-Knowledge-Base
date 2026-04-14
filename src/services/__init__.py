@@ -6,6 +6,7 @@ from typing import Any
 
 from src.services.compile_service import CompileService
 from src.services.config_service import ConfigService
+from src.services.diff_service import DiffService
 from src.services.export_service import ExportService
 from src.services.ingest_service import IngestService
 from src.services.lint_service import LintService
@@ -26,6 +27,7 @@ def build_services(paths: ProjectPaths, config: dict[str, Any]) -> dict[str, Any
         "manifest": manifest_service,
         "ingest": IngestService(paths, manifest_service),
         "compile": CompileService(paths, config, manifest_service),
+        "diff": DiffService(paths, manifest_service),
         "lint": LintService(paths, config, manifest_service),
         "search": search_service,
         "status": StatusService(paths, manifest_service),

@@ -10,6 +10,7 @@ from src.models.command_models import CommandContext, CommandSpec
 
 COMMAND_MODULES = {
     "compile": "src.commands.compile",
+    "diff": "src.commands.diff",
     "export-vault": "src.commands.export_vault",
     "ingest": "src.commands.ingest",
     "init": "src.commands.init",

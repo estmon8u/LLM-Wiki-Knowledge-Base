@@ -137,6 +137,7 @@ def test_build_services_returns_expected_keys(test_project) -> None:
         "manifest",
         "ingest",
         "compile",
+        "diff",
         "lint",
         "search",
         "status",

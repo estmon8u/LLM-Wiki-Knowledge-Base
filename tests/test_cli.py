@@ -41,6 +41,7 @@ def test_help_lists_core_commands() -> None:
         "init",
         "ingest",
         "compile",
+        "diff",
         "lint",
         "search",
         "query",
@@ -198,6 +199,39 @@ def test_lint_returns_nonzero_when_errors_exist() -> None:
         assert result.exit_code == 1
         assert "ERRORS" in result.output
         assert "broken-link" in result.output
+
+
+def test_diff_requires_initialization() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        result = runner.invoke(main, ["diff"])
+
+        assert result.exit_code != 0
+        assert "Project not initialized" in result.output
+
+
+def test_diff_end_to_end_new_then_compiled() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Sample\n\nBody for diff test.\n",
+            encoding="utf-8",
+        )
+
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["ingest", "sample.md"]).exit_code == 0
+
+        diff_before = runner.invoke(main, ["diff"])
+        assert diff_before.exit_code == 0
+        assert "[NEW]" in diff_before.output
+        assert "new: 1" in diff_before.output
+
+        assert runner.invoke(main, ["compile"]).exit_code == 0
+
+        diff_after = runner.invoke(main, ["diff"])
+        assert diff_after.exit_code == 0
+        assert "[OK]" in diff_after.output
+        assert "up_to_date: 1" in diff_after.output
 
 
 def test_cli_supports_explicit_project_root_option(tmp_path: Path) -> None:

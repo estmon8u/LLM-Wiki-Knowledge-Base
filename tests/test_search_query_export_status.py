@@ -73,6 +73,60 @@ def test_status_service_counts_sources_compiled_pages_and_last_compile(
     assert snapshot.last_compile_at is not None
 
 
+def test_diff_service_reports_new_source_before_compile(test_project) -> None:
+    source_path = test_project.write_file("notes/diff.md", "# Diff\n\nBody\n")
+    test_project.services["ingest"].ingest_path(source_path)
+
+    report = test_project.services["diff"].diff()
+
+    assert report.new_count == 1
+    assert report.changed_count == 0
+    assert report.up_to_date_count == 0
+    assert report.entries[0].status == "new"
+    assert report.entries[0].title == "Diff"
+
+
+def test_diff_service_reports_up_to_date_after_compile(test_project) -> None:
+    source_path = test_project.write_file("notes/diff.md", "# Diff\n\nBody\n")
+    test_project.services["ingest"].ingest_path(source_path)
+    test_project.services["compile"].compile()
+
+    report = test_project.services["diff"].diff()
+
+    assert report.new_count == 0
+    assert report.changed_count == 0
+    assert report.up_to_date_count == 1
+    assert report.entries[0].status == "up_to_date"
+
+
+def test_diff_service_reports_changed_after_source_modification(test_project) -> None:
+    source_path = test_project.write_file("notes/diff.md", "# Diff\n\nBody\n")
+    test_project.services["ingest"].ingest_path(source_path)
+    test_project.services["compile"].compile()
+
+    # Modify the normalized file to simulate a source change
+    sources = test_project.services["manifest"].list_sources()
+    record = sources[0]
+    record.content_hash = "changed-hash"
+    test_project.services["manifest"].save_source(record)
+
+    report = test_project.services["diff"].diff()
+
+    assert report.new_count == 0
+    assert report.changed_count == 1
+    assert report.up_to_date_count == 0
+    assert report.entries[0].status == "changed"
+
+
+def test_diff_service_handles_empty_manifest(test_project) -> None:
+    report = test_project.services["diff"].diff()
+
+    assert report.new_count == 0
+    assert report.changed_count == 0
+    assert report.up_to_date_count == 0
+    assert report.entries == []
+
+
 def test_provider_dataclasses_and_base_provider_behavior() -> None:
     request = ProviderRequest(prompt="hello", system_prompt="system")
     response = ProviderResponse(text="world", model_name="demo")
