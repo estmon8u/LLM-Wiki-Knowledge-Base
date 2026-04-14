@@ -6,7 +6,7 @@
 | --- | --- |
 | `src/cli.py` | CLI entrypoint and application bootstrap |
 | `src/commands/` | Thin user-facing command wrappers |
-| `src/services/` | Deterministic normalization, ingest, compile, lint, search, query, export, status, config, and manifest services |
+| `src/services/` | Deterministic normalization, ingest, compile, diff, lint, search, query, export, status, config, and manifest services |
 | `src/models/` | Shared command, source, tool, and wiki dataclasses |
 | `src/engine/` | Command and tool registry boundaries |
 | `src/providers/` | Future provider abstraction layer |
@@ -18,6 +18,7 @@
 | `src/commands/init.py` | `src/services/project_service.py` and `src/services/config_service.py` |
 | `src/commands/ingest.py` | `src/services/ingest_service.py`, `src/services/normalization_service.py`, and `src/services/manifest_service.py` |
 | `src/commands/compile.py` | `src/services/compile_service.py` |
+| `src/commands/diff.py` | `src/services/diff_service.py` |
 | `src/commands/search.py` | `src/services/search_service.py` |
 | `src/commands/query.py` | `src/services/query_service.py` |
 | `src/commands/lint.py` | `src/services/lint_service.py` |
@@ -30,6 +31,7 @@
 | --- | --- | --- |
 | Ingest | canonical markdown/plain-text files, Docling-routed PDFs, and a bounded MarkItDown-backed born-digital subset | raw source copy, normalized artifact, and manifest metadata |
 | Compile | normalized canonical text plus manifest metadata | source pages, concept pages, wiki index, compile log |
+| Diff | manifest metadata plus compile state | pre-compile source status preview |
 | Search | compiled wiki artifacts | ranked matches |
 | Query | user question plus compiled context | cited answer based on maintained wiki |
 | Lint | compiled wiki and metadata | structural findings and maintenance signals |

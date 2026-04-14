@@ -17,6 +17,7 @@
 | `src/commands/init.py` | Project initialization behavior |
 | `src/commands/ingest.py` | Source ingest command |
 | `src/commands/compile.py` | Wiki compilation command |
+| `src/commands/diff.py` | Pre-compile source diff command |
 | `src/commands/search.py` | Search command |
 | `src/commands/query.py` | Query command |
 | `src/commands/lint.py` | Lint command |
@@ -33,6 +34,7 @@
 | `src/services/normalization_service.py` | Document-type normalization routing for direct text inputs, Docling-backed PDFs, and bounded MarkItDown-backed born-digital converters |
 | `src/services/ingest_service.py` | Raw-source copy, normalized-artifact write, duplicate detection, and source registration |
 | `src/services/compile_service.py` | Derived wiki generation |
+| `src/services/diff_service.py` | Pre-compile source diff reporting |
 | `src/services/search_service.py` | Search over compiled artifacts |
 | `src/services/query_service.py` | Query answer assembly from maintained wiki context |
 | `src/services/lint_service.py` | Structural validation and maintenance findings |
