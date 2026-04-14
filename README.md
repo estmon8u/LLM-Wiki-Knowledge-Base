@@ -158,9 +158,12 @@ poetry run kb lint
 
 Checks for:
 
-- Broken internal links (`[[Missing Target]]` style)
-- Orphan pages not referenced by the index
-- Missing citations or provenance metadata
+- Broken internal links in both wiki-link and standard markdown-link form
+- Missing heading fragments for links such as `[[Page#Section]]` and `[text](page.md#section)`
+- Duplicate page titles, repeated headings, skipped heading levels, and multiple H1 headings
+- Missing frontmatter or provenance metadata on compiled pages
+- Orphan pages with no inbound wiki or markdown links
+- Stale compiled pages whose source hash changed
 - Other structural issues
 
 Exits with code 1 if any errors are found. Warnings and suggestions are printed but don't cause a nonzero exit.

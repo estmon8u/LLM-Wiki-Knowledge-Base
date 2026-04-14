@@ -7,6 +7,21 @@ from click.testing import CliRunner
 from src.cli import main
 
 
+def _compiled_page(title: str, body: str, *, summary: str = "Summary") -> str:
+    return (
+        "---\n"
+        f"title: {title}\n"
+        f"summary: {summary}\n"
+        "source_id: source-1\n"
+        "raw_path: raw/source.md\n"
+        "source_hash: hash-1\n"
+        "compiled_at: 2026-04-14T00:00:00Z\n"
+        "---\n\n"
+        f"# {title}\n\n"
+        f"{body}\n"
+    )
+
+
 def test_init_creates_expected_project_files() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
@@ -200,6 +215,36 @@ def test_lint_returns_nonzero_when_errors_exist() -> None:
         assert result.exit_code == 1
         assert "ERRORS" in result.output
         assert "broken-link" in result.output
+
+
+def test_lint_reports_markdown_link_and_heading_errors_at_cli() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        Path("wiki/sources").mkdir(parents=True, exist_ok=True)
+        Path("wiki/sources/target.md").write_text(
+            _compiled_page("Target", "## Present Section\n\nBody."),
+            encoding="utf-8",
+        )
+        Path("wiki/sources/bad.md").write_text(
+            _compiled_page(
+                "Bad Page",
+                (
+                    "See [missing](missing.md) and [[target#Missing Section]].\n\n"
+                    "### Skipped Level\n\n"
+                    "# Another H1\n"
+                ),
+            ),
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(main, ["lint"])
+
+        assert result.exit_code == 1
+        assert "broken-markdown-link" in result.output
+        assert "broken-fragment" in result.output
+        assert "heading-level-skip" in result.output
+        assert "multiple-h1" in result.output
 
 
 def test_diff_requires_initialization() -> None:

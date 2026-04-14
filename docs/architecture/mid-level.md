@@ -35,7 +35,7 @@
 | Diff | manifest metadata plus compile state | pre-compile source status preview |
 | Search | compiled wiki artifacts | ranked matches |
 | Query | user question plus compiled context | cited answer based on maintained wiki; optionally saved as an analysis page |
-| Lint | compiled wiki and metadata | structural findings and maintenance signals |
+| Lint | compiled wiki and metadata | structural findings for links, fragments, headings, titles, and maintenance signals |
 | Review | compiled wiki pages | semantic findings: topic overlap, terminology variants, future contradiction detection |
 | Export | compiled wiki | Obsidian-friendly vault view |
 
@@ -48,7 +48,7 @@
 
 - Commands should stay thin and delegate quickly.
 - Services should remain deterministic unless the feature explicitly requires model-backed synthesis.
-- `kb lint` checks structural health deterministically; `kb review` checks content-level coherence and is designed to grow into a model-backed pass.
+- `kb lint` checks links, fragments, headings, titles, and metadata deterministically; `kb review` checks content-level coherence and is designed to grow into a model-backed pass.
 - Raw sources remain the source of truth; compiled pages are derived artifacts.
 - Compile should prefer the normalized canonical artifact when one exists rather than reparsing the original raw source.
 - Optional LLM-based cleanup or reconstruction should remain an explicit provider-mediated step instead of a silent default ingest behavior.

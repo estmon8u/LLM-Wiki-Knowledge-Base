@@ -12,6 +12,21 @@ def _ingest_source(test_project, relative_path: str, content: str):
     return test_project.services["ingest"].ingest_path(path).source
 
 
+def _compiled_page(title: str, body: str, *, summary: str = "Summary") -> str:
+    return (
+        "---\n"
+        f"title: {title}\n"
+        f"summary: {summary}\n"
+        "source_id: source-1\n"
+        "raw_path: raw/source.md\n"
+        "source_hash: hash-1\n"
+        "compiled_at: 2026-04-14T00:00:00Z\n"
+        "---\n\n"
+        f"# {title}\n\n"
+        f"{body}\n"
+    )
+
+
 def test_markdown_paragraphs_strip_frontmatter_and_headings() -> None:
     contents = (
         "---\n"
@@ -195,6 +210,95 @@ def test_lint_service_ignores_malformed_timestamp_markdown_links(
         issue.code == "broken-link" and "target-page" in issue.message
         for issue in report.issues
     )
+
+
+def test_lint_service_reports_markdown_link_and_empty_target_errors(
+    test_project,
+) -> None:
+    test_project.write_file(
+        "wiki/sources/bad.md",
+        _compiled_page(
+            "Bad Link Page",
+            "See [missing](missing.md) and [empty]().",
+        ),
+    )
+
+    report = test_project.services["lint"].lint()
+    codes = [issue.code for issue in report.issues]
+
+    assert "broken-markdown-link" in codes
+    assert "empty-markdown-link" in codes
+
+
+def test_lint_service_reports_broken_fragments_for_wiki_and_markdown_links(
+    test_project,
+) -> None:
+    test_project.write_file(
+        "wiki/sources/target-page.md",
+        _compiled_page("Target Page", "## Present Section\n\nBody."),
+    )
+    test_project.write_file(
+        "wiki/sources/reference.md",
+        _compiled_page(
+            "Reference Page",
+            (
+                "See [[target-page#Missing Section]] and "
+                "[target](target-page.md#Also Missing)."
+            ),
+        ),
+    )
+
+    report = test_project.services["lint"].lint()
+    fragment_issues = [
+        issue for issue in report.issues if issue.code == "broken-fragment"
+    ]
+
+    assert len(fragment_issues) >= 2
+    messages = " ".join(issue.message for issue in fragment_issues)
+    assert "[[target-page#Missing Section]]" in messages
+    assert "[target](target-page.md#Also Missing)" in messages
+
+
+def test_lint_service_counts_markdown_links_for_orphan_detection(test_project) -> None:
+    test_project.write_file(
+        "wiki/sources/target-page.md",
+        _compiled_page("Target Page", "Body."),
+    )
+    test_project.write_file(
+        "wiki/sources/reference.md",
+        _compiled_page("Reference Page", "See [target](target-page.md)."),
+    )
+
+    report = test_project.services["lint"].lint()
+
+    assert not any(
+        issue.code == "orphan-page" and issue.path == "wiki/sources/target-page.md"
+        for issue in report.issues
+    )
+
+
+def test_lint_service_reports_heading_structure_and_duplicate_titles(
+    test_project,
+) -> None:
+    test_project.write_file(
+        "wiki/sources/alpha.md",
+        _compiled_page(
+            "Shared Title",
+            "### Skipped Level\n\n# Another H1\n\n## Repeated\n\n## Repeated\n",
+        ),
+    )
+    test_project.write_file(
+        "wiki/concepts/beta.md",
+        _compiled_page("Shared Title", "Body."),
+    )
+
+    report = test_project.services["lint"].lint()
+    codes = [issue.code for issue in report.issues]
+
+    assert "heading-level-skip" in codes
+    assert "multiple-h1" in codes
+    assert "duplicate-heading" in codes
+    assert "duplicate-title" in codes
 
 
 def test_lint_report_properties_count_issue_severities() -> None:
