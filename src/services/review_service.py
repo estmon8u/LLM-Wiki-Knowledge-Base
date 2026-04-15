@@ -10,6 +10,11 @@ from itertools import combinations
 from typing import Optional
 
 from src.models.wiki_models import ReviewIssue, ReviewReport
+from src.providers import (
+    ProviderConfigurationError,
+    ProviderExecutionError,
+    UnavailableProvider,
+)
 from src.providers.base import ProviderRequest, TextProvider
 from src.schemas.claims import EvidenceBundle, EvidenceItem
 from src.schemas.review import ReviewFinding, Verdict
@@ -164,11 +169,7 @@ _REVIEW_SYSTEM_PROMPT = (
 
 
 class ReviewService:
-    """Semantic review checks for the maintained wiki.
-
-    Uses deterministic heuristics by default.  When a provider is available,
-    ``review`` runs an additional model-backed pass for deeper analysis.
-    """
+    """Semantic review checks for the maintained wiki."""
 
     def __init__(
         self,
@@ -189,8 +190,7 @@ class ReviewService:
         issues.extend(self._check_terminology_variants(page_tokens))
 
         if adversarial:
-            if self.provider is None:
-                return ReviewReport(issues=issues, mode="heuristic:no-provider")
+            self._require_provider("kb review --adversarial")
             findings, mode, run_id = self._adversarial_review()
             issues.extend(self._findings_to_issues(findings))
             return ReviewReport(
@@ -212,6 +212,16 @@ class ReviewService:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _require_provider(self, feature_name: str) -> TextProvider:
+        if self.provider is None:
+            raise ProviderConfigurationError(
+                f"{feature_name} requires a configured provider. Add a provider "
+                "section to kb.config.yaml and set the matching API key environment variable."
+            )
+        if isinstance(self.provider, UnavailableProvider):
+            self.provider.ensure_available()
+        return self.provider
 
     def _load_page_tokens(self) -> dict[str, list[str]]:
         """Return ``{relative_path: [lowered tokens]}`` for every wiki page."""
@@ -309,6 +319,7 @@ class ReviewService:
 
     def _provider_review(self) -> tuple[list[ReviewIssue], str]:
         """Run a model-backed review pass over source pages."""
+        provider = self._require_provider("Provider-backed review")
         source_dir = self.paths.wiki_dir / "sources"
         if not source_dir.exists():
             return [], "heuristic"
@@ -324,7 +335,7 @@ class ReviewService:
 
         prompt = "## Wiki Pages\n\n" + "\n\n".join(page_texts)
         try:
-            response = self.provider.generate(
+            response = provider.generate(
                 ProviderRequest(
                     prompt=prompt,
                     system_prompt=_REVIEW_SYSTEM_PROMPT,
@@ -332,15 +343,15 @@ class ReviewService:
                 )
             )
             issues = self._parse_provider_issues(response.text)
-            return issues, f"heuristic+provider:{response.model_name}"
+            return issues, f"provider:{response.model_name}"
         except Exception as exc:
-            logger.warning("Provider review failed (%s); using heuristic only.", exc)
-            return [], "heuristic-fallback"
+            raise ProviderExecutionError(f"Provider review failed: {exc}") from exc
 
     def _adversarial_review(self) -> tuple[list[ReviewFinding], str, str | None]:
+        provider = self._require_provider("kb review --adversarial")
         snapshots = self._load_source_page_snapshots()
         if not snapshots:
-            return [], "heuristic", None
+            return [], f"adversarial:{getattr(provider, 'name', '')}", None
 
         pairs = self._build_candidate_pairs(snapshots)
         evidence_bundle = self._build_review_evidence_bundle(pairs, snapshots)
@@ -349,25 +360,26 @@ class ReviewService:
             run_id = self._persist_review_run(
                 evidence_bundle=evidence_bundle,
                 findings=[],
-                model_id=getattr(self.provider, "name", ""),
+                model_id=getattr(provider, "name", ""),
                 wall_time_ms=0,
                 unresolved_disagreement=False,
             )
-            model_name = getattr(self.provider, "name", "")
-            return [], f"heuristic+adversarial:{model_name}", run_id
+            model_name = getattr(provider, "name", "")
+            return [], f"adversarial:{model_name}", run_id
 
         try:
             started_at = time.perf_counter()
             results = asyncio.run(self._run_adversarial_pairs(pairs))
             wall_time_ms = int((time.perf_counter() - started_at) * 1000)
         except Exception as exc:
-            logger.warning("Adversarial review failed (%s); using heuristic only.", exc)
-            return [], "heuristic-fallback", None
+            raise ProviderExecutionError(f"Adversarial review failed: {exc}") from exc
 
         findings = [finding for result in results for finding in result.findings]
         errors = [result.error for result in results if result.error]
         if results and len(errors) == len(results):
-            return [], "heuristic-fallback", None
+            raise ProviderExecutionError(
+                "Adversarial review failed: " + "; ".join(errors)
+            )
         model_name = self._review_model_name(results)
         unresolved = any(
             finding.verdict == Verdict.NEEDS_REVIEW for finding in findings
@@ -379,7 +391,7 @@ class ReviewService:
             wall_time_ms=wall_time_ms,
             unresolved_disagreement=unresolved,
         )
-        return findings, f"heuristic+adversarial:{model_name}", run_id
+        return findings, f"adversarial:{model_name}", run_id
 
     async def _run_adversarial_pairs(
         self, pairs: list[ReviewPair]

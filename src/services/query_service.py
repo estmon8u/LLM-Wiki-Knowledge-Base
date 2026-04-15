@@ -10,6 +10,11 @@ from typing import Optional
 import yaml
 
 from src.models.wiki_models import SearchResult
+from src.providers import (
+    ProviderConfigurationError,
+    ProviderExecutionError,
+    UnavailableProvider,
+)
 from src.providers.base import ProviderRequest, TextProvider
 from src.schemas.claims import (
     CandidateAnswer,
@@ -71,38 +76,38 @@ class QueryService:
     def answer_question(
         self, question: str, *, limit: int = 3, self_consistency: int = 1
     ) -> QueryAnswer:
+        provider = self._require_provider()
         matches = self.search_service.search(question, limit=limit)
         if not matches:
             return QueryAnswer(
                 answer="No compiled wiki pages matched that question yet. Ingest more sources or re-run compile.",
                 citations=[],
+                mode="no-matches",
             )
 
         if self_consistency > 1:
-            if self.provider is not None:
-                return self._self_consistent_answer(
-                    question, matches, sample_count=self_consistency
-                )
-            return self._heuristic_answer(matches, mode="heuristic:no-provider")
+            return self._self_consistent_answer(
+                question, matches, sample_count=self_consistency, provider=provider
+            )
 
-        if self.provider is not None:
-            return self._provider_answer(question, matches)
+        return self._provider_answer(question, matches, provider=provider)
 
-        return self._heuristic_answer(matches)
-
-    def _heuristic_answer(
-        self, matches: list[SearchResult], *, mode: str = "heuristic"
-    ) -> QueryAnswer:
-        evidence_lines = [f"{match.title}: {match.snippet}" for match in matches]
-        answer = " ".join(evidence_lines)
-        return QueryAnswer(answer=answer, citations=matches, mode=mode)
+    def _require_provider(self) -> TextProvider:
+        if self.provider is None:
+            raise ProviderConfigurationError(
+                "kb query requires a configured provider. Add a provider section "
+                "to kb.config.yaml and set the matching API key environment variable."
+            )
+        if isinstance(self.provider, UnavailableProvider):
+            self.provider.ensure_available()
+        return self.provider
 
     def _provider_answer(
-        self, question: str, matches: list[SearchResult]
+        self, question: str, matches: list[SearchResult], *, provider: TextProvider
     ) -> QueryAnswer:
         prompt = self._build_prompt(question, matches)
         try:
-            response = self.provider.generate(
+            response = provider.generate(
                 ProviderRequest(
                     prompt=prompt,
                     system_prompt=_QUERY_SYSTEM_PROMPT,
@@ -115,18 +120,15 @@ class QueryService:
                 mode=f"provider:{response.model_name}",
             )
         except Exception as exc:
-            logger.warning(
-                "Provider query failed (%s); falling back to heuristic.", exc
-            )
-            evidence_lines = [f"{m.title}: {m.snippet}" for m in matches]
-            return QueryAnswer(
-                answer=" ".join(evidence_lines),
-                citations=matches,
-                mode="heuristic-fallback",
-            )
+            raise ProviderExecutionError(f"Provider query failed: {exc}") from exc
 
     def _self_consistent_answer(
-        self, question: str, matches: list[SearchResult], *, sample_count: int
+        self,
+        question: str,
+        matches: list[SearchResult],
+        *,
+        sample_count: int,
+        provider: TextProvider,
     ) -> QueryAnswer:
         evidence_bundle = self._build_evidence_bundle(question, matches)
         started_at = time.perf_counter()
@@ -134,20 +136,31 @@ class QueryService:
         try:
             candidates = asyncio.run(
                 self._sample_candidates(
-                    question, matches, evidence_bundle, sample_count
+                    question,
+                    matches,
+                    evidence_bundle,
+                    sample_count,
+                    provider,
                 )
             )
         except Exception as exc:
-            logger.warning(
-                "Self-consistency query failed (%s); falling back to heuristic.", exc
+            raise ProviderExecutionError(
+                f"Self-consistency query failed: {exc}"
+            ) from exc
+
+        sample_errors = [candidate.error for candidate in candidates if candidate.error]
+        if sample_errors:
+            raise ProviderExecutionError(
+                "Self-consistency query failed: " + "; ".join(sample_errors)
             )
-            return self._heuristic_answer(matches, mode="heuristic-fallback")
 
         successful_candidates = [
             candidate for candidate in candidates if not candidate.error
         ]
         if not successful_candidates:
-            return self._heuristic_answer(matches, mode="heuristic-fallback")
+            raise ProviderExecutionError(
+                "Self-consistency query failed: all provider samples failed."
+            )
 
         merged = self._merge_candidates(successful_candidates, evidence_bundle)
         wall_time_ms = int((time.perf_counter() - started_at) * 1000)
@@ -157,7 +170,7 @@ class QueryService:
                 for candidate in successful_candidates
                 if candidate.model_name
             ),
-            getattr(self.provider, "name", ""),
+            getattr(provider, "name", ""),
         )
         unresolved_disagreement = bool(
             merged.dropped_claims or any(candidate.error for candidate in candidates)
@@ -234,6 +247,7 @@ class QueryService:
         matches: list[SearchResult],
         evidence_bundle: EvidenceBundle,
         sample_count: int,
+        provider: TextProvider,
     ) -> list[CandidateAnswer]:
         candidates: list[CandidateAnswer | None] = [None] * sample_count
 
@@ -242,7 +256,7 @@ class QueryService:
             prompt = self._build_prompt(question, matches, sample_index=sample_index)
             try:
                 response = await asyncio.to_thread(
-                    self.provider.generate,
+                    provider.generate,
                     ProviderRequest(
                         prompt=prompt,
                         system_prompt=_QUERY_SYSTEM_PROMPT,

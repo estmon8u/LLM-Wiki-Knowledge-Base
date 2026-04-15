@@ -178,37 +178,39 @@ class CompileService:
 
 def _markdown_paragraphs(contents: str) -> list[str]:
     normalized = _strip_frontmatter(contents)
-    all_paragraphs: list[str] = []
-    post_heading_paragraphs: list[str] = []
+    paragraphs: list[str] = []
     current: list[str] = []
-    seen_heading = False
     for line in normalized.splitlines():
         stripped = line.strip()
         if not stripped:
             if current:
-                text = " ".join(current).strip()
-                all_paragraphs.append(text)
-                if seen_heading:
-                    post_heading_paragraphs.append(text)
+                paragraphs.append(" ".join(current).strip())
                 current = []
             continue
         if stripped.startswith("#"):
-            if current:
-                text = " ".join(current).strip()
-                all_paragraphs.append(text)
-                if seen_heading:
-                    post_heading_paragraphs.append(text)
-                current = []
-            seen_heading = True
             continue
         current.append(stripped)
     if current:
-        text = " ".join(current).strip()
-        all_paragraphs.append(text)
-        if seen_heading:
-            post_heading_paragraphs.append(text)
-    paragraphs = post_heading_paragraphs if post_heading_paragraphs else all_paragraphs
-    return [p for p in paragraphs if _is_content_paragraph(p)]
+        paragraphs.append(" ".join(current).strip())
+    filtered = [p for p in paragraphs if _is_content_paragraph(p)]
+    return _trim_leading_boilerplate(filtered)
+
+
+def _trim_leading_boilerplate(paragraphs: list[str]) -> list[str]:
+    if not paragraphs:
+        return []
+    toc_index = next(
+        (
+            index
+            for index, paragraph in enumerate(paragraphs[:8])
+            if paragraph.casefold().strip() == "table of contents"
+        ),
+        None,
+    )
+    if toc_index is None:
+        return paragraphs
+    trimmed = paragraphs[toc_index + 1 :]
+    return trimmed or paragraphs
 
 
 def _is_content_paragraph(paragraph: str) -> bool:

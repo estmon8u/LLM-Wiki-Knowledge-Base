@@ -12,10 +12,17 @@ from src.services.config_service import ConfigService
 from src.services.project_service import build_project_paths, discover_project_root
 
 
-def build_runtime_context(project_root: Path, *, verbose: bool) -> CommandContext:
+def build_runtime_context(
+    project_root: Path,
+    *,
+    verbose: bool,
+    provider_override: Optional[str] = None,
+) -> CommandContext:
     paths = build_project_paths(project_root)
     config_service = ConfigService(paths)
     config = config_service.load()
+    if provider_override:
+        config.setdefault("provider", {})["name"] = provider_override
     schema_text = config_service.load_schema()
     services = build_services(paths, config)
     return CommandContext(
@@ -51,10 +58,24 @@ class KBGroup(click.MultiCommand):
     help="Run the CLI against a specific project root.",
 )
 @click.option("--verbose", is_flag=True, help="Enable verbose CLI output.")
+@click.option(
+    "--provider",
+    "provider_override",
+    type=click.Choice(["openai", "anthropic", "gemini"], case_sensitive=False),
+    default=None,
+    help="Override the configured provider for this invocation.",
+)
 @click.pass_context
-def main(ctx: click.Context, project_root: Optional[Path], verbose: bool) -> None:
+def main(
+    ctx: click.Context,
+    project_root: Optional[Path],
+    verbose: bool,
+    provider_override: Optional[str],
+) -> None:
     root = discover_project_root(project_root or Path.cwd())
-    ctx.obj = build_runtime_context(root, verbose=verbose)
+    ctx.obj = build_runtime_context(
+        root, verbose=verbose, provider_override=provider_override
+    )
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
 

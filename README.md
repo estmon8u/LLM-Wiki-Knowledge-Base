@@ -135,7 +135,7 @@ Returns ranked search results with page title, file path, relevance score, and a
 
 ### `kb query <question>`
 
-Answer a question from compiled wiki evidence with citations.
+Answer a question from compiled wiki evidence with provider-backed synthesis and citations.
 
 ```bash
 poetry run kb query "How does the wiki handle stale pages?"
@@ -148,9 +148,9 @@ poetry run kb query --self-consistency 3 "How is traceability preserved?"
 | `--limit` | 3 | Maximum number of source pages to use as evidence. |
 | `--self-consistency` | 1 | Sample N independent provider answers from the same frozen evidence bundle and merge claims deterministically. |
 
-Returns an answer assembled from the best-matching wiki pages, followed by a Citations section listing which pages were used. The output begins with a `[mode: …]` tag — `heuristic` when no provider is configured, `provider:<model>` when a single LLM call synthesizes the answer, or `self-consistency:<model>:N` when multiple provider samples are merged.
+`kb query` requires a configured provider. It retrieves the best-matching wiki pages as evidence, sends that evidence to the configured provider, and prints the provider answer followed by a Citations section listing which pages were used. The output begins with a `[mode: …]` tag — `provider:<model>` when a single LLM call synthesizes the answer, or `self-consistency:<model>:N` when multiple provider samples are merged.
 
-When `--self-consistency N` is greater than 1 and a provider is configured, `kb query` retrieves evidence once, freezes that evidence bundle, samples `N` independent provider answers in parallel, normalizes them into typed claims, merges near-duplicate grounded claims deterministically, and stores the full run artifact in `graph/exports/run_artifacts.sqlite3`. If no provider is configured, the command still succeeds and reports `heuristic:no-provider` mode.
+When `--self-consistency N` is greater than 1, `kb query` retrieves evidence once, freezes that evidence bundle, samples `N` independent provider answers in parallel, normalizes them into typed claims, merges near-duplicate grounded claims deterministically, and stores the full run artifact in `graph/exports/run_artifacts.sqlite3`. If the provider is missing or any provider call fails, the command exits with an error instead of falling back.
 
 After displaying the answer, if citations are present the command prompts `Save this answer as an analysis page? [y/N]`. Accepting writes a markdown analysis page to `wiki/concepts/` with YAML frontmatter (`type: analysis`), the question, a timestamp, and backlinks to the cited source pages. Saved analysis pages make your explorations compound in the wiki instead of disappearing in terminal history. In non-interactive contexts the prompt is silently skipped.
 
@@ -222,7 +222,7 @@ poetry run kb review --adversarial
 | --- | --- | --- |
 | `--adversarial` | off | Run extractor, skeptic, and arbiter review over candidate source-page pairs and persist a review run artifact. |
 
-By default, `kb review` uses deterministic heuristics and, when a provider is configured, an additional single-pass model-backed review. With `--adversarial`, the command keeps the deterministic heuristics, then builds candidate source-page pairs, runs extractor/skeptic/arbiter prompts over each pair, emits typed findings, and stores the run in `graph/exports/run_artifacts.sqlite3`. If no provider is configured, the flag still succeeds and reports `heuristic:no-provider` mode.
+By default, `kb review` uses deterministic heuristics and, when a provider is configured, adds a single-pass model-backed review. With `--adversarial`, the command keeps the deterministic heuristics, then builds candidate source-page pairs, runs extractor/skeptic/arbiter prompts over each pair, emits typed findings, and stores the run in `graph/exports/run_artifacts.sqlite3`. `kb review --adversarial` requires a configured provider, and provider failures now stop the command instead of falling back.
 
 Checks for:
 
@@ -261,13 +261,22 @@ All non-text formats are normalized into canonical markdown and stored in `raw/n
 
 ## Provider Configuration
 
-By default, `kb query` and `kb review` use deterministic heuristics and do not require an LLM. To enable model-backed query synthesis, `kb query --self-consistency N`, and deeper review analysis, add a `provider` section to `kb.config.yaml`:
+`kb query` and `kb review --adversarial` require a configured provider. Plain `kb review` still runs deterministic heuristics without one, but if a provider is configured and the provider-backed review pass fails, the command fails instead of degrading silently. Configure the provider in `kb.config.yaml`:
 
 ```yaml
 provider:
   name: openai          # openai | anthropic | gemini
   model: gpt-5.4-mini   # optional — defaults to a cost-effective model per provider
 ```
+
+You can also override the provider per-invocation without editing the config file:
+
+```bash
+kb --provider anthropic query "How does REALM differ from RAG?"
+kb --provider gemini review --adversarial
+```
+
+This makes it easy to compare all three providers against the same compiled wiki without maintaining separate project directories.
 
 Set the matching API key as an environment variable:
 
@@ -277,7 +286,7 @@ Set the matching API key as an environment variable:
 | `anthropic` | `claude-sonnet-4-6` | `ANTHROPIC_API_KEY` | `claude-opus-4-6`, `claude-haiku-4-5` |
 | `gemini` | `gemini-3.1-flash-lite-preview` | `GEMINI_API_KEY` | `gemini-3.1-pro-preview`, `gemini-2.5-flash` |
 
-If no provider is configured or the API key is missing, all commands gracefully fall back to heuristic mode.
+If the provider is not configured, `kb query` and `kb review --adversarial` fail with a configuration error. If the provider is configured but the API key is missing or the provider call fails, provider-backed commands fail instead of falling back.
 
 You can override the environment variable name with `api_key_env`:
 

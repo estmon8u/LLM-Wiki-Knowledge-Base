@@ -9,6 +9,33 @@ from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
 
 logger = logging.getLogger(__name__)
 
+
+class ProviderError(RuntimeError):
+    """Base error for provider configuration and execution failures."""
+
+
+class ProviderConfigurationError(ProviderError):
+    """Raised when a provider is required but not configured correctly."""
+
+
+class ProviderExecutionError(ProviderError):
+    """Raised when a configured provider fails during generation."""
+
+
+class UnavailableProvider(TextProvider):
+    name = "unavailable"
+
+    def __init__(self, message: str, *, provider_name: str = "unavailable") -> None:
+        self.name = provider_name
+        self._message = message
+
+    def ensure_available(self) -> None:
+        raise ProviderConfigurationError(self._message)
+
+    def generate(self, request: ProviderRequest) -> ProviderResponse:
+        self.ensure_available()
+
+
 _DEFAULT_API_KEY_ENVS = {
     "openai": "OPENAI_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
@@ -49,12 +76,12 @@ def build_provider(config: dict[str, Any]) -> Optional[TextProvider]:
             from src.providers.gemini_provider import GeminiProvider
 
             return GeminiProvider(model=model, api_key_env=api_key_env)
-        logger.warning(
-            "Unknown provider name %r — falling back to heuristic mode.", name
+        message = (
+            f"Unknown provider name {name!r}. Supported providers are: "
+            "openai, anthropic, gemini."
         )
-        return None
+        logger.warning(message)
+        return UnavailableProvider(message, provider_name=name)
     except ValueError as exc:
-        logger.warning(
-            "Provider %r unavailable: %s — falling back to heuristic mode.", name, exc
-        )
-        return None
+        logger.warning("Provider %r unavailable: %s", name, exc)
+        return UnavailableProvider(str(exc), provider_name=name)

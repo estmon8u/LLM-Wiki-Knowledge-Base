@@ -778,10 +778,9 @@ def test_frontmatter_yaml_injection_blocked_by_safe_load() -> None:
         _split_frontmatter(malicious)
 
 
-def test_markdown_paragraphs_skips_content_before_first_heading() -> None:
+def test_markdown_paragraphs_preserves_content_before_first_heading() -> None:
     contents = (
-        "Banner boilerplate.\n\n"
-        "Nav links here.\n\n"
+        "Lead paragraph.\n\n"
         "# Real Title\n\n"
         "Actual content paragraph.\n\n"
         "Second paragraph.\n"
@@ -789,7 +788,11 @@ def test_markdown_paragraphs_skips_content_before_first_heading() -> None:
 
     result = _markdown_paragraphs(contents)
 
-    assert result == ["Actual content paragraph.", "Second paragraph."]
+    assert result == [
+        "Lead paragraph.",
+        "Actual content paragraph.",
+        "Second paragraph.",
+    ]
 
 
 def test_markdown_paragraphs_falls_back_when_no_headings() -> None:
@@ -800,12 +803,25 @@ def test_markdown_paragraphs_falls_back_when_no_headings() -> None:
     assert result == ["First paragraph.", "Second paragraph."]
 
 
-def test_markdown_paragraphs_flushes_current_at_heading() -> None:
-    contents = "Preamble text\n# Heading\n\nPost-heading content.\n"
+def test_markdown_paragraphs_trims_leading_toc_boilerplate() -> None:
+    contents = (
+        "[![Site](banner.svg)](index.html)\n\n"
+        "Small. Fast. Reliable. Choose any three.\n\n"
+        "Search Documentation Search Changelog\n\n"
+        "SQLite FTS5 Extension\n\n"
+        "Table Of Contents\n\n"
+        "[1. Overview](#overview)\n\n"
+        "# 1. Overview\n\n"
+        "FTS5 is an SQLite virtual table module.\n\n"
+        "It supports full-text search.\n"
+    )
 
     result = _markdown_paragraphs(contents)
 
-    assert result == ["Post-heading content."]
+    assert result == [
+        "FTS5 is an SQLite virtual table module.",
+        "It supports full-text search.",
+    ]
 
 
 def test_is_content_paragraph_rejects_image_only() -> None:

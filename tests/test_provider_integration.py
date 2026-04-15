@@ -9,7 +9,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.providers import build_provider
+from src.providers import (
+    ProviderConfigurationError,
+    ProviderExecutionError,
+    build_provider,
+)
 from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
 from src.services.query_service import QueryAnswer, QueryService
 from src.services.review_service import ReviewService
@@ -55,14 +59,20 @@ def test_build_provider_returns_none_when_provider_name_empty() -> None:
     assert build_provider({"provider": {"name": ""}}) is None
 
 
-def test_build_provider_returns_none_for_unknown_provider() -> None:
-    assert build_provider({"provider": {"name": "unknown-llm"}}) is None
+def test_build_provider_returns_unavailable_provider_for_unknown_provider() -> None:
+    provider = build_provider({"provider": {"name": "unknown-llm"}})
+
+    assert provider is not None
+    with pytest.raises(ProviderConfigurationError, match="Unknown provider name"):
+        provider.generate(ProviderRequest(prompt="hi"))
 
 
-def test_build_provider_returns_none_when_api_key_missing() -> None:
+def test_build_provider_returns_unavailable_provider_when_api_key_missing() -> None:
     with patch.dict("os.environ", {}, clear=True):
-        result = build_provider({"provider": {"name": "openai"}})
-    assert result is None
+        provider = build_provider({"provider": {"name": "openai"}})
+    assert provider is not None
+    with pytest.raises(ProviderConfigurationError, match="OPENAI_API_KEY"):
+        provider.generate(ProviderRequest(prompt="hi"))
 
 
 def test_build_provider_creates_openai_provider() -> None:
@@ -304,7 +314,7 @@ def test_query_service_uses_provider_when_available(test_project) -> None:
     assert len(answer.citations) >= 1
 
 
-def test_query_service_heuristic_mode_without_provider(test_project) -> None:
+def test_query_service_raises_without_provider(test_project) -> None:
     test_project.write_file(
         "wiki/sources/alpha.md",
         "---\ntitle: Alpha\n---\n# Alpha\n\nKnowledge base traceability.\n",
@@ -317,13 +327,11 @@ def test_query_service_heuristic_mode_without_provider(test_project) -> None:
         provider=None,
     )
 
-    answer = query_service.answer_question("knowledge base")
-
-    assert answer.mode == "heuristic"
-    assert len(answer.citations) >= 1
+    with pytest.raises(ProviderConfigurationError, match="kb query requires"):
+        query_service.answer_question("knowledge base")
 
 
-def test_query_service_falls_back_on_provider_error(test_project) -> None:
+def test_query_service_raises_on_provider_error(test_project) -> None:
     test_project.write_file(
         "wiki/sources/alpha.md",
         "---\ntitle: Alpha\n---\n# Alpha\n\nKnowledge base traceability.\n",
@@ -337,10 +345,8 @@ def test_query_service_falls_back_on_provider_error(test_project) -> None:
         provider=provider,
     )
 
-    answer = query_service.answer_question("knowledge base")
-
-    assert answer.mode == "heuristic-fallback"
-    assert len(answer.citations) >= 1
+    with pytest.raises(ProviderExecutionError, match="API is down"):
+        query_service.answer_question("knowledge base")
 
 
 def test_query_service_no_matches_returns_fallback_regardless_of_provider(
@@ -358,6 +364,7 @@ def test_query_service_no_matches_returns_fallback_regardless_of_provider(
     answer = query_service.answer_question("nonexistent garbage xyzzy")
     assert "No compiled wiki pages" in answer.answer
     assert len(answer.citations) == 0
+    assert answer.mode == "no-matches"
 
 
 # ---------------------------------------------------------------------------
@@ -377,7 +384,7 @@ def test_review_service_uses_provider_when_available(test_project) -> None:
 
     report = review_service.review()
 
-    assert "provider:" in report.mode
+    assert report.mode == "provider:fake-v1"
     provider_issues = [i for i in report.issues if i.code == "stale-claim"]
     assert len(provider_issues) == 1
     assert provider_issues[0].severity == "warning"
@@ -397,9 +404,8 @@ def test_review_service_falls_back_on_provider_error(test_project) -> None:
     provider = FailingProvider()
     review_service = ReviewService(test_project.paths, provider=provider)
 
-    report = review_service.review()
-
-    assert report.mode == "heuristic-fallback"
+    with pytest.raises(ProviderExecutionError, match="API is down"):
+        review_service.review()
 
 
 def test_review_service_provider_no_issues_response(test_project) -> None:

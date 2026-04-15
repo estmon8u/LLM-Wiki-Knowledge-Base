@@ -4,9 +4,12 @@ import click
 
 from src.commands.common import require_initialized
 from src.models.command_models import CommandContext, CommandSpec
+from src.providers import ProviderError
 
 
-SUMMARY = "Answer a question from compiled wiki evidence with simple citations."
+SUMMARY = (
+    "Answer a question from compiled wiki evidence with provider-backed citations."
+)
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
@@ -38,11 +41,14 @@ def create_command() -> click.Command:
             raise click.ClickException("Provide a question to answer.")
         query_service = command_context.services["query"]
         question = " ".join(question_terms)
-        answer = query_service.answer_question(
-            question,
-            limit=limit,
-            self_consistency=self_consistency,
-        )
+        try:
+            answer = query_service.answer_question(
+                question,
+                limit=limit,
+                self_consistency=self_consistency,
+            )
+        except ProviderError as exc:
+            raise click.ClickException(str(exc)) from exc
         click.echo(f"[mode: {answer.mode}]\n")
         click.echo(answer.answer)
         if answer.citations:

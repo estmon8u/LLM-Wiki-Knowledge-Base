@@ -1,10 +1,22 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 from click.testing import CliRunner
 
 from src.cli import main
+from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
+
+
+class _CliFakeProvider(TextProvider):
+    name = "cli-fake"
+
+    def generate(self, request: ProviderRequest) -> ProviderResponse:
+        return ProviderResponse(
+            text="Traceability is preserved through compiled source pages. [Sample]",
+            model_name="cli-fake-v1",
+        )
 
 
 def _compiled_page(title: str, body: str, *, summary: str = "Summary") -> str:
@@ -122,9 +134,10 @@ def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
         assert search_result.exit_code == 0
         assert "wiki/sources/sample-research-note.md" in search_result.output
 
-        query_result = runner.invoke(
-            main, ["query", "How", "does", "the", "wiki", "help?"]
-        )
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            query_result = runner.invoke(
+                main, ["query", "How", "does", "the", "wiki", "help?"]
+            )
         assert query_result.exit_code == 0
         assert "Citations:" in query_result.output
         assert "wiki/sources/sample-research-note.md" in query_result.output
@@ -169,10 +182,8 @@ def test_search_and_query_show_empty_messages_when_no_results() -> None:
 
         assert search_result.exit_code == 0
         assert "No wiki pages matched that query." in search_result.output
-        assert query_result.exit_code == 0
-        assert (
-            "No compiled wiki pages matched that question yet." in query_result.output
-        )
+        assert query_result.exit_code != 0
+        assert "requires a configured provider" in query_result.output
 
 
 def test_search_and_query_require_terms() -> None:
@@ -336,11 +347,12 @@ def test_query_save_prompt_creates_analysis_page() -> None:
         assert runner.invoke(main, ["ingest", "sample.md"]).exit_code == 0
         assert runner.invoke(main, ["compile"]).exit_code == 0
 
-        result = runner.invoke(
-            main,
-            ["query", "How", "does", "traceability", "work?"],
-            input="y\n",
-        )
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            result = runner.invoke(
+                main,
+                ["query", "How", "does", "traceability", "work?"],
+                input="y\n",
+            )
 
         assert result.exit_code == 0
         assert "Saved analysis page:" in result.output
@@ -383,7 +395,7 @@ def test_review_command_reports_overlapping_topics() -> None:
         assert "overlapping-topics" in result.output
 
 
-def test_review_adversarial_flag_without_provider_reports_mode() -> None:
+def test_review_adversarial_flag_without_provider_fails() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -399,8 +411,8 @@ def test_review_adversarial_flag_without_provider_reports_mode() -> None:
 
         result = runner.invoke(main, ["review", "--adversarial"])
 
-        assert result.exit_code == 0
-        assert "Review mode: heuristic:no-provider" in result.output
+        assert result.exit_code != 0
+        assert "requires a configured provider" in result.output
 
 
 def test_review_requires_initialization() -> None:
@@ -436,17 +448,18 @@ def test_query_piped_input_skips_save_confirm() -> None:
         assert runner.invoke(main, ["ingest", "sample.md"]).exit_code == 0
         assert runner.invoke(main, ["compile"]).exit_code == 0
 
-        result = runner.invoke(
-            main,
-            ["query", "traceability"],
-            input="\n",
-        )
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            result = runner.invoke(
+                main,
+                ["query", "traceability"],
+                input="\n",
+            )
 
         assert result.exit_code == 0
         assert "Saved analysis page:" not in result.output
 
 
-def test_query_self_consistency_flag_reports_no_provider_mode() -> None:
+def test_query_self_consistency_flag_requires_provider() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("sample.md").write_text(
@@ -462,9 +475,8 @@ def test_query_self_consistency_flag_reports_no_provider_mode() -> None:
             input="\n",
         )
 
-        assert result.exit_code == 0
-        assert "[mode: heuristic:no-provider]" in result.output
-        assert "Traceability evidence." in result.output
+        assert result.exit_code != 0
+        assert "requires a configured provider" in result.output
 
 
 def test_ingest_rejects_directory_path() -> None:
@@ -497,3 +509,35 @@ def test_unknown_command_shows_error() -> None:
         result = runner.invoke(main, ["nonexistent-command"])
 
         assert result.exit_code != 0
+
+
+def test_provider_override_flag_switches_provider() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        Path("sample.md").write_text(
+            "# Traceability\n\nTraceability evidence.\n",
+            encoding="utf-8",
+        )
+        assert runner.invoke(main, ["ingest", "sample.md"]).exit_code == 0
+        assert runner.invoke(main, ["compile"]).exit_code == 0
+
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            result = runner.invoke(
+                main,
+                ["--provider", "openai", "query", "traceability"],
+            )
+
+        assert result.exit_code == 0
+        assert "[mode: provider:" in result.output
+
+
+def test_provider_override_flag_rejects_invalid_name() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["--provider", "invalid", "status"])
+
+        assert result.exit_code != 0
+        assert "Invalid value" in result.output or "invalid" in result.output.lower()

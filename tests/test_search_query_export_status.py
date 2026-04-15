@@ -3,6 +3,9 @@ from __future__ import annotations
 import threading
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
+from src.providers import ProviderConfigurationError, ProviderExecutionError
 from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
 from src.schemas.claims import CandidateAnswer, Claim, EvidenceBundle, EvidenceItem
 from src.services.query_service import QueryService
@@ -27,6 +30,14 @@ class SequencedProvider(TextProvider):
         if isinstance(response, Exception):
             raise response
         return ProviderResponse(text=str(response), model_name="fake-model")
+
+
+def _provider_query_service(test_project, *responses: object) -> QueryService:
+    return QueryService(
+        test_project.paths,
+        test_project.services["search"],
+        provider=SequencedProvider(list(responses)),
+    )
 
 
 def _compiled_page(title: str, body: str, *, summary: str = "Summary") -> str:
@@ -68,29 +79,37 @@ def test_search_service_returns_empty_for_blank_query(test_project) -> None:
 
 
 def test_query_service_returns_fallback_when_no_matches(test_project) -> None:
-    answer = test_project.services["query"].answer_question("What is missing?")
+    answer = _provider_query_service(test_project, "unused").answer_question(
+        "What is missing?"
+    )
 
     assert answer.citations == []
     assert "No compiled wiki pages matched" in answer.answer
+    assert answer.mode == "no-matches"
 
 
 def test_query_service_returns_answer_with_citations(test_project) -> None:
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
 
-    answer = test_project.services["query"].answer_question("traceability")
+    answer = _provider_query_service(
+        test_project,
+        "Traceability appears here. [Citations]",
+    ).answer_question("traceability")
 
     assert answer.citations
     assert answer.citations[0].path == "wiki/sources/citations.md"
-    assert "traceability appears here" in answer.answer
+    assert "traceability appears here" in answer.answer.lower()
 
 
 def test_query_service_save_answer_writes_analysis_page(test_project) -> None:
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
-    answer = test_project.services["query"].answer_question("traceability")
-
-    saved_path = test_project.services["query"].save_answer(
-        "How does traceability work?", answer
+    query_service = _provider_query_service(
+        test_project,
+        "Traceability appears here. [Citations]",
     )
+    answer = query_service.answer_question("traceability")
+
+    saved_path = query_service.save_answer("How does traceability work?", answer)
 
     assert saved_path.startswith("wiki/concepts/")
     assert saved_path.endswith(".md")
@@ -106,9 +125,13 @@ def test_query_service_save_answer_uses_fallback_slug_for_empty_question(
     test_project,
 ) -> None:
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
-    answer = test_project.services["query"].answer_question("traceability")
+    query_service = _provider_query_service(
+        test_project,
+        "Traceability appears here. [Citations]",
+    )
+    answer = query_service.answer_question("traceability")
 
-    saved_path = test_project.services["query"].save_answer("???", answer)
+    saved_path = query_service.save_answer("???", answer)
 
     assert saved_path.startswith("wiki/concepts/analysis-")
     assert (test_project.root / saved_path).exists()
@@ -275,7 +298,7 @@ def test_query_service_self_consistency_drops_ungrounded_claims(test_project) ->
     assert record.unresolved_disagreement is True
 
 
-def test_query_service_self_consistency_keeps_partial_success_when_one_sample_fails(
+def test_query_service_self_consistency_fails_when_one_sample_fails(
     test_project,
 ) -> None:
     test_project.write_file(
@@ -300,33 +323,20 @@ def test_query_service_self_consistency_keeps_partial_success_when_one_sample_fa
         run_store=run_store,
     )
 
-    answer = service.answer_question("traceability", self_consistency=3)
-
-    assert answer.run_id is not None
-    assert "Traceability preserves source links." in answer.answer
-    record = run_store.get_run(answer.run_id)
-    assert record is not None
-    assert len(record.candidates) == 3
-    assert sum(1 for candidate in record.candidates if candidate.error) == 1
-    assert record.merged_answer is not None
-    assert record.merged_answer.candidate_count == 2
+    with pytest.raises(ProviderExecutionError, match="transient provider failure"):
+        service.answer_question("traceability", self_consistency=3)
 
 
-def test_query_service_self_consistency_without_provider_reports_fallback_mode(
+def test_query_service_without_provider_raises_configuration_error(
     test_project,
 ) -> None:
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
 
-    answer = test_project.services["query"].answer_question(
-        "traceability",
-        self_consistency=3,
-    )
-
-    assert answer.mode == "heuristic:no-provider"
-    assert "traceability appears here" in answer.answer
+    with pytest.raises(ProviderConfigurationError, match="kb query requires"):
+        test_project.services["query"].answer_question("traceability")
 
 
-def test_query_service_self_consistency_falls_back_when_sampling_crashes(
+def test_query_service_self_consistency_raises_when_sampling_crashes(
     test_project,
 ) -> None:
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
@@ -342,13 +352,11 @@ def test_query_service_self_consistency_falls_back_when_sampling_crashes(
         "_sample_candidates",
         new=AsyncMock(side_effect=RuntimeError("boom")),
     ):
-        answer = service.answer_question("traceability", self_consistency=3)
-
-    assert answer.mode == "heuristic-fallback"
-    assert "traceability appears here" in answer.answer
+        with pytest.raises(ProviderExecutionError, match="boom"):
+            service.answer_question("traceability", self_consistency=3)
 
 
-def test_query_service_self_consistency_falls_back_when_all_samples_fail(
+def test_query_service_self_consistency_raises_when_all_samples_fail(
     test_project,
 ) -> None:
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
@@ -365,11 +373,8 @@ def test_query_service_self_consistency_falls_back_when_all_samples_fail(
         provider=provider,
     )
 
-    answer = service.answer_question("traceability", self_consistency=3)
-
-    assert answer.mode == "heuristic-fallback"
-    assert "traceability appears here" in answer.answer
-    assert answer.run_id is None
+    with pytest.raises(ProviderExecutionError, match="first failure"):
+        service.answer_question("traceability", self_consistency=3)
 
 
 def test_query_service_self_consistency_without_run_store_returns_no_run_id(
@@ -525,11 +530,13 @@ def test_save_answer_creates_parent_directory(test_project) -> None:
     if concepts_dir.exists():
         shutil.rmtree(concepts_dir)
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
-    answer = test_project.services["query"].answer_question("traceability")
-
-    saved_path = test_project.services["query"].save_answer(
-        "What is traceability?", answer
+    query_service = _provider_query_service(
+        test_project,
+        "Traceability appears here. [Citations]",
     )
+    answer = query_service.answer_question("traceability")
+
+    saved_path = query_service.save_answer("What is traceability?", answer)
 
     assert (test_project.root / saved_path).exists()
 
@@ -682,8 +689,12 @@ def test_ingest_compile_query_save_lint_saved_page(test_project) -> None:
     test_project.services["ingest"].ingest_path(path)
     test_project.services["compile"].compile()
 
-    answer = test_project.services["query"].answer_question("traceability")
-    saved = test_project.services["query"].save_answer("What is traceability?", answer)
+    query_service = _provider_query_service(
+        test_project,
+        "Traceability evidence. [Qa]",
+    )
+    answer = query_service.answer_question("traceability")
+    saved = query_service.save_answer("What is traceability?", answer)
     assert (test_project.root / saved).exists()
 
     report = test_project.services["lint"].lint()

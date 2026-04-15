@@ -128,6 +128,7 @@ def main(argv: list[str] | None = None) -> int:
 
     failed_supported_ingests: list[Path] = []
     unexpected_failures: list[str] = []
+    skipped_provider_commands: list[str] = []
     lint_failed = False
 
     for command_args, allow_failure in (
@@ -169,7 +170,11 @@ def main(argv: list[str] | None = None) -> int:
     ):
         result = run_cli_command(repo_root, log_path, command_args)
         if result.exit_code != 0:
-            unexpected_failures.append(" ".join(command_args))
+            command_text = " ".join(command_args)
+            if "requires a configured provider" in result.output:
+                skipped_provider_commands.append(command_text)
+            else:
+                unexpected_failures.append(command_text)
 
     lint_result = run_cli_command(
         repo_root,
@@ -192,6 +197,7 @@ def main(argv: list[str] | None = None) -> int:
         f"- supported_sources: {len(supported_sources)}",
         f"- failed_supported_ingests: {len(failed_supported_ingests)}",
         f"- lint_failed: {str(lint_failed).lower()}",
+        f"- skipped_provider_commands: {len(skipped_provider_commands)}",
         f"- unexpected_failures: {len(unexpected_failures)}",
         f"- log_file: {log_path}",
     ]
@@ -201,6 +207,9 @@ def main(argv: list[str] | None = None) -> int:
     if unexpected_failures:
         summary_lines.append("- unexpected_failure_commands:")
         summary_lines.extend(f"  - {item}" for item in unexpected_failures)
+    if skipped_provider_commands:
+        summary_lines.append("- skipped_provider_command_list:")
+        summary_lines.extend(f"  - {item}" for item in skipped_provider_commands)
 
     summary_text = "\n".join(summary_lines) + "\n"
     print(summary_text, end="")

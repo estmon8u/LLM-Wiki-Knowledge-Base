@@ -4,6 +4,7 @@ import click
 
 from src.commands.common import require_initialized
 from src.models.command_models import CommandContext, CommandSpec
+from src.providers import ProviderError
 
 
 SUMMARY = (
@@ -31,7 +32,10 @@ def create_command() -> click.Command:
     def command(command_context: CommandContext, adversarial: bool) -> None:
         require_initialized(command_context)
         review_service = command_context.services["review"]
-        report = review_service.review(adversarial=adversarial)
+        try:
+            report = review_service.review(adversarial=adversarial)
+        except ProviderError as exc:
+            raise click.ClickException(str(exc)) from exc
 
         click.echo(f"Review mode: {report.mode}")
 

@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import threading
 
+import pytest
+
+from src.providers import ProviderConfigurationError, ProviderExecutionError
 from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
 from src.schemas.review import ReviewFinding, Verdict
 from src.services.review_service import (
@@ -41,7 +44,7 @@ def test_review_service_finds_no_issues_on_empty_wiki(test_project) -> None:
     assert report.mode == "heuristic"
 
 
-def test_review_service_adversarial_on_empty_wiki_returns_heuristic_mode(
+def test_review_service_adversarial_on_empty_wiki_returns_provider_mode(
     test_project,
 ) -> None:
     provider = SequencedReviewProvider([])
@@ -49,7 +52,7 @@ def test_review_service_adversarial_on_empty_wiki_returns_heuristic_mode(
 
     report = service.review(adversarial=True)
 
-    assert report.mode == "heuristic"
+    assert report.mode == "adversarial:fake-review"
     assert report.findings == []
 
 
@@ -233,7 +236,7 @@ def test_review_single_source_page_no_overlap(test_project) -> None:
     assert len(overlap_issues) == 0
 
 
-def test_review_service_adversarial_without_provider_reports_no_provider_mode(
+def test_review_service_adversarial_without_provider_raises_configuration_error(
     test_project,
 ) -> None:
     test_project.write_file(
@@ -245,10 +248,8 @@ def test_review_service_adversarial_without_provider_reports_no_provider_mode(
         "# Beta\n\n## Timeline\n\nIn 2026 the workflow exports vault files.\n",
     )
 
-    report = test_project.services["review"].review(adversarial=True)
-
-    assert report.mode == "heuristic:no-provider"
-    assert report.findings == []
+    with pytest.raises(ProviderConfigurationError, match="kb review --adversarial"):
+        test_project.services["review"].review(adversarial=True)
 
 
 def test_review_service_build_candidate_pairs_uses_headings_years_and_variants(
@@ -532,7 +533,7 @@ def test_review_service_adversarial_persists_run_and_emits_issue(test_project) -
     contradiction_issues = [
         issue for issue in report.issues if issue.code == "contradiction"
     ]
-    assert report.mode == "heuristic+adversarial:fake-review-v1"
+    assert report.mode == "adversarial:fake-review-v1"
     assert report.run_id is not None
     assert len(report.findings) == 1
     assert report.findings[0].verdict == Verdict.CONTRADICTORY
@@ -567,15 +568,13 @@ def test_review_service_adversarial_keeps_consistent_findings_out_of_issue_outpu
 
     report = service.review(adversarial=True)
 
-    assert report.mode == "heuristic+adversarial:fake-review-v1"
+    assert report.mode == "adversarial:fake-review-v1"
     assert len(report.findings) == 1
     assert report.findings[0].verdict == Verdict.CONSISTENT
     assert report.issues == []
 
 
-def test_review_service_adversarial_falls_back_when_all_pairs_fail(
-    test_project,
-) -> None:
+def test_review_service_adversarial_raises_when_all_pairs_fail(test_project) -> None:
     test_project.write_file(
         "wiki/sources/alpha.md",
         "# Alpha\n\n## Timeline\n\nIn 2026 the compiler stores source hashes.\n",
@@ -587,11 +586,8 @@ def test_review_service_adversarial_falls_back_when_all_pairs_fail(
     provider = SequencedReviewProvider([RuntimeError("extractor failed")])
     service = ReviewService(test_project.paths, provider=provider)
 
-    report = service.review(adversarial=True)
-
-    assert report.mode == "heuristic-fallback"
-    assert report.findings == []
-    assert report.run_id is None
+    with pytest.raises(ProviderExecutionError, match="extractor failed"):
+        service.review(adversarial=True)
 
 
 def test_review_service_adversarial_without_candidate_pairs_returns_empty_findings(
@@ -610,6 +606,6 @@ def test_review_service_adversarial_without_candidate_pairs_returns_empty_findin
 
     report = service.review(adversarial=True)
 
-    assert report.mode == "heuristic+adversarial:fake-review"
+    assert report.mode == "adversarial:fake-review"
     assert report.findings == []
     assert report.issues == []
