@@ -52,6 +52,22 @@
 | `src/models/tool_models.py` | Tool-facing data structures |
 | `src/models/wiki_models.py` | Wiki-oriented dataclasses |
 
+## Schema Files (Pydantic)
+
+| File | Responsibility |
+| --- | --- |
+| `src/schemas/__init__.py` | Re-exports all schema types |
+| `src/schemas/claims.py` | `EvidenceItem`, `EvidenceBundle` (with deterministic `context_hash`), `Claim`, `CandidateAnswer`, `MergedAnswer` |
+| `src/schemas/review.py` | `Verdict` enum, `ReviewFinding` |
+| `src/schemas/runs.py` | `RunRecord` — full deliberation artifact with auto-generated run ID and timestamp |
+
+## Storage Files
+
+| File | Responsibility |
+| --- | --- |
+| `src/storage/__init__.py` | Re-exports `RunStore` |
+| `src/storage/run_store.py` | SQLite-backed persistence: `runs` table (full record JSON + indexed columns), `run_citations` table (normalized claim→page index) |
+
 ## Supporting Project Files
 
 | File | Responsibility |

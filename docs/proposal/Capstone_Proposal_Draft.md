@@ -100,3 +100,12 @@ These milestones are measurable because each one corresponds to a concrete artif
 11. University of Pittsburgh Library System. "Metadata & Discovery @ Pitt: Taxonomies and Controlled Vocabularies." 2025. [Guide](https://pitt.libguides.com/metadatadiscovery/controlledvocabularies). Accessed 14 Apr. 2026.
 12. Awaysheh, Abdullah, et al. "A Review of Medical Terminology Standards and Structured Reporting." Journal of Veterinary Diagnostic Investigation, 2017. [PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC6504145/). Accessed 14 Apr. 2026.
 13. Gokul, Vignesh, Srikanth Tenneti, and Alwarappan Nakkiran. "Contradiction Detection in RAG Systems: Evaluating LLMs as Context Validators for Improved Information Consistency." arXiv:2504.00180, 2025. [Paper](https://arxiv.org/abs/2504.00180). Accessed 14 Apr. 2026.
+14. Du, Yilun, Shuang Li, Antonio Torralba, Joshua B. Tenenbaum, and Igor Mordatch. "Improving Factuality and Reasoning in Language Models through Multiagent Debate." arXiv:2305.14325, 2023. [Paper](https://arxiv.org/abs/2305.14325). Accessed 14 Apr. 2026.
+15. Wang, Xuezhi, Jason Wei, Dale Schuurmans, Quoc Le, Ed Chi, Sharan Narang, Aakanksha Chowdhery, and Denny Zhou. "Self-Consistency Improves Chain of Thought Reasoning in Language Models." arXiv:2203.11171, 2022. [Paper](https://arxiv.org/abs/2203.11171). Accessed 14 Apr. 2026.
+16. Wang, Junlin, Jue Wang, Ben Athiwaratkun, Ce Zhang, and James Zou. "Mixture-of-Agents Enhances Large Language Model Capabilities." arXiv:2406.04692, 2024. [Paper](https://arxiv.org/abs/2406.04692). Accessed 14 Apr. 2026.
+17. Agarwal, Shrestha, et al. "Do as We Do, Not as You Think: the Conformity of Large Language Models." arXiv:2501.13381, 2025. [Paper](https://arxiv.org/abs/2501.13381). Accessed 14 Apr. 2026.
+18. "Debate or Vote: Which Yields Better Decisions in Multi-Agent Large Language Models?" OpenReview, 2025. [Paper](https://openreview.net/forum?id=iUjGNJzrF1). Accessed 14 Apr. 2026.
+19. "If Multi-Agent Debate is the Answer, What is the Question?" arXiv:2502.08788, 2025. [Paper](https://arxiv.org/abs/2502.08788). Accessed 14 Apr. 2026.
+20. Pydantic. "Models — Pydantic Documentation." 2026. [Docs](https://pydantic.dev/docs/validation/latest/concepts/models/). Accessed 14 Apr. 2026.
+21. SQLite. "SQLite FTS5 Extension." 2026. [Docs](https://www.sqlite.org/fts5.html). Accessed 14 Apr. 2026.
+22. Python Software Foundation. "Coroutines and Tasks — asyncio." Python 3 Documentation, 2026. [Docs](https://docs.python.org/3/library/asyncio-task.html). Accessed 14 Apr. 2026.

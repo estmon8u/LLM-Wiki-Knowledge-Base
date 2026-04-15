@@ -10,6 +10,9 @@
 | `src/models/` | Shared command, source, tool, and wiki dataclasses |
 | `src/engine/` | Command and tool registry boundaries |
 | `src/providers/` | Provider abstraction layer with OpenAI, Anthropic, and Gemini implementations |
+| `src/schemas/` | Pydantic models for claims, evidence bundles, review findings, and run artifacts |
+| `src/prompts/` (planned) | Versioned prompt assets per agent role (answerer, judge, extractor, skeptic, arbiter) |
+| `src/storage/` | SQLite run-artifact persistence; future FTS5 retrieval |
 
 ## Command To Service Mapping
 
@@ -43,6 +46,14 @@
 
 - The current implementation ingests `.md`, `.markdown`, and `.txt` files directly, routes `.pdf` files through Docling, and uses MarkItDown for a bounded born-digital subset such as HTML, CSV, Office documents, notebooks, and EPUB.
 - OCR-backed ingest is still deferred and should arrive as a provider-backed fallback, with Mistral OCR as the current preferred OCR path for scanned or image-heavy inputs.
+
+## Planned Deliberation Pipelines
+
+| Pipeline | CLI Flag | Stages | Key Principle |
+| --- | --- | --- | --- |
+| Self-consistency query | `--self-consistency N` | retrieve → freeze evidence → sample N answers → normalize claims → deterministic merge → final cited answer | All candidates see the same frozen evidence bundle; merge claims, not paragraphs |
+| Adversarial review | `--adversarial` | extract claims → generate candidate pairs → extractor + skeptic per pair → arbiter verdicts | Disagreement is the product; `needs_review` is a success case |
+| Fix proposal | `--propose` | proposer drafts patch → auditor checks citations → gate emits diff | Never auto-applies; mandatory user confirmation |
 
 ## Structural Rules
 
