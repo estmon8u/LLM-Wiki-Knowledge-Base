@@ -19,18 +19,30 @@ def create_command() -> click.Command:
     )
     @click.argument("question_terms", nargs=-1)
     @click.option("--limit", default=3, show_default=True, type=int)
+    @click.option(
+        "--self-consistency",
+        default=1,
+        show_default=True,
+        type=click.IntRange(1),
+        help="Sample N independent provider answers from the same evidence and merge them deterministically.",
+    )
     @click.pass_obj
     def command(
         command_context: CommandContext,
         question_terms: tuple[str, ...],
         limit: int,
+        self_consistency: int,
     ) -> None:
         require_initialized(command_context)
         if not question_terms:
             raise click.ClickException("Provide a question to answer.")
         query_service = command_context.services["query"]
         question = " ".join(question_terms)
-        answer = query_service.answer_question(question, limit=limit)
+        answer = query_service.answer_question(
+            question,
+            limit=limit,
+            self_consistency=self_consistency,
+        )
         click.echo(f"[mode: {answer.mode}]\n")
         click.echo(answer.answer)
         if answer.citations:

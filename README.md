@@ -35,6 +35,7 @@ poetry run kb search "knowledge base traceability"
 
 # 5. Ask a question with citations
 poetry run kb query "How does the wiki handle stale pages?"
+poetry run kb query --self-consistency 3 "What normalization converters are supported?"
 # → After showing the answer, you'll be prompted to save it as an analysis page
 
 # 6. Check wiki health (deterministic structural checks)
@@ -138,13 +139,17 @@ Answer a question from compiled wiki evidence with citations.
 ```bash
 poetry run kb query "How does the wiki handle stale pages?"
 poetry run kb query --limit 5 "What normalization converters are supported?"
+poetry run kb query --self-consistency 3 "How is traceability preserved?"
 ```
 
 | Option | Default | Description |
 | --- | --- | --- |
 | `--limit` | 3 | Maximum number of source pages to use as evidence. |
+| `--self-consistency` | 1 | Sample N independent provider answers from the same frozen evidence bundle and merge claims deterministically. |
 
-Returns an answer assembled from the best-matching wiki pages, followed by a Citations section listing which pages were used. The output begins with a `[mode: …]` tag — `heuristic` when no provider is configured, or `provider:<model>` when an LLM synthesizes the answer.
+Returns an answer assembled from the best-matching wiki pages, followed by a Citations section listing which pages were used. The output begins with a `[mode: …]` tag — `heuristic` when no provider is configured, `provider:<model>` when a single LLM call synthesizes the answer, or `self-consistency:<model>:N` when multiple provider samples are merged.
+
+When `--self-consistency N` is greater than 1 and a provider is configured, `kb query` retrieves evidence once, freezes that evidence bundle, samples `N` independent provider answers in parallel, normalizes them into typed claims, merges near-duplicate grounded claims deterministically, and stores the full run artifact in `graph/exports/run_artifacts.sqlite3`. If no provider is configured, the command still succeeds and reports `heuristic:no-provider` mode.
 
 After displaying the answer, if citations are present the command prompts `Save this answer as an analysis page? [y/N]`. Accepting writes a markdown analysis page to `wiki/concepts/` with YAML frontmatter (`type: analysis`), the question, a timestamp, and backlinks to the cited source pages. Saved analysis pages make your explorations compound in the wiki instead of disappearing in terminal history. In non-interactive contexts the prompt is silently skipped.
 
@@ -249,7 +254,7 @@ All non-text formats are normalized into canonical markdown and stored in `raw/n
 
 ## Provider Configuration
 
-By default, `kb query` and `kb review` use deterministic heuristics and do not require an LLM. To enable model-backed query synthesis and deeper review analysis, add a `provider` section to `kb.config.yaml`:
+By default, `kb query` and `kb review` use deterministic heuristics and do not require an LLM. To enable model-backed query synthesis, `kb query --self-consistency N`, and deeper review analysis, add a `provider` section to `kb.config.yaml`:
 
 ```yaml
 provider:

@@ -426,6 +426,27 @@ def test_query_piped_input_skips_save_confirm() -> None:
         assert "Saved analysis page:" not in result.output
 
 
+def test_query_self_consistency_flag_reports_no_provider_mode() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Sample\n\nTraceability evidence.\n", encoding="utf-8"
+        )
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["ingest", "sample.md"]).exit_code == 0
+        assert runner.invoke(main, ["compile"]).exit_code == 0
+
+        result = runner.invoke(
+            main,
+            ["query", "--self-consistency", "3", "traceability"],
+            input="\n",
+        )
+
+        assert result.exit_code == 0
+        assert "[mode: heuristic:no-provider]" in result.output
+        assert "Traceability evidence." in result.output
+
+
 def test_ingest_rejects_directory_path() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():

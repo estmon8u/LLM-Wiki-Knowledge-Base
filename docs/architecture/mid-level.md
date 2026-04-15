@@ -37,7 +37,7 @@
 | Compile | normalized canonical text plus manifest metadata | source pages, concept pages, wiki index, compile log |
 | Diff | manifest metadata plus compile state | pre-compile source status preview |
 | Search | compiled wiki artifacts | ranked matches |
-| Query | user question plus compiled context | cited answer based on maintained wiki via LLM synthesis (when configured) or heuristic assembly; optionally saved as an analysis page |
+| Query | user question plus compiled context | cited answer via heuristic assembly, single provider synthesis, or self-consistency over a frozen evidence bundle; optionally saved as an analysis page |
 | Lint | compiled wiki and metadata | structural findings for links, fragments, headings, titles, typed frontmatter, empty pages, and maintenance signals |
 | Review | compiled wiki pages | semantic findings: topic overlap, terminology variants, and model-backed contradiction/quality detection when provider is configured |
 | Export | compiled wiki | Obsidian-friendly vault view |
@@ -51,7 +51,7 @@
 
 | Pipeline | CLI Flag | Stages | Key Principle |
 | --- | --- | --- | --- |
-| Self-consistency query | `--self-consistency N` | retrieve → freeze evidence → sample N answers → normalize claims → deterministic merge → final cited answer | All candidates see the same frozen evidence bundle; merge claims, not paragraphs |
+| Self-consistency query | `--self-consistency N` | retrieve → freeze evidence → sample N answers in parallel → normalize claims → deterministic merge → final cited answer + SQLite run artifact | All candidates see the same frozen evidence bundle; merge claims, not paragraphs |
 | Adversarial review | `--adversarial` | extract claims → generate candidate pairs → extractor + skeptic per pair → arbiter verdicts | Disagreement is the product; `needs_review` is a success case |
 | Fix proposal | `--propose` | proposer drafts patch → auditor checks citations → gate emits diff | Never auto-applies; mandatory user confirmation |
 

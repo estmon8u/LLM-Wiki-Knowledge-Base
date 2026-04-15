@@ -23,7 +23,7 @@
 | `src/commands/compile.py` | Wiki compilation command |
 | `src/commands/diff.py` | Pre-compile source diff command |
 | `src/commands/search.py` | Search command |
-| `src/commands/query.py` | Query command |
+| `src/commands/query.py` | Query command; forwards `--self-consistency N` into `QueryService` |
 | `src/commands/review.py` | Semantic review command |
 | `src/commands/lint.py` | Lint command |
 | `src/commands/status.py` | Status command |
@@ -41,7 +41,7 @@
 | `src/services/compile_service.py` | Derived wiki generation |
 | `src/services/diff_service.py` | Pre-compile source diff reporting |
 | `src/services/search_service.py` | Search over compiled artifacts |
-| `src/services/query_service.py` | Query answer assembly from maintained wiki context; optional save-to-wiki for analysis pages |
+| `src/services/query_service.py` | Query answer assembly from maintained wiki context; optional provider synthesis; self-consistency sampling, claim normalization, deterministic merge, and optional save-to-wiki for analysis pages |
 | `src/services/review_service.py` | Semantic review checks: topic overlap, terminology variants, future contradiction detection |
 | `src/services/lint_service.py` | Structural validation for wiki links, markdown links, fragments, headings, titles, typed frontmatter, empty pages, and maintenance findings |
 | `src/services/export_service.py` | Vault export generation |
@@ -70,7 +70,7 @@
 | File | Responsibility |
 | --- | --- |
 | `src/storage/__init__.py` | Re-exports `RunStore` |
-| `src/storage/run_store.py` | SQLite-backed persistence: `runs` table (full record JSON + indexed columns), `run_citations` table (normalized claim→page index) |
+| `src/storage/run_store.py` | SQLite-backed persistence at `graph/exports/run_artifacts.sqlite3`: `runs` table (full record JSON + indexed columns), `run_citations` table (normalized claim→page index) |
 
 ## Supporting Project Files
 

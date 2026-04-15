@@ -17,6 +17,7 @@ from src.services.query_service import QueryService
 from src.services.review_service import ReviewService
 from src.services.search_service import SearchService
 from src.services.status_service import StatusService
+from src.storage.run_store import RunStore
 
 
 def build_services(paths: ProjectPaths, config: dict[str, Any]) -> dict[str, Any]:
@@ -24,6 +25,7 @@ def build_services(paths: ProjectPaths, config: dict[str, Any]) -> dict[str, Any
     manifest_service = ManifestService(paths)
     search_service = SearchService(paths)
     provider = build_provider(config)
+    run_store = RunStore(paths.graph_exports_dir / "run_artifacts.sqlite3")
     return {
         "project": ProjectService(paths),
         "config": config_service,
@@ -34,7 +36,12 @@ def build_services(paths: ProjectPaths, config: dict[str, Any]) -> dict[str, Any
         "lint": LintService(paths, config, manifest_service),
         "search": search_service,
         "status": StatusService(paths, manifest_service),
-        "query": QueryService(paths, search_service, provider=provider),
+        "query": QueryService(
+            paths,
+            search_service,
+            provider=provider,
+            run_store=run_store,
+        ),
         "export": ExportService(paths),
         "review": ReviewService(paths, provider=provider),
     }
