@@ -34,12 +34,12 @@
 | Stage | Input | Output |
 | --- | --- | --- |
 | Ingest | canonical markdown/plain-text files, Docling-routed PDFs, and a bounded MarkItDown-backed born-digital subset | raw source copy, normalized artifact, and manifest metadata |
-| Compile | normalized canonical text plus manifest metadata | source pages, concept pages, wiki index, compile log |
+| Compile | normalized canonical text plus manifest metadata | source pages with provider-generated summaries, wiki index, and compile log |
 | Diff | manifest metadata plus compile state | pre-compile source status preview |
 | Search | compiled wiki artifacts | ranked matches |
-| Query | user question plus compiled context | cited answer via heuristic assembly, single provider synthesis, or self-consistency over a frozen evidence bundle; optionally saved as an analysis page |
+| Query | user question plus compiled context | cited provider answer or self-consistency over a frozen evidence bundle; optionally saved as an analysis page |
 | Lint | compiled wiki and metadata | structural findings for links, fragments, headings, titles, typed frontmatter, empty pages, and maintenance signals |
-| Review | compiled wiki pages | semantic findings via heuristics, single-pass provider review, or adversarial extractor/skeptic/arbiter findings; optionally persisted as a review run artifact |
+| Review | compiled wiki pages | semantic findings from deterministic overlap checks plus single-pass provider review or adversarial extractor/skeptic/arbiter findings; optionally persisted as a review run artifact |
 | Export | compiled wiki | Obsidian-friendly vault view |
 
 ## Current Ingest Scope
@@ -59,7 +59,7 @@
 
 - Commands should stay thin and delegate quickly.
 - Services should remain deterministic unless the feature explicitly requires model-backed synthesis.
-- `kb lint` checks links, fragments, headings, titles, and metadata deterministically; `kb review` checks content-level coherence using heuristics, an optional single-pass provider review, or the explicit adversarial pipeline.
+- `kb lint` checks links, fragments, headings, titles, and metadata deterministically; `kb review` prepends deterministic overlap checks to a required provider-backed single-pass or adversarial pipeline.
 - Raw sources remain the source of truth; compiled pages are derived artifacts.
 - Compile should prefer the normalized canonical artifact when one exists rather than reparsing the original raw source.
 - Optional LLM-based cleanup or reconstruction should remain an explicit provider-mediated step instead of a silent default ingest behavior.

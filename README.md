@@ -55,6 +55,10 @@ poetry run kb diff
 poetry run kb export-vault
 ```
 
+Before running `kb compile`, `kb query`, or `kb review`, add a `provider`
+section to `kb.config.yaml` and set the matching API key environment variable.
+See `Provider Configuration` below.
+
 ## Global Options
 
 | Option | Description |
@@ -241,6 +245,9 @@ poetry run kb export-vault
 ```
 
 Copies compiled wiki pages into `vault/obsidian/` in a format compatible with [Obsidian](https://obsidian.md/).
+Open that folder in Obsidian with `Open folder as vault`. Treat `vault/obsidian/`
+as derived output: running `kb export-vault` copies files from `wiki/` again and
+can overwrite direct edits made inside the exported vault.
 
 ## Supported File Types
 
@@ -261,7 +268,10 @@ All non-text formats are normalized into canonical markdown and stored in `raw/n
 
 ## Provider Configuration
 
-`kb query` and `kb review --adversarial` require a configured provider. Plain `kb review` still runs deterministic heuristics without one, but if a provider is configured and the provider-backed review pass fails, the command fails instead of degrading silently. Configure the provider in `kb.config.yaml`:
+`kb compile`, `kb query`, and `kb review` require a configured provider.
+If the provider is missing, those commands fail with a configuration error. If a
+configured provider call fails, they fail instead of falling back. Configure the
+provider in `kb.config.yaml`:
 
 ```yaml
 provider:
@@ -286,7 +296,10 @@ Set the matching API key as an environment variable:
 | `anthropic` | `claude-sonnet-4-6` | `ANTHROPIC_API_KEY` | `claude-opus-4-6`, `claude-haiku-4-5` |
 | `gemini` | `gemini-3.1-flash-lite-preview` | `GEMINI_API_KEY` | `gemini-3.1-pro-preview`, `gemini-2.5-flash` |
 
-If the provider is not configured, `kb query` and `kb review --adversarial` fail with a configuration error. If the provider is configured but the API key is missing or the provider call fails, provider-backed commands fail instead of falling back.
+If the provider is not configured, `kb compile`, `kb query`, and `kb review`
+fail with a configuration error. If the provider is configured but the API key
+is missing or the provider call fails, those commands fail instead of falling
+back.
 
 You can override the environment variable name with `api_key_env`:
 
@@ -300,7 +313,7 @@ provider:
 
 After initialization and a few ingested sources, the project directory looks like this:
 
-```
+```text
 project-root/
 ├── kb.config.yaml          # Project configuration
 ├── kb.schema.md            # Compilation schema

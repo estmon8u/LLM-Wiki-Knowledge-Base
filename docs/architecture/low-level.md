@@ -38,11 +38,11 @@
 | `src/services/manifest_service.py` | Raw-source manifest read/write behavior |
 | `src/services/normalization_service.py` | Document-type normalization routing for direct text inputs, Docling-backed PDFs, and bounded MarkItDown-backed born-digital converters |
 | `src/services/ingest_service.py` | Raw-source copy, normalized-artifact write, duplicate detection, and source registration |
-| `src/services/compile_service.py` | Derived wiki generation |
+| `src/services/compile_service.py` | Derived wiki generation with provider-backed summary generation |
 | `src/services/diff_service.py` | Pre-compile source diff reporting |
 | `src/services/search_service.py` | Search over compiled artifacts |
-| `src/services/query_service.py` | Query answer assembly from maintained wiki context; optional provider synthesis; self-consistency sampling, claim normalization, deterministic merge, and optional save-to-wiki for analysis pages |
-| `src/services/review_service.py` | Semantic review checks: topic overlap, terminology variants, single-pass provider review, adversarial extractor/skeptic/arbiter review, and review-run persistence |
+| `src/services/query_service.py` | Provider-backed query answer assembly from maintained wiki context; self-consistency sampling, claim normalization, deterministic merge, and optional save-to-wiki for analysis pages |
+| `src/services/review_service.py` | Provider-required semantic review: deterministic topic overlap and terminology checks, single-pass provider review, adversarial extractor/skeptic/arbiter review, and review-run persistence |
 | `src/services/lint_service.py` | Structural validation for wiki links, markdown links, fragments, headings, titles, typed frontmatter, empty pages, and maintenance findings |
 | `src/services/export_service.py` | Vault export generation |
 | `src/services/status_service.py` | Project and corpus status reporting |
