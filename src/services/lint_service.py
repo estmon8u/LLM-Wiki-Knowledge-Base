@@ -91,9 +91,16 @@ class LintService:
                         )
                     )
                 else:
-                    for field_name in self.config["lint"][
-                        "required_frontmatter_fields"
-                    ]:
+                    is_concept_page = (
+                        state.file_path.parent == self.paths.wiki_concepts_dir
+                        and state.frontmatter.get("type") == "analysis"
+                    )
+                    required_fields = (
+                        ["title"]
+                        if is_concept_page
+                        else self.config["lint"]["required_frontmatter_fields"]
+                    )
+                    for field_name in required_fields:
                         if field_name not in state.frontmatter:
                             issues.append(
                                 LintIssue(
@@ -441,7 +448,7 @@ def _split_frontmatter(text: str) -> Tuple[Optional[Dict[str, Any]], str]:
 def _build_page_state(file_path: Path, paths: ProjectPaths) -> _PageState:
     text = file_path.read_text(encoding="utf-8")
     frontmatter, content = _split_frontmatter(text)
-    analysis_text = _strip_fenced_code_blocks(content)
+    analysis_text = _strip_fenced_code_blocks(_strip_excerpt_section(content))
     headings = _extract_headings(content)
     anchors = {slugify(title) for _, title in headings if slugify(title)}
     page_title = _page_title(file_path, frontmatter, headings)
@@ -511,6 +518,14 @@ def _resolve_markdown_target(current_file: Path, destination: str) -> Path:
     if path.is_absolute():
         return path
     return (current_file.parent / path).resolve()
+
+
+def _strip_excerpt_section(text: str) -> str:
+    """Remove the Key Excerpt section to avoid linting links from source material."""
+    match = re.search(r"^## Key Excerpt\s*$", text, re.MULTILINE)
+    if match is None:
+        return text
+    return text[: match.start()]
 
 
 def _strip_fenced_code_blocks(text: str) -> str:

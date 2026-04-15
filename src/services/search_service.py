@@ -22,7 +22,8 @@ class SearchService:
             score = sum(normalized.count(term) for term in terms)
             if score <= 0:
                 continue
-            snippet = _extract_snippet(text, terms)
+            body = _strip_frontmatter(text)
+            snippet = _extract_snippet(body, terms)
             results.append(
                 SearchResult(
                     title=file_path.stem.replace("-", " ").title(),
@@ -33,6 +34,15 @@ class SearchService:
             )
         results.sort(key=lambda item: item.score, reverse=True)
         return results[:limit]
+
+
+def _strip_frontmatter(text: str) -> str:
+    if not text.startswith("---\n"):
+        return text
+    marker = text.find("\n---\n", 4)
+    if marker == -1:
+        return text
+    return text[marker + 5 :]
 
 
 def _extract_snippet(text: str, terms: list[str]) -> str:

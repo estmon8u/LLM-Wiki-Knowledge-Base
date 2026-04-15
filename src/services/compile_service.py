@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import re
 from typing import Any
 
 import yaml
@@ -120,6 +121,7 @@ class CompileService:
         return excerpt or "No excerpt available yet."
 
     def _write_index(self, sources: list[RawSourceRecord]) -> None:
+        concept_entries = _discover_concept_pages(self.paths)
         index_payload = {
             "generated_at": utc_now_iso(),
             "source_pages": [
@@ -131,7 +133,7 @@ class CompileService:
                 }
                 for source in sources
             ],
-            "concept_pages": [],
+            "concept_pages": concept_entries,
         }
         self.paths.wiki_index_file.write_text(
             json.dumps(index_payload, indent=2, sort_keys=True),
@@ -152,7 +154,15 @@ class CompileService:
         else:
             lines.extend(["## Source Pages", "", "- No source pages compiled yet.", ""])
 
-        lines.extend(["## Concept Pages", "", "- No concept pages compiled yet.", ""])
+        if concept_entries:
+            lines.extend(["## Concept Pages", ""])
+            for page in concept_entries:
+                lines.append(f"- [[{page['slug']}]]")
+            lines.append("")
+        else:
+            lines.extend(
+                ["## Concept Pages", "", "- No concept pages compiled yet.", ""]
+            )
         self.paths.wiki_index_markdown.write_text("\n".join(lines), encoding="utf-8")
 
     def _append_log(self, compiled_count: int, skipped_count: int, force: bool) -> None:
@@ -168,21 +178,95 @@ class CompileService:
 
 def _markdown_paragraphs(contents: str) -> list[str]:
     normalized = _strip_frontmatter(contents)
-    paragraphs: list[str] = []
+    all_paragraphs: list[str] = []
+    post_heading_paragraphs: list[str] = []
     current: list[str] = []
+    seen_heading = False
     for line in normalized.splitlines():
         stripped = line.strip()
         if not stripped:
             if current:
-                paragraphs.append(" ".join(current).strip())
+                text = " ".join(current).strip()
+                all_paragraphs.append(text)
+                if seen_heading:
+                    post_heading_paragraphs.append(text)
                 current = []
             continue
         if stripped.startswith("#"):
+            if current:
+                text = " ".join(current).strip()
+                all_paragraphs.append(text)
+                if seen_heading:
+                    post_heading_paragraphs.append(text)
+                current = []
+            seen_heading = True
             continue
         current.append(stripped)
     if current:
-        paragraphs.append(" ".join(current).strip())
-    return paragraphs
+        text = " ".join(current).strip()
+        all_paragraphs.append(text)
+        if seen_heading:
+            post_heading_paragraphs.append(text)
+    paragraphs = post_heading_paragraphs if post_heading_paragraphs else all_paragraphs
+    return [p for p in paragraphs if _is_content_paragraph(p)]
+
+
+def _is_content_paragraph(paragraph: str) -> bool:
+    """Return False for image-only, link-dominated, or navigation paragraphs."""
+    # Skip very short fragments (single words, syntax diagram tokens)
+    words = paragraph.split()
+    if len(words) <= 1 and len(paragraph) < 15:
+        return False
+    # Remove linked images: [![alt](img)](url) and plain images: ![alt](url)
+    stripped = re.sub(r"\[?!\[[^\]]*\]\([^)]*\)\]?(?:\([^)]*\))?", "", paragraph)
+    # Remove markdown links: [text](url)
+    stripped = re.sub(r"\[[^\]]*\]\([^)]*\)", "", stripped)
+    # Remove residual markdown syntax and list markers
+    stripped = re.sub(r"[*\[\]()\-]+", " ", stripped)
+    cleaned = " ".join(stripped.split()).strip()
+    if not cleaned:
+        return False
+    if len(paragraph) > 30 and len(cleaned) < 15:
+        return False
+    # Paragraph is entirely fragment-only links (TOC patterns like [text](#anchor))
+    toc_stripped = re.sub(r"\[[^\]]*\]\(#[^)]*\)", "", paragraph)
+    toc_cleaned = " ".join(toc_stripped.split()).strip()
+    if not toc_cleaned:
+        return False
+    return True
+
+
+def _discover_concept_pages(paths: ProjectPaths) -> list[dict[str, str]]:
+    """Scan wiki/concepts/ for saved analysis pages."""
+    entries: list[dict[str, str]] = []
+    if not paths.wiki_concepts_dir.exists():
+        return entries
+    for cp in sorted(paths.wiki_concepts_dir.glob("*.md")):
+        try:
+            text = cp.read_text(encoding="utf-8")
+            fm = _parse_frontmatter(text)
+            entries.append(
+                {
+                    "title": fm.get("title", cp.stem.replace("-", " ").title()),
+                    "slug": cp.stem,
+                    "path": f"wiki/concepts/{cp.name}",
+                }
+            )
+        except Exception:
+            continue
+    return entries
+
+
+def _parse_frontmatter(contents: str) -> dict:
+    if not contents.startswith("---\n"):
+        return {}
+    marker = contents.find("\n---\n", 4)
+    if marker == -1:
+        return {}
+    try:
+        return yaml.safe_load(contents[4:marker]) or {}
+    except yaml.YAMLError:
+        return {}
 
 
 def _strip_frontmatter(contents: str) -> str:

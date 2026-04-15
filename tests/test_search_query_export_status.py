@@ -733,3 +733,19 @@ def test_ingest_compile_search_returns_correct_paths(test_project) -> None:
     matching = [r for r in results if "search-test" in r.path]
     assert len(matching) >= 1
     assert matching[0].path.startswith("wiki/sources/")
+
+
+def test_search_snippet_excludes_frontmatter(test_project) -> None:
+    test_project.write_file(
+        "wiki/sources/frontmatter-test.md",
+        "---\ntitle: Frontmatter Test\nsummary: Meta here\n---\n\n"
+        "# Frontmatter Test\n\nThe real body has traceability.\n",
+    )
+
+    results = test_project.services["search"].search("traceability")
+
+    assert len(results) >= 1
+    snippet = results[0].snippet
+    assert "traceability" in snippet
+    assert "---" not in snippet
+    assert "summary:" not in snippet

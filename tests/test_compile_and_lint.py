@@ -6,10 +6,15 @@ from pathlib import Path
 import pytest
 
 from src.models.wiki_models import LintIssue, LintReport
-from src.services.compile_service import _markdown_paragraphs, _strip_frontmatter
+from src.services.compile_service import (
+    _is_content_paragraph,
+    _markdown_paragraphs,
+    _strip_frontmatter,
+)
 from src.services.lint_service import (
     _split_frontmatter,
     _split_markdown_target,
+    _strip_excerpt_section,
     _strip_fenced_code_blocks,
     _page_title,
     _extract_headings,
@@ -771,3 +776,153 @@ def test_frontmatter_yaml_injection_blocked_by_safe_load() -> None:
 
     with pytest.raises(yaml.constructor.ConstructorError):
         _split_frontmatter(malicious)
+
+
+def test_markdown_paragraphs_skips_content_before_first_heading() -> None:
+    contents = (
+        "Banner boilerplate.\n\n"
+        "Nav links here.\n\n"
+        "# Real Title\n\n"
+        "Actual content paragraph.\n\n"
+        "Second paragraph.\n"
+    )
+
+    result = _markdown_paragraphs(contents)
+
+    assert result == ["Actual content paragraph.", "Second paragraph."]
+
+
+def test_markdown_paragraphs_falls_back_when_no_headings() -> None:
+    contents = "First paragraph.\n\nSecond paragraph.\n"
+
+    result = _markdown_paragraphs(contents)
+
+    assert result == ["First paragraph.", "Second paragraph."]
+
+
+def test_markdown_paragraphs_flushes_current_at_heading() -> None:
+    contents = "Preamble text\n# Heading\n\nPost-heading content.\n"
+
+    result = _markdown_paragraphs(contents)
+
+    assert result == ["Post-heading content."]
+
+
+def test_is_content_paragraph_rejects_image_only() -> None:
+    assert not _is_content_paragraph("[![SQLite](img.svg)](index.html)")
+
+
+def test_is_content_paragraph_rejects_nav_links() -> None:
+    nav = "* [Home](index.html)* [About](about.html)* [Docs](docs.html)"
+    assert not _is_content_paragraph(nav)
+
+
+def test_is_content_paragraph_rejects_toc_links() -> None:
+    toc = "[1. Overview](#overview) [2. Setup](#setup)"
+    assert not _is_content_paragraph(toc)
+
+
+def test_is_content_paragraph_rejects_single_word() -> None:
+    assert not _is_content_paragraph("CREATE")
+    assert not _is_content_paragraph("hide")
+
+
+def test_is_content_paragraph_accepts_real_content() -> None:
+    assert _is_content_paragraph("FTS5 is a virtual table module for full-text search.")
+    assert _is_content_paragraph("Second paragraph.")
+
+
+def test_compile_index_lists_concept_pages(test_project) -> None:
+    _ingest_source(test_project, "notes/doc.md", "# Doc\n\nBody text.\n")
+    test_project.services["compile"].compile()
+    test_project.write_file(
+        "wiki/concepts/my-topic.md",
+        "---\ntitle: My Topic\ntype: analysis\n---\n\n# My Topic\n\nAnswer.\n",
+    )
+
+    test_project.services["compile"].compile(force=True)
+
+    index_text = test_project.paths.wiki_index_markdown.read_text(encoding="utf-8")
+    assert "[[my-topic]]" in index_text
+    assert "No concept pages compiled yet." not in index_text
+    index_json = json.loads(
+        test_project.paths.wiki_index_file.read_text(encoding="utf-8")
+    )
+    slugs = [cp["slug"] for cp in index_json["concept_pages"]]
+    assert "my-topic" in slugs
+
+
+def test_lint_concept_page_does_not_require_source_fields(test_project) -> None:
+    test_project.write_file(
+        "wiki/concepts/analysis.md",
+        "---\ntitle: My Analysis\ntype: analysis\nquestion: How?\n---\n\n"
+        "# My Analysis\n\nSome answer.\n",
+    )
+
+    report = test_project.services["lint"].lint()
+    field_issues = [
+        i for i in report.issues if i.code == "missing-field" and "analysis" in i.path
+    ]
+
+    assert field_issues == []
+
+
+def test_lint_source_page_still_requires_all_fields(test_project) -> None:
+    test_project.write_file(
+        "wiki/sources/incomplete.md",
+        "---\ntitle: Incomplete\nsummary: S\n---\n\n# Incomplete\n\nBody.\n",
+    )
+
+    report = test_project.services["lint"].lint()
+    field_issues = [
+        i for i in report.issues if i.code == "missing-field" and "incomplete" in i.path
+    ]
+
+    assert len(field_issues) >= 1
+
+
+def test_strip_excerpt_section_removes_key_excerpt() -> None:
+    content = (
+        "# Title\n\n"
+        "## Summary\n\nGood content.\n\n"
+        "## Key Excerpt\n\nBroken [link](missing.html) in excerpt.\n"
+    )
+
+    result = _strip_excerpt_section(content)
+
+    assert "## Summary" in result
+    assert "## Key Excerpt" not in result
+    assert "missing.html" not in result
+
+
+def test_strip_excerpt_section_preserves_content_without_excerpt() -> None:
+    content = "# Title\n\n## Summary\n\nBody.\n"
+
+    assert _strip_excerpt_section(content) == content
+
+
+def test_lint_ignores_broken_links_inside_key_excerpt(test_project) -> None:
+    test_project.write_file(
+        "wiki/sources/excerpt-page.md",
+        "---\n"
+        "title: Excerpt Page\n"
+        "summary: Summary\n"
+        "source_id: id-1\n"
+        "raw_path: raw/source.md\n"
+        "source_hash: hash-1\n"
+        "compiled_at: 2026-04-14T00:00:00Z\n"
+        "---\n\n"
+        "# Excerpt Page\n\n"
+        "## Summary\n\nReal summary.\n\n"
+        "## Key Excerpt\n\n"
+        "[Home](index.html) [About](about.html)\n",
+    )
+
+    report = test_project.services["lint"].lint()
+    link_issues = [
+        i
+        for i in report.issues
+        if i.code == "broken-markdown-link" and "excerpt-page" in i.path
+    ]
+
+    assert link_issues == []
