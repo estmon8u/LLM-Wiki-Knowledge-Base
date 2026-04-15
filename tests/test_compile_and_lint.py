@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from src.models.wiki_models import LintIssue, LintReport
 from src.services.compile_service import _markdown_paragraphs, _strip_frontmatter
 from src.services.lint_service import (
@@ -719,3 +721,53 @@ def test_compile_appends_to_existing_log(test_project) -> None:
     log_text = test_project.paths.wiki_log_file.read_text(encoding="utf-8")
     assert "Pre-existing entry." in log_text
     assert "compiled 1 source page(s)" in log_text
+
+
+# --- P4 adversarial tests ---
+
+
+def test_lint_circular_wiki_links_terminates(test_project) -> None:
+    test_project.write_file(
+        "wiki/sources/page-a.md",
+        _compiled_page("Page A", "See [[page-b]]."),
+    )
+    test_project.write_file(
+        "wiki/sources/page-b.md",
+        _compiled_page("Page B", "See [[page-a]]."),
+    )
+
+    report = test_project.services["lint"].lint()
+
+    assert not any(i.code == "broken-link" for i in report.issues)
+    assert not any(
+        i.code == "orphan-page" and "page-a" in i.path for i in report.issues
+    )
+
+
+def test_lint_page_with_many_links_performs_reasonably(test_project) -> None:
+    links = " ".join(f"[[target-{i}]]" for i in range(200))
+    test_project.write_file(
+        "wiki/sources/many-links.md",
+        _compiled_page("Many Links", links),
+    )
+    for i in range(200):
+        test_project.write_file(
+            f"wiki/sources/target-{i}.md",
+            _compiled_page(f"Target {i}", "Body."),
+        )
+
+    report = test_project.services["lint"].lint()
+
+    assert report is not None
+
+
+def test_frontmatter_yaml_injection_blocked_by_safe_load() -> None:
+    import yaml
+    from src.services.lint_service import _split_frontmatter
+
+    malicious = (
+        "---\ntitle: !!python/object/apply:os.system ['echo pwned']\n---\nBody\n"
+    )
+
+    with pytest.raises(yaml.constructor.ConstructorError):
+        _split_frontmatter(malicious)

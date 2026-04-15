@@ -4,6 +4,21 @@ from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
 from src.services.search_service import _extract_snippet
 
 
+def _compiled_page(title: str, body: str, *, summary: str = "Summary") -> str:
+    return (
+        "---\n"
+        f"title: {title}\n"
+        f"summary: {summary}\n"
+        "source_id: source-1\n"
+        "raw_path: raw/source.md\n"
+        "source_hash: hash-1\n"
+        "compiled_at: 2026-04-14T00:00:00Z\n"
+        "---\n\n"
+        f"# {title}\n\n"
+        f"{body}\n"
+    )
+
+
 def test_extract_snippet_uses_matching_window_and_fallback() -> None:
     text = "Alpha beta gamma delta epsilon zeta"
 
@@ -230,3 +245,103 @@ def test_provider_dataclasses_and_base_provider_behavior() -> None:
         raise AssertionError(
             "Expected TextProvider.generate to raise NotImplementedError"
         )
+
+
+# --- P2 integration tests: cross-service paths ---
+
+
+def test_ingest_compile_edit_recompile_lint_stale_cycle(test_project) -> None:
+    path = test_project.write_file("notes/cycle.md", "# Cycle\n\nOriginal body.\n")
+    test_project.services["ingest"].ingest_path(path)
+    test_project.services["compile"].compile()
+
+    report = test_project.services["lint"].lint()
+    stale = [i for i in report.issues if i.code == "stale-source-page"]
+    assert len(stale) == 0
+
+    sources = test_project.services["manifest"].list_sources()
+    sources[0].content_hash = "edited-hash"
+    test_project.services["manifest"].save_source(sources[0])
+
+    report2 = test_project.services["lint"].lint()
+    assert any(i.code == "stale-source-page" for i in report2.issues)
+
+    test_project.services["compile"].compile(force=True)
+
+    report3 = test_project.services["lint"].lint()
+    assert not any(i.code == "stale-source-page" for i in report3.issues)
+
+
+def test_ingest_two_sources_compile_lint_both_orphans(test_project) -> None:
+    test_project.write_file(
+        "wiki/sources/lonely-a.md",
+        _compiled_page("Lonely A", "Body A no links."),
+    )
+    test_project.write_file(
+        "wiki/sources/lonely-b.md",
+        _compiled_page("Lonely B", "Body B no links."),
+    )
+
+    report = test_project.services["lint"].lint()
+    orphans = [i for i in report.issues if i.code == "orphan-page"]
+
+    source_orphans = [o for o in orphans if "sources/" in o.path]
+    assert len(source_orphans) >= 2
+
+
+def test_ingest_compile_query_save_lint_saved_page(test_project) -> None:
+    path = test_project.write_file("notes/qa.md", "# QA\n\nTraceability evidence.\n")
+    test_project.services["ingest"].ingest_path(path)
+    test_project.services["compile"].compile()
+
+    answer = test_project.services["query"].answer_question("traceability")
+    saved = test_project.services["query"].save_answer("What is traceability?", answer)
+    assert (test_project.root / saved).exists()
+
+    report = test_project.services["lint"].lint()
+    saved_issues = [i for i in report.issues if saved.replace("/", "/") in i.path]
+    codes = {i.code for i in saved_issues}
+    assert "broken-link" not in codes
+
+
+def test_ingest_compile_export_vault_mirrors_wiki(test_project) -> None:
+    path = test_project.write_file("notes/vault.md", "# Vault\n\nVault body.\n")
+    test_project.services["ingest"].ingest_path(path)
+    test_project.services["compile"].compile()
+    test_project.services["export"].export_vault()
+
+    wiki_files = sorted(
+        f.relative_to(test_project.paths.wiki_dir).as_posix()
+        for f in test_project.paths.wiki_dir.rglob("*.md")
+    )
+    vault_files = sorted(
+        f.relative_to(test_project.paths.vault_obsidian_dir).as_posix()
+        for f in test_project.paths.vault_obsidian_dir.rglob("*.md")
+    )
+    assert wiki_files == vault_files
+
+
+def test_ingest_duplicate_status_shows_count_one(test_project) -> None:
+    path = test_project.write_file("notes/dup.md", "# Dup\n\nDuplicate body.\n")
+    first = test_project.services["ingest"].ingest_path(path)
+    second = test_project.services["ingest"].ingest_path(path)
+
+    assert first.created is True
+    assert second.created is False
+
+    snapshot = test_project.services["status"].snapshot(initialized=True)
+    assert snapshot.source_count == 1
+
+
+def test_ingest_compile_search_returns_correct_paths(test_project) -> None:
+    path = test_project.write_file(
+        "notes/search-test.md", "# Search Test\n\nKnowledge base findable.\n"
+    )
+    test_project.services["ingest"].ingest_path(path)
+    test_project.services["compile"].compile()
+
+    results = test_project.services["search"].search("knowledge base")
+
+    matching = [r for r in results if "search-test" in r.path]
+    assert len(matching) >= 1
+    assert matching[0].path.startswith("wiki/sources/")

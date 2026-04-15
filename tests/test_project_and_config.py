@@ -211,3 +211,81 @@ def test_slugify_all_special_characters() -> None:
     assert slugify("!!!???") == "untitled"
     assert slugify("@#$%^&*") == "untitled"
     assert slugify("   ") == "untitled"
+
+
+# --- P5 data model tests: computed properties ---
+
+
+def test_lint_report_zero_issues_all_counts_zero() -> None:
+    from src.models.wiki_models import LintReport
+
+    report = LintReport(issues=[])
+
+    assert report.error_count == 0
+    assert report.warning_count == 0
+    assert report.suggestion_count == 0
+
+
+def test_diff_report_all_three_states_simultaneously() -> None:
+    from src.models.wiki_models import DiffEntry, DiffReport
+
+    report = DiffReport(
+        entries=[
+            DiffEntry("id-1", "a", "A", "new", "raw/a.md", "not yet compiled"),
+            DiffEntry("id-2", "b", "B", "changed", "raw/b.md", "source changed"),
+            DiffEntry("id-3", "c", "C", "up_to_date", "raw/c.md"),
+        ]
+    )
+
+    assert report.new_count == 1
+    assert report.changed_count == 1
+    assert report.up_to_date_count == 1
+
+
+def test_review_report_issue_count_matches_len() -> None:
+    from src.models.wiki_models import ReviewIssue, ReviewReport
+
+    issues = [
+        ReviewIssue("suggestion", "overlapping-topics", ["a.md", "b.md"], "msg1"),
+        ReviewIssue("suggestion", "terminology-variant", ["c.md"], "msg2"),
+        ReviewIssue("suggestion", "overlapping-topics", ["d.md", "e.md"], "msg3"),
+    ]
+    report = ReviewReport(issues=issues, mode="heuristic")
+
+    assert report.issue_count == len(report.issues) == 3
+
+
+def test_raw_source_record_from_dict_missing_optional_fields() -> None:
+    from src.models.source_models import RawSourceRecord
+
+    minimal = {
+        "source_id": "id-1",
+        "slug": "minimal",
+        "title": "Minimal",
+        "origin": "origin.md",
+        "source_type": "file",
+        "raw_path": "raw/sources/minimal.md",
+        "content_hash": "hash-1",
+        "ingested_at": "2026-04-14T00:00:00+00:00",
+    }
+
+    record = RawSourceRecord.from_dict(minimal)
+
+    assert record.compiled_at is None
+    assert record.compiled_from_hash is None
+    assert record.normalized_path is None
+    assert record.metadata == {}
+
+
+def test_status_snapshot_none_compile_prints_na() -> None:
+    from click.testing import CliRunner
+    from src.cli import main
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["status"])
+
+        assert result.exit_code == 0
+        assert "last_compile_at: n/a" in result.output

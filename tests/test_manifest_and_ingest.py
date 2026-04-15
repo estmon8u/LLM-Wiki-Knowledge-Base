@@ -274,3 +274,41 @@ def test_manifest_write_creates_missing_parent(uninitialized_project) -> None:
     uninitialized_project.services["manifest"].ensure_manifest()
 
     assert manifest_file.exists()
+
+
+# --- P4 adversarial tests ---
+
+
+def test_ingest_source_with_null_bytes(test_project) -> None:
+    path = test_project.write_file("notes/null.md", "# Null\n\nBody with \x00 byte.\n")
+
+    result = test_project.services["ingest"].ingest_path(path)
+
+    assert result.created is True
+    assert result.source is not None
+
+
+def test_manifest_corrupted_json_raises(test_project) -> None:
+    test_project.paths.raw_manifest_file.write_text(
+        "not valid json at all", encoding="utf-8"
+    )
+
+    with pytest.raises(Exception):
+        test_project.services["manifest"].list_sources()
+
+
+def test_fifty_sources_compile_lint_search_complete(test_project) -> None:
+    for i in range(50):
+        path = test_project.write_file(
+            f"notes/doc-{i}.md", f"# Doc {i}\n\nBody paragraph {i}.\n"
+        )
+        test_project.services["ingest"].ingest_path(path)
+
+    compile_result = test_project.services["compile"].compile()
+    assert compile_result.compiled_count == 50
+
+    lint_report = test_project.services["lint"].lint()
+    assert lint_report is not None
+
+    search_results = test_project.services["search"].search("body paragraph")
+    assert len(search_results) >= 1

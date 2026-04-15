@@ -390,3 +390,69 @@ def test_review_requires_initialization() -> None:
 
         assert result.exit_code != 0
         assert "Project not initialized" in result.output
+
+
+# --- P3 CLI-level tests: user-facing behavior ---
+
+
+def test_lint_verbose_flag_does_not_crash() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["--verbose", "lint"])
+
+        assert result.exit_code == 0
+        assert "No lint issues found." in result.output
+
+
+def test_query_piped_input_skips_save_confirm() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Sample\n\nTraceability evidence.\n", encoding="utf-8"
+        )
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["ingest", "sample.md"]).exit_code == 0
+        assert runner.invoke(main, ["compile"]).exit_code == 0
+
+        result = runner.invoke(
+            main,
+            ["query", "traceability"],
+            input="\n",
+        )
+
+        assert result.exit_code == 0
+        assert "Saved analysis page:" not in result.output
+
+
+def test_ingest_rejects_directory_path() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        Path("mydir").mkdir()
+
+        result = runner.invoke(main, ["ingest", "mydir"])
+
+        assert result.exit_code != 0
+
+
+def test_export_vault_on_empty_wiki_succeeds() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["export-vault"])
+
+        assert result.exit_code == 0
+        assert "Exported 0 markdown file(s)" in result.output
+
+
+def test_unknown_command_shows_error() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["nonexistent-command"])
+
+        assert result.exit_code != 0
