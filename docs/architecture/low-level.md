@@ -24,7 +24,7 @@
 | `src/commands/diff.py` | Pre-compile source diff command |
 | `src/commands/search.py` | Search command |
 | `src/commands/query.py` | Query command; forwards `--self-consistency N` into `QueryService` |
-| `src/commands/review.py` | Semantic review command |
+| `src/commands/review.py` | Semantic review command; forwards `--adversarial` into `ReviewService` |
 | `src/commands/lint.py` | Lint command |
 | `src/commands/status.py` | Status command |
 | `src/commands/export_vault.py` | Vault export command |
@@ -42,7 +42,7 @@
 | `src/services/diff_service.py` | Pre-compile source diff reporting |
 | `src/services/search_service.py` | Search over compiled artifacts |
 | `src/services/query_service.py` | Query answer assembly from maintained wiki context; optional provider synthesis; self-consistency sampling, claim normalization, deterministic merge, and optional save-to-wiki for analysis pages |
-| `src/services/review_service.py` | Semantic review checks: topic overlap, terminology variants, future contradiction detection |
+| `src/services/review_service.py` | Semantic review checks: topic overlap, terminology variants, single-pass provider review, adversarial extractor/skeptic/arbiter review, and review-run persistence |
 | `src/services/lint_service.py` | Structural validation for wiki links, markdown links, fragments, headings, titles, typed frontmatter, empty pages, and maintenance findings |
 | `src/services/export_service.py` | Vault export generation |
 | `src/services/status_service.py` | Project and corpus status reporting |
@@ -54,7 +54,7 @@
 | `src/models/command_models.py` | Command-facing dataclasses and result types |
 | `src/models/source_models.py` | Source metadata models |
 | `src/models/tool_models.py` | Tool-facing data structures |
-| `src/models/wiki_models.py` | Wiki-oriented dataclasses |
+| `src/models/wiki_models.py` | Wiki-oriented dataclasses including `ReviewReport` with typed findings and optional `run_id` |
 
 ## Schema Files (Pydantic)
 

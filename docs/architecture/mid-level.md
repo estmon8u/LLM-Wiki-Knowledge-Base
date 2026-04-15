@@ -39,7 +39,7 @@
 | Search | compiled wiki artifacts | ranked matches |
 | Query | user question plus compiled context | cited answer via heuristic assembly, single provider synthesis, or self-consistency over a frozen evidence bundle; optionally saved as an analysis page |
 | Lint | compiled wiki and metadata | structural findings for links, fragments, headings, titles, typed frontmatter, empty pages, and maintenance signals |
-| Review | compiled wiki pages | semantic findings: topic overlap, terminology variants, and model-backed contradiction/quality detection when provider is configured |
+| Review | compiled wiki pages | semantic findings via heuristics, single-pass provider review, or adversarial extractor/skeptic/arbiter findings; optionally persisted as a review run artifact |
 | Export | compiled wiki | Obsidian-friendly vault view |
 
 ## Current Ingest Scope
@@ -52,14 +52,14 @@
 | Pipeline | CLI Flag | Stages | Key Principle |
 | --- | --- | --- | --- |
 | Self-consistency query | `--self-consistency N` | retrieve → freeze evidence → sample N answers in parallel → normalize claims → deterministic merge → final cited answer + SQLite run artifact | All candidates see the same frozen evidence bundle; merge claims, not paragraphs |
-| Adversarial review | `--adversarial` | extract claims → generate candidate pairs → extractor + skeptic per pair → arbiter verdicts | Disagreement is the product; `needs_review` is a success case |
+| Adversarial review | `--adversarial` | generate candidate pairs → extract claims → skeptic critique per pair → arbiter verdicts → SQLite run artifact | Disagreement is the product; `needs_review` is a success case |
 | Fix proposal | `--propose` | proposer drafts patch → auditor checks citations → gate emits diff | Never auto-applies; mandatory user confirmation |
 
 ## Structural Rules
 
 - Commands should stay thin and delegate quickly.
 - Services should remain deterministic unless the feature explicitly requires model-backed synthesis.
-- `kb lint` checks links, fragments, headings, titles, and metadata deterministically; `kb review` checks content-level coherence using heuristics plus an optional model-backed pass when a provider is configured.
+- `kb lint` checks links, fragments, headings, titles, and metadata deterministically; `kb review` checks content-level coherence using heuristics, an optional single-pass provider review, or the explicit adversarial pipeline.
 - Raw sources remain the source of truth; compiled pages are derived artifacts.
 - Compile should prefer the normalized canonical artifact when one exists rather than reparsing the original raw source.
 - Optional LLM-based cleanup or reconstruction should remain an explicit provider-mediated step instead of a silent default ingest behavior.

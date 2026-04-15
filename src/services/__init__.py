@@ -43,5 +43,5 @@ def build_services(paths: ProjectPaths, config: dict[str, Any]) -> dict[str, Any
             run_store=run_store,
         ),
         "export": ExportService(paths),
-        "review": ReviewService(paths, provider=provider),
+        "review": ReviewService(paths, provider=provider, run_store=run_store),
     }

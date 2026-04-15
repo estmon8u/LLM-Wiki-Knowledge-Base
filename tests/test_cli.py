@@ -383,6 +383,26 @@ def test_review_command_reports_overlapping_topics() -> None:
         assert "overlapping-topics" in result.output
 
 
+def test_review_adversarial_flag_without_provider_reports_mode() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        Path("wiki/sources").mkdir(parents=True, exist_ok=True)
+        Path("wiki/sources/alpha.md").write_text(
+            "# Alpha\n\n## Timeline\n\nIn 2026 the workflow stores source hashes.\n",
+            encoding="utf-8",
+        )
+        Path("wiki/sources/beta.md").write_text(
+            "# Beta\n\n## Timeline\n\nIn 2026 the workflow exports vault files.\n",
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(main, ["review", "--adversarial"])
+
+        assert result.exit_code == 0
+        assert "Review mode: heuristic:no-provider" in result.output
+
+
 def test_review_requires_initialization() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():

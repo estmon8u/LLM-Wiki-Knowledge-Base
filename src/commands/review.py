@@ -22,11 +22,16 @@ def create_command() -> click.Command:
         help=SUMMARY,
         short_help="Semantic review for contradictions and terminology.",
     )
+    @click.option(
+        "--adversarial",
+        is_flag=True,
+        help="Run extractor, skeptic, and arbiter review over candidate page pairs.",
+    )
     @click.pass_obj
-    def command(command_context: CommandContext) -> None:
+    def command(command_context: CommandContext, adversarial: bool) -> None:
         require_initialized(command_context)
         review_service = command_context.services["review"]
-        report = review_service.review()
+        report = review_service.review(adversarial=adversarial)
 
         click.echo(f"Review mode: {report.mode}")
 

@@ -36,8 +36,8 @@ The product goal is not to act like a general-purpose coding agent. The goal is 
 - Schemas define Pydantic models (`Claim`, `EvidenceBundle`, `CandidateAnswer`, `MergedAnswer`, `ReviewFinding`, `RunRecord`) shared across query, review, and concept synthesis.
 - Engine modules register commands and tools.
 - Providers abstract model-backed behavior behind a small boundary with concrete implementations for OpenAI, Anthropic, and Google Gemini; query and review services accept an optional provider and fall back to heuristic mode when none is configured.
-- A bounded deliberation layer now sits between `QueryService` and the provider boundary for opt-in multi-sample workflows. `kb query --self-consistency N` freezes retrieved evidence, fans out parallel provider calls, normalizes sentence-level claims, and merges grounded claims deterministically. `kb review --adversarial` and `kb fix --propose` remain planned.
-- Run-artifact storage persists every deliberation run in SQLite (`RunStore`) at `graph/exports/run_artifacts.sqlite3`: retrieval sets, candidate outputs, merge decisions, model id, prompt version, context hash, token cost, wall time, and unresolved-disagreement flag.
+- A bounded deliberation layer now sits between the service layer and the provider boundary for opt-in multi-sample workflows. `kb query --self-consistency N` freezes retrieved evidence, fans out parallel provider calls, normalizes sentence-level claims, and merges grounded claims deterministically. `kb review --adversarial` now builds candidate page pairs, runs extractor/skeptic/arbiter prompts, and emits typed review findings. `kb fix --propose` remains planned.
+- Run-artifact storage persists every deliberation run in SQLite (`RunStore`) at `graph/exports/run_artifacts.sqlite3`: retrieval sets, candidate outputs, review findings, merge decisions, model id, prompt version, context hash, token cost, wall time, and unresolved-disagreement flag.
 - Provider-backed OCR or LLM cleanup should remain explicit fallback behavior rather than becoming part of the default deterministic normalization path.
 
 ## Reference-Project Roles

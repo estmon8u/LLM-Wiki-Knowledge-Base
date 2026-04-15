@@ -43,6 +43,7 @@ poetry run kb lint
 
 # 7. Run semantic review for contradictions and terminology drift
 poetry run kb review
+poetry run kb review --adversarial
 
 # 8. See project status
 poetry run kb status
@@ -214,16 +215,22 @@ Run semantic review checks for contradictions and terminology drift across the m
 
 ```bash
 poetry run kb review
+poetry run kb review --adversarial
 ```
 
-Currently uses deterministic heuristics by default. When a provider is configured in `kb.config.yaml`, the review runs an additional model-backed pass for deeper contradiction and content-quality detection alongside the heuristic checks.
+| Option | Default | Description |
+| --- | --- | --- |
+| `--adversarial` | off | Run extractor, skeptic, and arbiter review over candidate source-page pairs and persist a review run artifact. |
+
+By default, `kb review` uses deterministic heuristics and, when a provider is configured, an additional single-pass model-backed review. With `--adversarial`, the command keeps the deterministic heuristics, then builds candidate source-page pairs, runs extractor/skeptic/arbiter prompts over each pair, emits typed findings, and stores the run in `graph/exports/run_artifacts.sqlite3`. If no provider is configured, the flag still succeeds and reports `heuristic:no-provider` mode.
 
 Checks for:
 
 - **Overlapping topics** — Source pages with heavily overlapping terminology that may benefit from a shared concept page.
 - **Terminology variants** — The same root term appearing in different forms across pages (e.g., `knowledge-base` vs `knowledgebase`).
+- **Adversarial findings** — Typed contradiction, term-drift, and needs-review findings from extractor/skeptic/arbiter evaluation over candidate page pairs.
 
-This is the semantic complement to `kb lint`. Lint checks structural health deterministically; review checks content-level coherence and is designed to grow into a model-backed pass.
+This is the semantic complement to `kb lint`. Lint checks structural health deterministically; review checks content-level coherence through heuristics, a single provider pass, or the adversarial review pipeline.
 
 ### `kb export-vault`
 
