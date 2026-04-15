@@ -9,7 +9,7 @@
 | `src/services/` | Deterministic normalization, ingest, compile, diff, lint, review, search, query, export, status, config, and manifest services |
 | `src/models/` | Shared command, source, tool, and wiki dataclasses |
 | `src/engine/` | Command and tool registry boundaries |
-| `src/providers/` | Future provider abstraction layer |
+| `src/providers/` | Provider abstraction layer with OpenAI, Anthropic, and Gemini implementations |
 
 ## Command To Service Mapping
 
@@ -34,9 +34,9 @@
 | Compile | normalized canonical text plus manifest metadata | source pages, concept pages, wiki index, compile log |
 | Diff | manifest metadata plus compile state | pre-compile source status preview |
 | Search | compiled wiki artifacts | ranked matches |
-| Query | user question plus compiled context | cited answer based on maintained wiki; optionally saved as an analysis page |
+| Query | user question plus compiled context | cited answer based on maintained wiki via LLM synthesis (when configured) or heuristic assembly; optionally saved as an analysis page |
 | Lint | compiled wiki and metadata | structural findings for links, fragments, headings, titles, typed frontmatter, empty pages, and maintenance signals |
-| Review | compiled wiki pages | semantic findings: topic overlap, terminology variants, future contradiction detection |
+| Review | compiled wiki pages | semantic findings: topic overlap, terminology variants, and model-backed contradiction/quality detection when provider is configured |
 | Export | compiled wiki | Obsidian-friendly vault view |
 
 ## Current Ingest Scope
@@ -48,7 +48,7 @@
 
 - Commands should stay thin and delegate quickly.
 - Services should remain deterministic unless the feature explicitly requires model-backed synthesis.
-- `kb lint` checks links, fragments, headings, titles, and metadata deterministically; `kb review` checks content-level coherence and is designed to grow into a model-backed pass.
+- `kb lint` checks links, fragments, headings, titles, and metadata deterministically; `kb review` checks content-level coherence using heuristics plus an optional model-backed pass when a provider is configured.
 - Raw sources remain the source of truth; compiled pages are derived artifacts.
 - Compile should prefer the normalized canonical artifact when one exists rather than reparsing the original raw source.
 - Optional LLM-based cleanup or reconstruction should remain an explicit provider-mediated step instead of a silent default ingest behavior.

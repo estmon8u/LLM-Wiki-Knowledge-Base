@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.providers import build_provider
 from src.services.compile_service import CompileService
 from src.services.config_service import ConfigService
 from src.services.diff_service import DiffService
@@ -22,6 +23,7 @@ def build_services(paths: ProjectPaths, config: dict[str, Any]) -> dict[str, Any
     config_service = ConfigService(paths)
     manifest_service = ManifestService(paths)
     search_service = SearchService(paths)
+    provider = build_provider(config)
     return {
         "project": ProjectService(paths),
         "config": config_service,
@@ -32,7 +34,7 @@ def build_services(paths: ProjectPaths, config: dict[str, Any]) -> dict[str, Any
         "lint": LintService(paths, config, manifest_service),
         "search": search_service,
         "status": StatusService(paths, manifest_service),
-        "query": QueryService(paths, search_service),
+        "query": QueryService(paths, search_service, provider=provider),
         "export": ExportService(paths),
-        "review": ReviewService(paths),
+        "review": ReviewService(paths, provider=provider),
     }

@@ -34,7 +34,7 @@ The product goal is not to act like a general-purpose coding agent. The goal is 
 - Services own deterministic business logic.
 - Models hold shared dataclasses and typed results.
 - Engine modules register commands and tools.
-- Providers abstract future model-backed behavior behind a small boundary.
+- Providers abstract model-backed behavior behind a small boundary with concrete implementations for OpenAI, Anthropic, and Google Gemini; query and review services accept an optional provider and fall back to heuristic mode when none is configured.
 - Provider-backed OCR or LLM cleanup should remain explicit fallback behavior rather than becoming part of the default deterministic normalization path.
 
 ## Reference-Project Roles

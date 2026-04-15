@@ -31,6 +31,7 @@ def create_command() -> click.Command:
         query_service = command_context.services["query"]
         question = " ".join(question_terms)
         answer = query_service.answer_question(question, limit=limit)
+        click.echo(f"[mode: {answer.mode}]\n")
         click.echo(answer.answer)
         if answer.citations:
             click.echo("")

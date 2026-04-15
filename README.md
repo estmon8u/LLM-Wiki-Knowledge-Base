@@ -144,7 +144,7 @@ poetry run kb query --limit 5 "What normalization converters are supported?"
 | --- | --- | --- |
 | `--limit` | 3 | Maximum number of source pages to use as evidence. |
 
-Returns an answer assembled from the best-matching wiki pages, followed by a Citations section listing which pages were used.
+Returns an answer assembled from the best-matching wiki pages, followed by a Citations section listing which pages were used. The output begins with a `[mode: …]` tag — `heuristic` when no provider is configured, or `provider:<model>` when an LLM synthesizes the answer.
 
 After displaying the answer, if citations are present the command prompts `Save this answer as an analysis page? [y/N]`. Accepting writes a markdown analysis page to `wiki/concepts/` with YAML frontmatter (`type: analysis`), the question, a timestamp, and backlinks to the cited source pages. Saved analysis pages make your explorations compound in the wiki instead of disappearing in terminal history. In non-interactive contexts the prompt is silently skipped.
 
@@ -211,7 +211,7 @@ Run semantic review checks for contradictions and terminology drift across the m
 poetry run kb review
 ```
 
-Currently uses deterministic heuristics (no LLM required). When a provider is configured, the review pass can delegate to a model for deeper contradiction detection.
+Currently uses deterministic heuristics by default. When a provider is configured in `kb.config.yaml`, the review runs an additional model-backed pass for deeper contradiction and content-quality detection alongside the heuristic checks.
 
 Checks for:
 
@@ -246,6 +246,34 @@ Copies compiled wiki pages into `vault/obsidian/` in a format compatible with [O
 | Jupyter Notebook | `.ipynb` | MarkItDown |
 
 All non-text formats are normalized into canonical markdown and stored in `raw/normalized/` before compilation.
+
+## Provider Configuration
+
+By default, `kb query` and `kb review` use deterministic heuristics and do not require an LLM. To enable model-backed query synthesis and deeper review analysis, add a `provider` section to `kb.config.yaml`:
+
+```yaml
+provider:
+  name: openai          # openai | anthropic | gemini
+  model: gpt-5.4-mini   # optional — defaults to a cost-effective model per provider
+```
+
+Set the matching API key as an environment variable:
+
+| Provider | Default model | Env variable | Alternatives |
+| --- | --- | --- | --- |
+| `openai` | `gpt-5.4-mini` | `OPENAI_API_KEY` | `gpt-5.4`, `gpt-5.4-nano` |
+| `anthropic` | `claude-sonnet-4-6` | `ANTHROPIC_API_KEY` | `claude-opus-4-6`, `claude-haiku-4-5` |
+| `gemini` | `gemini-3.1-flash-lite-preview` | `GEMINI_API_KEY` | `gemini-3.1-pro-preview`, `gemini-2.5-flash` |
+
+If no provider is configured or the API key is missing, all commands gracefully fall back to heuristic mode.
+
+You can override the environment variable name with `api_key_env`:
+
+```yaml
+provider:
+  name: openai
+  api_key_env: MY_CUSTOM_KEY
+```
 
 ## Project Layout
 

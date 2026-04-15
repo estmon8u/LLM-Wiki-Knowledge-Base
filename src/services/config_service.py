@@ -36,6 +36,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "compiled_at",
         ],
     },
+    "provider": {},
 }
 
 

@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import logging
 import re
 from collections import Counter
 from itertools import combinations
+from typing import Optional
 
 from src.models.wiki_models import ReviewIssue, ReviewReport
+from src.providers.base import ProviderRequest, TextProvider
 from src.services.project_service import ProjectPaths
+
+logger = logging.getLogger(__name__)
 
 
 _WORD_PATTERN = re.compile(r"[a-z]+(?:-[a-z]+)*")
@@ -66,15 +71,32 @@ _STOPWORDS = frozenset(
 _OVERLAP_THRESHOLD = 0.55
 
 
+_REVIEW_SYSTEM_PROMPT = (
+    "You are a knowledge-base quality reviewer. Analyze the wiki pages below "
+    "and report issues. For each issue, output exactly one line in the format:\n"
+    "ISSUE|severity|code|pages|message\n"
+    "Where severity is one of: error, warning, suggestion.\n"
+    "code is a short kebab-case label like 'contradiction', 'stale-claim', "
+    "'terminology-drift', 'redundant-content'.\n"
+    "pages is a comma-separated list of page paths.\n"
+    "message is a concise explanation.\n"
+    "If there are no issues, output exactly: NO_ISSUES\n"
+    "Do not output anything else."
+)
+
+
 class ReviewService:
     """Semantic review checks for the maintained wiki.
 
-    Currently uses deterministic heuristics.  When a provider is wired,
-    the ``review`` method can delegate to a model-backed pass instead.
+    Uses deterministic heuristics by default.  When a provider is available,
+    ``review`` runs an additional model-backed pass for deeper analysis.
     """
 
-    def __init__(self, paths: ProjectPaths) -> None:
+    def __init__(
+        self, paths: ProjectPaths, *, provider: Optional[TextProvider] = None
+    ) -> None:
         self.paths = paths
+        self.provider = provider
 
     def review(self) -> ReviewReport:
         issues: list[ReviewIssue] = []
@@ -83,7 +105,14 @@ class ReviewService:
         issues.extend(self._check_summary_overlap(page_tokens))
         issues.extend(self._check_terminology_variants(page_tokens))
 
-        return ReviewReport(issues=issues, mode="heuristic")
+        if self.provider is not None:
+            provider_issues, provider_mode = self._provider_review()
+            issues.extend(provider_issues)
+            mode = provider_mode
+        else:
+            mode = "heuristic"
+
+        return ReviewReport(issues=issues, mode=mode)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -181,4 +210,60 @@ class ReviewService:
                         )
                     checked.add(pair)
 
+        return issues
+
+    def _provider_review(self) -> tuple[list[ReviewIssue], str]:
+        """Run a model-backed review pass over source pages."""
+        source_dir = self.paths.wiki_dir / "sources"
+        if not source_dir.exists():
+            return [], "heuristic"
+
+        page_texts: list[str] = []
+        for md_file in sorted(source_dir.rglob("*.md")):
+            text = md_file.read_text(encoding="utf-8")
+            rel = md_file.relative_to(self.paths.root).as_posix()
+            page_texts.append(f"### {rel}\n{text[:2000]}")
+
+        if not page_texts:
+            return [], "heuristic"
+
+        prompt = "## Wiki Pages\n\n" + "\n\n".join(page_texts)
+        try:
+            response = self.provider.generate(
+                ProviderRequest(
+                    prompt=prompt,
+                    system_prompt=_REVIEW_SYSTEM_PROMPT,
+                    max_tokens=1024,
+                )
+            )
+            issues = self._parse_provider_issues(response.text)
+            return issues, f"heuristic+provider:{response.model_name}"
+        except Exception as exc:
+            logger.warning("Provider review failed (%s); using heuristic only.", exc)
+            return [], "heuristic-fallback"
+
+    @staticmethod
+    def _parse_provider_issues(raw: str) -> list[ReviewIssue]:
+        """Parse structured ``ISSUE|…`` lines from provider output."""
+        issues: list[ReviewIssue] = []
+        for line in raw.strip().splitlines():
+            line = line.strip()
+            if line == "NO_ISSUES" or not line.startswith("ISSUE|"):
+                continue
+            parts = line.split("|", 4)
+            if len(parts) < 5:
+                continue
+            _, severity, code, pages_str, message = parts
+            severity = severity.strip()
+            if severity not in ("error", "warning", "suggestion"):
+                severity = "suggestion"
+            pages = [p.strip() for p in pages_str.split(",") if p.strip()]
+            issues.append(
+                ReviewIssue(
+                    severity=severity,
+                    code=code.strip(),
+                    pages=pages,
+                    message=message.strip(),
+                )
+            )
         return issues
