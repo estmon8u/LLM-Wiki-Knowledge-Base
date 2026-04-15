@@ -2,14 +2,33 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import logging
 import re
-from typing import Any
+from typing import Any, Optional
 
 import yaml
 
 from src.models.source_models import RawSourceRecord
+from src.providers import (
+    ProviderConfigurationError,
+    ProviderExecutionError,
+    UnavailableProvider,
+)
+from src.providers.base import ProviderRequest, TextProvider
 from src.services.manifest_service import ManifestService
 from src.services.project_service import ProjectPaths, utc_now_iso
+
+logger = logging.getLogger(__name__)
+
+_SUMMARY_SYSTEM_PROMPT = (
+    "You are a research assistant summarizing documents for a curated knowledge base. "
+    "Write a concise 2-4 sentence summary of the document below. "
+    "Focus on the core thesis, methods, findings, and open questions. "
+    "Do not include author names, affiliations, or publication metadata. "
+    "Write in plain text without markdown formatting."
+)
+
+_SUMMARY_CONTENT_LIMIT = 12000
 
 
 @dataclass
@@ -25,10 +44,23 @@ class CompileService:
         paths: ProjectPaths,
         config: dict[str, Any],
         manifest_service: ManifestService,
+        *,
+        provider: Optional[TextProvider] = None,
     ) -> None:
         self.paths = paths
         self.config = config
         self.manifest_service = manifest_service
+        self.provider = provider
+
+    def _require_provider(self) -> TextProvider:
+        if self.provider is None:
+            raise ProviderConfigurationError(
+                "kb compile requires a configured provider. Add a provider section "
+                "to kb.config.yaml and set the matching API key environment variable."
+            )
+        if isinstance(self.provider, UnavailableProvider):
+            self.provider.ensure_available()
+        return self.provider
 
     def compile(self, *, force: bool = False) -> CompileResult:
         compiled_paths: list[str] = []
@@ -112,16 +144,24 @@ class CompileService:
         )
 
     def _extract_summary(self, contents: str) -> str:
-        paragraphs = _markdown_paragraphs(contents)
-        limit = _safe_int(
-            self._compile_config().get("summary_paragraph_limit"),
-            default=2,
-            minimum=1,
-        )
-        if paragraphs:
-            return "\n\n".join(paragraphs[:limit])
-        cleaned = _plain_text_fallback(contents)
-        return cleaned[:280] or "No summary available yet."
+        provider = self._require_provider()
+        truncated = _plain_text_fallback(contents)[:_SUMMARY_CONTENT_LIMIT]
+        if not truncated.strip():
+            return "No content available for summarization."
+        try:
+            response = provider.generate(
+                ProviderRequest(
+                    prompt=truncated,
+                    system_prompt=_SUMMARY_SYSTEM_PROMPT,
+                    max_tokens=512,
+                )
+            )
+            summary = response.text.strip()
+            return summary or "No summary available yet."
+        except Exception as exc:
+            raise ProviderExecutionError(
+                f"Provider summary generation failed: {exc}"
+            ) from exc
 
     def _extract_excerpt(self, contents: str) -> str:
         clean = "\n".join(_markdown_paragraphs(contents)).strip()

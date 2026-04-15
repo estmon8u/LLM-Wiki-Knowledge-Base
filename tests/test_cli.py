@@ -122,7 +122,8 @@ def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
         assert ingest_result.exit_code == 0
         assert "Ingested Sample Research Note" in ingest_result.output
 
-        compile_result = runner.invoke(main, ["compile"])
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            compile_result = runner.invoke(main, ["compile"])
         assert compile_result.exit_code == 0
         assert "Compiled 1 source page(s)" in compile_result.output
 
@@ -163,7 +164,8 @@ def test_end_to_end_cli_flow_for_local_html_source() -> None:
         assert "Ingested HTML Research Note" in ingest_result.output
         assert "raw/normalized/html-research-note.md" in ingest_result.output
 
-        compile_result = runner.invoke(main, ["compile"])
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            compile_result = runner.invoke(main, ["compile"])
         assert compile_result.exit_code == 0
         assert "Compiled 1 source page(s)" in compile_result.output
 
@@ -309,7 +311,8 @@ def test_diff_end_to_end_new_then_compiled() -> None:
         assert "[NEW]" in diff_before.output
         assert "new: 1" in diff_before.output
 
-        assert runner.invoke(main, ["compile"]).exit_code == 0
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            assert runner.invoke(main, ["compile"]).exit_code == 0
 
         diff_after = runner.invoke(main, ["diff"])
         assert diff_after.exit_code == 0
@@ -345,7 +348,8 @@ def test_query_save_prompt_creates_analysis_page() -> None:
         )
         assert runner.invoke(main, ["init"]).exit_code == 0
         assert runner.invoke(main, ["ingest", "sample.md"]).exit_code == 0
-        assert runner.invoke(main, ["compile"]).exit_code == 0
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            assert runner.invoke(main, ["compile"]).exit_code == 0
 
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             result = runner.invoke(
@@ -363,19 +367,18 @@ def test_query_save_prompt_creates_analysis_page() -> None:
         assert "type: analysis" in content
 
 
-def test_review_command_runs_and_reports_mode() -> None:
+def test_review_command_requires_provider() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
         result = runner.invoke(main, ["review"])
 
-        assert result.exit_code == 0
-        assert "Review mode: heuristic" in result.output
-        assert "No review issues found." in result.output
+        assert result.exit_code != 0
+        assert "requires a configured provider" in result.output
 
 
-def test_review_command_reports_overlapping_topics() -> None:
+def test_review_command_reports_overlapping_topics_requires_provider() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -391,8 +394,8 @@ def test_review_command_reports_overlapping_topics() -> None:
 
         result = runner.invoke(main, ["review"])
 
-        assert result.exit_code == 0
-        assert "overlapping-topics" in result.output
+        assert result.exit_code != 0
+        assert "requires a configured provider" in result.output
 
 
 def test_review_adversarial_flag_without_provider_fails() -> None:
@@ -446,7 +449,8 @@ def test_query_piped_input_skips_save_confirm() -> None:
         )
         assert runner.invoke(main, ["init"]).exit_code == 0
         assert runner.invoke(main, ["ingest", "sample.md"]).exit_code == 0
-        assert runner.invoke(main, ["compile"]).exit_code == 0
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            assert runner.invoke(main, ["compile"]).exit_code == 0
 
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             result = runner.invoke(
@@ -467,7 +471,8 @@ def test_query_self_consistency_flag_requires_provider() -> None:
         )
         assert runner.invoke(main, ["init"]).exit_code == 0
         assert runner.invoke(main, ["ingest", "sample.md"]).exit_code == 0
-        assert runner.invoke(main, ["compile"]).exit_code == 0
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            assert runner.invoke(main, ["compile"]).exit_code == 0
 
         result = runner.invoke(
             main,
@@ -520,7 +525,8 @@ def test_provider_override_flag_switches_provider() -> None:
             encoding="utf-8",
         )
         assert runner.invoke(main, ["ingest", "sample.md"]).exit_code == 0
-        assert runner.invoke(main, ["compile"]).exit_code == 0
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            assert runner.invoke(main, ["compile"]).exit_code == 0
 
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             result = runner.invoke(

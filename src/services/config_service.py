@@ -23,7 +23,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "vault_dir": "vault/obsidian",
     },
     "compile": {
-        "summary_paragraph_limit": 2,
         "excerpt_character_limit": 900,
     },
     "lint": {

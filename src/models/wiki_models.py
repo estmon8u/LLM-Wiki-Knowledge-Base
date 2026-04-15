@@ -59,7 +59,7 @@ class ReviewIssue:
 @dataclass
 class ReviewReport:
     issues: list[ReviewIssue] = field(default_factory=list)
-    mode: str = "heuristic"
+    mode: str = ""
     findings: list[ReviewFinding] = field(default_factory=list)
     run_id: Optional[str] = None
 

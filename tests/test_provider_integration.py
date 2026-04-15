@@ -390,13 +390,16 @@ def test_review_service_uses_provider_when_available(test_project) -> None:
     assert provider_issues[0].severity == "warning"
 
 
-def test_review_service_heuristic_only_without_provider(test_project) -> None:
+def test_review_service_requires_provider(test_project) -> None:
+    from src.providers import ProviderConfigurationError
+
     test_project.write_file("wiki/sources/alpha.md", "Some content here.")
     review_service = ReviewService(test_project.paths, provider=None)
 
-    report = review_service.review()
-
-    assert report.mode == "heuristic"
+    with pytest.raises(
+        ProviderConfigurationError, match="requires a configured provider"
+    ):
+        review_service.review()
 
 
 def test_review_service_falls_back_on_provider_error(test_project) -> None:

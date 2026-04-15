@@ -103,10 +103,6 @@ def test_config_service_merges_custom_config(test_project) -> None:
     assert loaded["project"]["name"] == "Custom Project"
     assert loaded["project"]["description"] == DEFAULT_CONFIG["project"]["description"]
     assert loaded["compile"]["excerpt_character_limit"] == 120
-    assert (
-        loaded["compile"]["summary_paragraph_limit"]
-        == DEFAULT_CONFIG["compile"]["summary_paragraph_limit"]
-    )
 
 
 def test_config_service_load_schema_reads_custom_schema(test_project) -> None:
@@ -161,15 +157,14 @@ def test_config_unknown_key_preserved_through_merge(test_project) -> None:
     assert loaded["project"]["name"] == DEFAULT_CONFIG["project"]["name"]
 
 
-def test_config_nested_override_summary_paragraph_limit(test_project) -> None:
+def test_config_nested_override_excerpt_character_limit(test_project) -> None:
     test_project.paths.config_file.write_text(
-        "compile:\n  summary_paragraph_limit: 5\n", encoding="utf-8"
+        "compile:\n  excerpt_character_limit: 500\n", encoding="utf-8"
     )
 
     loaded = ConfigService(test_project.paths).load()
 
-    assert loaded["compile"]["summary_paragraph_limit"] == 5
-    assert loaded["compile"]["excerpt_character_limit"] == 900
+    assert loaded["compile"]["excerpt_character_limit"] == 500
 
 
 def test_config_invalid_yaml_raises(test_project) -> None:
@@ -250,7 +245,7 @@ def test_review_report_issue_count_matches_len() -> None:
         ReviewIssue("suggestion", "terminology-variant", ["c.md"], "msg2"),
         ReviewIssue("suggestion", "overlapping-topics", ["d.md", "e.md"], "msg3"),
     ]
-    report = ReviewReport(issues=issues, mode="heuristic")
+    report = ReviewReport(issues=issues, mode="provider:stub-1")
 
     assert report.issue_count == len(report.issues) == 3
 

@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from src.models.command_models import CommandContext
+from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
 from src.services import build_services
 from src.services.config_service import ConfigService
 from src.services.manifest_service import ManifestService
@@ -33,6 +34,17 @@ class TestProject:
         return path
 
 
+class _StubProvider(TextProvider):
+    """Deterministic provider for tests — echoes a canned summary."""
+
+    name = "stub"
+
+    def generate(self, request: ProviderRequest) -> ProviderResponse:
+        return ProviderResponse(
+            text="Stub summary of the document.", model_name="stub-1"
+        )
+
+
 def create_test_project(root: Path, *, initialized: bool) -> TestProject:
     paths = build_project_paths(root)
     project_service = ProjectService(paths)
@@ -47,6 +59,8 @@ def create_test_project(root: Path, *, initialized: bool) -> TestProject:
     config = config_service.load()
     schema_text = config_service.load_schema()
     services = build_services(paths, config)
+    services["compile"].provider = _StubProvider()
+    services["review"].provider = _StubProvider()
     command_context = CommandContext(
         project_root=paths.root,
         cwd=paths.root,

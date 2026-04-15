@@ -9,7 +9,7 @@ from src.providers import ProviderError
 
 SUMMARY = (
     "Run semantic review checks for contradictions and terminology drift "
-    "(heuristic; model-backed when a provider is configured)."
+    "(requires a configured provider)."
 )
 
 

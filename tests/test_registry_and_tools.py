@@ -176,7 +176,7 @@ def test_review_wiki_tool_returns_structured_payload(test_project) -> None:
     result = _review_wiki({}, tool_context)
 
     assert result.ok is True
-    assert result.data["mode"] == "heuristic"
+    assert result.data["mode"] == "no-sources"
     assert isinstance(result.data["issues"], list)
 
 

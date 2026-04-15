@@ -183,6 +183,7 @@ class ReviewService:
         self.run_store = run_store
 
     def review(self, *, adversarial: bool = False) -> ReviewReport:
+        self._require_provider("kb review")
         issues: list[ReviewIssue] = []
         page_tokens = self._load_page_tokens()
 
@@ -190,7 +191,6 @@ class ReviewService:
         issues.extend(self._check_terminology_variants(page_tokens))
 
         if adversarial:
-            self._require_provider("kb review --adversarial")
             findings, mode, run_id = self._adversarial_review()
             issues.extend(self._findings_to_issues(findings))
             return ReviewReport(
@@ -200,12 +200,8 @@ class ReviewService:
                 run_id=run_id,
             )
 
-        if self.provider is not None:
-            provider_issues, provider_mode = self._provider_review()
-            issues.extend(provider_issues)
-            mode = provider_mode
-        else:
-            mode = "heuristic"
+        provider_issues, mode = self._provider_review()
+        issues.extend(provider_issues)
 
         return ReviewReport(issues=issues, mode=mode)
 
@@ -322,7 +318,7 @@ class ReviewService:
         provider = self._require_provider("Provider-backed review")
         source_dir = self.paths.wiki_dir / "sources"
         if not source_dir.exists():
-            return [], "heuristic"
+            return [], "no-sources"
 
         page_texts: list[str] = []
         for md_file in sorted(source_dir.rglob("*.md")):
@@ -331,7 +327,7 @@ class ReviewService:
             page_texts.append(f"### {rel}\n{text[:2000]}")
 
         if not page_texts:
-            return [], "heuristic"
+            return [], "no-sources"
 
         prompt = "## Wiki Pages\n\n" + "\n\n".join(page_texts)
         try:

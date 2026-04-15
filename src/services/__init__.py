@@ -31,7 +31,7 @@ def build_services(paths: ProjectPaths, config: dict[str, Any]) -> dict[str, Any
         "config": config_service,
         "manifest": manifest_service,
         "ingest": IngestService(paths, manifest_service),
-        "compile": CompileService(paths, config, manifest_service),
+        "compile": CompileService(paths, config, manifest_service, provider=provider),
         "diff": DiffService(paths, manifest_service),
         "lint": LintService(paths, config, manifest_service),
         "search": search_service,

@@ -41,7 +41,7 @@ def test_review_service_finds_no_issues_on_empty_wiki(test_project) -> None:
     report = test_project.services["review"].review()
 
     assert report.issue_count == 0
-    assert report.mode == "heuristic"
+    assert report.mode == "no-sources"
 
 
 def test_review_service_adversarial_on_empty_wiki_returns_provider_mode(
@@ -130,11 +130,11 @@ def test_review_report_properties() -> None:
             ReviewIssue("suggestion", "overlapping-topics", ["a.md", "b.md"], "test"),
             ReviewIssue("suggestion", "terminology-variant", ["a.md"], "variant"),
         ],
-        mode="heuristic",
+        mode="provider:stub-1",
     )
 
     assert report.issue_count == 2
-    assert report.mode == "heuristic"
+    assert report.mode == "provider:stub-1"
 
 
 # --- P1 boundary/negative tests ---
@@ -239,17 +239,10 @@ def test_review_single_source_page_no_overlap(test_project) -> None:
 def test_review_service_adversarial_without_provider_raises_configuration_error(
     test_project,
 ) -> None:
-    test_project.write_file(
-        "wiki/sources/alpha.md",
-        "# Alpha\n\n## Timeline\n\nIn 2026 the workflow stores source hashes.\n",
-    )
-    test_project.write_file(
-        "wiki/sources/beta.md",
-        "# Beta\n\n## Timeline\n\nIn 2026 the workflow exports vault files.\n",
-    )
+    service = ReviewService(test_project.paths, provider=None)
 
-    with pytest.raises(ProviderConfigurationError, match="kb review --adversarial"):
-        test_project.services["review"].review(adversarial=True)
+    with pytest.raises(ProviderConfigurationError, match="kb review"):
+        service.review(adversarial=True)
 
 
 def test_review_service_build_candidate_pairs_uses_headings_years_and_variants(
@@ -283,7 +276,7 @@ def test_review_service_extract_page_title_falls_back_to_stem(test_project) -> N
     assert title == "Alpha Page"
 
 
-def test_review_service_provider_review_on_empty_sources_dir_returns_heuristic(
+def test_review_service_provider_review_on_empty_sources_dir_returns_no_sources(
     test_project,
 ) -> None:
     provider = SequencedReviewProvider([])
@@ -293,7 +286,7 @@ def test_review_service_provider_review_on_empty_sources_dir_returns_heuristic(
     issues, mode = service._provider_review()
 
     assert issues == []
-    assert mode == "heuristic"
+    assert mode == "no-sources"
 
 
 def test_review_service_parse_extracted_claims_skips_malformed_lines() -> None:

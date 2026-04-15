@@ -55,7 +55,7 @@ class QueryAnswer:
     answer: str
     citations: list[SearchResult]
     saved_path: str | None = None
-    mode: str = "heuristic"
+    mode: str = ""
     run_id: str | None = None
 
 

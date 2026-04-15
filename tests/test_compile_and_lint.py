@@ -123,7 +123,7 @@ def test_compile_service_handles_empty_manifest(test_project) -> None:
     )
 
 
-def test_compile_service_uses_fallback_summary_and_excerpt_when_no_paragraphs(
+def test_compile_service_uses_provider_summary_for_minimal_content(
     test_project,
 ) -> None:
     source = _ingest_source(test_project, "notes/empty.md", "# Empty\n")
@@ -133,7 +133,7 @@ def test_compile_service_uses_fallback_summary_and_excerpt_when_no_paragraphs(
     article_text = (
         test_project.root / "wiki" / "sources" / (source.slug + ".md")
     ).read_text(encoding="utf-8")
-    assert "Empty" in article_text
+    assert "Stub summary of the document." in article_text
     assert "## Summary" in article_text
     assert "## Key Excerpt" in article_text
 
@@ -654,24 +654,20 @@ def test_lint_case_insensitive_duplicate_heading(test_project) -> None:
     assert len(dup_issues) >= 1
 
 
-def test_compile_custom_summary_paragraph_limit(test_project) -> None:
-    test_project.config["compile"]["summary_paragraph_limit"] = 1
+def test_compile_requires_provider(test_project) -> None:
+    from src.providers import ProviderConfigurationError
+
+    test_project.services["compile"].provider = None
     _ingest_source(
         test_project,
         "notes/multi.md",
         "# Multi\n\nFirst para.\n\nSecond para.\n",
     )
 
-    test_project.services["compile"].compile()
-
-    article = (test_project.root / "wiki" / "sources" / "multi.md").read_text(
-        encoding="utf-8"
-    )
-    summary_start = article.index("## Summary")
-    details_start = article.index("## Source Details")
-    summary_section = article[summary_start:details_start]
-    assert "First para." in summary_section
-    assert "Second para." not in summary_section
+    with pytest.raises(
+        ProviderConfigurationError, match="requires a configured provider"
+    ):
+        test_project.services["compile"].compile()
 
 
 def test_compile_custom_excerpt_character_limit(test_project) -> None:
@@ -1085,3 +1081,68 @@ def test_lint_ignores_broken_links_inside_key_excerpt(test_project) -> None:
     ]
 
     assert link_issues == []
+
+
+# --- Provider-backed compile tests ---
+
+
+def test_compile_provider_empty_content_returns_no_content_message(
+    test_project,
+) -> None:
+    from src.services.compile_service import CompileService
+
+    service = test_project.services["compile"]
+    summary = service._extract_summary("")
+
+    assert summary == "No content available for summarization."
+
+
+def test_compile_provider_empty_response_falls_back(test_project) -> None:
+    from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
+
+    class EmptyProvider(TextProvider):
+        name = "empty"
+
+        def generate(self, request: ProviderRequest) -> ProviderResponse:
+            return ProviderResponse(text="", model_name="empty-v1")
+
+    test_project.services["compile"].provider = EmptyProvider()
+    _ingest_source(test_project, "notes/doc.md", "# Doc\n\nSome content.\n")
+
+    test_project.services["compile"].compile()
+
+    article = (test_project.root / "wiki" / "sources" / "doc.md").read_text(
+        encoding="utf-8"
+    )
+    assert "No summary available yet." in article
+
+
+def test_compile_provider_error_raises_execution_error(test_project) -> None:
+    from src.providers import ProviderExecutionError
+    from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
+
+    class ErrorProvider(TextProvider):
+        name = "error"
+
+        def generate(self, request: ProviderRequest) -> ProviderResponse:
+            raise RuntimeError("API timeout")
+
+    test_project.services["compile"].provider = ErrorProvider()
+    _ingest_source(test_project, "notes/doc.md", "# Doc\n\nSome content.\n")
+
+    with pytest.raises(ProviderExecutionError, match="API timeout"):
+        test_project.services["compile"].compile()
+
+
+def test_compile_unavailable_provider_raises_configuration_error(
+    test_project,
+) -> None:
+    from src.providers import ProviderConfigurationError, UnavailableProvider
+
+    test_project.services["compile"].provider = UnavailableProvider(
+        "No API key set", provider_name="test"
+    )
+    _ingest_source(test_project, "notes/doc.md", "# Doc\n\nBody.\n")
+
+    with pytest.raises(ProviderConfigurationError, match="No API key set"):
+        test_project.services["compile"].compile()

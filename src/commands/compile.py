@@ -4,9 +4,10 @@ import click
 
 from src.commands.common import require_initialized
 from src.models.command_models import CommandContext, CommandSpec
+from src.providers import ProviderError
 
 
-SUMMARY = "Compile source pages and refresh the wiki index and activity log."
+SUMMARY = "Compile source pages and refresh the wiki index and activity log (requires a configured provider)."
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
@@ -26,7 +27,10 @@ def create_command() -> click.Command:
     def command(command_context: CommandContext, force: bool) -> None:
         require_initialized(command_context)
         compile_service = command_context.services["compile"]
-        result = compile_service.compile(force=force)
+        try:
+            result = compile_service.compile(force=force)
+        except ProviderError as exc:
+            raise click.ClickException(str(exc)) from exc
         click.echo(f"Compiled {result.compiled_count} source page(s)")
         click.echo(f"Skipped {result.skipped_count} source page(s)")
         for path in result.compiled_paths:
