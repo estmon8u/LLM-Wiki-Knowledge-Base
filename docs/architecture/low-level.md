@@ -7,7 +7,11 @@
 | `src/cli.py` | Builds the CLI entrypoint and runtime context |
 | `src/engine/command_registry.py` | Registers the available CLI commands |
 | `src/engine/tool_registry.py` | Holds the internal tool boundary for future agent-style actions |
-| `src/providers/base.py` | Defines the provider abstraction placeholder |
+| `src/providers/base.py` | Defines the provider abstraction: `ProviderRequest`, `ProviderResponse`, `TextProvider` |
+| `src/providers/__init__.py` | Factory `build_provider(config)` — lazy-imports the right provider by name |
+| `src/providers/openai_provider.py` | OpenAI chat-completions provider (`gpt-5.4-mini`); `reasoning_effort="high"` |
+| `src/providers/anthropic_provider.py` | Anthropic messages provider (`claude-sonnet-4-6`); extended thinking enabled (10 000-token budget) |
+| `src/providers/gemini_provider.py` | Google Gemini provider (`gemini-3.1-flash-lite-preview`); `thinking_level="high"` |
 
 ## Current Command Files
 

@@ -28,7 +28,10 @@ class GeminiProvider(TextProvider):
         self._client = genai.Client(api_key=api_key)
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
-        config_kwargs: dict = {"max_output_tokens": request.max_tokens}
+        config_kwargs: dict = {
+            "max_output_tokens": request.max_tokens,
+            "thinking_config": types.ThinkingConfig(thinking_level="high"),
+        }
         if request.system_prompt:
             config_kwargs["system_instruction"] = request.system_prompt
         response = self._client.models.generate_content(

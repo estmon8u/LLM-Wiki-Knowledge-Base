@@ -24,14 +24,21 @@ class AnthropicProvider(TextProvider):
             )
         self._client = Anthropic(api_key=api_key)
 
+    _THINKING_BUDGET = 10_000
+
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        max_tokens = max(request.max_tokens, self._THINKING_BUDGET + 4096)
         kwargs: dict = {
             "model": self.model,
-            "max_tokens": request.max_tokens,
+            "max_tokens": max_tokens,
             "messages": [{"role": "user", "content": request.prompt}],
+            "thinking": {
+                "type": "enabled",
+                "budget_tokens": self._THINKING_BUDGET,
+            },
         }
         if request.system_prompt:
             kwargs["system"] = request.system_prompt
         message = self._client.messages.create(**kwargs)
-        text = message.content[0].text if message.content else ""
+        text = next((b.text for b in message.content if b.type == "text"), "")
         return ProviderResponse(text=text.strip(), model_name=self.model)

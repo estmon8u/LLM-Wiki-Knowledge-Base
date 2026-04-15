@@ -193,6 +193,7 @@ def test_anthropic_provider_generate() -> None:
             provider = AnthropicProvider(model="claude-sonnet-4-6")
             mock_message = MagicMock()
             mock_block = MagicMock()
+            mock_block.type = "text"
             mock_block.text = " Claude says hi "
             mock_message.content = [mock_block]
             MockClient.return_value.messages.create.return_value = mock_message
@@ -213,6 +214,7 @@ def test_anthropic_provider_generate_without_system_prompt() -> None:
             provider = AnthropicProvider()
             mock_message = MagicMock()
             mock_block = MagicMock()
+            mock_block.type = "text"
             mock_block.text = "response"
             mock_message.content = [mock_block]
             MockClient.return_value.messages.create.return_value = mock_message

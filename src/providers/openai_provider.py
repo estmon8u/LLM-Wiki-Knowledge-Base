@@ -32,7 +32,8 @@ class OpenAIProvider(TextProvider):
         completion = self._client.chat.completions.create(
             model=self.model,
             messages=messages,
-            max_tokens=request.max_tokens,
+            max_completion_tokens=request.max_tokens,
+            reasoning_effort="high",
         )
         text = completion.choices[0].message.content or ""
         return ProviderResponse(text=text.strip(), model_name=self.model)
