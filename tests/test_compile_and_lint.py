@@ -1,10 +1,20 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from src.models.wiki_models import LintIssue, LintReport
 from src.services.compile_service import _markdown_paragraphs, _strip_frontmatter
-from src.services.lint_service import _split_frontmatter
+from src.services.lint_service import (
+    _split_frontmatter,
+    _split_markdown_target,
+    _strip_fenced_code_blocks,
+    _page_title,
+    _extract_headings,
+    _fragment_exists,
+    _resolve_markdown_target,
+    _PageState,
+)
 
 
 def _ingest_source(test_project, relative_path: str, content: str):
@@ -389,3 +399,170 @@ def test_lint_report_properties_count_issue_severities() -> None:
     assert report.error_count == 1
     assert report.warning_count == 1
     assert report.suggestion_count == 1
+
+
+# --- P0 coverage tests: lint helpers and uncovered branches ---
+
+
+def test_strip_fenced_code_blocks_removes_backtick_and_tilde_fences() -> None:
+    text = (
+        "Before\n"
+        "```python\n"
+        "[[hidden-link]]\n"
+        "```\n"
+        "Between\n"
+        "~~~\n"
+        "# fake heading inside tilde fence\n"
+        "~~~\n"
+        "After\n"
+    )
+
+    result = _strip_fenced_code_blocks(text)
+
+    assert "[[hidden-link]]" not in result
+    assert "fake heading inside tilde fence" not in result
+    assert "Before" in result
+    assert "Between" in result
+    assert "After" in result
+
+
+def test_split_markdown_target_handles_angle_brackets_and_space_title() -> None:
+    dest, frag = _split_markdown_target("<page.md#section>")
+    assert dest == "page.md"
+    assert frag == "section"
+
+    dest2, frag2 = _split_markdown_target('page.md "link title"')
+    assert dest2 == "page.md"
+    assert frag2 == ""
+
+
+def test_page_title_falls_back_to_file_stem() -> None:
+    title = _page_title(Path("wiki/sources/my-page.md"), None, [])
+    assert title == "my-page"
+
+    title_with_empty_fm = _page_title(Path("wiki/sources/other.md"), {"title": ""}, [])
+    assert title_with_empty_fm != ""
+
+
+def test_lint_ignores_links_inside_fenced_code_blocks(test_project) -> None:
+    test_project.write_file(
+        "wiki/sources/code-page.md",
+        _compiled_page(
+            "Code Page",
+            (
+                "Body text.\n\n"
+                "```markdown\n"
+                "[[nonexistent-page]]\n"
+                "[broken](missing.md)\n"
+                "```\n"
+            ),
+        ),
+    )
+
+    report = test_project.services["lint"].lint()
+
+    assert not any(
+        issue.code in ("broken-link", "broken-markdown-link")
+        and "code-page" in issue.path
+        for issue in report.issues
+    )
+
+
+def test_lint_ignores_image_links() -> None:
+    from src.services.lint_service import MARKDOWN_LINK_PATTERN
+
+    image = "![alt text](image.png)"
+    assert MARKDOWN_LINK_PATTERN.search(image) is None
+
+    link = "[text](page.md)"
+    assert MARKDOWN_LINK_PATTERN.search(link) is not None
+
+
+def test_lint_empty_page_skips_non_source_directories(test_project) -> None:
+    test_project.write_file(
+        "wiki/index.md",
+        "---\ntitle: Index\n---\n\n# Index\n",
+    )
+
+    report = test_project.services["lint"].lint()
+
+    assert not any(
+        issue.code == "empty-page" and issue.path == "wiki/index.md"
+        for issue in report.issues
+    )
+
+
+def test_lint_fragment_only_link_checks_current_page_anchors(test_project) -> None:
+    test_project.write_file(
+        "wiki/sources/self-ref.md",
+        _compiled_page(
+            "Self Ref",
+            (
+                "## Present Section\n\n"
+                "See [above](#present-section) and [missing](#no-such-heading).\n"
+            ),
+        ),
+    )
+
+    report = test_project.services["lint"].lint()
+    fragment_issues = [
+        i for i in report.issues if i.code == "broken-fragment" and "self-ref" in i.path
+    ]
+
+    assert len(fragment_issues) == 1
+    assert "no-such-heading" in fragment_issues[0].message
+
+
+# --- P0 remaining: defensive branches and edge-case helpers ---
+
+
+def test_extract_headings_skips_empty_normalized_titles() -> None:
+    content = "# Valid Heading\n\n#  \n\n## Another\n"
+
+    headings = _extract_headings(content)
+
+    assert len(headings) == 2
+    assert headings[0] == (1, "Valid Heading")
+    assert headings[1] == (2, "Another")
+
+
+def test_fragment_exists_returns_false_for_empty_fragment() -> None:
+    state = _PageState(
+        file_path=Path("wiki/sources/test.md"),
+        relative_path="wiki/sources/test.md",
+        frontmatter=None,
+        content="",
+        analysis_text="",
+        headings=[],
+        anchors={"some-heading"},
+        page_title="test",
+    )
+
+    assert _fragment_exists(state, "") is False
+    assert _fragment_exists(state, "   ") is False
+    assert _fragment_exists(state, "some-heading") is True
+
+
+def test_resolve_markdown_target_handles_absolute_path() -> None:
+    current = Path("wiki/sources/page.md")
+    result = _resolve_markdown_target(current, "/absolute/path.md")
+
+    assert result.is_absolute()
+    assert result.name == "path.md"
+
+
+def test_lint_heading_structure_returns_empty_for_no_headings(test_project) -> None:
+    test_project.write_file(
+        "wiki/sources/no-headings.md",
+        "---\ntitle: No Headings\nsummary: Summary\nsource_id: id\n"
+        "raw_path: raw/f.md\nsource_hash: h\ncompiled_at: 2026-04-14T00:00:00Z\n"
+        "---\n\nJust body text with no headings at all.\n",
+    )
+
+    report = test_project.services["lint"].lint()
+
+    assert not any(
+        issue.code in ("heading-level-skip", "multiple-h1", "duplicate-heading")
+        and "no-headings" in issue.path
+        for issue in report.issues
+    )

@@ -62,6 +62,18 @@ def test_query_service_save_answer_writes_analysis_page(test_project) -> None:
     assert "Citations" in content
 
 
+def test_query_service_save_answer_uses_fallback_slug_for_empty_question(
+    test_project,
+) -> None:
+    test_project.write_file("wiki/sources/citations.md", "traceability appears here")
+    answer = test_project.services["query"].answer_question("traceability")
+
+    saved_path = test_project.services["query"].save_answer("???", answer)
+
+    assert saved_path.startswith("wiki/concepts/analysis-")
+    assert (test_project.root / saved_path).exists()
+
+
 def test_export_service_copies_all_markdown_files(test_project) -> None:
     test_project.write_file("wiki/sources/a.md", "A")
     test_project.write_file("wiki/index.md", "Index")
