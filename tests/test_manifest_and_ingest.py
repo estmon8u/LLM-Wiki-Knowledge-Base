@@ -219,3 +219,58 @@ def test_ingest_service_uses_unique_slug_for_duplicate_titles(test_project) -> N
 
     assert first_result.source.slug == "same-title"
     assert second_result.source.slug == "same-title-2"
+
+
+# --- P1 boundary/negative tests ---
+
+
+def test_find_by_hash_miss_returns_none(test_project) -> None:
+    source_path = test_project.write_file("notes/item.md", "# Item\n\nBody.\n")
+    test_project.services["ingest"].ingest_path(source_path)
+
+    assert test_project.services["manifest"].find_by_hash("nonexistent-hash") is None
+
+
+def test_save_source_appends_new_record(test_project) -> None:
+    manifest = test_project.services["manifest"]
+    record = RawSourceRecord(
+        source_id="new-id",
+        slug="new-record",
+        title="New Record",
+        origin="new.md",
+        source_type="file",
+        raw_path="raw/sources/new.md",
+        content_hash="new-hash",
+        ingested_at=utc_now_iso(),
+    )
+
+    manifest.save_source(record)
+
+    sources = manifest.list_sources()
+    assert len(sources) == 1
+    assert sources[0].source_id == "new-id"
+
+    second = RawSourceRecord(
+        source_id="second-id",
+        slug="second-record",
+        title="Second Record",
+        origin="second.md",
+        source_type="file",
+        raw_path="raw/sources/second.md",
+        content_hash="second-hash",
+        ingested_at=utc_now_iso(),
+    )
+    manifest.save_source(second)
+
+    sources = manifest.list_sources()
+    assert len(sources) == 2
+    assert sources[1].source_id == "second-id"
+
+
+def test_manifest_write_creates_missing_parent(uninitialized_project) -> None:
+    manifest_file = uninitialized_project.paths.raw_manifest_file
+    assert not manifest_file.parent.exists()
+
+    uninitialized_project.services["manifest"].ensure_manifest()
+
+    assert manifest_file.exists()

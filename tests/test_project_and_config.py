@@ -145,3 +145,69 @@ def test_build_services_returns_expected_keys(test_project) -> None:
         "query",
         "export",
     }
+
+
+# --- P1 boundary/negative tests ---
+
+
+def test_config_unknown_key_preserved_through_merge(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "custom_key: custom_value\n", encoding="utf-8"
+    )
+
+    loaded = ConfigService(test_project.paths).load()
+
+    assert loaded["custom_key"] == "custom_value"
+    assert loaded["project"]["name"] == DEFAULT_CONFIG["project"]["name"]
+
+
+def test_config_nested_override_summary_paragraph_limit(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "compile:\n  summary_paragraph_limit: 5\n", encoding="utf-8"
+    )
+
+    loaded = ConfigService(test_project.paths).load()
+
+    assert loaded["compile"]["summary_paragraph_limit"] == 5
+    assert loaded["compile"]["excerpt_character_limit"] == 900
+
+
+def test_config_invalid_yaml_raises(test_project) -> None:
+    import pytest
+    import yaml
+
+    test_project.paths.config_file.write_text(
+        "invalid: yaml: [broken\n", encoding="utf-8"
+    )
+
+    with pytest.raises(yaml.YAMLError):
+        ConfigService(test_project.paths).load()
+
+
+def test_discover_project_root_finds_schema_only(tmp_path: Path) -> None:
+    (tmp_path / "kb.schema.md").write_text("# Schema\n", encoding="utf-8")
+    nested = tmp_path / "sub" / "deep"
+    nested.mkdir(parents=True)
+
+    assert discover_project_root(nested) == tmp_path.resolve()
+
+
+def test_ensure_structure_returns_only_newly_created(test_project) -> None:
+    project_service = ProjectService(test_project.paths)
+
+    first_run = project_service.ensure_structure()
+    assert first_run == []
+
+    new_dir = test_project.paths.graph_exports_dir
+    if new_dir.exists():
+        new_dir.rmdir()
+
+    second_run = project_service.ensure_structure()
+    assert "graph/exports" in second_run
+    assert len(second_run) == 1
+
+
+def test_slugify_all_special_characters() -> None:
+    assert slugify("!!!???") == "untitled"
+    assert slugify("@#$%^&*") == "untitled"
+    assert slugify("   ") == "untitled"

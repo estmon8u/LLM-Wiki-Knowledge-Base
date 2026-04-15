@@ -566,3 +566,156 @@ def test_lint_heading_structure_returns_empty_for_no_headings(test_project) -> N
         and "no-headings" in issue.path
         for issue in report.issues
     )
+
+
+# --- P1 boundary/negative tests ---
+
+
+def test_lint_valid_frontmatter_produces_no_type_issues(test_project) -> None:
+    test_project.write_file(
+        "wiki/sources/valid-types.md",
+        "---\n"
+        "title: Valid Page\n"
+        "summary: A valid summary\n"
+        "source_id: id-1\n"
+        "raw_path: raw/file.md\n"
+        "source_hash: hash-1\n"
+        "origin: origin.md\n"
+        "normalized_path: raw/normalized/file.md\n"
+        "compiled_at: 2026-04-14T00:00:00Z\n"
+        "ingested_at: 2026-04-14T00:00:00Z\n"
+        "tags:\n"
+        "  - research\n"
+        "  - capstone\n"
+        "---\n\n"
+        "# Valid Page\n\nBody content.\n",
+    )
+
+    report = test_project.services["lint"].lint()
+    type_issues = [
+        i
+        for i in report.issues
+        if i.code in ("invalid-field-type", "invalid-date-format")
+        and "valid-types" in i.path
+    ]
+
+    assert type_issues == []
+
+
+def test_lint_yaml_datetime_coercion_passes_date_check(test_project) -> None:
+    test_project.write_file(
+        "wiki/sources/bare-date.md",
+        "---\n"
+        "title: Bare Date\n"
+        "summary: Summary\n"
+        "source_id: id-1\n"
+        "raw_path: raw/file.md\n"
+        "source_hash: hash-1\n"
+        "compiled_at: 2026-04-14\n"
+        "---\n\n"
+        "# Bare Date\n\nBody.\n",
+    )
+
+    report = test_project.services["lint"].lint()
+    date_issues = [
+        i
+        for i in report.issues
+        if i.code == "invalid-date-format" and "bare-date" in i.path
+    ]
+
+    assert date_issues == []
+
+
+def test_lint_case_insensitive_duplicate_heading(test_project) -> None:
+    test_project.write_file(
+        "wiki/sources/case-dup.md",
+        _compiled_page("Case Dup", "## Setup\n\nFirst.\n\n## setup\n\nSecond.\n"),
+    )
+
+    report = test_project.services["lint"].lint()
+    dup_issues = [
+        i
+        for i in report.issues
+        if i.code == "duplicate-heading" and "case-dup" in i.path
+    ]
+
+    assert len(dup_issues) >= 1
+
+
+def test_compile_custom_summary_paragraph_limit(test_project) -> None:
+    test_project.config["compile"]["summary_paragraph_limit"] = 1
+    _ingest_source(
+        test_project,
+        "notes/multi.md",
+        "# Multi\n\nFirst para.\n\nSecond para.\n",
+    )
+
+    test_project.services["compile"].compile()
+
+    article = (test_project.root / "wiki" / "sources" / "multi.md").read_text(
+        encoding="utf-8"
+    )
+    summary_start = article.index("## Summary")
+    details_start = article.index("## Source Details")
+    summary_section = article[summary_start:details_start]
+    assert "First para." in summary_section
+    assert "Second para." not in summary_section
+
+
+def test_compile_custom_excerpt_character_limit(test_project) -> None:
+    test_project.config["compile"]["excerpt_character_limit"] = 30
+    long_para = "A" * 100
+    _ingest_source(test_project, "notes/long.md", f"# Long\n\n{long_para}\n")
+
+    test_project.services["compile"].compile()
+
+    article = (test_project.root / "wiki" / "sources" / "long.md").read_text(
+        encoding="utf-8"
+    )
+    excerpt_start = article.index("## Key Excerpt")
+    excerpt_section = article[excerpt_start + len("## Key Excerpt") :]
+    assert len(excerpt_section.strip()) <= 30
+
+
+def test_compile_includes_canonical_file_line_when_normalized_path_set(
+    test_project,
+) -> None:
+    _ingest_source(test_project, "notes/canon.md", "# Canon\n\nBody text.\n")
+
+    test_project.services["compile"].compile()
+
+    article = (test_project.root / "wiki" / "sources" / "canon.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Canonical file:" in article
+
+
+def test_compile_omits_canonical_file_line_when_normalized_path_none(
+    test_project,
+) -> None:
+    _ingest_source(test_project, "notes/nocanon.md", "# No Canon\n\nBody text.\n")
+    sources = test_project.services["manifest"].list_sources()
+    for source in sources:
+        if source.slug == "no-canon":
+            source.normalized_path = None
+            test_project.services["manifest"].save_source(source)
+
+    test_project.services["compile"].compile()
+
+    article = (test_project.root / "wiki" / "sources" / "no-canon.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Canonical file:" not in article
+
+
+def test_compile_appends_to_existing_log(test_project) -> None:
+    test_project.paths.wiki_log_file.write_text(
+        "# Activity Log\n\nPre-existing entry.\n", encoding="utf-8"
+    )
+    _ingest_source(test_project, "notes/log.md", "# Log\n\nBody.\n")
+
+    test_project.services["compile"].compile()
+
+    log_text = test_project.paths.wiki_log_file.read_text(encoding="utf-8")
+    assert "Pre-existing entry." in log_text
+    assert "compiled 1 source page(s)" in log_text

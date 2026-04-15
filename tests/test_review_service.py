@@ -74,3 +74,102 @@ def test_review_report_properties() -> None:
 
     assert report.issue_count == 2
     assert report.mode == "heuristic"
+
+
+# --- P1 boundary/negative tests ---
+
+
+def test_review_overlap_exactly_at_threshold(test_project) -> None:
+    # Jaccard = 11/20 = 0.55 (exactly at _OVERLAP_THRESHOLD)
+    # Shared 11: knowledge system traceability citation markdown compile query ingest lint review vault
+    # A-only 4: normalize config schema provider  → set_a = 15
+    # B-only 5: export search status model deploy  → set_b = 16, union = 20
+    test_project.write_file(
+        "wiki/sources/overlap-a.md",
+        "knowledge system traceability citation markdown "
+        "compile query ingest lint review vault "
+        "normalize config schema provider",
+    )
+    test_project.write_file(
+        "wiki/sources/overlap-b.md",
+        "knowledge system traceability citation markdown "
+        "compile query ingest lint review vault "
+        "export search status model deploy",
+    )
+
+    report = test_project.services["review"].review()
+    overlap_issues = [i for i in report.issues if i.code == "overlapping-topics"]
+
+    assert len(overlap_issues) >= 1
+
+
+def test_review_overlap_below_threshold(test_project) -> None:
+    # Jaccard = 6/11 ≈ 0.5454 (below 0.55 threshold)
+    # Shared 6: knowledge system traceability citation markdown compile
+    # A-only 2: normalize config  → set_a = 8
+    # B-only 3: export search status  → set_b = 9, union = 11
+    test_project.write_file(
+        "wiki/sources/below-a.md",
+        "knowledge system traceability citation markdown compile normalize config",
+    )
+    test_project.write_file(
+        "wiki/sources/below-b.md",
+        "knowledge system traceability citation markdown compile export search status",
+    )
+
+    report = test_project.services["review"].review()
+    overlap_issues = [
+        i
+        for i in report.issues
+        if i.code == "overlapping-topics"
+        and "below-a" in " ".join(i.pages)
+        and "below-b" in " ".join(i.pages)
+    ]
+
+    assert len(overlap_issues) == 0
+
+
+def test_review_multi_agent_terminology_variant(test_project) -> None:
+    test_project.write_file(
+        "wiki/sources/variant-a.md",
+        "The multi-agent system handles reasoning.",
+    )
+    test_project.write_file(
+        "wiki/sources/variant-b.md",
+        "The multiagent system handles compilation.",
+    )
+
+    report = test_project.services["review"].review()
+    variant_issues = [i for i in report.issues if i.code == "terminology-variant"]
+
+    assert len(variant_issues) >= 1
+    variants_text = " ".join(i.message for i in variant_issues)
+    assert "multi-agent" in variants_text or "multiagent" in variants_text
+
+
+def test_review_concept_only_pages_no_overlap(test_project) -> None:
+    test_project.write_file(
+        "wiki/concepts/topic-a.md",
+        "knowledge base traceability citation markdown wiki compile ingest lint query",
+    )
+    test_project.write_file(
+        "wiki/concepts/topic-b.md",
+        "knowledge base traceability citation markdown wiki compile ingest lint query",
+    )
+
+    report = test_project.services["review"].review()
+    overlap_issues = [i for i in report.issues if i.code == "overlapping-topics"]
+
+    assert len(overlap_issues) == 0
+
+
+def test_review_single_source_page_no_overlap(test_project) -> None:
+    test_project.write_file(
+        "wiki/sources/solo.md",
+        "knowledge base traceability citation markdown wiki compile ingest lint query",
+    )
+
+    report = test_project.services["review"].review()
+    overlap_issues = [i for i in report.issues if i.code == "overlapping-topics"]
+
+    assert len(overlap_issues) == 0

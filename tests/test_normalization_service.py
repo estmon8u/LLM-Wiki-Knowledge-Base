@@ -259,3 +259,52 @@ def test_normalization_service_rejects_unsupported_suffix(tmp_path: Path) -> Non
 
     with pytest.raises(ValueError, match="Supported ingest inputs are canonical text"):
         NormalizationService().normalize_path(source_path)
+
+
+# --- P1 boundary/negative tests ---
+
+
+def test_normalization_service_routes_markdown_extension(tmp_path: Path) -> None:
+    source_path = tmp_path / "sample.markdown"
+    source_path.write_text("# Markdown Ext\n\nBody.\n", encoding="utf-8")
+
+    result = NormalizationService().normalize_path(source_path)
+
+    assert result.title == "Markdown Ext"
+    assert result.normalized_suffix == ".md"
+    assert result.metadata["normalization_route"] == "markdown-passthrough"
+
+
+def test_normalization_service_adds_trailing_newline(tmp_path: Path) -> None:
+    source_path = tmp_path / "no-newline.md"
+    source_path.write_text("# Title\n\nNo trailing newline", encoding="utf-8")
+
+    result = NormalizationService().normalize_path(source_path)
+
+    assert result.normalized_text.endswith("\n")
+    assert not result.normalized_text.endswith("\n\n")
+
+
+def test_normalization_service_newline_only_file(tmp_path: Path) -> None:
+    source_path = tmp_path / "newline-only.md"
+    source_path.write_text("\n", encoding="utf-8")
+
+    result = NormalizationService().normalize_path(source_path)
+
+    assert result.normalized_text == "\n"
+
+
+def test_extract_title_empty_file_falls_back_to_filename() -> None:
+    from src.services.normalization_service import _extract_title
+
+    assert _extract_title("", Path("my-research.md")) == "My Research"
+
+
+def test_extract_title_long_first_line_truncates() -> None:
+    from src.services.normalization_service import _extract_title
+
+    long_line = "A" * 200
+    title = _extract_title(long_line, Path("source.md"))
+
+    assert len(title) == 80
+    assert title == "A" * 80

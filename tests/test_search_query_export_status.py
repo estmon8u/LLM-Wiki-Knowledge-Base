@@ -74,6 +74,63 @@ def test_query_service_save_answer_uses_fallback_slug_for_empty_question(
     assert (test_project.root / saved_path).exists()
 
 
+# --- P1 boundary/negative tests ---
+
+
+def test_search_special_characters_split_on_word_boundaries(test_project) -> None:
+    test_project.write_file("wiki/sources/llm.md", "LLM-based research from 2026")
+
+    results = test_project.services["search"].search("LLM-based (2026)")
+
+    assert len(results) >= 1
+    assert any("llm" in r.path for r in results)
+
+
+def test_search_respects_limit_with_many_pages(test_project) -> None:
+    for i in range(12):
+        test_project.write_file(f"wiki/sources/page-{i}.md", f"alpha content {i}")
+
+    results = test_project.services["search"].search("alpha", limit=3)
+
+    assert len(results) == 3
+
+
+def test_search_matches_terms_in_frontmatter(test_project) -> None:
+    test_project.write_file(
+        "wiki/sources/fm-match.md",
+        "---\ntitle: traceability overview\n---\n\nBody without the keyword.\n",
+    )
+
+    results = test_project.services["search"].search("traceability")
+
+    assert len(results) >= 1
+    assert any("fm-match" in r.path for r in results)
+
+
+def test_extract_snippet_term_at_position_zero() -> None:
+    text = "gamma delta epsilon zeta theta"
+
+    snippet = _extract_snippet(text, ["gamma"])
+
+    assert snippet.startswith("gamma")
+
+
+def test_save_answer_creates_parent_directory(test_project) -> None:
+    import shutil
+
+    concepts_dir = test_project.paths.wiki_concepts_dir
+    if concepts_dir.exists():
+        shutil.rmtree(concepts_dir)
+    test_project.write_file("wiki/sources/citations.md", "traceability appears here")
+    answer = test_project.services["query"].answer_question("traceability")
+
+    saved_path = test_project.services["query"].save_answer(
+        "What is traceability?", answer
+    )
+
+    assert (test_project.root / saved_path).exists()
+
+
 def test_export_service_copies_all_markdown_files(test_project) -> None:
     test_project.write_file("wiki/sources/a.md", "A")
     test_project.write_file("wiki/index.md", "Index")
