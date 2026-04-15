@@ -35,6 +35,14 @@ _FIELD_TYPE_SPEC: Dict[str, str] = {
     "compiled_at": "date",
     "ingested_at": "date",
     "tags": "list",
+    "type": "string",
+    "question": "string",
+    "saved_at": "date",
+    "citations": "list",
+    "generated_at": "date",
+    "generator": "string",
+    "source_pages": "list",
+    "topic_terms": "list",
 }
 
 
@@ -91,15 +99,25 @@ class LintService:
                         )
                     )
                 else:
+                    page_type = state.frontmatter.get("type")
                     is_concept_page = (
                         state.file_path.parent == self.paths.wiki_concepts_dir
-                        and state.frontmatter.get("type") == "analysis"
+                        and page_type in {"analysis", "concept"}
                     )
-                    required_fields = (
-                        ["title"]
-                        if is_concept_page
-                        else self.config["lint"]["required_frontmatter_fields"]
-                    )
+                    if is_concept_page and page_type == "concept":
+                        required_fields = [
+                            "title",
+                            "summary",
+                            "type",
+                            "generated_at",
+                            "source_pages",
+                        ]
+                    elif is_concept_page:
+                        required_fields = ["title"]
+                    else:
+                        required_fields = self.config["lint"][
+                            "required_frontmatter_fields"
+                        ]
                     for field_name in required_fields:
                         if field_name not in state.frontmatter:
                             issues.append(

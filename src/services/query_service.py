@@ -329,9 +329,9 @@ class QueryService:
             claims.append(
                 Claim(
                     text=claim_text,
-                    source_page=matched_item.page_path
-                    if matched_item is not None
-                    else "",
+                    source_page=(
+                        matched_item.page_path if matched_item is not None else ""
+                    ),
                     section=matched_item.title if matched_item is not None else "",
                     confidence=confidence,
                     grounded=grounded,

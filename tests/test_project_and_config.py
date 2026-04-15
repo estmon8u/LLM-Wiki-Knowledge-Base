@@ -133,6 +133,7 @@ def test_build_services_returns_expected_keys(test_project) -> None:
         "manifest",
         "ingest",
         "compile",
+        "concepts",
         "diff",
         "lint",
         "review",
@@ -280,7 +281,7 @@ def test_status_snapshot_none_compile_prints_na() -> None:
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        result = runner.invoke(main, ["status"])
+        result = runner.invoke(main, ["show", "status"])
 
         assert result.exit_code == 0
         assert "last_compile_at: n/a" in result.output

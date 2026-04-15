@@ -6,7 +6,7 @@
 | --- | --- |
 | `src/cli.py` | CLI entrypoint and application bootstrap |
 | `src/commands/` | Thin user-facing command wrappers |
-| `src/services/` | Deterministic normalization, ingest, compile, diff, lint, review, search, query, export, status, config, and manifest services |
+| `src/services/` | Deterministic normalization, ingest, compile, concept, diff, lint, review, search, query, export, status, config, and manifest services |
 | `src/models/` | Shared command, source, tool, and wiki dataclasses |
 | `src/engine/` | Command and tool registry boundaries |
 | `src/providers/` | Provider abstraction layer with OpenAI, Anthropic, and Gemini implementations |
@@ -16,25 +16,27 @@
 
 ## Command To Service Mapping
 
-| Command Wrapper | Main Service |
-| --- | --- |
-| `src/commands/init.py` | `src/services/project_service.py` and `src/services/config_service.py` |
-| `src/commands/ingest.py` | `src/services/ingest_service.py`, `src/services/normalization_service.py`, and `src/services/manifest_service.py` |
-| `src/commands/compile.py` | `src/services/compile_service.py` |
-| `src/commands/diff.py` | `src/services/diff_service.py` |
-| `src/commands/search.py` | `src/services/search_service.py` |
-| `src/commands/query.py` | `src/services/query_service.py` |
-| `src/commands/review.py` | `src/services/review_service.py` |
-| `src/commands/lint.py` | `src/services/lint_service.py` |
-| `src/commands/status.py` | `src/services/status_service.py` |
-| `src/commands/export_vault.py` | `src/services/export_service.py` |
+Commands are organized into flat verbs and namespaced groups:
+
+| Group | Click Name | Command Wrapper | Main Service |
+| --- | --- | --- | --- |
+| *(flat)* | `init` | `src/commands/init.py` | `src/services/project_service.py` and `src/services/config_service.py` |
+| *(flat)* | `ingest` | `src/commands/ingest.py` | `src/services/ingest_service.py`, `src/services/normalization_service.py`, and `src/services/manifest_service.py` |
+| *(flat)* | `compile` | `src/commands/compile.py` | `src/services/compile_service.py` (+ `src/services/concept_service.py` with `--with-concepts`) |
+| `query` | `search` | `src/commands/search.py` | `src/services/search_service.py` |
+| `query` | `ask` | `src/commands/query.py` | `src/services/query_service.py` |
+| `check` | `lint` | `src/commands/lint.py` | `src/services/lint_service.py` |
+| `check` | `review` | `src/commands/review.py` | `src/services/review_service.py` |
+| `show` | `status` | `src/commands/status.py` | `src/services/status_service.py` |
+| `show` | `diff` | `src/commands/diff.py` | `src/services/diff_service.py` |
+| `export` | `vault` | `src/commands/export_vault.py` | `src/services/export_service.py` |
 
 ## Data Flow
 
 | Stage | Input | Output |
 | --- | --- | --- |
 | Ingest | canonical markdown/plain-text files, Docling-routed PDFs, and a bounded MarkItDown-backed born-digital subset | raw source copy, normalized artifact, and manifest metadata |
-| Compile | normalized canonical text plus manifest metadata | source pages with provider-generated summaries, wiki index, and compile log |
+| Compile | normalized canonical text plus manifest metadata | source pages with provider-generated summaries, wiki index, and compile log; optionally concept pages and source-page backlinks via `--with-concepts` |
 | Diff | manifest metadata plus compile state | pre-compile source status preview |
 | Search | compiled wiki artifacts | ranked matches |
 | Query | user question plus compiled context | cited provider answer or self-consistency over a frozen evidence bundle; optionally saved as an analysis page |
@@ -59,7 +61,7 @@
 
 - Commands should stay thin and delegate quickly.
 - Services should remain deterministic unless the feature explicitly requires model-backed synthesis.
-- `kb lint` checks links, fragments, headings, titles, and metadata deterministically; `kb review` prepends deterministic overlap checks to a required provider-backed single-pass or adversarial pipeline.
+- `kb check lint` checks links, fragments, headings, titles, and metadata deterministically; `kb check review` prepends deterministic overlap checks to a required provider-backed single-pass or adversarial pipeline.
 - Raw sources remain the source of truth; compiled pages are derived artifacts.
 - Compile should prefer the normalized canonical artifact when one exists rather than reparsing the original raw source.
 - Optional LLM-based cleanup or reconstruction should remain an explicit provider-mediated step instead of a silent default ingest behavior.

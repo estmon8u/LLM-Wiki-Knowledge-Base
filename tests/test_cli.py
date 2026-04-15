@@ -68,13 +68,10 @@ def test_help_lists_core_commands() -> None:
         "init",
         "ingest",
         "compile",
-        "diff",
-        "lint",
-        "review",
-        "search",
+        "check",
+        "show",
         "query",
-        "status",
-        "export-vault",
+        "export",
     ):
         assert command_name in result.output
 
@@ -91,7 +88,7 @@ def test_running_cli_without_subcommand_prints_help() -> None:
 def test_status_before_init_shows_uninitialized_state() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
-        result = runner.invoke(main, ["status"])
+        result = runner.invoke(main, ["show", "status"])
 
         assert result.exit_code == 0
         assert "initialized: false" in result.output
@@ -127,23 +124,23 @@ def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
         assert compile_result.exit_code == 0
         assert "Compiled 1 source page(s)" in compile_result.output
 
-        lint_result = runner.invoke(main, ["lint"])
+        lint_result = runner.invoke(main, ["check", "lint"])
         assert lint_result.exit_code == 0
         assert "No lint issues found." in lint_result.output
 
-        search_result = runner.invoke(main, ["search", "traceability"])
+        search_result = runner.invoke(main, ["query", "search", "traceability"])
         assert search_result.exit_code == 0
         assert "wiki/sources/sample-research-note.md" in search_result.output
 
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             query_result = runner.invoke(
-                main, ["query", "How", "does", "the", "wiki", "help?"]
+                main, ["query", "ask", "How", "does", "the", "wiki", "help?"]
             )
         assert query_result.exit_code == 0
         assert "Citations:" in query_result.output
         assert "wiki/sources/sample-research-note.md" in query_result.output
 
-        export_result = runner.invoke(main, ["export-vault"])
+        export_result = runner.invoke(main, ["export", "vault"])
         assert export_result.exit_code == 0
         assert Path("vault/obsidian/sources/sample-research-note.md").exists()
 
@@ -169,7 +166,7 @@ def test_end_to_end_cli_flow_for_local_html_source() -> None:
         assert compile_result.exit_code == 0
         assert "Compiled 1 source page(s)" in compile_result.output
 
-        search_result = runner.invoke(main, ["search", "traceability"])
+        search_result = runner.invoke(main, ["query", "search", "traceability"])
         assert search_result.exit_code == 0
         assert "wiki/sources/html-research-note.md" in search_result.output
 
@@ -179,8 +176,8 @@ def test_search_and_query_show_empty_messages_when_no_results() -> None:
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        search_result = runner.invoke(main, ["search", "missing-topic"])
-        query_result = runner.invoke(main, ["query", "missing-topic"])
+        search_result = runner.invoke(main, ["query", "search", "missing-topic"])
+        query_result = runner.invoke(main, ["query", "ask", "missing-topic"])
 
         assert search_result.exit_code == 0
         assert "No wiki pages matched that query." in search_result.output
@@ -193,8 +190,8 @@ def test_search_and_query_require_terms() -> None:
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        search_result = runner.invoke(main, ["search"])
-        query_result = runner.invoke(main, ["query"])
+        search_result = runner.invoke(main, ["query", "search"])
+        query_result = runner.invoke(main, ["query", "ask"])
 
         assert search_result.exit_code != 0
         assert "Provide at least one search term." in search_result.output
@@ -223,7 +220,7 @@ def test_lint_returns_nonzero_when_errors_exist() -> None:
             "# Bad\n\n[[Missing Target]]\n", encoding="utf-8"
         )
 
-        result = runner.invoke(main, ["lint"])
+        result = runner.invoke(main, ["check", "lint"])
 
         assert result.exit_code == 1
         assert "ERRORS" in result.output
@@ -251,7 +248,7 @@ def test_lint_reports_markdown_link_and_heading_errors_at_cli() -> None:
             encoding="utf-8",
         )
 
-        result = runner.invoke(main, ["lint"])
+        result = runner.invoke(main, ["check", "lint"])
 
         assert result.exit_code == 1
         assert "broken-markdown-link" in result.output
@@ -279,7 +276,7 @@ def test_lint_reports_frontmatter_type_and_empty_page_at_cli() -> None:
             encoding="utf-8",
         )
 
-        result = runner.invoke(main, ["lint"])
+        result = runner.invoke(main, ["check", "lint"])
 
         assert "invalid-field-type" in result.output
         assert "invalid-date-format" in result.output
@@ -289,7 +286,7 @@ def test_lint_reports_frontmatter_type_and_empty_page_at_cli() -> None:
 def test_diff_requires_initialization() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
-        result = runner.invoke(main, ["diff"])
+        result = runner.invoke(main, ["show", "diff"])
 
         assert result.exit_code != 0
         assert "Project not initialized" in result.output
@@ -306,7 +303,7 @@ def test_diff_end_to_end_new_then_compiled() -> None:
         assert runner.invoke(main, ["init"]).exit_code == 0
         assert runner.invoke(main, ["ingest", "sample.md"]).exit_code == 0
 
-        diff_before = runner.invoke(main, ["diff"])
+        diff_before = runner.invoke(main, ["show", "diff"])
         assert diff_before.exit_code == 0
         assert "[NEW]" in diff_before.output
         assert "new: 1" in diff_before.output
@@ -314,7 +311,7 @@ def test_diff_end_to_end_new_then_compiled() -> None:
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             assert runner.invoke(main, ["compile"]).exit_code == 0
 
-        diff_after = runner.invoke(main, ["diff"])
+        diff_after = runner.invoke(main, ["show", "diff"])
         assert diff_after.exit_code == 0
         assert "[OK]" in diff_after.output
         assert "up_to_date: 1" in diff_after.output
@@ -331,7 +328,9 @@ def test_cli_supports_explicit_project_root_option(tmp_path: Path) -> None:
     ingest_result = runner.invoke(
         main, ["--project-root", str(tmp_path), "ingest", str(source_path)]
     )
-    status_result = runner.invoke(main, ["--project-root", str(tmp_path), "status"])
+    status_result = runner.invoke(
+        main, ["--project-root", str(tmp_path), "show", "status"]
+    )
 
     assert init_result.exit_code == 0
     assert ingest_result.exit_code == 0
@@ -354,7 +353,7 @@ def test_query_save_prompt_creates_analysis_page() -> None:
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             result = runner.invoke(
                 main,
-                ["query", "How", "does", "traceability", "work?"],
+                ["query", "ask", "How", "does", "traceability", "work?"],
                 input="y\n",
             )
 
@@ -372,7 +371,7 @@ def test_review_command_requires_provider() -> None:
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        result = runner.invoke(main, ["review"])
+        result = runner.invoke(main, ["check", "review"])
 
         assert result.exit_code != 0
         assert "requires a configured provider" in result.output
@@ -392,7 +391,7 @@ def test_review_command_reports_overlapping_topics_requires_provider() -> None:
             encoding="utf-8",
         )
 
-        result = runner.invoke(main, ["review"])
+        result = runner.invoke(main, ["check", "review"])
 
         assert result.exit_code != 0
         assert "requires a configured provider" in result.output
@@ -412,7 +411,7 @@ def test_review_adversarial_flag_without_provider_fails() -> None:
             encoding="utf-8",
         )
 
-        result = runner.invoke(main, ["review", "--adversarial"])
+        result = runner.invoke(main, ["check", "review", "--adversarial"])
 
         assert result.exit_code != 0
         assert "requires a configured provider" in result.output
@@ -421,7 +420,7 @@ def test_review_adversarial_flag_without_provider_fails() -> None:
 def test_review_requires_initialization() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
-        result = runner.invoke(main, ["review"])
+        result = runner.invoke(main, ["check", "review"])
 
         assert result.exit_code != 0
         assert "Project not initialized" in result.output
@@ -435,7 +434,7 @@ def test_lint_verbose_flag_does_not_crash() -> None:
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        result = runner.invoke(main, ["--verbose", "lint"])
+        result = runner.invoke(main, ["--verbose", "check", "lint"])
 
         assert result.exit_code == 0
         assert "No lint issues found." in result.output
@@ -455,7 +454,7 @@ def test_query_piped_input_skips_save_confirm() -> None:
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             result = runner.invoke(
                 main,
-                ["query", "traceability"],
+                ["query", "ask", "traceability"],
                 input="\n",
             )
 
@@ -476,7 +475,7 @@ def test_query_self_consistency_flag_requires_provider() -> None:
 
         result = runner.invoke(
             main,
-            ["query", "--self-consistency", "3", "traceability"],
+            ["query", "ask", "--self-consistency", "3", "traceability"],
             input="\n",
         )
 
@@ -500,7 +499,7 @@ def test_export_vault_on_empty_wiki_succeeds() -> None:
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        result = runner.invoke(main, ["export-vault"])
+        result = runner.invoke(main, ["export", "vault"])
 
         assert result.exit_code == 0
         assert "Exported 0 markdown file(s)" in result.output
@@ -531,7 +530,7 @@ def test_provider_override_flag_switches_provider() -> None:
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             result = runner.invoke(
                 main,
-                ["--provider", "openai", "query", "traceability"],
+                ["--provider", "openai", "query", "ask", "traceability"],
             )
 
         assert result.exit_code == 0
@@ -543,7 +542,7 @@ def test_provider_override_flag_rejects_invalid_name() -> None:
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        result = runner.invoke(main, ["--provider", "invalid", "status"])
+        result = runner.invoke(main, ["--provider", "invalid", "show", "status"])
 
         assert result.exit_code != 0
         assert "Invalid value" in result.output or "invalid" in result.output.lower()

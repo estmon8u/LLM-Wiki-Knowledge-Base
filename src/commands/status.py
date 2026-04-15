@@ -10,7 +10,7 @@ SUMMARY = "Show high-level project, corpus, and compile state."
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
-    return CommandSpec(name="status", summary=SUMMARY)
+    return CommandSpec(name="show status", summary=SUMMARY)
 
 
 def create_command() -> click.Command:

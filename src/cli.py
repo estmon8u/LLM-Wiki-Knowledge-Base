@@ -5,7 +5,11 @@ from typing import Optional
 
 import click
 
-from src.engine.command_registry import build_command_specs, get_click_command
+from src.engine.command_registry import (
+    build_command_specs,
+    get_click_command,
+    list_command_names,
+)
 from src.models.command_models import CommandContext
 from src.services import build_services
 from src.services.config_service import ConfigService
@@ -37,10 +41,7 @@ def build_runtime_context(
 
 class KBGroup(click.MultiCommand):
     def list_commands(self, ctx: click.Context) -> list[str]:
-        runtime_context = build_runtime_context(
-            _extract_project_root(ctx), verbose=False
-        )
-        return [spec.name for spec in build_command_specs(runtime_context)]
+        return list_command_names()
 
     def get_command(self, ctx: click.Context, cmd_name: str) -> Optional[click.Command]:
         return get_click_command(cmd_name)

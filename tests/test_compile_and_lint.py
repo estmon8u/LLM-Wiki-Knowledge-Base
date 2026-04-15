@@ -1023,6 +1023,33 @@ def test_lint_concept_page_does_not_require_source_fields(test_project) -> None:
     assert field_issues == []
 
 
+def test_lint_generated_concept_page_requires_concept_fields_not_source_fields(
+    test_project,
+) -> None:
+    test_project.write_file(
+        "wiki/concepts/concept.md",
+        "---\n"
+        "title: Retrieval and Question Answering\n"
+        "summary: Generated concept page.\n"
+        "type: concept\n"
+        "generated_at: 2026-04-15T00:00:00Z\n"
+        "source_pages:\n"
+        "- wiki/sources/a.md\n"
+        "topic_terms:\n"
+        "- retrieval\n"
+        "- question-answering\n"
+        "---\n\n"
+        "# Retrieval and Question Answering\n\nOverview.\n",
+    )
+
+    report = test_project.services["lint"].lint()
+    field_issues = [
+        i for i in report.issues if i.code == "missing-field" and "concept" in i.path
+    ]
+
+    assert field_issues == []
+
+
 def test_lint_source_page_still_requires_all_fields(test_project) -> None:
     test_project.write_file(
         "wiki/sources/incomplete.md",

@@ -11,7 +11,6 @@ from src.engine.command_registry import (
     build_command_specs,
     get_click_command,
     list_command_names,
-    resolve_command_name,
 )
 from src.engine.tool_registry import (
     _lint_wiki,
@@ -25,41 +24,47 @@ from src.models.tool_models import ToolContext
 
 
 def test_command_registry_resolves_aliases_and_lists_names() -> None:
-    assert resolve_command_name("export_vault") == "export-vault"
-    assert resolve_command_name("status") == "status"
     assert list_command_names() == sorted(list_command_names())
     assert "init" in list_command_names()
+    assert "check" in list_command_names()
+    assert "show" in list_command_names()
+    assert "export" in list_command_names()
+    assert "query" in list_command_names()
 
 
 def test_command_registry_returns_click_commands_and_specs(test_project) -> None:
-    command = get_click_command("export_vault")
+    command = get_click_command("export")
     specs = build_command_specs(test_project.command_context)
 
     assert command is not None
-    assert command.name == "export-vault"
+    assert command.name == "export"
     assert get_click_command("missing") is None
-    assert {spec.name for spec in specs} == set(list_command_names())
+    spec_names = {spec.name for spec in specs}
+    assert "compile" in spec_names
+    assert "check lint" in spec_names
+    assert "show status" in spec_names
+    assert "export vault" in spec_names
+    assert "query search" in spec_names
+    assert "query ask" in spec_names
 
 
 @pytest.mark.parametrize(
     "command_name",
     [
         "init",
-        "status",
         "ingest",
         "compile",
-        "lint",
-        "review",
-        "search",
         "query",
-        "export-vault",
+        "check",
+        "show",
+        "export",
     ],
 )
 def test_each_registered_command_has_a_click_command(command_name: str) -> None:
     command = get_click_command(command_name)
 
     assert command is not None
-    assert isinstance(command, click.Command)
+    assert isinstance(command, click.BaseCommand)
 
 
 def test_build_runtime_context_uses_project_root_files(test_project) -> None:

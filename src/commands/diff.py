@@ -10,7 +10,7 @@ SUMMARY = "Show a pre-compile preview of new, changed, and up-to-date sources."
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
-    return CommandSpec(name="diff", summary=SUMMARY)
+    return CommandSpec(name="show diff", summary=SUMMARY)
 
 
 def create_command() -> click.Command:

@@ -27,32 +27,33 @@ poetry run kb ingest path/to/paper.pdf
 poetry run kb ingest path/to/notes.md
 poetry run kb ingest path/to/slides.pptx
 
-# 3. Compile the wiki
+# 3. Compile the wiki (add --with-concepts to generate concept pages)
 poetry run kb compile
+poetry run kb compile --with-concepts
 
 # 4. Search the compiled wiki
-poetry run kb search "knowledge base traceability"
+poetry run kb query search "knowledge base traceability"
 
 # 5. Ask a question with citations
-poetry run kb query "How does the wiki handle stale pages?"
-poetry run kb query --self-consistency 3 "What normalization converters are supported?"
+poetry run kb query ask "How does the wiki handle stale pages?"
+poetry run kb query ask --self-consistency 3 "What normalization converters are supported?"
 # → After showing the answer, you'll be prompted to save it as an analysis page
 
 # 6. Check wiki health (deterministic structural checks)
-poetry run kb lint
+poetry run kb check lint
 
 # 7. Run semantic review for contradictions and terminology drift
-poetry run kb review
-poetry run kb review --adversarial
+poetry run kb check review
+poetry run kb check review --adversarial
 
 # 8. See project status
-poetry run kb status
+poetry run kb show status
 
 # 9. Preview what needs compiling
-poetry run kb diff
+poetry run kb show diff
 
 # 10. Export to an Obsidian-friendly vault
-poetry run kb export-vault
+poetry run kb export vault
 ```
 
 Before running `kb compile`, `kb query`, or `kb review`, add a `provider`
@@ -70,10 +71,20 @@ See `Provider Configuration` below.
 Example:
 
 ```bash
-poetry run kb --project-root /path/to/project status
+poetry run kb --project-root /path/to/project show status
 ```
 
 ## Commands
+
+Commands are organized into flat verbs and namespaced groups:
+
+| Group | Subcommands | Description |
+| --- | --- | --- |
+| *(flat)* | `init`, `ingest`, `compile` | Core workflow verbs |
+| `query` | `search`, `ask` | Search the wiki or ask provider-backed questions |
+| `check` | `lint`, `review` | Structural and semantic quality checks |
+| `show` | `status`, `diff` | Project state inspection |
+| `export` | `vault` | Export to external formats |
 
 ### `kb init`
 
@@ -117,18 +128,26 @@ Compile source pages, refresh the wiki index, and update the activity log. Requi
 
 ```bash
 poetry run kb compile
-poetry run kb compile --force    # Rebuild every page, even unchanged ones
+poetry run kb compile --force           # Rebuild every page, even unchanged ones
+poetry run kb compile --with-concepts   # Also generate concept pages and backlinks
 ```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--force` | off | Rebuild every source page even if nothing changed. |
+| `--with-concepts` | off | After compiling, generate concept pages in `wiki/concepts/` by grouping related source pages and maintain managed backlink sections in source pages. |
 
 Reads the normalized artifacts from `raw/normalized/` (or directly from `raw/sources/` for markdown/text files) and generates source pages under `wiki/sources/`. Each source page summary is produced by sending document content to the configured provider. Also updates `wiki/index.md`, `wiki/_index.json`, and `wiki/log.md`.
 
-### `kb search <terms>`
+When `--with-concepts` is passed, the concept service scans all compiled source pages, groups related pages by term overlap (Jaccard similarity), generates deterministic concept pages with `type: concept` frontmatter, and inserts managed backlink sections into source pages. Stale generated concept pages are automatically removed.
+
+### `kb query search <terms>`
 
 Search the compiled wiki for relevant pages and snippets.
 
 ```bash
-poetry run kb search "traceability citation"
-poetry run kb search --limit 10 "agent architecture"
+poetry run kb query search "traceability citation"
+poetry run kb query search --limit 10 "agent architecture"
 ```
 
 | Option | Default | Description |
@@ -137,14 +156,14 @@ poetry run kb search --limit 10 "agent architecture"
 
 Returns ranked search results with page title, file path, relevance score, and a snippet.
 
-### `kb query <question>`
+### `kb query ask <question>`
 
 Answer a question from compiled wiki evidence with provider-backed synthesis and citations.
 
 ```bash
-poetry run kb query "How does the wiki handle stale pages?"
-poetry run kb query --limit 5 "What normalization converters are supported?"
-poetry run kb query --self-consistency 3 "How is traceability preserved?"
+poetry run kb query ask "How does the wiki handle stale pages?"
+poetry run kb query ask --limit 5 "What normalization converters are supported?"
+poetry run kb query ask --self-consistency 3 "How is traceability preserved?"
 ```
 
 | Option | Default | Description |
@@ -152,18 +171,18 @@ poetry run kb query --self-consistency 3 "How is traceability preserved?"
 | `--limit` | 3 | Maximum number of source pages to use as evidence. |
 | `--self-consistency` | 1 | Sample N independent provider answers from the same frozen evidence bundle and merge claims deterministically. |
 
-`kb query` requires a configured provider. It retrieves the best-matching wiki pages as evidence, sends that evidence to the configured provider, and prints the provider answer followed by a Citations section listing which pages were used. The output begins with a `[mode: …]` tag — `provider:<model>` when a single LLM call synthesizes the answer, or `self-consistency:<model>:N` when multiple provider samples are merged.
+`kb query ask` requires a configured provider. It retrieves the best-matching wiki pages as evidence, sends that evidence to the configured provider, and prints the provider answer followed by a Citations section listing which pages were used. The output begins with a `[mode: …]` tag — `provider:<model>` when a single LLM call synthesizes the answer, or `self-consistency:<model>:N` when multiple provider samples are merged.
 
-When `--self-consistency N` is greater than 1, `kb query` retrieves evidence once, freezes that evidence bundle, samples `N` independent provider answers in parallel, normalizes them into typed claims, merges near-duplicate grounded claims deterministically, and stores the full run artifact in `graph/exports/run_artifacts.sqlite3`. If the provider is missing or any provider call fails, the command exits with an error instead of falling back.
+When `--self-consistency N` is greater than 1, `kb query ask` retrieves evidence once, freezes that evidence bundle, samples `N` independent provider answers in parallel, normalizes them into typed claims, merges near-duplicate grounded claims deterministically, and stores the full run artifact in `graph/exports/run_artifacts.sqlite3`. If the provider is missing or any provider call fails, the command exits with an error instead of falling back.
 
 After displaying the answer, if citations are present the command prompts `Save this answer as an analysis page? [y/N]`. Accepting writes a markdown analysis page to `wiki/concepts/` with YAML frontmatter (`type: analysis`), the question, a timestamp, and backlinks to the cited source pages. Saved analysis pages make your explorations compound in the wiki instead of disappearing in terminal history. In non-interactive contexts the prompt is silently skipped.
 
-### `kb lint`
+### `kb check lint`
 
 Run structural lint checks over the maintained wiki.
 
 ```bash
-poetry run kb lint
+poetry run kb check lint
 ```
 
 Checks for:
@@ -180,12 +199,12 @@ Checks for:
 
 Exits with code 1 if any errors are found. Warnings and suggestions are printed but don't cause a nonzero exit.
 
-### `kb status`
+### `kb show status`
 
 Show high-level project, corpus, and compile state.
 
 ```bash
-poetry run kb status
+poetry run kb show status
 ```
 
 Displays:
@@ -197,12 +216,12 @@ Displays:
 - `concept_page_count` — number of concept pages
 - `last_compile_at` — timestamp of the last compile
 
-### `kb diff`
+### `kb show diff`
 
 Show a pre-compile preview of source status: new (not yet compiled), changed (source modified since last compile), or up-to-date.
 
 ```bash
-poetry run kb diff
+poetry run kb show diff
 ```
 
 Displays each source with a status tag:
@@ -213,13 +232,13 @@ Displays each source with a status tag:
 
 Followed by summary counts for new, changed, and up-to-date sources.
 
-### `kb review`
+### `kb check review`
 
 Run semantic review checks for contradictions and terminology drift across the maintained wiki.
 
 ```bash
-poetry run kb review
-poetry run kb review --adversarial
+poetry run kb check review
+poetry run kb check review --adversarial
 ```
 
 | Option | Default | Description |
@@ -234,14 +253,14 @@ Checks for:
 - **Terminology variants** — The same root term appearing in different forms across pages (e.g., `knowledge-base` vs `knowledgebase`).
 - **Adversarial findings** — Typed contradiction, term-drift, and needs-review findings from extractor/skeptic/arbiter evaluation over candidate page pairs.
 
-This is the semantic complement to `kb lint`. Lint checks structural health deterministically; review checks content-level coherence through heuristics, a single provider pass, or the adversarial review pipeline.
+This is the semantic complement to `kb check lint`. Lint checks structural health deterministically; review checks content-level coherence through heuristics, a single provider pass, or the adversarial review pipeline.
 
-### `kb export-vault`
+### `kb export vault`
 
 Export the compiled wiki into the Obsidian-friendly vault folder.
 
 ```bash
-poetry run kb export-vault
+poetry run kb export vault
 ```
 
 Copies compiled wiki pages into `vault/obsidian/` in a format compatible with [Obsidian](https://obsidian.md/).

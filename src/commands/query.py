@@ -13,12 +13,12 @@ SUMMARY = (
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
-    return CommandSpec(name="query", summary=SUMMARY)
+    return CommandSpec(name="query ask", summary=SUMMARY)
 
 
 def create_command() -> click.Command:
     @click.command(
-        name="query", help=SUMMARY, short_help="Answer from compiled wiki evidence."
+        name="ask", help=SUMMARY, short_help="Answer from compiled wiki evidence."
     )
     @click.argument("question_terms", nargs=-1)
     @click.option("--limit", default=3, show_default=True, type=int)

@@ -10,11 +10,11 @@ SUMMARY = "Export the compiled wiki into the Obsidian-friendly vault folder."
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
-    return CommandSpec(name="export-vault", summary=SUMMARY)
+    return CommandSpec(name="export vault", summary=SUMMARY)
 
 
 def create_command() -> click.Command:
-    @click.command(name="export-vault", help=SUMMARY, short_help="Export vault files.")
+    @click.command(name="vault", help=SUMMARY, short_help="Export vault files.")
     @click.pass_obj
     def command(command_context: CommandContext) -> None:
         require_initialized(command_context)

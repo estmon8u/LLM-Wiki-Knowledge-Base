@@ -14,7 +14,7 @@ SUMMARY = (
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
-    return CommandSpec(name="review", summary=SUMMARY)
+    return CommandSpec(name="check review", summary=SUMMARY)
 
 
 def create_command() -> click.Command:

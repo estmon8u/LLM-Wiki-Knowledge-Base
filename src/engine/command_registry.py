@@ -8,47 +8,78 @@ import click
 from src.models.command_models import CommandContext, CommandSpec
 
 
-COMMAND_MODULES = {
+# Flat top-level commands (primary workflow verbs)
+FLAT_COMMAND_MODULES = {
     "compile": "src.commands.compile",
-    "diff": "src.commands.diff",
-    "export-vault": "src.commands.export_vault",
     "ingest": "src.commands.ingest",
     "init": "src.commands.init",
-    "lint": "src.commands.lint",
-    "query": "src.commands.query",
-    "review": "src.commands.review",
-    "search": "src.commands.search",
-    "status": "src.commands.status",
 }
 
-
-ALIASES = {
-    "export_vault": "export-vault",
+# Namespaced command groups: group_name -> {subcommand -> module_path}
+GROUP_COMMAND_MODULES = {
+    "check": {
+        "lint": "src.commands.lint",
+        "review": "src.commands.review",
+    },
+    "export": {
+        "vault": "src.commands.export_vault",
+    },
+    "query": {
+        "ask": "src.commands.query",
+        "search": "src.commands.search",
+    },
+    "show": {
+        "status": "src.commands.status",
+        "diff": "src.commands.diff",
+    },
 }
-
-
-def resolve_command_name(name: str) -> str:
-    return ALIASES.get(name, name)
 
 
 def list_command_names() -> list[str]:
-    return sorted(COMMAND_MODULES)
+    names = list(FLAT_COMMAND_MODULES)
+    names.extend(GROUP_COMMAND_MODULES)
+    return sorted(names)
 
 
-def get_click_command(name: str) -> Optional[click.Command]:
-    resolved = resolve_command_name(name)
-    module_path = COMMAND_MODULES.get(resolved)
-    if module_path is None:
-        return None
-    module = import_module(module_path)
-    return module.create_command()
+def get_click_command(name: str) -> Optional[click.BaseCommand]:
+    module_path = FLAT_COMMAND_MODULES.get(name)
+    if module_path is not None:
+        module = import_module(module_path)
+        return module.create_command()
+
+    group_spec = GROUP_COMMAND_MODULES.get(name)
+    if group_spec is not None:
+        return _build_click_group(name, group_spec)
+
+    return None
+
+
+def _build_click_group(
+    group_name: str, subcommand_modules: dict[str, str]
+) -> click.Group:
+    group = click.Group(name=group_name)
+    for sub_name, module_path in sorted(subcommand_modules.items()):
+        module = import_module(module_path)
+        group.add_command(module.create_command(), sub_name)
+    return group
 
 
 def build_command_specs(context: CommandContext) -> tuple[CommandSpec, ...]:
     specs: list[CommandSpec] = []
-    for name in list_command_names():
-        module = import_module(COMMAND_MODULES[name])
+    for name in sorted(FLAT_COMMAND_MODULES):
+        module = import_module(FLAT_COMMAND_MODULES[name])
         spec = module.build_spec(context)
         if spec.availability is None or spec.availability(context):
             specs.append(spec)
+    for group_name in sorted(GROUP_COMMAND_MODULES):
+        for sub_name in sorted(GROUP_COMMAND_MODULES[group_name]):
+            module = import_module(GROUP_COMMAND_MODULES[group_name][sub_name])
+            spec = module.build_spec(context)
+            spec = CommandSpec(
+                name=f"{group_name} {sub_name}",
+                summary=spec.summary,
+                availability=spec.availability,
+            )
+            if spec.availability is None or spec.availability(context):
+                specs.append(spec)
     return tuple(specs)
