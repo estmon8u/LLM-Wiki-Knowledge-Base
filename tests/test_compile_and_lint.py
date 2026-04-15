@@ -9,6 +9,10 @@ from src.models.wiki_models import LintIssue, LintReport
 from src.services.compile_service import (
     _is_content_paragraph,
     _markdown_paragraphs,
+    _normalize_newlines,
+    _plain_text_fallback,
+    _safe_int,
+    _sorted_sources,
     _strip_frontmatter,
 )
 from src.services.lint_service import (
@@ -129,8 +133,9 @@ def test_compile_service_uses_fallback_summary_and_excerpt_when_no_paragraphs(
     article_text = (
         test_project.root / "wiki" / "sources" / (source.slug + ".md")
     ).read_text(encoding="utf-8")
-    assert "No summary available yet." in article_text
-    assert "No excerpt available yet." in article_text
+    assert "Empty" in article_text
+    assert "## Summary" in article_text
+    assert "## Key Excerpt" in article_text
 
 
 def test_split_frontmatter_parses_valid_yaml_and_invalid_text() -> None:
@@ -866,6 +871,144 @@ def test_compile_index_lists_concept_pages(test_project) -> None:
     )
     slugs = [cp["slug"] for cp in index_json["concept_pages"]]
     assert "my-topic" in slugs
+
+
+def test_markdown_paragraphs_skips_fenced_code_blocks() -> None:
+    contents = (
+        "Real paragraph before code.\n\n"
+        "```python\n"
+        "This is code and should not appear.\n"
+        "```\n\n"
+        "Real paragraph after code.\n"
+    )
+
+    result = _markdown_paragraphs(contents)
+
+    assert result == ["Real paragraph before code.", "Real paragraph after code."]
+
+
+def test_markdown_paragraphs_skips_tilde_fenced_code_blocks() -> None:
+    contents = (
+        "Before tilde block.\n\n"
+        "~~~\n"
+        "code inside\n"
+        "~~~\n\n"
+        "After tilde block.\n"
+    )
+
+    result = _markdown_paragraphs(contents)
+
+    assert result == ["Before tilde block.", "After tilde block."]
+
+
+def test_markdown_paragraphs_skips_html_comments() -> None:
+    contents = (
+        "Before comment.\n\n"
+        "<!-- This is a multi-line\n"
+        "HTML comment that spans lines -->\n\n"
+        "After comment.\n"
+    )
+
+    result = _markdown_paragraphs(contents)
+
+    assert result == ["Before comment.", "After comment."]
+
+
+def test_markdown_paragraphs_skips_single_line_html_comment() -> None:
+    contents = "Real content before comment.\n\n<!-- single line -->\n\nReal content after comment.\n"
+
+    result = _markdown_paragraphs(contents)
+
+    assert result == ["Real content before comment.", "Real content after comment."]
+
+
+def test_markdown_paragraphs_skips_horizontal_rules() -> None:
+    contents = "Before rule.\n\n---\n\nAfter rule.\n"
+
+    result = _markdown_paragraphs(contents)
+
+    assert result == ["Before rule.", "After rule."]
+
+
+def test_normalize_newlines_strips_bom_and_crlf() -> None:
+    assert _normalize_newlines("\ufeffHello\r\nWorld\rEnd") == "Hello\nWorld\nEnd"
+
+
+def test_normalize_newlines_passes_clean_input() -> None:
+    assert _normalize_newlines("clean\ninput") == "clean\ninput"
+
+
+def test_plain_text_fallback_strips_markdown() -> None:
+    contents = (
+        "---\ntitle: Test\n---\n\n"
+        "# Heading\n\n"
+        "Some **bold** and [link](http://example.com) text.\n\n"
+        "```\ncode block\n```\n"
+    )
+
+    result = _plain_text_fallback(contents)
+
+    assert "bold" in result
+    assert "link" in result
+    assert "code block" not in result
+    assert "#" not in result
+    assert "**" not in result
+
+
+def test_safe_int_returns_parsed_value() -> None:
+    assert _safe_int(5, default=2, minimum=1) == 5
+    assert _safe_int("10", default=2, minimum=1) == 10
+
+
+def test_safe_int_returns_default_for_invalid() -> None:
+    assert _safe_int(None, default=2, minimum=1) == 2
+    assert _safe_int("abc", default=3, minimum=1) == 3
+
+
+def test_safe_int_enforces_minimum() -> None:
+    assert _safe_int(0, default=2, minimum=1) == 1
+    assert _safe_int(-5, default=2, minimum=1) == 1
+
+
+def test_sorted_sources_deterministic_order() -> None:
+    from src.models.source_models import RawSourceRecord
+
+    sources = [
+        RawSourceRecord(
+            source_id="id-2",
+            title="Zebra",
+            slug="zebra",
+            raw_path="raw/zebra.md",
+            origin="local",
+            source_type="md",
+            content_hash="h2",
+            ingested_at="2026-01-01",
+        ),
+        RawSourceRecord(
+            source_id="id-1",
+            title="Alpha",
+            slug="alpha",
+            raw_path="raw/alpha.md",
+            origin="local",
+            source_type="md",
+            content_hash="h1",
+            ingested_at="2026-01-01",
+        ),
+    ]
+
+    result = _sorted_sources(sources)
+
+    assert [s.slug for s in result] == ["alpha", "zebra"]
+
+
+def test_compile_raises_when_source_file_missing(test_project) -> None:
+    source = _ingest_source(test_project, "notes/doc.md", "# Doc\n\nBody text.\n")
+    canonical = source.normalized_path or source.raw_path
+    canonical_full = test_project.root / canonical
+    canonical_full.unlink()
+
+    with pytest.raises(FileNotFoundError, match="does not exist"):
+        test_project.services["compile"].compile()
 
 
 def test_lint_concept_page_does_not_require_source_fields(test_project) -> None:

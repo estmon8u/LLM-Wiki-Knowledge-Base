@@ -34,7 +34,7 @@ class CompileService:
         compiled_paths: list[str] = []
         compiled_count = 0
         skipped_count = 0
-        sources = self.manifest_service.list_sources()
+        sources = _sorted_sources(self.manifest_service.list_sources())
         for source in sources:
             article_path = self.paths.wiki_sources_dir / f"{source.slug}.md"
             if (
@@ -48,6 +48,11 @@ class CompileService:
             canonical_path = self.paths.root / (
                 source.normalized_path or source.raw_path
             )
+            if not canonical_path.exists():
+                raise FileNotFoundError(
+                    "Normalized or raw source file does not exist for "
+                    f"{source.source_id}: {canonical_path}"
+                )
             contents = canonical_path.read_text(encoding="utf-8")
             compiled_at = utc_now_iso()
             article_text = self._render_source_page(source, contents, compiled_at)
@@ -61,7 +66,7 @@ class CompileService:
             compiled_count += 1
             compiled_paths.append(article_path.relative_to(self.paths.root).as_posix())
 
-        self._write_index(self.manifest_service.list_sources())
+        self._write_index(_sorted_sources(self.manifest_service.list_sources()))
         self._append_log(compiled_count, skipped_count, force)
         return CompileResult(
             compiled_count=compiled_count,
@@ -108,17 +113,31 @@ class CompileService:
 
     def _extract_summary(self, contents: str) -> str:
         paragraphs = _markdown_paragraphs(contents)
-        limit = self.config["compile"].get("summary_paragraph_limit", 2)
+        limit = _safe_int(
+            self._compile_config().get("summary_paragraph_limit"),
+            default=2,
+            minimum=1,
+        )
         if paragraphs:
             return "\n\n".join(paragraphs[:limit])
-        cleaned = "\n".join(_markdown_paragraphs(_strip_frontmatter(contents))).strip()
+        cleaned = _plain_text_fallback(contents)
         return cleaned[:280] or "No summary available yet."
 
     def _extract_excerpt(self, contents: str) -> str:
-        clean = "\n".join(_markdown_paragraphs(contents))
-        character_limit = self.config["compile"].get("excerpt_character_limit", 900)
+        clean = "\n".join(_markdown_paragraphs(contents)).strip()
+        if not clean:
+            clean = _plain_text_fallback(contents)
+        character_limit = _safe_int(
+            self._compile_config().get("excerpt_character_limit"),
+            default=900,
+            minimum=1,
+        )
         excerpt = clean[:character_limit].rstrip()
         return excerpt or "No excerpt available yet."
+
+    def _compile_config(self) -> dict[str, Any]:
+        compile_config = self.config.get("compile", {})
+        return compile_config if isinstance(compile_config, dict) else {}
 
     def _write_index(self, sources: list[RawSourceRecord]) -> None:
         concept_entries = _discover_concept_pages(self.paths)
@@ -131,10 +150,11 @@ class CompileService:
                     "path": f"wiki/sources/{source.slug}.md",
                     "compiled_at": source.compiled_at,
                 }
-                for source in sources
+                for source in _sorted_sources(sources)
             ],
             "concept_pages": concept_entries,
         }
+        self.paths.wiki_index_file.parent.mkdir(parents=True, exist_ok=True)
         self.paths.wiki_index_file.write_text(
             json.dumps(index_payload, indent=2, sort_keys=True),
             encoding="utf-8",
@@ -163,10 +183,12 @@ class CompileService:
             lines.extend(
                 ["## Concept Pages", "", "- No concept pages compiled yet.", ""]
             )
+        self.paths.wiki_index_markdown.parent.mkdir(parents=True, exist_ok=True)
         self.paths.wiki_index_markdown.write_text("\n".join(lines), encoding="utf-8")
 
     def _append_log(self, compiled_count: int, skipped_count: int, force: bool) -> None:
         timestamp = utc_now_iso()
+        self.paths.wiki_log_file.parent.mkdir(parents=True, exist_ok=True)
         if not self.paths.wiki_log_file.exists():
             self.paths.wiki_log_file.write_text("# Activity Log\n\n", encoding="utf-8")
         with self.paths.wiki_log_file.open("a", encoding="utf-8") as handle:
@@ -180,18 +202,55 @@ def _markdown_paragraphs(contents: str) -> list[str]:
     normalized = _strip_frontmatter(contents)
     paragraphs: list[str] = []
     current: list[str] = []
+    in_fenced_code = False
+    in_html_comment = False
+    active_fence: str | None = None
+
+    def flush_current() -> None:
+        nonlocal current
+        if current:
+            paragraphs.append(" ".join(current).strip())
+            current = []
+
     for line in normalized.splitlines():
         stripped = line.strip()
-        if not stripped:
-            if current:
-                paragraphs.append(" ".join(current).strip())
-                current = []
+
+        if in_html_comment:
+            if "-->" in stripped:
+                in_html_comment = False
             continue
-        if stripped.startswith("#"):
+
+        if stripped.startswith("<!--"):
+            flush_current()
+            if "-->" not in stripped:
+                in_html_comment = True
             continue
+
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            flush_current()
+            fence_marker = stripped[:3]
+            if not in_fenced_code:
+                in_fenced_code = True
+                active_fence = fence_marker
+            elif active_fence == fence_marker:
+                in_fenced_code = False
+                active_fence = None
+            continue
+
+        if in_fenced_code:
+            continue
+
+        if not stripped or re.fullmatch(r"[-*_]{3,}", stripped):
+            flush_current()
+            continue
+
+        if _is_heading_line(stripped):
+            flush_current()
+            continue
+
         current.append(stripped)
-    if current:
-        paragraphs.append(" ".join(current).strip())
+
+    flush_current()
     filtered = [p for p in paragraphs if _is_content_paragraph(p)]
     return _trim_leading_boilerplate(filtered)
 
@@ -260,21 +319,57 @@ def _discover_concept_pages(paths: ProjectPaths) -> list[dict[str, str]]:
 
 
 def _parse_frontmatter(contents: str) -> dict:
-    if not contents.startswith("---\n"):
+    normalized = _normalize_newlines(contents)
+    if not normalized.startswith("---\n"):
         return {}
-    marker = contents.find("\n---\n", 4)
+    marker = normalized.find("\n---\n", 4)
     if marker == -1:
         return {}
     try:
-        return yaml.safe_load(contents[4:marker]) or {}
+        payload = yaml.safe_load(normalized[4:marker]) or {}
     except yaml.YAMLError:
         return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _strip_frontmatter(contents: str) -> str:
-    if not contents.startswith("---\n"):
-        return contents
-    marker = contents.find("\n---\n", 4)
+    normalized = _normalize_newlines(contents)
+    if not normalized.startswith("---\n"):
+        return normalized
+    marker = normalized.find("\n---\n", 4)
     if marker == -1:
-        return contents
-    return contents[marker + 5 :]
+        return normalized
+    return normalized[marker + 5 :]
+
+
+def _is_heading_line(line: str) -> bool:
+    return bool(re.match(r"^#{1,6}\s+\S", line))
+
+
+def _normalize_newlines(contents: str) -> str:
+    return contents.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _plain_text_fallback(contents: str) -> str:
+    text = _strip_frontmatter(contents)
+    text = re.sub(r"<!--.*?-->", " ", text, flags=re.DOTALL)
+    text = re.sub(r"```.*?```", " ", text, flags=re.DOTALL)
+    text = re.sub(r"~~~.*?~~~", " ", text, flags=re.DOTALL)
+    text = re.sub(r"^\s{0,3}#{1,6}\s*", "", text, flags=re.MULTILINE)
+    text = re.sub(r"\[!\[[^\]]*\]\([^)]*\)\]\([^)]*\)", " ", text)
+    text = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", text)
+    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
+    text = re.sub(r"[*`_~>\[\](){}#+\-|:]+", " ", text)
+    return " ".join(text.split()).strip()
+
+
+def _safe_int(value: Any, *, default: int, minimum: int = 1) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, parsed)
+
+
+def _sorted_sources(sources: list[RawSourceRecord]) -> list[RawSourceRecord]:
+    return sorted(sources, key=lambda source: (source.slug, source.source_id))
