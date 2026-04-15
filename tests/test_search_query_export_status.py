@@ -760,3 +760,48 @@ def test_search_snippet_excludes_frontmatter(test_project) -> None:
     assert "traceability" in snippet
     assert "---" not in snippet
     assert "summary:" not in snippet
+
+
+def test_search_excludes_concept_pages(test_project) -> None:
+    test_project.write_file(
+        "wiki/sources/source-page.md",
+        "# Source Page\n\nTraceability evidence.\n",
+    )
+    test_project.write_file(
+        "wiki/concepts/analysis-page.md",
+        "---\ntitle: Analysis Page\nsummary: S\ntype: analysis\n---\n\n"
+        "# Analysis Page\n\nTraceability reused here.\n",
+    )
+
+    results = test_project.services["search"].search("traceability")
+
+    paths = [r.path for r in results]
+    assert any("wiki/sources/" in p for p in paths)
+    assert not any("wiki/concepts/" in p for p in paths)
+
+
+def test_save_answer_includes_summary_in_frontmatter(test_project) -> None:
+    query_service = _provider_query_service(
+        test_project,
+        "Traceability is preserved through compiled source pages.",
+    )
+    test_project.write_file("wiki/sources/sr.md", "traceability appears here")
+    answer = query_service.answer_question("traceability")
+
+    saved_path = query_service.save_answer("How does traceability work?", answer)
+
+    content = (test_project.root / saved_path).read_text(encoding="utf-8")
+    assert "summary:" in content
+    assert "Traceability" in content.split("---")[1]
+
+
+def test_save_answer_summary_fallback_for_empty_answer(test_project) -> None:
+    from src.services.query_service import QueryAnswer, QueryService
+
+    query_service = test_project.services["query"]
+    answer = QueryAnswer(answer="", citations=[], mode="test")
+
+    saved_path = query_service.save_answer("What is traceability?", answer)
+
+    content = (test_project.root / saved_path).read_text(encoding="utf-8")
+    assert "summary: 'Analysis page for: What is traceability?'" in content

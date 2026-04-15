@@ -17,6 +17,11 @@ class SearchService:
             return []
         results: list[SearchResult] = []
         for file_path in sorted(self.paths.wiki_dir.rglob("*.md")):
+            if self.paths.wiki_concepts_dir.exists() and (
+                file_path == self.paths.wiki_concepts_dir
+                or self.paths.wiki_concepts_dir in file_path.parents
+            ):
+                continue
             text = file_path.read_text(encoding="utf-8")
             normalized = text.lower()
             score = sum(normalized.count(term) for term in terms)

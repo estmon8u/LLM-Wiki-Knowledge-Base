@@ -491,8 +491,12 @@ class QueryService:
         if not slug or slug == "untitled":
             slug = "analysis-" + slugify(answer.answer[:40])
         timestamp = utc_now_iso()
+        summary = answer.answer.replace("\n", " ").strip()[:280].rstrip()
+        if not summary:
+            summary = "Analysis page for: " + question[:250]
         frontmatter = {
             "title": question,
+            "summary": summary,
             "type": "analysis",
             "question": question,
             "saved_at": timestamp,

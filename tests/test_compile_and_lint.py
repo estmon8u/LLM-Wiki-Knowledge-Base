@@ -7,6 +7,7 @@ import pytest
 
 from src.models.wiki_models import LintIssue, LintReport
 from src.services.compile_service import (
+    _abstract_paragraphs,
     _is_content_paragraph,
     _markdown_paragraphs,
     _normalize_newlines,
@@ -1146,3 +1147,76 @@ def test_compile_unavailable_provider_raises_configuration_error(
 
     with pytest.raises(ProviderConfigurationError, match="No API key set"):
         test_project.services["compile"].compile()
+
+
+def test_abstract_paragraphs_extracts_from_abstract_heading() -> None:
+    contents = (
+        "## Title\n\n"
+        "Author names and affiliations\n\n"
+        "## Abstract\n\n"
+        "This paper proposes a new method.\n\n"
+        "It outperforms baselines.\n\n"
+        "## 1. Introduction\n\n"
+        "Background here.\n"
+    )
+
+    result = _abstract_paragraphs(contents)
+
+    assert result == [
+        "This paper proposes a new method.",
+        "It outperforms baselines.",
+    ]
+
+
+def test_abstract_paragraphs_returns_empty_without_abstract_heading() -> None:
+    contents = "## Title\n\nBody text.\n\n## Methods\n\nMore text.\n"
+
+    assert _abstract_paragraphs(contents) == []
+
+
+def test_compile_excerpt_prefers_abstract_section(test_project) -> None:
+    _ingest_source(
+        test_project,
+        "notes/paper.md",
+        "## Paper Title\n\n"
+        "John Doe, University\n\n"
+        "## Abstract\n\n"
+        "This paper proposes a new retrieval method.\n\n"
+        "## 1. Introduction\n\n"
+        "Background.\n",
+    )
+
+    test_project.services["compile"].compile()
+
+    article = (test_project.root / "wiki" / "sources" / "paper-title.md").read_text(
+        encoding="utf-8"
+    )
+    excerpt_start = article.index("## Key Excerpt")
+    excerpt_section = article[excerpt_start + len("## Key Excerpt") :]
+    assert "This paper proposes a new retrieval method." in excerpt_section
+    assert "John Doe" not in excerpt_section
+
+
+def test_abstract_paragraphs_extracts_without_following_heading() -> None:
+    contents = (
+        "## Abstract\n\n"
+        "Only abstract content here.\n\n"
+        "Second paragraph of abstract.\n"
+    )
+
+    result = _abstract_paragraphs(contents)
+
+    assert result == [
+        "Only abstract content here.",
+        "Second paragraph of abstract.",
+    ]
+
+
+def test_abstract_paragraphs_strips_frontmatter() -> None:
+    contents = (
+        "---\ntitle: Paper\n---\n\n" "## Abstract\n\n" "Content after frontmatter.\n"
+    )
+
+    result = _abstract_paragraphs(contents)
+
+    assert result == ["Content after frontmatter."]

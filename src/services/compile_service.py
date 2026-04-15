@@ -164,7 +164,11 @@ class CompileService:
             ) from exc
 
     def _extract_excerpt(self, contents: str) -> str:
-        clean = "\n".join(_markdown_paragraphs(contents)).strip()
+        abstract_paragraphs = _abstract_paragraphs(contents)
+        if abstract_paragraphs:
+            clean = "\n".join(abstract_paragraphs).strip()
+        else:
+            clean = "\n".join(_markdown_paragraphs(contents)).strip()
         if not clean:
             clean = _plain_text_fallback(contents)
         character_limit = _safe_int(
@@ -380,6 +384,40 @@ def _strip_frontmatter(contents: str) -> str:
     if marker == -1:
         return normalized
     return normalized[marker + 5 :]
+
+
+def _abstract_paragraphs(contents: str) -> list[str]:
+    """Extract paragraphs from the first Abstract section, if present."""
+    normalized = _strip_frontmatter(contents)
+    abstract_start: int | None = None
+    for match in re.finditer(r"(?m)^#{1,6}\s+(.+)", normalized):
+        heading_text = match.group(1).strip().rstrip("#").strip()
+        if heading_text.casefold() == "abstract":
+            abstract_start = match.end()
+            break
+    if abstract_start is None:
+        return []
+    rest = normalized[abstract_start:]
+    next_heading = re.search(r"(?m)^#{1,6}\s+", rest)
+    section = rest[: next_heading.start()] if next_heading else rest
+    paragraphs: list[str] = []
+    current: list[str] = []
+    for line in section.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            if current:
+                paragraphs.append(" ".join(current))
+                current = []
+            continue
+        if _is_heading_line(stripped):
+            if current:
+                paragraphs.append(" ".join(current))
+                current = []
+            continue
+        current.append(stripped)
+    if current:
+        paragraphs.append(" ".join(current))
+    return [p for p in paragraphs if _is_content_paragraph(p)]
 
 
 def _is_heading_line(line: str) -> bool:
