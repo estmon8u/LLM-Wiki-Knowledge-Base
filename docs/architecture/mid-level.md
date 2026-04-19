@@ -21,6 +21,7 @@ Commands are organized into flat verbs and namespaced groups:
 | Group | Click Name | Command Wrapper | Main Service |
 | --- | --- | --- | --- |
 | *(flat)* | `init` | `src/commands/init.py` | `src/services/project_service.py` and `src/services/config_service.py` |
+| *(flat)* | `add` | `src/commands/add.py` | `src/services/ingest_service.py`, `src/services/normalization_service.py`, and `src/services/manifest_service.py` |
 | *(flat)* | `ingest` | `src/commands/ingest.py` | `src/services/ingest_service.py`, `src/services/normalization_service.py`, and `src/services/manifest_service.py` |
 | *(flat)* | `compile` | `src/commands/compile.py` | `src/services/compile_service.py` (+ `src/services/concept_service.py` with `--with-concepts`) |
 | `query` | `search` | `src/commands/search.py` | `src/services/search_service.py` |
@@ -47,6 +48,7 @@ Commands are organized into flat verbs and namespaced groups:
 ## Current Ingest Scope
 
 - The current implementation ingests `.md`, `.markdown`, and `.txt` files directly, routes `.pdf` files through Docling, and uses MarkItDown for a bounded born-digital subset such as HTML, CSV, Office documents, notebooks, and EPUB.
+- `kb add` is a user-facing alias for `kb ingest`; both commands route through the same ingest and normalization services.
 - OCR-backed ingest is still deferred and should arrive as a provider-backed fallback, with Mistral OCR as the current preferred OCR path for scanned or image-heavy inputs.
 
 ## Planned Deliberation Pipelines

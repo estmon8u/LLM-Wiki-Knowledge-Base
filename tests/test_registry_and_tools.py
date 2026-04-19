@@ -25,6 +25,7 @@ from src.models.tool_models import ToolContext
 
 def test_command_registry_resolves_aliases_and_lists_names() -> None:
     assert list_command_names() == sorted(list_command_names())
+    assert "add" in list_command_names()
     assert "init" in list_command_names()
     assert "check" in list_command_names()
     assert "show" in list_command_names()
@@ -33,13 +34,17 @@ def test_command_registry_resolves_aliases_and_lists_names() -> None:
 
 
 def test_command_registry_returns_click_commands_and_specs(test_project) -> None:
+    add_command = get_click_command("add")
     command = get_click_command("export")
     specs = build_command_specs(test_project.command_context)
 
+    assert add_command is not None
+    assert add_command.name == "add"
     assert command is not None
     assert command.name == "export"
     assert get_click_command("missing") is None
     spec_names = {spec.name for spec in specs}
+    assert "add" in spec_names
     assert "compile" in spec_names
     assert "check lint" in spec_names
     assert "show status" in spec_names
@@ -51,6 +56,7 @@ def test_command_registry_returns_click_commands_and_specs(test_project) -> None
 @pytest.mark.parametrize(
     "command_name",
     [
+        "add",
         "init",
         "ingest",
         "compile",

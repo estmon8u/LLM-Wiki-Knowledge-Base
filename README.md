@@ -25,10 +25,10 @@ poetry run kb init
 # 2. Check project health (provider, converters, structure)
 poetry run kb doctor
 
-# 3. Ingest some source documents
-poetry run kb ingest path/to/paper.pdf
+# 3. Ingest some source documents (`kb add` is a friendlier alias)
+poetry run kb add path/to/paper.pdf
 poetry run kb ingest path/to/notes.md
-poetry run kb ingest path/to/slides.pptx
+poetry run kb add path/to/slides.pptx
 
 # 4. Compile the wiki (add --with-concepts to generate concept pages)
 poetry run kb compile
@@ -84,7 +84,7 @@ Commands are organized into flat verbs and namespaced groups:
 
 | Group | Subcommands | Description |
 | --- | --- | --- |
-| *(flat)* | `init`, `ingest`, `compile`, `doctor` | Core workflow verbs |
+| *(flat)* | `init`, `add`, `ingest`, `compile`, `doctor` | Core workflow verbs |
 | `query` | `search`, `ask` | Search the wiki or ask provider-backed questions |
 | `check` | `lint`, `review` | Structural and semantic quality checks |
 | `show` | `status`, `diff` | Project state inspection |
@@ -120,13 +120,17 @@ poetry run kb doctor
 
 Prints `[OK]` or `[FAIL]` for each check and exits with code 1 if any check fails.
 
-### `kb ingest <source_path>`
+### `kb ingest <source_path>` / `kb add <source_path>`
 
 Ingest and normalize a source file into the raw corpus.
 
 ```bash
+poetry run kb add path/to/document.pdf
 poetry run kb ingest path/to/document.pdf
 ```
+
+`kb add` is a first-class alias for `kb ingest`. Both commands use the same
+normalization, duplicate-detection, and manifest-registration path.
 
 What happens:
 

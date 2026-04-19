@@ -65,6 +65,8 @@ def test_help_lists_core_commands() -> None:
 
     assert result.exit_code == 0
     for command_name in (
+        "add",
+        "doctor",
         "init",
         "ingest",
         "compile",
@@ -209,6 +211,33 @@ def test_ingest_reports_click_error_for_unsupported_file_type() -> None:
 
         assert result.exit_code != 0
         assert "Supported ingest inputs are canonical text" in result.output
+
+
+def test_add_alias_ingests_source_file() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Added Sample\n\nAlias ingest path.\n", encoding="utf-8"
+        )
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["add", "sample.md"])
+
+        assert result.exit_code == 0
+        assert "Ingested Added Sample" in result.output
+        assert "- slug: added-sample" in result.output
+        assert Path("raw/sources/added-sample.md").exists()
+
+
+def test_add_alias_rejects_directory_path() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        Path("mydir").mkdir()
+
+        result = runner.invoke(main, ["add", "mydir"])
+
+        assert result.exit_code != 0
 
 
 def test_lint_returns_nonzero_when_errors_exist() -> None:

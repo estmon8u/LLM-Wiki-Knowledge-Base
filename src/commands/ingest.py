@@ -9,14 +9,20 @@ from src.models.command_models import CommandContext, CommandSpec
 
 
 SUMMARY = "Ingest and normalize a source file into the raw corpus."
+SHORT_HELP = "Ingest a source file."
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
     return CommandSpec(name="ingest", summary=SUMMARY)
 
 
-def create_command() -> click.Command:
-    @click.command(name="ingest", help=SUMMARY, short_help="Ingest a source file.")
+def create_command(
+    *,
+    name: str = "ingest",
+    help_text: str = SUMMARY,
+    short_help: str = SHORT_HELP,
+) -> click.Command:
+    @click.command(name=name, help=help_text, short_help=short_help)
     @click.argument(
         "source_path", type=click.Path(exists=True, dir_okay=False, path_type=Path)
     )
