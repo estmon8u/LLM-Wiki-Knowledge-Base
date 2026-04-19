@@ -141,7 +141,7 @@ def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
 
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             query_result = runner.invoke(
-                main, ["query", "ask", "How", "does", "the", "wiki", "help?"]
+                main, ["query", "ask", "traceability", "knowledge"]
             )
         assert query_result.exit_code == 0
         assert "Answer" in query_result.output

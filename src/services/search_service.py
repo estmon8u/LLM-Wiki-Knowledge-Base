@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 _CHUNK_CHAR_LIMIT = 1200
+_MAINTENANCE_PAGE_NAMES: frozenset[str] = frozenset({"wiki/index.md", "wiki/log.md"})
+_INDEXABLE_FM_KEYS: frozenset[str] = frozenset(
+    {"title", "summary", "tags", "aliases", "source_title", "description", "keywords"}
+)
 
 
 @dataclass(frozen=True)
@@ -44,9 +48,7 @@ class SearchService:
         if self._fts_available:
             self.refresh()
             if self._fts_available:
-                indexed_results = self._search_index(terms, limit=limit)
-                if indexed_results:
-                    return indexed_results
+                return self._search_index(terms, limit=limit)
 
         return self._scan_markdown_files(terms, limit=limit)
 
@@ -57,7 +59,8 @@ class SearchService:
         inventory = self._wiki_inventory()
         try:
             indexed_files = self.index_store.load_indexed_files()
-            if not force and indexed_files == inventory:
+            version_ok = self.index_store.check_version()
+            if not force and version_ok and indexed_files == inventory:
                 return False
 
             chunks: list[IndexedChunk] = []
@@ -80,11 +83,31 @@ class SearchService:
             self._fts_available = False
             return False
 
+    def refresh_file(self, file_path: Path) -> None:
+        """Insert or update the index for a single file. No-op when FTS is unavailable."""
+        if not self._fts_available:
+            return
+        try:
+            relative_path = file_path.relative_to(self.paths.root).as_posix()
+            stat = file_path.stat()
+            file_state = IndexedFileState(
+                page_path=relative_path,
+                mtime_ns=stat.st_mtime_ns,
+                size_bytes=stat.st_size,
+            )
+            chunks = self._indexable_chunks(file_path, relative_path)
+            self.index_store.upsert_file(file_state, chunks)
+        except SearchIndexUnavailable as exc:
+            logger.warning("Search index file refresh failed: %s", exc)
+            self._fts_available = False
+        except OSError as exc:
+            logger.warning("Search index file refresh skipped: %s", exc)
+
     def _search_index(self, terms: list[str], *, limit: int) -> list[SearchResult]:
         try:
             hits = self.index_store.search(
                 _build_match_query(terms),
-                limit=max(limit * 10, 20),
+                limit=max(limit * 30, 50),
             )
         except SearchIndexUnavailable as exc:
             logger.warning("SQLite FTS5 search query unavailable: %s", exc)
@@ -156,6 +179,9 @@ class SearchService:
         if _is_generated_concept_page(file_path, self.paths):
             return []
 
+        if _is_maintenance_page(relative_path):
+            return []
+
         try:
             text = file_path.read_text(encoding="utf-8")
         except OSError:
@@ -164,7 +190,7 @@ class SearchService:
         frontmatter = _extract_frontmatter(text)
         title = _page_title(file_path, text, frontmatter)
         page_type = _frontmatter_value(frontmatter, "type")
-        metadata = _frontmatter_text(frontmatter)
+        metadata = _frontmatter_search_text(frontmatter)
         chunks = _chunk_markdown_body(text, title)
         if not chunks:
             chunks = [_SectionChunk(section=title, body=metadata or title)]
@@ -281,6 +307,21 @@ def _frontmatter_text(frontmatter: dict[str, object]) -> str:
     for item in frontmatter.values():
         append_value(item)
     return "\n".join(values)
+
+
+def _frontmatter_search_text(frontmatter: dict[str, object]) -> str:
+    """Return searchable text from selected semantic frontmatter fields only.
+
+    Excludes raw paths, hashes, timestamps, and provider metadata so they
+    cannot distort relevance ranking.
+    """
+    selected = {k: v for k, v in frontmatter.items() if k in _INDEXABLE_FM_KEYS}
+    return _frontmatter_text(selected)
+
+
+def _is_maintenance_page(relative_path: str) -> bool:
+    """Return True for wiki maintenance pages that should not be indexed."""
+    return relative_path in _MAINTENANCE_PAGE_NAMES
 
 
 def _chunk_markdown_body(text: str, title: str) -> list[_SectionChunk]:

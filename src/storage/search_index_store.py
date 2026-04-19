@@ -7,6 +7,9 @@ import sqlite3
 from pathlib import Path
 
 
+_SCHEMA_VERSION = "1"
+_CHUNKER_VERSION = "1"
+
 _SCHEMA_SQL = """\
 CREATE TABLE IF NOT EXISTS indexed_files (
     page_path    TEXT PRIMARY KEY,
@@ -37,6 +40,11 @@ CREATE VIRTUAL TABLE IF NOT EXISTS page_chunks_fts USING fts5(
     content='page_chunks',
     content_rowid='chunk_id',
     tokenize='porter unicode61'
+);
+
+CREATE TABLE IF NOT EXISTS search_index_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
 );
 """
 
@@ -85,6 +93,20 @@ class SearchIndexStore:
             ).fetchall()
         return {row[0]: (row[1], row[2]) for row in rows}
 
+    def load_meta(self, key: str) -> str | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT value FROM search_index_meta WHERE key = ?", (key,)
+            ).fetchone()
+        return row[0] if row else None
+
+    def check_version(self) -> bool:
+        """Return True when stored schema and chunker versions match current constants."""
+        return (
+            self.load_meta("schema_version") == _SCHEMA_VERSION
+            and self.load_meta("chunker_version") == _CHUNKER_VERSION
+        )
+
     def rebuild(
         self,
         file_states: list[IndexedFileState],
@@ -126,7 +148,76 @@ class SearchIndexStore:
             conn.execute(
                 "INSERT INTO page_chunks_fts(page_chunks_fts) VALUES('rebuild')"
             )
+            conn.execute(
+                "INSERT OR REPLACE INTO search_index_meta (key, value) VALUES (?, ?)",
+                ("schema_version", _SCHEMA_VERSION),
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO search_index_meta (key, value) VALUES (?, ?)",
+                ("chunker_version", _CHUNKER_VERSION),
+            )
             conn.commit()
+
+    def upsert_file(
+        self,
+        file_state: IndexedFileState,
+        chunks: list[IndexedChunk],
+    ) -> None:
+        """Insert or replace index data for a single file without a full rebuild."""
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM page_chunks WHERE page_path = ?", (file_state.page_path,)
+            )
+            conn.execute(
+                "DELETE FROM indexed_files WHERE page_path = ?", (file_state.page_path,)
+            )
+            conn.execute(
+                "INSERT INTO indexed_files (page_path, mtime_ns, size_bytes) VALUES (?, ?, ?)",
+                (file_state.page_path, file_state.mtime_ns, file_state.size_bytes),
+            )
+            if chunks:
+                conn.executemany(
+                    "INSERT INTO page_chunks "
+                    "(page_path, page_type, title, section, chunk_index, metadata, body) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        (
+                            chunk.page_path,
+                            chunk.page_type,
+                            chunk.title,
+                            chunk.section,
+                            chunk.chunk_index,
+                            chunk.metadata,
+                            chunk.body,
+                        )
+                        for chunk in chunks
+                    ],
+                )
+            conn.execute(
+                "INSERT INTO page_chunks_fts(page_chunks_fts) VALUES('rebuild')"
+            )
+            conn.commit()
+
+    def delete_missing_files(self, current_page_paths: set[str]) -> int:
+        """Remove index entries for pages no longer in the current inventory."""
+        with self._connect() as conn:
+            stored_paths = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT page_path FROM indexed_files"
+                ).fetchall()
+            }
+            stale = stored_paths - current_page_paths
+            if not stale:
+                return 0
+            for path in stale:
+                conn.execute("DELETE FROM page_chunks WHERE page_path = ?", (path,))
+                conn.execute("DELETE FROM indexed_files WHERE page_path = ?", (path,))
+            conn.execute(
+                "INSERT INTO page_chunks_fts(page_chunks_fts) VALUES('rebuild')"
+            )
+            conn.commit()
+        return len(stale)
 
     def search(self, match_query: str, *, limit: int) -> list[SearchHit]:
         with self._connect() as conn:

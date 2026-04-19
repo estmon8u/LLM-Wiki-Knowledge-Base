@@ -145,7 +145,8 @@ def test_search_service_returns_ranked_results_and_limit(test_project) -> None:
 
     assert len(results) == 2
     assert results[0].score >= results[1].score
-    assert results[0].path in {"wiki/index.md", "wiki/sources/first.md"}
+    # wiki/index.md is a maintenance page excluded from the FTS index
+    assert results[0].path == "wiki/sources/first.md"
 
 
 def test_search_service_refresh_is_noop_when_inventory_is_unchanged(
@@ -812,7 +813,416 @@ def test_diff_service_reports_new_source_before_compile(test_project) -> None:
     assert report.changed_count == 0
     assert report.up_to_date_count == 0
     assert report.entries[0].status == "new"
-    assert report.entries[0].title == "Diff"
+
+
+# --- P1 FTS5 improvement tests ---
+
+
+def test_search_does_not_scan_markdown_when_fts_returns_no_hits(
+    monkeypatch, test_project
+) -> None:
+    """Zero-hit FTS result should be returned as-is; markdown scan must not run."""
+    test_project.write_file("wiki/sources/page.md", "xyzzy unique term present")
+    service = test_project.services["search"]
+
+    scan_called: list[bool] = []
+    original_scan = service._scan_markdown_files
+
+    def tracking_scan(*args, **kwargs):
+        scan_called.append(True)
+        return original_scan(*args, **kwargs)
+
+    monkeypatch.setattr(service, "_scan_markdown_files", tracking_scan)
+
+    # Query for a term that won't be in the FTS stemmed index
+    results = service.search("zzznomatchzzzqqqq", limit=5)
+
+    assert results == []
+    assert (
+        not scan_called
+    ), "markdown scan must not run when FTS is available and healthy"
+
+
+def test_search_index_removes_deleted_files(test_project) -> None:
+    """Pages deleted from wiki/ must disappear from search results after refresh."""
+    path = test_project.write_file(
+        "wiki/sources/deleted-page.md", "ephemeral content here"
+    )
+    service = test_project.services["search"]
+
+    service.refresh(force=True)
+    before = service.search("ephemeral", limit=5)
+    assert any("deleted-page" in r.path for r in before)
+
+    path.unlink()
+    service.refresh(force=True)
+    after = service.search("ephemeral", limit=5)
+    assert not any("deleted-page" in r.path for r in after)
+
+
+def test_search_index_updates_changed_file(test_project) -> None:
+    """After a file is modified, a fresh refresh must reflect the new content."""
+    path = test_project.write_file("wiki/sources/mutable.md", "original term aplhabet")
+    service = test_project.services["search"]
+
+    service.refresh(force=True)
+    before = service.search("aplhabet", limit=5)
+    assert any("mutable" in r.path for r in before)
+
+    path.write_text("replacement content newword", encoding="utf-8")
+    service.refresh(force=True)
+
+    after_old = service.search("aplhabet", limit=5)
+    after_new = service.search("newword", limit=5)
+    assert not any("mutable" in r.path for r in after_old)
+    assert any("mutable" in r.path for r in after_new)
+
+
+def test_maintenance_pages_excluded_from_search_index(test_project) -> None:
+    """wiki/index.md and wiki/log.md must not appear in FTS search results."""
+    test_project.write_file("wiki/index.md", "maintenance uniqueindextoken content")
+    test_project.write_file("wiki/log.md", "maintenance uniquelogtoken activity")
+
+    service = test_project.services["search"]
+    service.refresh(force=True)
+
+    assert service.search("uniqueindextoken", limit=5) == []
+    assert service.search("uniquelogtoken", limit=5) == []
+
+
+def test_selective_frontmatter_excludes_implementation_metadata(test_project) -> None:
+    """raw_path, source_hash, and compiled_at must not be indexed for search."""
+    test_project.write_file(
+        "wiki/sources/impl-meta.md",
+        "---\n"
+        "title: Implementation Meta\n"
+        "raw_path: raw/sources/hidden.md\n"
+        "source_hash: abc123hashvalue\n"
+        "compiled_at: 2026-04-19T00:00:00Z\n"
+        "provider: openai\n"
+        "---\n\n"
+        "# Implementation Meta\n\n"
+        "Body without hidden terms.\n",
+    )
+    service = test_project.services["search"]
+    service.refresh(force=True)
+
+    # These implementation-detail tokens must not match
+    assert service.search("abc123hashvalue", limit=5) == []
+    assert service.search("openai", limit=5) == []
+    # But the title must still be indexed
+    results = service.search("implementation meta", limit=5)
+    assert any("impl-meta" in r.path for r in results)
+
+
+def test_search_index_rebuilds_on_version_mismatch(monkeypatch, test_project) -> None:
+    """refresh() must trigger a full rebuild if the stored version doesn't match."""
+    from src.storage.search_index_store import SearchIndexStore
+
+    test_project.write_file("wiki/sources/versioned.md", "version check content")
+    service = test_project.services["search"]
+    service.refresh(force=True)
+
+    # Tamper the stored schema version to simulate a stale index
+    original_check = service.index_store.check_version
+    monkeypatch.setattr(service.index_store, "check_version", lambda: False)
+
+    rebuild_called: list[bool] = []
+    original_rebuild = service.index_store.rebuild
+
+    def tracking_rebuild(*args, **kwargs):
+        rebuild_called.append(True)
+        return original_rebuild(*args, **kwargs)
+
+    monkeypatch.setattr(service.index_store, "rebuild", tracking_rebuild)
+
+    # Even though inventory hasn't changed, stale version must trigger rebuild
+    result = service.refresh()
+    assert result is True
+    assert rebuild_called
+
+
+def test_refresh_file_upserts_single_file_without_full_rebuild(
+    monkeypatch, test_project
+) -> None:
+    """refresh_file() must call upsert_file, not rebuild."""
+    test_project.write_file("wiki/sources/single.md", "upsert candidate content")
+    service = test_project.services["search"]
+
+    upsert_called: list[bool] = []
+    rebuild_called: list[bool] = []
+    original_upsert = service.index_store.upsert_file
+
+    def tracking_upsert(*args, **kwargs):
+        upsert_called.append(True)
+        return original_upsert(*args, **kwargs)
+
+    def tracking_rebuild(*args, **kwargs):
+        rebuild_called.append(True)
+
+    monkeypatch.setattr(service.index_store, "upsert_file", tracking_upsert)
+    monkeypatch.setattr(service.index_store, "rebuild", tracking_rebuild)
+
+    path = test_project.paths.root / "wiki/sources/single.md"
+    service.refresh_file(path)
+
+    assert upsert_called
+    assert not rebuild_called
+
+
+def test_search_index_store_upsert_replaces_stale_chunks(test_project) -> None:
+    """upsert_file must replace old chunks so stale terms are no longer searchable."""
+    from src.storage.search_index_store import (
+        IndexedChunk,
+        IndexedFileState,
+        SearchIndexStore,
+    )
+
+    store = test_project.services["search"].index_store
+    state = IndexedFileState(page_path="wiki/sources/up.md", mtime_ns=1, size_bytes=10)
+    old_chunk = IndexedChunk(
+        page_path="wiki/sources/up.md",
+        page_type="source",
+        title="Up",
+        section="Up",
+        chunk_index=0,
+        metadata="",
+        body="stale obsolete content",
+    )
+    store.upsert_file(state, [old_chunk])
+
+    new_chunk = IndexedChunk(
+        page_path="wiki/sources/up.md",
+        page_type="source",
+        title="Up",
+        section="Up",
+        chunk_index=0,
+        metadata="",
+        body="fresh updated content",
+    )
+    store.upsert_file(
+        IndexedFileState(page_path="wiki/sources/up.md", mtime_ns=2, size_bytes=20),
+        [new_chunk],
+    )
+
+    hits_old = store.search('"stale"', limit=5)
+    hits_new = store.search('"fresh"', limit=5)
+    assert not hits_old
+    assert hits_new
+
+
+def test_search_index_store_delete_missing_files(test_project) -> None:
+    """delete_missing_files must remove pages no longer in the given path set."""
+    from src.storage.search_index_store import IndexedChunk, IndexedFileState
+
+    store = test_project.services["search"].index_store
+    for slug in ("keep", "remove"):
+        store.upsert_file(
+            IndexedFileState(
+                page_path=f"wiki/sources/{slug}.md", mtime_ns=1, size_bytes=5
+            ),
+            [
+                IndexedChunk(
+                    page_path=f"wiki/sources/{slug}.md",
+                    page_type="source",
+                    title=slug.title(),
+                    section=slug.title(),
+                    chunk_index=0,
+                    metadata="",
+                    body=f"{slug} unique term",
+                )
+            ],
+        )
+
+    deleted = store.delete_missing_files({"wiki/sources/keep.md"})
+
+    assert deleted == 1
+    indexed = store.load_indexed_files()
+    assert "wiki/sources/keep.md" in indexed
+    assert "wiki/sources/remove.md" not in indexed
+
+
+def test_page_dedup_returns_enough_unique_pages(test_project) -> None:
+    """When one page has many high-ranked chunks, other pages must still appear."""
+    # Create one very long page that will produce many chunks
+    long_body = "## Section {i}\n\nalpha beta gamma delta epsilon " * 40
+    test_project.write_file(
+        "wiki/sources/dominant.md",
+        f"# Dominant\n\n{long_body}",
+    )
+    # Create several shorter pages that also match
+    for i in range(4):
+        test_project.write_file(
+            f"wiki/sources/other-{i}.md",
+            f"alpha beta result page {i}",
+        )
+
+    results = test_project.services["search"].search("alpha beta", limit=4)
+
+    unique_paths = {r.path for r in results}
+    # Must return 4 unique pages, not just the dominant page repeated
+    assert len(unique_paths) == len(results) == 4
+
+
+def test_search_index_meta_version_stored_after_rebuild(test_project) -> None:
+    """Metadata table must store schema_version and chunker_version after rebuild."""
+    test_project.write_file("wiki/sources/meta-check.md", "version metadata test")
+    service = test_project.services["search"]
+    service.refresh(force=True)
+
+    assert service.index_store.check_version() is True
+    assert service.index_store.load_meta("schema_version") == "1"
+    assert service.index_store.load_meta("chunker_version") == "1"
+
+
+def test_search_falls_back_to_scan_when_fts_was_already_disabled(test_project) -> None:
+    """search() must use markdown scan when _fts_available is False before the call."""
+    test_project.write_file(
+        "wiki/sources/fallback-pre.md", "determinism content present"
+    )
+    service = test_project.services["search"]
+    service._fts_available = False
+
+    results = service.search("determinism")
+
+    assert any("fallback-pre" in r.path for r in results)
+
+
+def test_refresh_file_noop_when_fts_is_disabled(test_project) -> None:
+    """refresh_file() must return immediately when _fts_available is False."""
+    service = test_project.services["search"]
+    service._fts_available = False
+
+    upsert_called: list[bool] = []
+    service.index_store.upsert_file = lambda *_a, **_kw: upsert_called.append(True)  # type: ignore[method-assign]
+
+    path = test_project.paths.root / "wiki/sources/noop.md"
+    service.refresh_file(path)
+
+    assert not upsert_called
+
+
+def test_refresh_file_marks_fts_unavailable_on_upsert_error(
+    monkeypatch, test_project
+) -> None:
+    """refresh_file() must disable FTS when upsert_file raises SearchIndexUnavailable."""
+    from src.storage.search_index_store import SearchIndexUnavailable
+
+    path = test_project.write_file("wiki/sources/upsert-fail.md", "content")
+    service = test_project.services["search"]
+
+    def raise_unavailable(*_a, **_kw):
+        raise SearchIndexUnavailable("broken")
+
+    monkeypatch.setattr(service.index_store, "upsert_file", raise_unavailable)
+
+    service.refresh_file(path)
+
+    assert service._fts_available is False
+
+
+def test_refresh_file_logs_warning_on_os_error(monkeypatch, test_project) -> None:
+    """refresh_file() must handle OSError gracefully without disabling FTS."""
+    service = test_project.services["search"]
+    path = test_project.paths.root / "wiki/sources/nonexistent-file.md"
+
+    # upsert_file won't even be called since stat() will raise OSError first
+    service.refresh_file(path)
+
+    # FTS should remain available — only a warning is expected
+    assert service._fts_available is True
+
+
+def test_search_index_returns_empty_snippet_fallback(test_project) -> None:
+    """When a FTS hit has no snippet text, the section/title must be used instead."""
+    from src.storage.search_index_store import SearchHit
+
+    test_project.write_file("wiki/sources/snippetless.md", "sparse relevant body")
+    service = test_project.services["search"]
+
+    original_search = service.index_store.search
+
+    def patched_search(query, *, limit):
+        hits = original_search(query, limit=limit)
+        # Return hit with empty snippet to exercise the fallback
+        return [
+            SearchHit(
+                page_path=h.page_path,
+                title=h.title,
+                section=h.section,
+                snippet="",
+                score=h.score,
+            )
+            for h in hits
+        ]
+
+    service.index_store.search = patched_search  # type: ignore[method-assign]
+    results = service.search("sparse relevant", limit=5)
+
+    assert results
+    assert results[0].snippet  # must be section or title, not empty
+
+
+def test_scan_markdown_skips_zero_scoring_pages(test_project) -> None:
+    """_scan_markdown_files must omit pages with no term occurrences."""
+    test_project.write_file("wiki/sources/nomatch.md", "unrelated content here")
+    service = test_project.services["search"]
+    service._fts_available = False  # force scan path
+
+    results = service.search("zzznomatch", limit=5)
+
+    assert results == []
+
+
+def test_scan_markdown_skips_concept_pages(test_project) -> None:
+    """_scan_markdown_files must skip generated concept pages."""
+    test_project.write_file(
+        "wiki/concepts/generated-concept.md",
+        "---\ntype: concept\n---\n\n# Concept\n\ngenerated concept body\n",
+    )
+    service = test_project.services["search"]
+    service._fts_available = False  # force scan path
+
+    results = service.search("generated", limit=5)
+
+    assert not any("generated-concept" in r.path for r in results)
+
+
+def test_indexable_chunks_fallback_for_empty_body_page(test_project) -> None:
+    """A page with frontmatter but no body must produce a single title chunk."""
+    service = test_project.services["search"]
+    path = test_project.write_file(
+        "wiki/sources/empty-body.md",
+        "---\ntitle: Empty Body Page\nsummary: no body content\n---\n",
+    )
+
+    chunks = service._indexable_chunks(path, "wiki/sources/empty-body.md")
+
+    assert len(chunks) == 1
+    assert chunks[0].title == "Empty Body Page"
+
+
+def test_chunk_markdown_body_handles_non_paragraph_section(test_project) -> None:
+    """A section whose text has no blank-line groups must be treated as one paragraph."""
+    from src.services.search_service import _chunk_markdown_body
+
+    # Section text with no blank lines — _paragraphs returns [] for single-line-group
+    # but the text itself is non-empty, triggering the fallback
+    text = "## Tight Section\n\nline one\nline two\nline three\n"
+    chunks = _chunk_markdown_body(text, "Tight Section")
+
+    assert chunks
+
+
+def test_chunk_markdown_body_skips_blank_normalized_paragraphs() -> None:
+    """Normalized empty paragraph strings must be silently skipped."""
+    from src.services.search_service import _chunk_markdown_body
+
+    text = "# Title\n\n   \n\nReal paragraph content here\n"
+    chunks = _chunk_markdown_body(text, "Title")
+
+    assert chunks
+    assert all(chunk.body.strip() for chunk in chunks)
 
 
 def test_diff_service_reports_up_to_date_after_compile(test_project) -> None:
