@@ -19,8 +19,8 @@
 | --- | --- |
 | `src/commands/common.py` | Shared command helpers |
 | `src/commands/init.py` | Project initialization behavior |
-| `src/commands/add.py` | User-friendly alias for the ingest command, including recursive directory ingest via `--recursive` |
-| `src/commands/ingest.py` | Source ingest command for single files and explicit recursive directory ingest |
+| `src/commands/add.py` | User-friendly alias for the ingest command, including default-recursive directory ingest |
+| `src/commands/ingest.py` | Source ingest command for single files and directory ingest that recurses by default |
 | `src/commands/compile.py` | Wiki compilation command |
 | `src/commands/diff.py` | Pre-compile source diff command |
 | `src/commands/search.py` | Search command |

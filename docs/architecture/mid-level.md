@@ -49,7 +49,7 @@ Commands are organized into flat verbs and namespaced groups:
 
 - The current implementation ingests `.md`, `.markdown`, and `.txt` files directly, routes `.pdf` files through Docling, and uses MarkItDown for a bounded born-digital subset such as HTML, CSV, Office documents, notebooks, and EPUB.
 - `kb add` is a user-facing alias for `kb ingest`; both commands route through the same ingest and normalization services.
-- `kb add <directory> --recursive` and `kb ingest <directory> --recursive` walk directories deterministically and ingest only supported source files, while leaving unsupported files untouched.
+- Directory inputs for `kb add` and `kb ingest` now walk recursively by default, ingest only supported source files, and leave unsupported files untouched.
 - OCR-backed ingest is still deferred and should arrive as a provider-backed fallback, with Mistral OCR as the current preferred OCR path for scanned or image-heavy inputs.
 
 ## Planned Deliberation Pipelines

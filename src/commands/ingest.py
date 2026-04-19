@@ -30,7 +30,7 @@ def create_command(
     @click.option(
         "--recursive",
         is_flag=True,
-        help="Recursively ingest all supported source files under a directory.",
+        help="Compatibility flag; directory inputs recurse automatically.",
     )
     @click.pass_obj
     def command(
@@ -42,10 +42,6 @@ def create_command(
         ingest_service = command_context.services["ingest"]
         try:
             if source_path.is_dir():
-                if not recursive:
-                    raise ValueError(
-                        f"Directory ingest requires --recursive: {source_path.resolve()}"
-                    )
                 directory_result = ingest_service.ingest_directory(source_path)
                 _echo_directory_result(directory_result)
                 return

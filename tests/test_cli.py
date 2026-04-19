@@ -231,16 +231,18 @@ def test_add_alias_ingests_source_file() -> None:
         assert Path("raw/sources/added-sample.md").exists()
 
 
-def test_add_alias_requires_recursive_flag_for_directory_path() -> None:
+def test_add_alias_recursively_ingests_directory_by_default() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
-        Path("mydir").mkdir()
+        Path("mydir/alpha.md").parent.mkdir(parents=True, exist_ok=True)
+        Path("mydir/alpha.md").write_text("# Alpha\n\nAlpha body.\n", encoding="utf-8")
 
         result = runner.invoke(main, ["add", "mydir"])
 
-        assert result.exit_code != 0
-        assert "Directory ingest requires --recursive" in result.output
+        assert result.exit_code == 0
+        assert "Processed 1 supported source file(s)" in result.output
+        assert "- created: 1" in result.output
 
 
 def test_add_alias_recursively_ingests_supported_directory_files() -> None:
@@ -254,7 +256,7 @@ def test_add_alias_recursively_ingests_supported_directory_files() -> None:
         )
         Path("bulk/nested/ignored.bin").write_text("ignore me", encoding="utf-8")
 
-        result = runner.invoke(main, ["add", "bulk", "--recursive"])
+        result = runner.invoke(main, ["add", "bulk"])
 
         assert result.exit_code == 0
         assert "Processed 2 supported source file(s)" in result.output
@@ -275,7 +277,7 @@ def test_add_alias_recursive_directory_reports_duplicates() -> None:
         Path("bulk/first.md").write_text(duplicate, encoding="utf-8")
         Path("bulk/nested/second.md").write_text(duplicate, encoding="utf-8")
 
-        result = runner.invoke(main, ["add", "bulk", "--recursive"])
+        result = runner.invoke(main, ["add", "bulk"])
 
         assert result.exit_code == 0
         assert "- created: 1" in result.output
@@ -581,16 +583,18 @@ def test_query_self_consistency_flag_requires_provider() -> None:
         assert "requires a configured provider" in result.output
 
 
-def test_ingest_requires_recursive_flag_for_directory_path() -> None:
+def test_ingest_recursively_ingests_directory_by_default() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
-        Path("mydir").mkdir()
+        Path("mydir/alpha.md").parent.mkdir(parents=True, exist_ok=True)
+        Path("mydir/alpha.md").write_text("# Alpha\n\nAlpha body.\n", encoding="utf-8")
 
         result = runner.invoke(main, ["ingest", "mydir"])
 
-        assert result.exit_code != 0
-        assert "Directory ingest requires --recursive" in result.output
+        assert result.exit_code == 0
+        assert "Processed 1 supported source file(s)" in result.output
+        assert "- created: 1" in result.output
 
 
 def test_ingest_recursive_directory_requires_supported_files() -> None:
@@ -600,7 +604,7 @@ def test_ingest_recursive_directory_requires_supported_files() -> None:
         Path("bulk").mkdir()
         Path("bulk/ignored.bin").write_text("ignore me", encoding="utf-8")
 
-        result = runner.invoke(main, ["ingest", "bulk", "--recursive"])
+        result = runner.invoke(main, ["ingest", "bulk"])
 
         assert result.exit_code != 0
         assert "No supported source files found under directory" in result.output
