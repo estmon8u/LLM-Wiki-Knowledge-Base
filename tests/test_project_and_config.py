@@ -3,12 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 
 import click
+import pytest
 
 from src.services import build_services
 from src.services.config_service import (
+    CURRENT_CONFIG_VERSION,
     ConfigService,
     DEFAULT_CONFIG,
     DEFAULT_SCHEMA,
+    _apply_config_migrations,
+    _config_version,
     _deep_merge,
 )
 from src.services.project_service import (
@@ -113,6 +117,41 @@ def test_config_service_loads_defaults_and_creates_files(uninitialized_project) 
     assert config_service.ensure_files() == []
 
 
+def test_config_version_helper_uses_legacy_default_and_validates_values() -> None:
+    assert _config_version({}) == 1
+    assert (
+        _config_version({"version": CURRENT_CONFIG_VERSION}) == CURRENT_CONFIG_VERSION
+    )
+
+    with pytest.raises(ValueError, match="must be an integer"):
+        _config_version({"version": "two"})
+
+    with pytest.raises(ValueError, match=">= 1"):
+        _config_version({"version": 0})
+
+
+def test_apply_config_migrations_upgrades_version_one_payload() -> None:
+    migrated, changed = _apply_config_migrations(
+        {
+            "version": 1,
+            "project": {"name": "Legacy Project"},
+            "storage": {"wiki_sources_dir": "wiki/sources"},
+            "compile": {
+                "summary_paragraph_limit": 2,
+                "excerpt_character_limit": 180,
+            },
+        }
+    )
+
+    assert changed is True
+    assert migrated["version"] == CURRENT_CONFIG_VERSION
+    assert migrated["project"]["name"] == "Legacy Project"
+    assert migrated["compile"]["excerpt_character_limit"] == 180
+    assert "summary_paragraph_limit" not in migrated["compile"]
+    assert migrated["storage"]["raw_normalized_dir"] == "raw/normalized"
+    assert migrated["provider"] == {}
+
+
 def test_config_service_merges_custom_config(test_project) -> None:
     test_project.paths.config_file.write_text(
         "project:\n"
@@ -128,6 +167,36 @@ def test_config_service_merges_custom_config(test_project) -> None:
     assert loaded["project"]["name"] == "Custom Project"
     assert loaded["project"]["description"] == DEFAULT_CONFIG["project"]["description"]
     assert loaded["compile"]["excerpt_character_limit"] == 120
+
+
+def test_config_service_migrates_legacy_file_and_rewrites_disk(test_project) -> None:
+    import yaml
+
+    test_project.paths.config_file.write_text(
+        "version: 1\n"
+        "project:\n"
+        "  name: Legacy Project\n"
+        "compile:\n"
+        "  summary_paragraph_limit: 2\n"
+        "  excerpt_character_limit: 120\n",
+        encoding="utf-8",
+    )
+
+    loaded = ConfigService(test_project.paths).load()
+
+    assert loaded["version"] == CURRENT_CONFIG_VERSION
+    assert loaded["project"]["name"] == "Legacy Project"
+    assert loaded["storage"]["raw_normalized_dir"] == "raw/normalized"
+    assert loaded["provider"] == {}
+    assert "summary_paragraph_limit" not in loaded["compile"]
+
+    persisted = yaml.safe_load(
+        test_project.paths.config_file.read_text(encoding="utf-8")
+    )
+    assert persisted["version"] == CURRENT_CONFIG_VERSION
+    assert persisted["provider"] == {}
+    assert persisted["storage"]["raw_normalized_dir"] == "raw/normalized"
+    assert "summary_paragraph_limit" not in persisted["compile"]
 
 
 def test_config_service_load_schema_reads_custom_schema(test_project) -> None:
@@ -195,7 +264,6 @@ def test_config_nested_override_excerpt_character_limit(test_project) -> None:
 
 
 def test_config_invalid_yaml_raises(test_project) -> None:
-    import pytest
     import yaml
 
     test_project.paths.config_file.write_text(
@@ -203,6 +271,20 @@ def test_config_invalid_yaml_raises(test_project) -> None:
     )
 
     with pytest.raises(yaml.YAMLError):
+        ConfigService(test_project.paths).load()
+
+
+def test_config_future_version_raises(test_project) -> None:
+    test_project.paths.config_file.write_text("version: 99\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Unsupported kb.config.yaml version"):
+        ConfigService(test_project.paths).load()
+
+
+def test_config_non_mapping_yaml_raises(test_project) -> None:
+    test_project.paths.config_file.write_text("- just\n- a\n- list\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must contain a YAML mapping"):
         ConfigService(test_project.paths).load()
 
 

@@ -9,8 +9,11 @@ import yaml
 from src.services.project_service import ProjectPaths, atomic_write_text
 
 
+CURRENT_CONFIG_VERSION = 2
+
+
 DEFAULT_CONFIG: dict[str, Any] = {
-    "version": 1,
+    "version": CURRENT_CONFIG_VERSION,
     "project": {
         "name": "Capstone Knowledge Base",
         "description": "Markdown-first research knowledge base maintained through a CLI workflow.",
@@ -79,8 +82,16 @@ class ConfigService:
             return deepcopy(DEFAULT_CONFIG)
         with self.paths.config_file.open("r", encoding="utf-8") as handle:
             loaded = yaml.safe_load(handle) or {}
+        if not isinstance(loaded, dict):
+            raise ValueError("kb.config.yaml must contain a YAML mapping.")
+        migrated, changed = _apply_config_migrations(loaded)
+        if changed:
+            atomic_write_text(
+                self.paths.config_file,
+                yaml.safe_dump(migrated, sort_keys=False),
+            )
         merged = deepcopy(DEFAULT_CONFIG)
-        return _deep_merge(merged, loaded)
+        return _deep_merge(merged, migrated)
 
     def load_schema(self) -> str:
         if not self.paths.schema_file.exists():
@@ -108,3 +119,51 @@ def _deep_merge(base: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any
         else:
             base[key] = value
     return base
+
+
+def _config_version(config: dict[str, Any]) -> int:
+    version = config.get("version", 1)
+    if isinstance(version, bool) or not isinstance(version, int):
+        raise ValueError("kb.config.yaml version must be an integer.")
+    if version < 1:
+        raise ValueError("kb.config.yaml version must be >= 1.")
+    return version
+
+
+def _apply_config_migrations(config: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    migrated = deepcopy(config)
+    changed = False
+    version = _config_version(migrated)
+    if version > CURRENT_CONFIG_VERSION:
+        raise ValueError(
+            "Unsupported kb.config.yaml version: "
+            f"{version}. This CLI supports up to version {CURRENT_CONFIG_VERSION}."
+        )
+
+    while version < CURRENT_CONFIG_VERSION:
+        if version == 1:
+            migrated = _migrate_v1_to_v2(migrated)
+            changed = True
+            version = _config_version(migrated)
+            continue
+        raise ValueError(f"Unsupported kb.config.yaml version: {version}")
+
+    return migrated, changed
+
+
+def _migrate_v1_to_v2(config: dict[str, Any]) -> dict[str, Any]:
+    migrated = deepcopy(config)
+    storage = migrated.setdefault("storage", {})
+    if isinstance(storage, dict):
+        storage.setdefault(
+            "raw_normalized_dir",
+            DEFAULT_CONFIG["storage"]["raw_normalized_dir"],
+        )
+
+    compile_config = migrated.setdefault("compile", {})
+    if isinstance(compile_config, dict):
+        compile_config.pop("summary_paragraph_limit", None)
+
+    migrated.setdefault("provider", {})
+    migrated["version"] = 2
+    return migrated

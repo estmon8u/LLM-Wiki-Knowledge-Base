@@ -35,7 +35,7 @@
 | File | Responsibility |
 | --- | --- |
 | `src/services/project_service.py` | Project layout, initialization, and shared atomic write/copy helpers |
-| `src/services/config_service.py` | Config loading and defaults |
+| `src/services/config_service.py` | Config loading, defaults, and in-place migration of legacy `kb.config.yaml` versions |
 | `src/services/manifest_service.py` | Raw-source manifest read/write behavior |
 | `src/services/normalization_service.py` | Document-type normalization routing for direct text inputs, Docling-backed PDFs, and bounded MarkItDown-backed born-digital converters |
 | `src/services/ingest_service.py` | Raw-source copy, normalized-artifact write, duplicate detection, source registration, deterministic recursive directory ingest, and callback-friendly batch progress hooks used by both `kb ingest` and `kb add` |
@@ -81,7 +81,7 @@
 | --- | --- |
 | `pyproject.toml` | Dependency pins, including Docling and MarkItDown, plus CLI entrypoint, Black config, pytest and coverage settings |
 | `.github/workflows/tests.yml` | CI for Poetry install, Black, pytest, and coverage artifact upload |
-| `tests/` | Unit, CLI, and regression coverage for the current command/service surface |
+| `tests/` | Unit, CLI, regression, and golden-file coverage for the current command/service surface |
 
 ## Low-Level Guardrails
 

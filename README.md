@@ -110,6 +110,7 @@ Creates:
 - `vault/obsidian/` — directory for vault export
 
 Running `init` again is safe — it skips files that already exist.
+The scaffold writes `kb.config.yaml` at config version 2. Older version 1 configs are migrated in place on load so deprecated fields such as `compile.summary_paragraph_limit` are removed and newer sections such as `provider` and `storage.raw_normalized_dir` are persisted automatically.
 
 ### `kb doctor`
 
@@ -334,6 +335,8 @@ provider:
   name: openai          # openai | anthropic | gemini
   model: gpt-5.4-mini   # optional — defaults to a cost-effective model per provider
 ```
+
+`kb.config.yaml` is versioned. The current schema version is 2, and the CLI automatically migrates older version 1 files when it loads project configuration.
 
 You can also override the provider per-invocation without editing the config file:
 

@@ -27,6 +27,7 @@ from src.engine.tool_registry import (
     _unsupported,
     build_tool_specs,
 )
+from src.services.config_service import CURRENT_CONFIG_VERSION
 from src.models.tool_models import ToolContext
 
 
@@ -113,6 +114,24 @@ def test_build_runtime_context_uses_project_root_files(test_project) -> None:
     assert runtime_context.project_root == test_project.root
     assert runtime_context.config["project"]["name"] == "Runtime Test"
     assert runtime_context.verbose is True
+
+
+def test_build_runtime_context_migrates_legacy_config_file(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 1\n"
+        "project:\n  name: Runtime Legacy\n"
+        "compile:\n  summary_paragraph_limit: 2\n",
+        encoding="utf-8",
+    )
+
+    runtime_context = build_runtime_context(test_project.root, verbose=False)
+
+    assert runtime_context.config["version"] == CURRENT_CONFIG_VERSION
+    assert runtime_context.config["project"]["name"] == "Runtime Legacy"
+    assert "summary_paragraph_limit" not in runtime_context.config["compile"]
+    assert "summary_paragraph_limit" not in test_project.paths.config_file.read_text(
+        encoding="utf-8"
+    )
 
 
 def test_extract_project_root_uses_param_when_available(test_project) -> None:
