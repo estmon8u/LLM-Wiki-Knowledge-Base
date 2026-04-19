@@ -74,4 +74,6 @@ def create_command() -> click.Command:
             for path in concept_result.concept_paths:
                 echo_bullet(path)
 
+        command_context.services["search"].refresh(force=True)
+
     return command

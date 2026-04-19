@@ -137,6 +137,7 @@ def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
         search_result = runner.invoke(main, ["query", "search", "traceability"])
         assert search_result.exit_code == 0
         assert "wiki/sources/sample-research-note.md" in search_result.output
+        assert Path("graph/exports/search_index.sqlite3").exists()
 
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             query_result = runner.invoke(

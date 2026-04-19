@@ -26,7 +26,7 @@ The product goal is not to act like a general-purpose coding agent. The goal is 
 - `raw/` stores source-of-truth input files, normalized canonical artifacts, and manifest metadata.
 - `wiki/` stores generated source pages, saved analysis pages, index data, and compile logs.
 - `vault/` stores export-ready Obsidian-friendly markdown.
-- `graph/` is optional and should stay evaluation-oriented rather than becoming the primary storage layer.
+- `graph/` is optional and should stay evaluation-oriented rather than becoming the primary storage layer, but it now stores both deliberation run artifacts and the SQLite FTS5 search index under `graph/exports/`.
 
 ## System Boundaries
 
@@ -38,6 +38,7 @@ The product goal is not to act like a general-purpose coding agent. The goal is 
 - Providers abstract model-backed behavior behind a small boundary with concrete implementations for OpenAI, Anthropic, and Google Gemini; compile, query, and review now require a configured provider, while the rest of the CLI remains deterministic.
 - A bounded deliberation layer now sits between the service layer and the provider boundary for opt-in multi-sample workflows. `kb query --self-consistency N` freezes retrieved evidence, fans out parallel provider calls, normalizes sentence-level claims, and merges grounded claims deterministically. `kb review --adversarial` now builds candidate page pairs, runs extractor/skeptic/arbiter prompts, and emits typed review findings. `kb fix --propose` remains planned.
 - Run-artifact storage persists every deliberation run in SQLite (`RunStore`) at `graph/exports/run_artifacts.sqlite3`: retrieval sets, candidate outputs, review findings, merge decisions, model id, prompt version, context hash, token cost, wall time, and unresolved-disagreement flag.
+- Search storage now persists a rebuildable SQLite FTS5 chunk index at `graph/exports/search_index.sqlite3` so lexical retrieval no longer scans every markdown file on each query.
 - Provider-backed OCR or LLM cleanup should remain explicit fallback behavior rather than becoming part of the default deterministic normalization path.
 
 ## Reference-Project Roles

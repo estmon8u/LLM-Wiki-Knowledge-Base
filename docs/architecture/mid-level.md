@@ -12,7 +12,7 @@
 | `src/providers/` | Provider abstraction layer with OpenAI, Anthropic, and Gemini implementations |
 | `src/schemas/` | Pydantic models for claims, evidence bundles, review findings, and run artifacts |
 | `src/prompts/` (planned) | Versioned prompt assets per agent role (answerer, judge, extractor, skeptic, arbiter) |
-| `src/storage/` | SQLite run-artifact persistence; future FTS5 retrieval |
+| `src/storage/` | SQLite run-artifact persistence plus SQLite FTS5 chunk-index storage |
 
 ## Command To Service Mapping
 
@@ -39,7 +39,7 @@ Commands are organized into flat verbs and namespaced groups:
 | Ingest | canonical markdown/plain-text files, Docling-routed PDFs, and a bounded MarkItDown-backed born-digital subset | raw source copy, normalized artifact, and manifest metadata |
 | Compile | normalized canonical text plus manifest metadata | source pages with provider-generated summaries, wiki index, and compile log; optionally concept pages and source-page backlinks via `--with-concepts` |
 | Diff | manifest metadata plus compile state | pre-compile source status preview |
-| Search | compiled wiki artifacts | ranked matches |
+| Search | compiled wiki artifacts | ranked page matches derived from indexed chunks |
 | Query | user question plus compiled context | cited provider answer or self-consistency over a frozen evidence bundle; optionally saved as an analysis page |
 | Lint | compiled wiki and metadata | structural findings for links, fragments, headings, titles, typed frontmatter, empty pages, and maintenance signals |
 | Review | compiled wiki pages | semantic findings from deterministic overlap checks plus single-pass provider review or adversarial extractor/skeptic/arbiter findings; optionally persisted as a review run artifact |

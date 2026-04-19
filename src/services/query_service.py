@@ -519,4 +519,5 @@ class QueryService:
         dest = self.paths.wiki_concepts_dir / f"{slug}.md"
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(page_text, encoding="utf-8")
+        self.search_service.refresh(force=True)
         return dest.relative_to(self.paths.root).as_posix()

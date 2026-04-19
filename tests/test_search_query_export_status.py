@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+import sqlite3
 import threading
 from unittest.mock import AsyncMock, patch
 
@@ -62,6 +64,78 @@ def test_extract_snippet_uses_matching_window_and_fallback() -> None:
     assert _extract_snippet(text, ["missing"]).startswith("Alpha")
 
 
+def test_extract_frontmatter_handles_invalid_yaml_and_non_mapping_payload() -> None:
+    from src.services.search_service import _extract_frontmatter
+
+    assert _extract_frontmatter("---\ntitle: [oops\n---\n") == {}
+    assert _extract_frontmatter("---\n- item\n---\n") == {}
+
+
+def test_frontmatter_value_and_text_helpers_cover_scalar_and_nested_values() -> None:
+    from src.services.search_service import _frontmatter_text, _frontmatter_value
+
+    frontmatter = {
+        "title": " Example Title ",
+        "count": 3,
+        "flags": [True, "tag"],
+        "nested": {"question": "How does it work?"},
+    }
+
+    assert _frontmatter_value(frontmatter, "title") == "Example Title"
+    assert _frontmatter_value(frontmatter, "count") == ""
+    flattened = _frontmatter_text(frontmatter)
+    assert "Example Title" in flattened
+    assert "3" in flattened
+    assert "True" in flattened
+    assert "tag" in flattened
+    assert "How does it work?" in flattened
+
+
+def test_page_title_falls_back_to_heading_and_filename() -> None:
+    from src.services.search_service import _page_title
+
+    heading_title = _page_title(
+        Path("wiki/sources/example.md"),
+        "# Heading Title\n\nBody\n",
+        {},
+    )
+    filename_title = _page_title(
+        Path("wiki/sources/file-name.md"),
+        "Body without headings\n",
+        {},
+    )
+
+    assert heading_title == "Heading Title"
+    assert filename_title == "File Name"
+
+
+def test_chunk_markdown_body_handles_blank_and_long_sections() -> None:
+    from src.services.search_service import _chunk_markdown_body
+
+    assert _chunk_markdown_body("---\ntitle: Empty\n---\n", "Empty") == []
+
+    long_body = (
+        "# Chunked\n\n"
+        + ("alpha beta gamma delta epsilon " * 80)
+        + "\n\n"
+        + ("traceability retrieval evidence snippet " * 80)
+    )
+    chunks = _chunk_markdown_body(long_body, "Chunked")
+
+    assert len(chunks) >= 2
+    assert all(chunk.body for chunk in chunks)
+
+
+def test_paragraphs_skip_blank_and_heading_lines() -> None:
+    from src.services.search_service import _paragraphs
+
+    paragraphs = _paragraphs(
+        "# Heading\n\nFirst line\nSecond line\n\n## Next\n\nThird line\n"
+    )
+
+    assert paragraphs == ["First line Second line", "Third line"]
+
+
 def test_search_service_returns_ranked_results_and_limit(test_project) -> None:
     test_project.write_file("wiki/sources/first.md", "alpha alpha beta")
     test_project.write_file("wiki/sources/second.md", "alpha")
@@ -74,8 +148,91 @@ def test_search_service_returns_ranked_results_and_limit(test_project) -> None:
     assert results[0].path in {"wiki/index.md", "wiki/sources/first.md"}
 
 
+def test_search_service_refresh_is_noop_when_inventory_is_unchanged(
+    test_project,
+) -> None:
+    test_project.write_file("wiki/sources/reindex.md", "alpha body")
+    service = test_project.services["search"]
+
+    assert service.refresh(force=True) is True
+    assert service.refresh() is False
+
+
+def test_search_service_refresh_short_circuits_when_fts_is_disabled(
+    test_project,
+) -> None:
+    service = test_project.services["search"]
+    service._fts_available = False
+
+    assert service.refresh() is False
+
+
+def test_search_service_refresh_marks_fts_unavailable_on_store_error(
+    monkeypatch, test_project
+) -> None:
+    from src.storage.search_index_store import SearchIndexUnavailable
+
+    service = test_project.services["search"]
+
+    def raise_unavailable() -> dict[str, tuple[int, int]]:
+        raise SearchIndexUnavailable("fts5 unavailable")
+
+    monkeypatch.setattr(service.index_store, "load_indexed_files", raise_unavailable)
+
+    assert service.refresh() is False
+    assert service._fts_available is False
+
+
+def test_search_service_search_falls_back_when_index_query_fails(
+    monkeypatch, test_project
+) -> None:
+    from src.storage.search_index_store import SearchIndexUnavailable
+
+    test_project.write_file("wiki/sources/fallback.md", "traceability body")
+    service = test_project.services["search"]
+
+    monkeypatch.setattr(service, "refresh", lambda force=False: False)
+
+    def raise_unavailable(*_args, **_kwargs):
+        raise SearchIndexUnavailable("fts5 unavailable")
+
+    monkeypatch.setattr(service.index_store, "search", raise_unavailable)
+
+    results = service.search("traceability")
+
+    assert service._fts_available is False
+    assert any(result.path == "wiki/sources/fallback.md" for result in results)
+
+
+def test_search_service_builds_sqlite_index_and_returns_best_chunk(
+    test_project,
+) -> None:
+    test_project.write_file(
+        "wiki/sources/chunks.md",
+        "---\ntitle: Chunked Page\nsummary: Example\n---\n\n"
+        "# Chunked Page\n\n"
+        "## Intro\n\n"
+        "This section is about setup and does not mention the target term.\n\n"
+        "## Retrieval\n\n"
+        "SQLite FTS5 chunk search keeps the relevant retrieval snippet together.\n",
+    )
+
+    results = test_project.services["search"].search("SQLite retrieval", limit=3)
+
+    assert (test_project.paths.graph_exports_dir / "search_index.sqlite3").exists()
+    assert len(results) >= 1
+    assert results[0].path == "wiki/sources/chunks.md"
+    assert "SQLite FTS5 chunk search" in results[0].snippet
+
+
 def test_search_service_returns_empty_for_blank_query(test_project) -> None:
     assert test_project.services["search"].search("!!!") == []
+
+
+def test_search_service_inventory_returns_empty_for_missing_wiki_dir(
+    uninitialized_project,
+) -> None:
+    assert uninitialized_project.services["search"]._wiki_inventory() == {}
 
 
 def test_query_service_returns_fallback_when_no_matches(test_project) -> None:
@@ -539,6 +696,81 @@ def test_save_answer_creates_parent_directory(test_project) -> None:
     saved_path = query_service.save_answer("What is traceability?", answer)
 
     assert (test_project.root / saved_path).exists()
+
+
+def test_save_answer_refreshes_search_index_for_analysis_pages(test_project) -> None:
+    from src.services.query_service import QueryAnswer
+
+    answer = QueryAnswer(
+        answer="Persistent traceability analysis lives in the wiki.",
+        citations=[],
+        mode="test",
+    )
+
+    saved_path = test_project.services["query"].save_answer(
+        "What is persistent traceability?",
+        answer,
+    )
+
+    assert (test_project.paths.graph_exports_dir / "search_index.sqlite3").exists()
+    results = test_project.services["search"].search("persistent traceability")
+    paths = {result.path for result in results}
+    assert saved_path in paths
+
+
+def test_indexable_chunks_skip_generated_concepts(test_project) -> None:
+    service = test_project.services["search"]
+    path = test_project.write_file(
+        "wiki/concepts/generated.md",
+        "---\ntitle: Generated\ntype: concept\nsummary: S\n"
+        "generated_at: 2026-04-19T00:00:00Z\nsource_pages: []\n---\n\n# Generated\n",
+    )
+
+    chunks = service._indexable_chunks(path, "wiki/concepts/generated.md")
+
+    assert chunks == []
+
+
+def test_indexable_chunks_returns_empty_for_unreadable_file(
+    monkeypatch, test_project
+) -> None:
+    service = test_project.services["search"]
+    path = test_project.write_file("wiki/sources/unreadable.md", "content")
+    original_read_text = Path.read_text
+
+    def fake_read_text(self: Path, *args, **kwargs):
+        if self == path:
+            raise OSError("boom")
+        return original_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fake_read_text)
+
+    chunks = service._indexable_chunks(path, "wiki/sources/unreadable.md")
+
+    assert chunks == []
+
+
+def test_search_index_store_wraps_sqlite_operational_errors(
+    monkeypatch, tmp_path
+) -> None:
+    from src.storage.search_index_store import SearchIndexStore, SearchIndexUnavailable
+
+    class BrokenConnection:
+        def execute(self, *_args, **_kwargs):
+            return None
+
+        def executescript(self, *_args, **_kwargs):
+            raise sqlite3.OperationalError("no such module: fts5")
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(sqlite3, "connect", lambda _path: BrokenConnection())
+
+    store = SearchIndexStore(tmp_path / "search_index.sqlite3")
+
+    with pytest.raises(SearchIndexUnavailable):
+        store.load_indexed_files()
 
 
 def test_export_service_copies_all_markdown_files(test_project) -> None:

@@ -160,7 +160,7 @@ poetry run kb compile --with-concepts   # Also generate concept pages and backli
 | `--force` | off | Rebuild every source page even if nothing changed. |
 | `--with-concepts` | off | After compiling, generate concept pages in `wiki/concepts/` by grouping related source pages and maintain managed backlink sections in source pages. |
 
-Reads the normalized artifacts from `raw/normalized/` (or directly from `raw/sources/` for markdown/text files) and generates source pages under `wiki/sources/`. Each source page summary is produced by sending document content to the configured provider. Also updates `wiki/index.md`, `wiki/_index.json`, and `wiki/log.md`.
+Reads the normalized artifacts from `raw/normalized/` (or directly from `raw/sources/` for markdown/text files) and generates source pages under `wiki/sources/`. Each source page summary is produced by sending document content to the configured provider. Also updates `wiki/index.md`, `wiki/_index.json`, `wiki/log.md`, and the SQLite search index at `graph/exports/search_index.sqlite3`.
 Interactive terminals show compile progress for source pages; non-interactive runs print a simple `Compiling N source page(s)...` preamble before the compile summary.
 
 When `--with-concepts` is passed, the concept service scans all compiled source pages, groups related pages by term overlap (Jaccard similarity), generates deterministic concept pages with `type: concept` frontmatter, and inserts managed backlink sections into source pages. Stale generated concept pages are automatically removed.
@@ -178,7 +178,7 @@ poetry run kb query search --limit 10 "agent architecture"
 | --- | --- | --- |
 | `--limit` | 5 | Maximum number of results to return. |
 
-Returns ranked search results with page title, file path, relevance score, and a snippet.
+`kb query search` uses a SQLite FTS5 chunk index stored at `graph/exports/search_index.sqlite3`. It indexes compiled source pages plus saved analysis pages, excludes generated concept pages, ranks hits with BM25-style FTS ordering, and returns page-level results using the best matching chunk snippet for each page.
 
 ### `kb query ask <question>`
 
@@ -195,7 +195,7 @@ poetry run kb query ask --self-consistency 3 "How is traceability preserved?"
 | `--limit` | 3 | Maximum number of source pages to use as evidence. |
 | `--self-consistency` | 1 | Sample N independent provider answers from the same frozen evidence bundle and merge claims deterministically. |
 
-`kb query ask` requires a configured provider. It retrieves the best-matching wiki pages as evidence, sends that evidence to the configured provider, and prints the provider answer followed by a Citations section listing which pages were used. The output begins with a `[mode: …]` tag — `provider:<model>` when a single LLM call synthesizes the answer, or `self-consistency:<model>:N` when multiple provider samples are merged.
+`kb query ask` requires a configured provider. It retrieves the best-matching indexed wiki chunks as evidence, packages the top chunk snippets into a frozen evidence bundle, sends that evidence to the configured provider, and prints the provider answer followed by a Citations section listing which pages were used. The output begins with a `[mode: …]` tag — `provider:<model>` when a single LLM call synthesizes the answer, or `self-consistency:<model>:N` when multiple provider samples are merged.
 
 When `--self-consistency N` is greater than 1, `kb query ask` retrieves evidence once, freezes that evidence bundle, samples `N` independent provider answers in parallel, normalizes them into typed claims, merges near-duplicate grounded claims deterministically, and stores the full run artifact in `graph/exports/run_artifacts.sqlite3`. If the provider is missing or any provider call fails, the command exits with an error instead of falling back.
 
