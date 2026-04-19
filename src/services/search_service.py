@@ -17,10 +17,7 @@ class SearchService:
             return []
         results: list[SearchResult] = []
         for file_path in sorted(self.paths.wiki_dir.rglob("*.md")):
-            if self.paths.wiki_concepts_dir.exists() and (
-                file_path == self.paths.wiki_concepts_dir
-                or self.paths.wiki_concepts_dir in file_path.parents
-            ):
+            if _is_generated_concept_page(file_path, self.paths):
                 continue
             text = file_path.read_text(encoding="utf-8")
             normalized = text.lower()
@@ -48,6 +45,41 @@ def _strip_frontmatter(text: str) -> str:
     if marker == -1:
         return text
     return text[marker + 5 :]
+
+
+def _extract_frontmatter_type(text: str) -> str:
+    """Return the ``type`` value from YAML frontmatter, or empty string."""
+    if not text.startswith("---\n"):
+        return ""
+    marker = text.find("\n---\n", 4)
+    if marker == -1:
+        return ""
+    fm_block = text[4:marker]
+    for line in fm_block.splitlines():
+        if line.startswith("type:"):
+            return line.split(":", 1)[1].strip().strip("\"'")
+    return ""
+
+
+def _is_generated_concept_page(file_path: Path, paths: ProjectPaths) -> bool:
+    """Skip generated concept pages but include analysis (saved query) pages."""
+    if not paths.wiki_concepts_dir.exists():
+        return False
+    if file_path == paths.wiki_concepts_dir:
+        return False
+    if paths.wiki_concepts_dir not in file_path.parents:
+        return False
+    # Inside concepts dir — check the page type
+    try:
+        text = file_path.read_text(encoding="utf-8")
+    except OSError:
+        return True
+    page_type = _extract_frontmatter_type(text)
+    # analysis pages are saved query answers and should be searchable
+    if page_type == "analysis":
+        return False
+    # concept pages (generated) are skipped
+    return True
 
 
 def _extract_snippet(text: str, terms: list[str]) -> str:

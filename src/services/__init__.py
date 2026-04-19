@@ -9,6 +9,7 @@ from src.services.compile_service import CompileService
 from src.services.concept_service import ConceptService
 from src.services.config_service import ConfigService
 from src.services.diff_service import DiffService
+from src.services.doctor_service import DoctorService
 from src.services.export_service import ExportService
 from src.services.ingest_service import IngestService
 from src.services.lint_service import LintService
@@ -35,6 +36,7 @@ def build_services(paths: ProjectPaths, config: dict[str, Any]) -> dict[str, Any
         "compile": CompileService(paths, config, manifest_service, provider=provider),
         "concepts": ConceptService(paths),
         "diff": DiffService(paths, manifest_service),
+        "doctor": DoctorService(paths, config, provider=provider),
         "lint": LintService(paths, config, manifest_service),
         "search": search_service,
         "status": StatusService(paths, manifest_service),

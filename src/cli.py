@@ -39,7 +39,9 @@ def build_runtime_context(
     )
 
 
-class KBGroup(click.MultiCommand):
+class KBGroup(click.Group):
+    """Lazy-loading group that discovers commands from the registry."""
+
     def list_commands(self, ctx: click.Context) -> list[str]:
         return list_command_names()
 

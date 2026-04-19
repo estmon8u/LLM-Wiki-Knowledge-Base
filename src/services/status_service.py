@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 from src.models.wiki_models import StatusSnapshot
 from src.services.manifest_service import ManifestService
 from src.services.project_service import ProjectPaths
@@ -17,7 +19,10 @@ class StatusService:
             else []
         )
         compiled_sources = sum(
-            1 for source in sources if source.compiled_from_hash == source.content_hash
+            1
+            for source in sources
+            if source.compiled_from_hash is not None
+            and source.compiled_from_hash == self._current_content_hash(source)
         )
         concept_page_count = (
             len(list(self.paths.wiki_concepts_dir.glob("*.md")))
@@ -35,3 +40,16 @@ class StatusService:
             concept_page_count=concept_page_count,
             last_compile_at=last_compile_at,
         )
+
+    def _current_content_hash(self, source) -> str:
+        """Compute actual SHA-256 of the normalized file on disk.
+
+        Falls back to the manifest ``content_hash`` if the file cannot be read.
+        """
+        norm_path = source.normalized_path or source.raw_path
+        full_path = self.paths.root / norm_path
+        try:
+            text = full_path.read_text(encoding="utf-8")
+            return hashlib.sha256(text.encode("utf-8")).hexdigest()
+        except OSError:
+            return source.content_hash

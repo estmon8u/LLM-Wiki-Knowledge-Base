@@ -115,6 +115,8 @@ class RunStore:
         )
 
         # Persist individual citations for queryability.
+        # Delete existing citations first to avoid duplicates on re-save.
+        conn.execute("DELETE FROM run_citations WHERE run_id = ?", (record.run_id,))
         all_claims: list[tuple[str, str, str]] = []
         for candidate in record.candidates:
             for claim in candidate.claims:

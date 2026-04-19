@@ -22,38 +22,42 @@ This creates a local `.venv` and installs all dependencies. The CLI entrypoint i
 # 1. Initialize a new project
 poetry run kb init
 
-# 2. Ingest some source documents
+# 2. Check project health (provider, converters, structure)
+poetry run kb doctor
+
+# 3. Ingest some source documents
 poetry run kb ingest path/to/paper.pdf
 poetry run kb ingest path/to/notes.md
 poetry run kb ingest path/to/slides.pptx
 
-# 3. Compile the wiki (add --with-concepts to generate concept pages)
+# 4. Compile the wiki (add --with-concepts to generate concept pages)
 poetry run kb compile
 poetry run kb compile --with-concepts
 
-# 4. Search the compiled wiki
+# 5. Search the compiled wiki
 poetry run kb query search "knowledge base traceability"
 
-# 5. Ask a question with citations
+# 6. Ask a question with citations
 poetry run kb query ask "How does the wiki handle stale pages?"
 poetry run kb query ask --self-consistency 3 "What normalization converters are supported?"
 # → After showing the answer, you'll be prompted to save it as an analysis page
 
-# 6. Check wiki health (deterministic structural checks)
+# 7. Check wiki health (deterministic structural checks)
 poetry run kb check lint
 
-# 7. Run semantic review for contradictions and terminology drift
+# 8. Run semantic review for contradictions and terminology drift
 poetry run kb check review
 poetry run kb check review --adversarial
 
-# 8. See project status
+# 9. See project status
 poetry run kb show status
 
-# 9. Preview what needs compiling
+# 10. Preview what needs compiling
 poetry run kb show diff
 
-# 10. Export to an Obsidian-friendly vault
+# 11. Export to an Obsidian-friendly vault (--clean removes stale files)
 poetry run kb export vault
+poetry run kb export vault --clean
 ```
 
 Before running `kb compile`, `kb query`, or `kb review`, add a `provider`
@@ -80,7 +84,7 @@ Commands are organized into flat verbs and namespaced groups:
 
 | Group | Subcommands | Description |
 | --- | --- | --- |
-| *(flat)* | `init`, `ingest`, `compile` | Core workflow verbs |
+| *(flat)* | `init`, `ingest`, `compile`, `doctor` | Core workflow verbs |
 | `query` | `search`, `ask` | Search the wiki or ask provider-backed questions |
 | `check` | `lint`, `review` | Structural and semantic quality checks |
 | `show` | `status`, `diff` | Project state inspection |
@@ -105,6 +109,16 @@ Creates:
 - `vault/obsidian/` — directory for vault export
 
 Running `init` again is safe — it skips files that already exist.
+
+### `kb doctor`
+
+Run health checks on the project: structure, config, provider, API keys, converters, and run-artifact database.
+
+```bash
+poetry run kb doctor
+```
+
+Prints `[OK]` or `[FAIL]` for each check and exits with code 1 if any check fails.
 
 ### `kb ingest <source_path>`
 
@@ -227,10 +241,12 @@ poetry run kb show diff
 Displays each source with a status tag:
 
 - `[NEW]` — ingested but not yet compiled
-- `[CHANGED]` — source content changed since last compile
+- `[CHANGED]` — source content changed since last compile (either through re-ingest or manual file edits)
 - `[OK]` — compiled and up-to-date
 
 Followed by summary counts for new, changed, and up-to-date sources.
+
+`diff` recomputes hashes from the actual normalized files on disk, so it detects manual edits to normalized files that would not be visible from manifest metadata alone.
 
 ### `kb check review`
 
@@ -261,12 +277,20 @@ Export the compiled wiki into the Obsidian-friendly vault folder.
 
 ```bash
 poetry run kb export vault
+poetry run kb export vault --clean
 ```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--clean` | off | Remove stale vault files that no longer exist in the wiki. |
 
 Copies compiled wiki pages into `vault/obsidian/` in a format compatible with [Obsidian](https://obsidian.md/).
 Open that folder in Obsidian with `Open folder as vault`. Treat `vault/obsidian/`
-as derived output: running `kb export-vault` copies files from `wiki/` again and
+as derived output: running `kb export vault` copies files from `wiki/` again and
 can overwrite direct edits made inside the exported vault.
+
+With `--clean`, any markdown files in the vault that no longer correspond to a
+wiki page are deleted automatically.
 
 ## Supported File Types
 
@@ -301,8 +325,8 @@ provider:
 You can also override the provider per-invocation without editing the config file:
 
 ```bash
-kb --provider anthropic query "How does REALM differ from RAG?"
-kb --provider gemini review --adversarial
+kb --provider anthropic query ask "How does REALM differ from RAG?"
+kb --provider gemini check review --adversarial
 ```
 
 This makes it easy to compare all three providers against the same compiled wiki without maintaining separate project directories.
@@ -383,7 +407,7 @@ poetry run python scripts/run_real_corpus_smoke.py \
     --project-root path/to/disposable-project
 ```
 
-The script runs `help`, `init`, `status`, `ingest`, `diff`, `compile`, `search`, `query`, `lint`, `review`, and `export-vault`, writes a consolidated log file under the disposable project root, and exits nonzero if any supported-source ingest fails, lint reports errors, or another command fails unexpectedly.
+The script runs `help`, `init`, `show status`, `ingest`, `show diff`, `compile`, `query search`, `query ask`, `check lint`, `check review`, and `export vault`, writes a consolidated log file under the disposable project root, and exits nonzero if any supported-source ingest fails, lint reports errors, or another command fails unexpectedly.
 
 Unsupported files found under the raw corpus are probed separately to confirm they are rejected cleanly.
 

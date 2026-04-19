@@ -164,3 +164,4 @@ If the core evaluation, synthesis, and comparison milestones are completed early
 23. IBM Research. "Docling Documentation." 2026. [Docs](https://docling-project.github.io/docling/). Accessed 18 Apr. 2026.
 24. Microsoft. "MarkItDown." GitHub repository, 2026. [Repository](https://github.com/microsoft/markitdown). Accessed 18 Apr. 2026.
 25. Mistral AI. "Mistral OCR Documentation." 2026. [Docs](https://docs.mistral.ai/capabilities/document/). Accessed 18 Apr. 2026.
+26. Command Line Interface Guidelines. "Command Line Interface Guidelines." 2026. [Guide](https://clig.dev/#introduction). Accessed 18 Apr. 2026.

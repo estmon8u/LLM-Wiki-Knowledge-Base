@@ -135,6 +135,7 @@ def test_build_services_returns_expected_keys(test_project) -> None:
         "compile",
         "concepts",
         "diff",
+        "doctor",
         "lint",
         "review",
         "search",

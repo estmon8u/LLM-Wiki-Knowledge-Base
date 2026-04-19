@@ -52,8 +52,10 @@ _DEFAULT_MODELS = {
 def build_provider(config: dict[str, Any]) -> Optional[TextProvider]:
     """Build a provider from the ``provider`` section of kb config.
 
-    Returns ``None`` when no provider is configured or the API key is missing,
-    so callers can fall back to deterministic behaviour.
+    Returns ``None`` when no provider is configured, so deterministic
+    commands can proceed without one.  Generation commands (compile, query,
+    review) should check for ``None`` and raise a clear
+    ``ProviderConfigurationError`` instead of silently falling back.
     """
     provider_cfg = config.get("provider") or {}
     name = provider_cfg.get("name", "")

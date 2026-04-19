@@ -11,6 +11,7 @@ from src.models.command_models import CommandContext, CommandSpec
 # Flat top-level commands (primary workflow verbs)
 FLAT_COMMAND_MODULES = {
     "compile": "src.commands.compile",
+    "doctor": "src.commands.doctor",
     "ingest": "src.commands.ingest",
     "init": "src.commands.init",
 }

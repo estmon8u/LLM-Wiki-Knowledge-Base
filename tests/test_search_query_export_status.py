@@ -601,11 +601,11 @@ def test_diff_service_reports_changed_after_source_modification(test_project) ->
     test_project.services["ingest"].ingest_path(source_path)
     test_project.services["compile"].compile()
 
-    # Modify the normalized file to simulate a source change
+    # Modify the actual normalized file on disk to simulate a source change.
     sources = test_project.services["manifest"].list_sources()
     record = sources[0]
-    record.content_hash = "changed-hash"
-    test_project.services["manifest"].save_source(record)
+    norm_path = test_project.root / (record.normalized_path or record.raw_path)
+    norm_path.write_text("# Diff\n\nEdited body\n", encoding="utf-8")
 
     report = test_project.services["diff"].diff()
 
@@ -762,7 +762,9 @@ def test_search_snippet_excludes_frontmatter(test_project) -> None:
     assert "summary:" not in snippet
 
 
-def test_search_excludes_concept_pages(test_project) -> None:
+def test_search_excludes_generated_concept_pages_but_includes_analysis(
+    test_project,
+) -> None:
     test_project.write_file(
         "wiki/sources/source-page.md",
         "# Source Page\n\nTraceability evidence.\n",
@@ -772,12 +774,21 @@ def test_search_excludes_concept_pages(test_project) -> None:
         "---\ntitle: Analysis Page\nsummary: S\ntype: analysis\n---\n\n"
         "# Analysis Page\n\nTraceability reused here.\n",
     )
+    test_project.write_file(
+        "wiki/concepts/gen-concept.md",
+        "---\ntitle: Generated Concept\ntype: concept\nsummary: S\n"
+        "generated_at: 2026-04-19T00:00:00Z\nsource_pages: []\n---\n\n"
+        "# Generated Concept\n\nTraceability concept.\n",
+    )
 
     results = test_project.services["search"].search("traceability")
 
     paths = [r.path for r in results]
     assert any("wiki/sources/" in p for p in paths)
-    assert not any("wiki/concepts/" in p for p in paths)
+    # Analysis pages are now searchable
+    assert any("analysis-page" in p for p in paths)
+    # Generated concept pages are still excluded
+    assert not any("gen-concept" in p for p in paths)
 
 
 def test_save_answer_includes_summary_in_frontmatter(test_project) -> None:
