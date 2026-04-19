@@ -29,6 +29,7 @@ poetry run kb doctor
 poetry run kb add path/to/paper.pdf
 poetry run kb ingest path/to/notes.md
 poetry run kb add path/to/slides.pptx
+poetry run kb add path/to/research-folder --recursive
 
 # 4. Compile the wiki (add --with-concepts to generate concept pages)
 poetry run kb compile
@@ -122,15 +123,20 @@ Prints `[OK]` or `[FAIL]` for each check and exits with code 1 if any check fail
 
 ### `kb ingest <source_path>` / `kb add <source_path>`
 
-Ingest and normalize a source file into the raw corpus.
+Ingest and normalize a source file into the raw corpus, or recursively ingest a directory of supported source files.
 
 ```bash
 poetry run kb add path/to/document.pdf
 poetry run kb ingest path/to/document.pdf
+poetry run kb add path/to/research-folder --recursive
 ```
 
 `kb add` is a first-class alias for `kb ingest`. Both commands use the same
 normalization, duplicate-detection, and manifest-registration path.
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--recursive` | off | Recursively ingest all supported files under a directory. Required when the input path is a directory. |
 
 What happens:
 
@@ -139,6 +145,8 @@ What happens:
 3. The source is registered in `raw/_manifest.json` with metadata including the content hash, converter used, and timestamps.
 
 Duplicate detection: if you ingest the same file again, it will be detected and skipped.
+
+When the input is a directory and `--recursive` is provided, the command walks the directory tree deterministically, ingests only supported file types, and prints a batch summary showing how many files were created or skipped as duplicates. Unsupported files inside the directory are ignored.
 
 ### `kb compile`
 

@@ -9,7 +9,10 @@ import uuid
 
 from src.models.source_models import RawSourceRecord
 from src.services.manifest_service import ManifestService
-from src.services.normalization_service import NormalizationService
+from src.services.normalization_service import (
+    NormalizationService,
+    is_supported_source_path,
+)
 from src.services.project_service import ProjectPaths, slugify, utc_now_iso
 
 
@@ -19,6 +22,29 @@ class IngestResult:
     source: Optional[RawSourceRecord]
     message: str
     duplicate_of: Optional[RawSourceRecord] = None
+
+
+@dataclass
+class IngestDirectoryResult:
+    directory_path: Path
+    scanned_file_count: int
+    results: tuple[IngestResult, ...]
+
+    @property
+    def created_results(self) -> tuple[IngestResult, ...]:
+        return tuple(result for result in self.results if result.created)
+
+    @property
+    def duplicate_results(self) -> tuple[IngestResult, ...]:
+        return tuple(result for result in self.results if not result.created)
+
+    @property
+    def created_count(self) -> int:
+        return len(self.created_results)
+
+    @property
+    def duplicate_count(self) -> int:
+        return len(self.duplicate_results)
 
 
 class IngestService:
@@ -36,6 +62,8 @@ class IngestService:
         source_path = raw_input_path.resolve()
         if not source_path.exists():
             raise FileNotFoundError(f"Source file not found: {source_path}")
+        if source_path.is_dir():
+            raise ValueError(f"Directory ingest requires --recursive: {source_path}")
 
         normalized = self.normalization_service.normalize_path(source_path)
         content_hash = hashlib.sha256(
@@ -90,6 +118,26 @@ class IngestService:
             message=f"Ingested {source.title} as {source.slug}",
         )
 
+    def ingest_directory(self, raw_input_path: Path) -> IngestDirectoryResult:
+        directory_path = raw_input_path.resolve()
+        if not directory_path.exists():
+            raise FileNotFoundError(f"Source directory not found: {directory_path}")
+        if not directory_path.is_dir():
+            raise ValueError(f"Source path is not a directory: {directory_path}")
+
+        candidate_paths = self._supported_source_paths(directory_path)
+        if not candidate_paths:
+            raise ValueError(
+                f"No supported source files found under directory: {directory_path}"
+            )
+
+        results = tuple(self.ingest_path(path) for path in candidate_paths)
+        return IngestDirectoryResult(
+            directory_path=directory_path,
+            scanned_file_count=len(candidate_paths),
+            results=results,
+        )
+
     def _unique_slug(self, base_slug: str) -> str:
         existing = {source.slug for source in self.manifest_service.list_sources()}
         if base_slug not in existing:
@@ -98,3 +146,16 @@ class IngestService:
         while f"{base_slug}-{index}" in existing:
             index += 1
         return f"{base_slug}-{index}"
+
+    def _supported_source_paths(self, directory_path: Path) -> tuple[Path, ...]:
+        candidates = [
+            path
+            for path in directory_path.rglob("*")
+            if path.is_file() and is_supported_source_path(path)
+        ]
+        return tuple(
+            sorted(
+                candidates,
+                key=lambda path: path.relative_to(directory_path).as_posix().lower(),
+            )
+        )

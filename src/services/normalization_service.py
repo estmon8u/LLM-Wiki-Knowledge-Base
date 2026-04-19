@@ -25,6 +25,12 @@ SUPPORTED_MARKITDOWN_SUFFIXES = {
     ".xls",
     ".xlsx",
 }
+SUPPORTED_SOURCE_SUFFIXES = (
+    SUPPORTED_MARKDOWN_SUFFIXES
+    | SUPPORTED_PLAIN_TEXT_SUFFIXES
+    | SUPPORTED_DOCLING_PDF_SUFFIXES
+    | SUPPORTED_MARKITDOWN_SUFFIXES
+)
 
 DIRECT_CANONICAL_TEXT_INGEST_MODE = "direct-canonical-text"
 DOCLING_PDF_CONVERSION_INGEST_MODE = "docling-pdf-convert"
@@ -197,6 +203,10 @@ class NormalizationService:
         if self._pdf_converter is None:
             self._pdf_converter = PdfDocumentConverter()
         return self._pdf_converter
+
+
+def is_supported_source_path(source_path: Path) -> bool:
+    return source_path.suffix.lower() in SUPPORTED_SOURCE_SUFFIXES
 
 
 def _ensure_trailing_newline(contents: str) -> str:

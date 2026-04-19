@@ -8,6 +8,7 @@ from src.models.source_models import RawSourceRecord
 from src.services.ingest_service import IngestService
 from src.services.normalization_service import NormalizationService
 from src.services.normalization_service import _extract_title
+from src.services.normalization_service import is_supported_source_path
 from src.services.project_service import utc_now_iso
 
 
@@ -192,6 +193,16 @@ def test_ingest_service_rejects_missing_and_unsupported_sources(test_project) ->
         ingest_service.ingest_path(unsupported)
 
 
+def test_ingest_service_rejects_directory_path_without_recursive_mode(
+    test_project,
+) -> None:
+    directory = test_project.root / "bulk"
+    directory.mkdir()
+
+    with pytest.raises(ValueError, match="Directory ingest requires --recursive"):
+        test_project.services["ingest"].ingest_path(directory)
+
+
 def test_ingest_service_detects_duplicate_content_hash(test_project) -> None:
     source_path = test_project.write_file(
         "notes/duplicate.md",
@@ -212,13 +223,83 @@ def test_ingest_service_detects_duplicate_content_hash(test_project) -> None:
 def test_ingest_service_uses_unique_slug_for_duplicate_titles(test_project) -> None:
     first = test_project.write_file("a.md", "# Same Title\n\nOne\n")
     second = test_project.write_file("b.md", "# Same Title\n\nTwo\n")
+    third = test_project.write_file("c.md", "# Same Title\n\nThree\n")
     ingest_service = test_project.services["ingest"]
 
     first_result = ingest_service.ingest_path(first)
     second_result = ingest_service.ingest_path(second)
+    third_result = ingest_service.ingest_path(third)
 
     assert first_result.source.slug == "same-title"
     assert second_result.source.slug == "same-title-2"
+    assert third_result.source.slug == "same-title-3"
+
+
+def test_supported_source_path_recognizes_supported_extensions() -> None:
+    assert is_supported_source_path(Path("note.md")) is True
+    assert is_supported_source_path(Path("paper.pdf")) is True
+    assert is_supported_source_path(Path("slides.pptx")) is True
+    assert is_supported_source_path(Path("archive.zip")) is False
+
+
+def test_ingest_service_recursively_ingests_supported_directory_files(
+    test_project,
+) -> None:
+    root = test_project.root / "bulk"
+    test_project.write_file("bulk/alpha.md", "# Alpha\n\nAlpha body.\n")
+    test_project.write_file("bulk/nested/beta.txt", "Beta title\n\nBeta body.\n")
+    test_project.write_file("bulk/nested/skip.bin", "ignore me")
+
+    result = test_project.services["ingest"].ingest_directory(root)
+
+    assert result.scanned_file_count == 2
+    assert result.created_count == 2
+    assert result.duplicate_count == 0
+    assert [item.source.slug for item in result.created_results] == [
+        "alpha",
+        "beta-title",
+    ]
+    assert len(test_project.services["manifest"].list_sources()) == 2
+    assert (test_project.root / "raw/sources/alpha.md").exists()
+    assert (test_project.root / "raw/sources/beta-title.txt").exists()
+
+
+def test_ingest_service_directory_reports_duplicates_and_preserves_manifest(
+    test_project,
+) -> None:
+    root = test_project.root / "bulk"
+    shared_content = "# Shared\n\nSame body.\n"
+    test_project.write_file("bulk/first.md", shared_content)
+    test_project.write_file("bulk/nested/second.md", shared_content)
+
+    result = test_project.services["ingest"].ingest_directory(root)
+
+    assert result.scanned_file_count == 2
+    assert result.created_count == 1
+    assert result.duplicate_count == 1
+    assert result.duplicate_results[0].duplicate_of is not None
+    assert len(test_project.services["manifest"].list_sources()) == 1
+
+
+def test_ingest_service_rejects_directory_without_supported_files(test_project) -> None:
+    root = test_project.root / "bulk"
+    root.mkdir()
+    test_project.write_file("bulk/ignored.bin", "ignore me")
+
+    with pytest.raises(ValueError, match="No supported source files found"):
+        test_project.services["ingest"].ingest_directory(root)
+
+
+def test_ingest_service_directory_requires_existing_directory(test_project) -> None:
+    with pytest.raises(FileNotFoundError, match="Source directory not found"):
+        test_project.services["ingest"].ingest_directory(test_project.root / "missing")
+
+
+def test_ingest_service_directory_rejects_file_input(test_project) -> None:
+    source = test_project.write_file("notes/example.md", "# Example\n\nBody.\n")
+
+    with pytest.raises(ValueError, match="Source path is not a directory"):
+        test_project.services["ingest"].ingest_directory(source)
 
 
 # --- P1 boundary/negative tests ---

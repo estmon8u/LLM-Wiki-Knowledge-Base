@@ -19,8 +19,8 @@
 | --- | --- |
 | `src/commands/common.py` | Shared command helpers |
 | `src/commands/init.py` | Project initialization behavior |
-| `src/commands/add.py` | User-friendly alias for the ingest command |
-| `src/commands/ingest.py` | Source ingest command |
+| `src/commands/add.py` | User-friendly alias for the ingest command, including recursive directory ingest via `--recursive` |
+| `src/commands/ingest.py` | Source ingest command for single files and explicit recursive directory ingest |
 | `src/commands/compile.py` | Wiki compilation command |
 | `src/commands/diff.py` | Pre-compile source diff command |
 | `src/commands/search.py` | Search command |
@@ -38,7 +38,7 @@
 | `src/services/config_service.py` | Config loading and defaults |
 | `src/services/manifest_service.py` | Raw-source manifest read/write behavior |
 | `src/services/normalization_service.py` | Document-type normalization routing for direct text inputs, Docling-backed PDFs, and bounded MarkItDown-backed born-digital converters |
-| `src/services/ingest_service.py` | Raw-source copy, normalized-artifact write, duplicate detection, and source registration used by both `kb ingest` and `kb add` |
+| `src/services/ingest_service.py` | Raw-source copy, normalized-artifact write, duplicate detection, source registration, and deterministic recursive directory ingest used by both `kb ingest` and `kb add` |
 | `src/services/compile_service.py` | Derived wiki generation with provider-backed summary generation |
 | `src/services/diff_service.py` | Pre-compile source diff reporting |
 | `src/services/search_service.py` | Search over compiled artifacts |

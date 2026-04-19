@@ -6,7 +6,9 @@ from unittest.mock import patch
 from click.testing import CliRunner
 
 from src.cli import main
+from src.commands.ingest import _echo_directory_result
 from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
+from src.services.ingest_service import IngestDirectoryResult, IngestResult
 
 
 class _CliFakeProvider(TextProvider):
@@ -229,7 +231,7 @@ def test_add_alias_ingests_source_file() -> None:
         assert Path("raw/sources/added-sample.md").exists()
 
 
-def test_add_alias_rejects_directory_path() -> None:
+def test_add_alias_requires_recursive_flag_for_directory_path() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -238,6 +240,73 @@ def test_add_alias_rejects_directory_path() -> None:
         result = runner.invoke(main, ["add", "mydir"])
 
         assert result.exit_code != 0
+        assert "Directory ingest requires --recursive" in result.output
+
+
+def test_add_alias_recursively_ingests_supported_directory_files() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        Path("bulk/nested").mkdir(parents=True, exist_ok=True)
+        Path("bulk/alpha.md").write_text("# Alpha\n\nAlpha body.\n", encoding="utf-8")
+        Path("bulk/nested/beta.txt").write_text(
+            "Beta title\n\nBeta body.\n", encoding="utf-8"
+        )
+        Path("bulk/nested/ignored.bin").write_text("ignore me", encoding="utf-8")
+
+        result = runner.invoke(main, ["add", "bulk", "--recursive"])
+
+        assert result.exit_code == 0
+        assert "Processed 2 supported source file(s)" in result.output
+        assert "- created: 2" in result.output
+        assert "- duplicates skipped: 0" in result.output
+        assert "- ingested: alpha (raw/sources/alpha.md)" in result.output
+        assert "- ingested: beta-title (raw/sources/beta-title.txt)" in result.output
+        assert Path("raw/sources/alpha.md").exists()
+        assert Path("raw/sources/beta-title.txt").exists()
+
+
+def test_add_alias_recursive_directory_reports_duplicates() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        Path("bulk/nested").mkdir(parents=True, exist_ok=True)
+        duplicate = "# Shared\n\nSame body.\n"
+        Path("bulk/first.md").write_text(duplicate, encoding="utf-8")
+        Path("bulk/nested/second.md").write_text(duplicate, encoding="utf-8")
+
+        result = runner.invoke(main, ["add", "bulk", "--recursive"])
+
+        assert result.exit_code == 0
+        assert "- created: 1" in result.output
+        assert "- duplicates skipped: 1" in result.output
+        assert "- duplicate: shared" in result.output
+
+
+def test_echo_directory_result_ignores_missing_source_entries(monkeypatch) -> None:
+    captured = []
+    monkeypatch.setattr("click.echo", captured.append)
+    result = IngestDirectoryResult(
+        directory_path=Path("bulk"),
+        scanned_file_count=2,
+        results=(
+            IngestResult(created=True, source=None, message="created"),
+            IngestResult(
+                created=False,
+                source=None,
+                duplicate_of=None,
+                message="duplicate",
+            ),
+        ),
+    )
+
+    _echo_directory_result(result)
+
+    assert captured == [
+        "Processed 2 supported source file(s) under bulk",
+        "- created: 1",
+        "- duplicates skipped: 1",
+    ]
 
 
 def test_lint_returns_nonzero_when_errors_exist() -> None:
@@ -512,7 +581,7 @@ def test_query_self_consistency_flag_requires_provider() -> None:
         assert "requires a configured provider" in result.output
 
 
-def test_ingest_rejects_directory_path() -> None:
+def test_ingest_requires_recursive_flag_for_directory_path() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -521,6 +590,20 @@ def test_ingest_rejects_directory_path() -> None:
         result = runner.invoke(main, ["ingest", "mydir"])
 
         assert result.exit_code != 0
+        assert "Directory ingest requires --recursive" in result.output
+
+
+def test_ingest_recursive_directory_requires_supported_files() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        Path("bulk").mkdir()
+        Path("bulk/ignored.bin").write_text("ignore me", encoding="utf-8")
+
+        result = runner.invoke(main, ["ingest", "bulk", "--recursive"])
+
+        assert result.exit_code != 0
+        assert "No supported source files found under directory" in result.output
 
 
 def test_export_vault_on_empty_wiki_succeeds() -> None:
