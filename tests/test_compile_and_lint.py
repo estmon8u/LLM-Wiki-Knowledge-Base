@@ -113,6 +113,26 @@ def test_compile_service_skips_unchanged_sources_and_force_rebuilds(
     assert forced.compiled_count == 1
 
 
+def test_compile_service_plan_and_progress_callback_track_work(test_project) -> None:
+    _ingest_source(test_project, "notes/alpha.md", "# Alpha\n\nBody\n")
+    _ingest_source(test_project, "notes/beta.md", "# Beta\n\nBody\n")
+    compile_service = test_project.services["compile"]
+
+    plan = compile_service.plan()
+    seen = []
+    result = compile_service.compile(
+        progress_callback=lambda source: seen.append(source.slug)
+    )
+    post_plan = compile_service.plan()
+
+    assert plan.pending_count == 2
+    assert plan.skipped_count == 0
+    assert result.compiled_count == 2
+    assert seen == ["alpha", "beta"]
+    assert post_plan.pending_count == 0
+    assert post_plan.skipped_count == 2
+
+
 def test_compile_service_handles_empty_manifest(test_project) -> None:
     result = test_project.services["compile"].compile()
 

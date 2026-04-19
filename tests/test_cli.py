@@ -126,6 +126,8 @@ def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             compile_result = runner.invoke(main, ["compile"])
         assert compile_result.exit_code == 0
+        assert "Compiling 1 source page(s)..." in compile_result.output
+        assert "Compile Summary" in compile_result.output
         assert "Compiled 1 source page(s)" in compile_result.output
 
         lint_result = runner.invoke(main, ["check", "lint"])
@@ -141,7 +143,8 @@ def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
                 main, ["query", "ask", "How", "does", "the", "wiki", "help?"]
             )
         assert query_result.exit_code == 0
-        assert "Citations:" in query_result.output
+        assert "Answer" in query_result.output
+        assert "Citations" in query_result.output
         assert "wiki/sources/sample-research-note.md" in query_result.output
 
         export_result = runner.invoke(main, ["export", "vault"])
@@ -226,6 +229,7 @@ def test_add_alias_ingests_source_file() -> None:
         result = runner.invoke(main, ["add", "sample.md"])
 
         assert result.exit_code == 0
+        assert "Ingest Summary" in result.output
         assert "Ingested Added Sample" in result.output
         assert "- slug: added-sample" in result.output
         assert Path("raw/sources/added-sample.md").exists()
@@ -241,6 +245,8 @@ def test_add_alias_recursively_ingests_directory_by_default() -> None:
         result = runner.invoke(main, ["add", "mydir"])
 
         assert result.exit_code == 0
+        assert "Ingesting 1 source file(s)..." in result.output
+        assert "Ingest Summary" in result.output
         assert "Processed 1 supported source file(s)" in result.output
         assert "- created: 1" in result.output
 
@@ -259,6 +265,8 @@ def test_add_alias_recursively_ingests_supported_directory_files() -> None:
         result = runner.invoke(main, ["add", "bulk"])
 
         assert result.exit_code == 0
+        assert "Ingesting 2 source file(s)..." in result.output
+        assert "Ingest Summary" in result.output
         assert "Processed 2 supported source file(s)" in result.output
         assert "- created: 2" in result.output
         assert "- duplicates skipped: 0" in result.output
@@ -280,6 +288,7 @@ def test_add_alias_recursive_directory_reports_duplicates() -> None:
         result = runner.invoke(main, ["add", "bulk"])
 
         assert result.exit_code == 0
+        assert "Ingest Summary" in result.output
         assert "- created: 1" in result.output
         assert "- duplicates skipped: 1" in result.output
         assert "- duplicate: shared" in result.output
@@ -305,6 +314,8 @@ def test_echo_directory_result_ignores_missing_source_entries(monkeypatch) -> No
     _echo_directory_result(result)
 
     assert captured == [
+        "Ingest Summary",
+        "==============",
         "Processed 2 supported source file(s) under bulk",
         "- created: 1",
         "- duplicates skipped: 1",
@@ -405,6 +416,7 @@ def test_diff_end_to_end_new_then_compiled() -> None:
 
         diff_before = runner.invoke(main, ["show", "diff"])
         assert diff_before.exit_code == 0
+        assert "Source Diff" in diff_before.output
         assert "[NEW]" in diff_before.output
         assert "new: 1" in diff_before.output
 
@@ -413,6 +425,7 @@ def test_diff_end_to_end_new_then_compiled() -> None:
 
         diff_after = runner.invoke(main, ["show", "diff"])
         assert diff_after.exit_code == 0
+        assert "Summary" in diff_after.output
         assert "[OK]" in diff_after.output
         assert "up_to_date: 1" in diff_after.output
 
@@ -593,6 +606,8 @@ def test_ingest_recursively_ingests_directory_by_default() -> None:
         result = runner.invoke(main, ["ingest", "mydir"])
 
         assert result.exit_code == 0
+        assert "Ingesting 1 source file(s)..." in result.output
+        assert "Ingest Summary" in result.output
         assert "Processed 1 supported source file(s)" in result.output
         assert "- created: 1" in result.output
 
@@ -618,6 +633,7 @@ def test_export_vault_on_empty_wiki_succeeds() -> None:
         result = runner.invoke(main, ["export", "vault"])
 
         assert result.exit_code == 0
+        assert "Vault Export" in result.output
         assert "Exported 0 markdown file(s)" in result.output
 
 

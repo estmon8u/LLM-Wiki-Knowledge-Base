@@ -6,7 +6,14 @@ import click
 import pytest
 
 from src.cli import _extract_project_root, build_runtime_context
-from src.commands.common import echo_kv, require_initialized
+from src.commands.common import (
+    echo_bullet,
+    echo_kv,
+    echo_section,
+    echo_status_line,
+    progress_report,
+    require_initialized,
+)
 from src.engine.command_registry import (
     build_command_specs,
     get_click_command,
@@ -21,6 +28,28 @@ from src.engine.tool_registry import (
     build_tool_specs,
 )
 from src.models.tool_models import ToolContext
+
+
+class _FakeStream:
+    def __init__(self, *, tty: bool) -> None:
+        self._tty = tty
+
+    def isatty(self) -> bool:
+        return self._tty
+
+
+class _FakeProgressBar:
+    def __init__(self) -> None:
+        self.updates: list[int] = []
+
+    def __enter__(self) -> "_FakeProgressBar":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        return False
+
+    def update(self, amount: int) -> None:
+        self.updates.append(amount)
 
 
 def test_command_registry_resolves_aliases_and_lists_names() -> None:
@@ -114,6 +143,63 @@ def test_echo_kv_prints_values_and_na(monkeypatch) -> None:
     echo_kv("empty", None)
 
     assert captured == ["label: value", "empty: n/a"]
+
+
+def test_echo_section_status_and_bullet_helpers(monkeypatch) -> None:
+    captured = []
+    monkeypatch.setattr(click, "echo", captured.append)
+
+    echo_section("Summary")
+    echo_status_line("OK", "ready")
+    echo_bullet("item")
+
+    assert captured == ["Summary", "=======", "[OK] ready", "- item"]
+
+
+def test_progress_report_hidden_mode_prints_preamble(monkeypatch) -> None:
+    captured = []
+    monkeypatch.setattr(click, "echo", captured.append)
+    monkeypatch.setattr(click, "get_text_stream", lambda _name: _FakeStream(tty=False))
+
+    with progress_report(
+        label="Compiling",
+        length=2,
+        item_label="source page",
+    ) as advance:
+        advance()
+        advance()
+
+    assert captured == ["Compiling 2 source page(s)..."]
+
+
+def test_progress_report_interactive_updates_progress_bar(monkeypatch) -> None:
+    progress_bar = _FakeProgressBar()
+    monkeypatch.setattr(click, "get_text_stream", lambda _name: _FakeStream(tty=True))
+    monkeypatch.setattr(click, "progressbar", lambda *args, **kwargs: progress_bar)
+
+    with progress_report(
+        label="Compiling",
+        length=2,
+        item_label="source page",
+    ) as advance:
+        advance()
+        advance()
+
+    assert progress_bar.updates == [1, 1]
+
+
+def test_progress_report_zero_length_is_noop(monkeypatch) -> None:
+    captured = []
+    monkeypatch.setattr(click, "echo", captured.append)
+
+    with progress_report(
+        label="Compiling",
+        length=0,
+        item_label="source page",
+    ) as advance:
+        advance()
+
+    assert captured == []
 
 
 def test_build_tool_specs_contains_expected_contracts() -> None:

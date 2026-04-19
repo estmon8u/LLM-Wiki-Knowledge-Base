@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import click
 
+from src.commands.common import echo_section, echo_status_line
 from src.models.command_models import CommandContext, CommandSpec
 
 
@@ -22,10 +23,12 @@ def create_command() -> click.Command:
     def command(command_context: CommandContext) -> None:
         doctor_service = command_context.services["doctor"]
         report = doctor_service.diagnose()
+        echo_section("Health Checks")
         for check in report.checks:
             marker = "OK" if check.ok else "FAIL"
-            click.echo(f"[{marker}] {check.name}: {check.detail}")
+            echo_status_line(marker, f"{check.name}: {check.detail}")
         click.echo("")
+        echo_section("Summary")
         click.echo(f"{report.passed_count} passed, {report.failed_count} failed")
         if not report.ok:
             raise SystemExit(1)

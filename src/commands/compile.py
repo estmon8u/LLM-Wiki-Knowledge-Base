@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import click
 
-from src.commands.common import require_initialized
+from src.commands.common import (
+    echo_bullet,
+    echo_section,
+    progress_report,
+    require_initialized,
+)
 from src.models.command_models import CommandContext, CommandSpec
 from src.providers import ProviderError
 
@@ -34,15 +39,28 @@ def create_command() -> click.Command:
     ) -> None:
         require_initialized(command_context)
         compile_service = command_context.services["compile"]
+        plan = compile_service.plan(force=force)
         try:
-            result = compile_service.compile(force=force)
+            with progress_report(
+                label="Compiling",
+                length=plan.pending_count,
+                item_label="source page",
+            ) as advance:
+                result = compile_service.compile(
+                    force=force,
+                    progress_callback=lambda _source: advance(),
+                )
         except ProviderError as exc:
             raise click.ClickException(str(exc)) from exc
+
+        echo_section("Compile Summary")
         click.echo(f"Compiled {result.compiled_count} source page(s)")
         click.echo(f"Skipped {result.skipped_count} source page(s)")
         for path in result.compiled_paths:
-            click.echo(f"- updated {path}")
+            echo_bullet(f"updated {path}")
         if with_concepts:
+            click.echo("")
+            echo_section("Concept Summary")
             concept_service = command_context.services["concepts"]
             concept_result = concept_service.generate()
             click.echo(f"Generated {len(concept_result.concept_paths)} concept page(s)")
@@ -54,6 +72,6 @@ def create_command() -> click.Command:
                     f"Removed {len(concept_result.removed_paths)} stale concept page(s)"
                 )
             for path in concept_result.concept_paths:
-                click.echo(f"- {path}")
+                echo_bullet(path)
 
     return command

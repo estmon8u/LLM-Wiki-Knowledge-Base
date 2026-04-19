@@ -119,7 +119,7 @@ Run health checks on the project: structure, config, provider, API keys, convert
 poetry run kb doctor
 ```
 
-Prints `[OK]` or `[FAIL]` for each check and exits with code 1 if any check fails.
+Prints formatted health-check sections with `[OK]` or `[FAIL]` entries and exits with code 1 if any check fails.
 
 ### `kb ingest <source_path>` / `kb add <source_path>`
 
@@ -143,6 +143,7 @@ What happens:
 Duplicate detection: if you ingest the same file again, it will be detected and skipped.
 
 When the input is a directory, the command walks the directory tree recursively by default, ingests only supported file types, and prints a batch summary showing how many files were created or skipped as duplicates. Unsupported files inside the directory are ignored.
+Interactive terminals show directory-ingest progress; non-interactive runs print a simple `Ingesting N source file(s)...` preamble before the summary.
 
 ### `kb compile`
 
@@ -160,6 +161,7 @@ poetry run kb compile --with-concepts   # Also generate concept pages and backli
 | `--with-concepts` | off | After compiling, generate concept pages in `wiki/concepts/` by grouping related source pages and maintain managed backlink sections in source pages. |
 
 Reads the normalized artifacts from `raw/normalized/` (or directly from `raw/sources/` for markdown/text files) and generates source pages under `wiki/sources/`. Each source page summary is produced by sending document content to the configured provider. Also updates `wiki/index.md`, `wiki/_index.json`, and `wiki/log.md`.
+Interactive terminals show compile progress for source pages; non-interactive runs print a simple `Compiling N source page(s)...` preamble before the compile summary.
 
 When `--with-concepts` is passed, the concept service scans all compiled source pages, groups related pages by term overlap (Jaccard similarity), generates deterministic concept pages with `type: concept` frontmatter, and inserts managed backlink sections into source pages. Stale generated concept pages are automatically removed.
 
@@ -252,7 +254,7 @@ Displays each source with a status tag:
 - `[CHANGED]` — source content changed since last compile (either through re-ingest or manual file edits)
 - `[OK]` — compiled and up-to-date
 
-Followed by summary counts for new, changed, and up-to-date sources.
+Followed by a formatted summary section with counts for new, changed, and up-to-date sources.
 
 `diff` recomputes hashes from the actual normalized files on disk, so it detects manual edits to normalized files that would not be visible from manifest metadata alone.
 

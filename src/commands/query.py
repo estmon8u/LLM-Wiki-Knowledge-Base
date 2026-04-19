@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import click
 
-from src.commands.common import require_initialized
+from src.commands.common import echo_bullet, echo_section, require_initialized
 from src.models.command_models import CommandContext, CommandSpec
 from src.providers import ProviderError
 
@@ -49,13 +49,15 @@ def create_command() -> click.Command:
             )
         except ProviderError as exc:
             raise click.ClickException(str(exc)) from exc
-        click.echo(f"[mode: {answer.mode}]\n")
+        echo_section("Answer")
+        click.echo(f"[mode: {answer.mode}]")
+        click.echo("")
         click.echo(answer.answer)
         if answer.citations:
             click.echo("")
-            click.echo("Citations:")
+            echo_section("Citations")
             for citation in answer.citations:
-                click.echo(f"- {citation.title} [{citation.path}]")
+                echo_bullet(f"{citation.title} [{citation.path}]")
         if answer.citations:
             try:
                 if click.confirm("\nSave this answer as an analysis page?"):

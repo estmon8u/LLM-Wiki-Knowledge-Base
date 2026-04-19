@@ -264,6 +264,21 @@ def test_ingest_service_recursively_ingests_supported_directory_files(
     assert (test_project.root / "raw/sources/beta-title.txt").exists()
 
 
+def test_ingest_service_directory_progress_callback_tracks_files(test_project) -> None:
+    root = test_project.root / "bulk"
+    test_project.write_file("bulk/alpha.md", "# Alpha\n\nAlpha body.\n")
+    test_project.write_file("bulk/nested/beta.txt", "Beta title\n\nBeta body.\n")
+    seen = []
+
+    result = test_project.services["ingest"].ingest_directory(
+        root,
+        progress_callback=lambda path: seen.append(path.name),
+    )
+
+    assert result.created_count == 2
+    assert seen == ["alpha.md", "beta.txt"]
+
+
 def test_ingest_service_directory_reports_duplicates_and_preserves_manifest(
     test_project,
 ) -> None:

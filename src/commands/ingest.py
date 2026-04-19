@@ -4,7 +4,12 @@ from pathlib import Path
 
 import click
 
-from src.commands.common import require_initialized
+from src.commands.common import (
+    echo_bullet,
+    echo_section,
+    progress_report,
+    require_initialized,
+)
 from src.models.command_models import CommandContext, CommandSpec
 
 
@@ -42,7 +47,16 @@ def create_command(
         ingest_service = command_context.services["ingest"]
         try:
             if source_path.is_dir():
-                directory_result = ingest_service.ingest_directory(source_path)
+                candidate_paths = ingest_service.discover_source_paths(source_path)
+                with progress_report(
+                    label="Ingesting",
+                    length=len(candidate_paths),
+                    item_label="source file",
+                ) as advance:
+                    directory_result = ingest_service.ingest_directory(
+                        source_path,
+                        progress_callback=lambda _path: advance(),
+                    )
                 _echo_directory_result(directory_result)
                 return
 
@@ -56,28 +70,30 @@ def create_command(
 
 
 def _echo_single_result(result) -> None:
+    echo_section("Ingest Summary")
     click.echo(result.message)
     if result.source is not None:
-        click.echo(f"- slug: {result.source.slug}")
-        click.echo(f"- raw path: {result.source.raw_path}")
+        echo_bullet(f"slug: {result.source.slug}")
+        echo_bullet(f"raw path: {result.source.raw_path}")
         if result.source.normalized_path is not None:
-            click.echo(f"- normalized path: {result.source.normalized_path}")
+            echo_bullet(f"normalized path: {result.source.normalized_path}")
 
 
 def _echo_directory_result(result) -> None:
+    echo_section("Ingest Summary")
     click.echo(
         "Processed "
         f"{result.scanned_file_count} supported source file(s) under "
         f"{result.directory_path}"
     )
-    click.echo(f"- created: {result.created_count}")
-    click.echo(f"- duplicates skipped: {result.duplicate_count}")
+    echo_bullet(f"created: {result.created_count}")
+    echo_bullet(f"duplicates skipped: {result.duplicate_count}")
     for item in result.created_results:
         if item.source is None:
             continue
-        click.echo(f"- ingested: {item.source.slug} ({item.source.raw_path})")
+        echo_bullet(f"ingested: {item.source.slug} ({item.source.raw_path})")
     for item in result.duplicate_results:
         duplicate = item.duplicate_of or item.source
         if duplicate is None:
             continue
-        click.echo(f"- duplicate: {duplicate.slug}")
+        echo_bullet(f"duplicate: {duplicate.slug}")

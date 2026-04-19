@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import hashlib
 from pathlib import Path
 import shutil
-from typing import Optional
+from typing import Callable, Optional
 import uuid
 
 from src.models.source_models import RawSourceRecord
@@ -118,24 +118,38 @@ class IngestService:
             message=f"Ingested {source.title} as {source.slug}",
         )
 
-    def ingest_directory(self, raw_input_path: Path) -> IngestDirectoryResult:
+    def discover_source_paths(self, raw_input_path: Path) -> tuple[Path, ...]:
         directory_path = raw_input_path.resolve()
         if not directory_path.exists():
             raise FileNotFoundError(f"Source directory not found: {directory_path}")
         if not directory_path.is_dir():
             raise ValueError(f"Source path is not a directory: {directory_path}")
 
-        candidate_paths = self._supported_source_paths(directory_path)
+        return self._supported_source_paths(directory_path)
+
+    def ingest_directory(
+        self,
+        raw_input_path: Path,
+        progress_callback: Optional[Callable[[Path], None]] = None,
+    ) -> IngestDirectoryResult:
+        directory_path = raw_input_path.resolve()
+        candidate_paths = self.discover_source_paths(directory_path)
+
         if not candidate_paths:
             raise ValueError(
                 f"No supported source files found under directory: {directory_path}"
             )
 
-        results = tuple(self.ingest_path(path) for path in candidate_paths)
+        results = []
+        for path in candidate_paths:
+            results.append(self.ingest_path(path))
+            if progress_callback is not None:
+                progress_callback(path)
+
         return IngestDirectoryResult(
             directory_path=directory_path,
             scanned_file_count=len(candidate_paths),
-            results=results,
+            results=tuple(results),
         )
 
     def _unique_slug(self, base_slug: str) -> str:

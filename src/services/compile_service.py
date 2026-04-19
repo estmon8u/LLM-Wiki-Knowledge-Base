@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import json
 import logging
 import re
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import yaml
 
@@ -38,6 +38,16 @@ class CompileResult:
     compiled_paths: list[str]
 
 
+@dataclass
+class CompilePlan:
+    pending_sources: list[RawSourceRecord]
+    skipped_count: int
+
+    @property
+    def pending_count(self) -> int:
+        return len(self.pending_sources)
+
+
 class CompileService:
     def __init__(
         self,
@@ -62,9 +72,8 @@ class CompileService:
             self.provider.ensure_available()
         return self.provider
 
-    def compile(self, *, force: bool = False) -> CompileResult:
-        compiled_paths: list[str] = []
-        compiled_count = 0
+    def plan(self, *, force: bool = False) -> CompilePlan:
+        pending_sources: list[RawSourceRecord] = []
         skipped_count = 0
         sources = _sorted_sources(self.manifest_service.list_sources())
         for source in sources:
@@ -76,6 +85,23 @@ class CompileService:
             ):
                 skipped_count += 1
                 continue
+            pending_sources.append(source)
+        return CompilePlan(
+            pending_sources=pending_sources,
+            skipped_count=skipped_count,
+        )
+
+    def compile(
+        self,
+        *,
+        force: bool = False,
+        progress_callback: Optional[Callable[[RawSourceRecord], None]] = None,
+    ) -> CompileResult:
+        compiled_paths: list[str] = []
+        compiled_count = 0
+        plan = self.plan(force=force)
+        for source in plan.pending_sources:
+            article_path = self.paths.wiki_sources_dir / f"{source.slug}.md"
 
             canonical_path = self.paths.root / (
                 source.normalized_path or source.raw_path
@@ -97,12 +123,14 @@ class CompileService:
 
             compiled_count += 1
             compiled_paths.append(article_path.relative_to(self.paths.root).as_posix())
+            if progress_callback is not None:
+                progress_callback(source)
 
         self._write_index(_sorted_sources(self.manifest_service.list_sources()))
-        self._append_log(compiled_count, skipped_count, force)
+        self._append_log(compiled_count, plan.skipped_count, force)
         return CompileResult(
             compiled_count=compiled_count,
-            skipped_count=skipped_count,
+            skipped_count=plan.skipped_count,
             compiled_paths=compiled_paths,
         )
 

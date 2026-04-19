@@ -17,7 +17,7 @@
 
 | File | Responsibility |
 | --- | --- |
-| `src/commands/common.py` | Shared command helpers |
+| `src/commands/common.py` | Shared command helpers for initialization checks, terminal section formatting, bullets, status lines, and progress reporting |
 | `src/commands/init.py` | Project initialization behavior |
 | `src/commands/add.py` | User-friendly alias for the ingest command, including default-recursive directory ingest |
 | `src/commands/ingest.py` | Source ingest command for single files and directory ingest that recurses by default |
@@ -38,8 +38,8 @@
 | `src/services/config_service.py` | Config loading and defaults |
 | `src/services/manifest_service.py` | Raw-source manifest read/write behavior |
 | `src/services/normalization_service.py` | Document-type normalization routing for direct text inputs, Docling-backed PDFs, and bounded MarkItDown-backed born-digital converters |
-| `src/services/ingest_service.py` | Raw-source copy, normalized-artifact write, duplicate detection, source registration, and deterministic recursive directory ingest used by both `kb ingest` and `kb add` |
-| `src/services/compile_service.py` | Derived wiki generation with provider-backed summary generation |
+| `src/services/ingest_service.py` | Raw-source copy, normalized-artifact write, duplicate detection, source registration, deterministic recursive directory ingest, and callback-friendly batch progress hooks used by both `kb ingest` and `kb add` |
+| `src/services/compile_service.py` | Derived wiki generation with provider-backed summary generation plus callback-friendly compile planning and progress hooks |
 | `src/services/diff_service.py` | Pre-compile source diff reporting |
 | `src/services/search_service.py` | Search over compiled artifacts |
 | `src/services/query_service.py` | Provider-backed query answer assembly from maintained wiki context; self-consistency sampling, claim normalization, deterministic merge, and optional save-to-wiki for analysis pages |

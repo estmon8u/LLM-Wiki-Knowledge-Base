@@ -63,6 +63,7 @@ Commands are organized into flat verbs and namespaced groups:
 ## Structural Rules
 
 - Commands should stay thin and delegate quickly.
+- The command layer owns terminal-only concerns such as section headings, list formatting, and progress display; long-running services expose callback-friendly hooks instead of writing directly to the terminal.
 - Services should remain deterministic unless the feature explicitly requires model-backed synthesis.
 - `kb check lint` checks links, fragments, headings, titles, and metadata deterministically; `kb check review` prepends deterministic overlap checks to a required provider-backed single-pass or adversarial pipeline.
 - Raw sources remain the source of truth; compiled pages are derived artifacts.
