@@ -19,6 +19,7 @@ from src.services.query_service import QueryService
 from src.services.review_service import ReviewService
 from src.services.search_service import SearchService
 from src.services.status_service import StatusService
+from src.storage.compile_run_store import CompileRunStore
 from src.storage.run_store import RunStore
 
 
@@ -28,18 +29,25 @@ def build_services(paths: ProjectPaths, config: dict[str, Any]) -> dict[str, Any
     search_service = SearchService(paths)
     provider = build_provider(config)
     run_store = RunStore(paths.graph_exports_dir / "run_artifacts.sqlite3")
+    compile_run_store = CompileRunStore(paths.graph_exports_dir / "compile_runs.json")
     return {
         "project": ProjectService(paths),
         "config": config_service,
         "manifest": manifest_service,
         "ingest": IngestService(paths, manifest_service),
-        "compile": CompileService(paths, config, manifest_service, provider=provider),
+        "compile": CompileService(
+            paths,
+            config,
+            manifest_service,
+            provider=provider,
+            compile_run_store=compile_run_store,
+        ),
         "concepts": ConceptService(paths),
         "diff": DiffService(paths, manifest_service),
         "doctor": DoctorService(paths, config, provider=provider),
         "lint": LintService(paths, config, manifest_service),
         "search": search_service,
-        "status": StatusService(paths, manifest_service),
+        "status": StatusService(paths, manifest_service, config=config),
         "query": QueryService(
             paths,
             search_service,
@@ -48,4 +56,6 @@ def build_services(paths: ProjectPaths, config: dict[str, Any]) -> dict[str, Any
         ),
         "export": ExportService(paths),
         "review": ReviewService(paths, provider=provider, run_store=run_store),
+        "run_store": run_store,
+        "compile_run_store": compile_run_store,
     }

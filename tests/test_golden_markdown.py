@@ -146,6 +146,6 @@ def test_analysis_page_markdown_matches_golden(monkeypatch, test_project) -> Non
         "How does traceability work?", answer
     )
 
-    assert relative_path == "wiki/concepts/how-does-traceability-work.md"
+    assert relative_path == "wiki/analysis/how-does-traceability-work.md"
     rendered = (test_project.root / relative_path).read_text(encoding="utf-8")
     assert rendered == _golden_text("analysis_page.md")

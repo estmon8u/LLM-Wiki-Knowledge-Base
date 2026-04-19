@@ -3,12 +3,22 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
+import yaml
 from click.testing import CliRunner
 
 from src.cli import main
 from src.commands.ingest import _echo_directory_result
 from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
 from src.services.ingest_service import IngestDirectoryResult, IngestResult
+
+
+def _set_provider_config() -> None:
+    """Write a stub provider to kb.config.yaml so the update preflight passes."""
+    config = yaml.safe_load(Path("kb.config.yaml").read_text(encoding="utf-8"))
+    config["provider"] = {"name": "stub"}
+    Path("kb.config.yaml").write_text(
+        yaml.safe_dump(config, sort_keys=False), encoding="utf-8"
+    )
 
 
 class _CliFakeProvider(TextProvider):
@@ -84,14 +94,14 @@ def test_help_lists_core_commands() -> None:
     assert result.exit_code == 0
     for command_name in (
         "add",
+        "ask",
         "doctor",
-        "init",
-        "ingest",
-        "compile",
-        "check",
-        "show",
-        "query",
         "export",
+        "find",
+        "init",
+        "review",
+        "status",
+        "update",
     ):
         assert command_name in result.output
 
@@ -108,10 +118,10 @@ def test_running_cli_without_subcommand_prints_help() -> None:
 def test_status_before_init_shows_uninitialized_state() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
-        result = runner.invoke(main, ["show", "status"])
+        result = runner.invoke(main, ["status"])
 
         assert result.exit_code == 0
-        assert "initialized: false" in result.output
+        assert "kb init" in result.output
 
 
 def test_compile_requires_initialization() -> None:
@@ -182,7 +192,7 @@ def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
 
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        ingest_result = runner.invoke(main, ["ingest", "sample.md"])
+        ingest_result = runner.invoke(main, ["add", "sample.md"])
         assert ingest_result.exit_code == 0
         assert "Ingested Sample Research Note" in ingest_result.output
 
@@ -193,26 +203,24 @@ def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
         assert "Compile Summary" in compile_result.output
         assert "Compiled 1 source page(s)" in compile_result.output
 
-        lint_result = runner.invoke(main, ["check", "lint"])
+        lint_result = runner.invoke(main, ["lint"])
         assert lint_result.exit_code == 0
         assert "No lint issues found." in lint_result.output
 
-        search_result = runner.invoke(main, ["query", "search", "traceability"])
+        search_result = runner.invoke(main, ["find", "traceability"])
         assert search_result.exit_code == 0
         assert "wiki/sources/sample-research-note.md" in search_result.output
         assert Path("graph/exports/search_index.sqlite3").exists()
 
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            query_result = runner.invoke(
-                main, ["query", "ask", "traceability", "knowledge"]
-            )
+            query_result = runner.invoke(main, ["ask", "traceability", "knowledge"])
         assert query_result.exit_code == 0
         assert "Answer" in query_result.output
         assert "Citations" in query_result.output
         assert "wiki/sources/sample-research-note.md" in query_result.output
         assert "#chunk-" in query_result.output
 
-        export_result = runner.invoke(main, ["export", "vault"])
+        export_result = runner.invoke(main, ["export"])
         assert export_result.exit_code == 0
         assert Path("vault/obsidian/sources/sample-research-note.md").exists()
 
@@ -238,37 +246,37 @@ def test_end_to_end_cli_flow_for_local_html_source() -> None:
         assert compile_result.exit_code == 0
         assert "Compiled 1 source page(s)" in compile_result.output
 
-        search_result = runner.invoke(main, ["query", "search", "traceability"])
+        search_result = runner.invoke(main, ["find", "traceability"])
         assert search_result.exit_code == 0
         assert "wiki/sources/html-research-note.md" in search_result.output
 
 
-def test_search_and_query_show_empty_messages_when_no_results() -> None:
+def test_search_and_ask_show_empty_messages_when_no_results() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        search_result = runner.invoke(main, ["query", "search", "missing-topic"])
-        query_result = runner.invoke(main, ["query", "ask", "missing-topic"])
+        search_result = runner.invoke(main, ["find", "missing-topic"])
+        ask_result = runner.invoke(main, ["ask", "missing-topic"])
 
         assert search_result.exit_code == 0
         assert "No wiki pages matched that query." in search_result.output
-        assert query_result.exit_code != 0
-        assert "requires a configured provider" in query_result.output
+        assert ask_result.exit_code != 0
+        assert "requires a configured provider" in ask_result.output
 
 
-def test_search_and_query_require_terms() -> None:
+def test_find_and_ask_require_terms() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        search_result = runner.invoke(main, ["query", "search"])
-        query_result = runner.invoke(main, ["query", "ask"])
+        search_result = runner.invoke(main, ["find"])
+        ask_result = runner.invoke(main, ["ask"])
 
         assert search_result.exit_code != 0
         assert "Provide at least one search term." in search_result.output
-        assert query_result.exit_code != 0
-        assert "Provide a question to answer." in query_result.output
+        assert ask_result.exit_code != 0
+        assert "Provide a question to answer." in ask_result.output
 
 
 def test_ingest_reports_click_error_for_unsupported_file_type() -> None:
@@ -396,7 +404,7 @@ def test_lint_returns_nonzero_when_errors_exist() -> None:
             "# Bad\n\n[[Missing Target]]\n", encoding="utf-8"
         )
 
-        result = runner.invoke(main, ["check", "lint"])
+        result = runner.invoke(main, ["lint"])
 
         assert result.exit_code == 1
         assert "ERRORS" in result.output
@@ -424,7 +432,7 @@ def test_lint_reports_markdown_link_and_heading_errors_at_cli() -> None:
             encoding="utf-8",
         )
 
-        result = runner.invoke(main, ["check", "lint"])
+        result = runner.invoke(main, ["lint"])
 
         assert result.exit_code == 1
         assert "broken-markdown-link" in result.output
@@ -452,7 +460,7 @@ def test_lint_reports_frontmatter_type_and_empty_page_at_cli() -> None:
             encoding="utf-8",
         )
 
-        result = runner.invoke(main, ["check", "lint"])
+        result = runner.invoke(main, ["lint"])
 
         assert "invalid-field-type" in result.output
         assert "invalid-date-format" in result.output
@@ -462,7 +470,7 @@ def test_lint_reports_frontmatter_type_and_empty_page_at_cli() -> None:
 def test_diff_requires_initialization() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
-        result = runner.invoke(main, ["show", "diff"])
+        result = runner.invoke(main, ["status", "--changed"])
 
         assert result.exit_code != 0
         assert "Project not initialized" in result.output
@@ -479,7 +487,7 @@ def test_diff_end_to_end_new_then_compiled() -> None:
         assert runner.invoke(main, ["init"]).exit_code == 0
         assert runner.invoke(main, ["ingest", "sample.md"]).exit_code == 0
 
-        diff_before = runner.invoke(main, ["show", "diff"])
+        diff_before = runner.invoke(main, ["status", "--changed"])
         assert diff_before.exit_code == 0
         assert "Source Diff" in diff_before.output
         assert "[NEW]" in diff_before.output
@@ -488,7 +496,7 @@ def test_diff_end_to_end_new_then_compiled() -> None:
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             assert runner.invoke(main, ["compile"]).exit_code == 0
 
-        diff_after = runner.invoke(main, ["show", "diff"])
+        diff_after = runner.invoke(main, ["status", "--changed"])
         assert diff_after.exit_code == 0
         assert "Summary" in diff_after.output
         assert "[OK]" in diff_after.output
@@ -506,17 +514,15 @@ def test_cli_supports_explicit_project_root_option(tmp_path: Path) -> None:
     ingest_result = runner.invoke(
         main, ["--project-root", str(tmp_path), "ingest", str(source_path)]
     )
-    status_result = runner.invoke(
-        main, ["--project-root", str(tmp_path), "show", "status"]
-    )
+    status_result = runner.invoke(main, ["--project-root", str(tmp_path), "status"])
 
     assert init_result.exit_code == 0
     assert ingest_result.exit_code == 0
     assert status_result.exit_code == 0
-    assert "source_count: 1" in status_result.output
+    assert "1 total" in status_result.output
 
 
-def test_query_save_prompt_creates_analysis_page() -> None:
+def test_ask_save_flag_creates_analysis_page() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("sample.md").write_text(
@@ -531,14 +537,13 @@ def test_query_save_prompt_creates_analysis_page() -> None:
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             result = runner.invoke(
                 main,
-                ["query", "ask", "How", "does", "traceability", "work?"],
-                input="y\n",
+                ["ask", "--save", "How", "does", "traceability", "work?"],
             )
 
         assert result.exit_code == 0
         assert "Saved analysis page:" in result.output
-        assert Path("wiki/concepts").exists()
-        analysis_files = list(Path("wiki/concepts").glob("*.md"))
+        assert Path("wiki/analysis").exists()
+        analysis_files = list(Path("wiki/analysis").glob("*.md"))
         assert len(analysis_files) == 1
         content = analysis_files[0].read_text(encoding="utf-8")
         assert "type: analysis" in content
@@ -549,7 +554,7 @@ def test_review_command_requires_provider() -> None:
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        result = runner.invoke(main, ["check", "review"])
+        result = runner.invoke(main, ["review"])
 
         assert result.exit_code != 0
         assert "requires a configured provider" in result.output
@@ -569,13 +574,13 @@ def test_review_command_reports_overlapping_topics_requires_provider() -> None:
             encoding="utf-8",
         )
 
-        result = runner.invoke(main, ["check", "review"])
+        result = runner.invoke(main, ["review"])
 
         assert result.exit_code != 0
         assert "requires a configured provider" in result.output
 
 
-def test_review_adversarial_flag_without_provider_fails() -> None:
+def test_review_deep_flag_without_provider_fails() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -589,7 +594,7 @@ def test_review_adversarial_flag_without_provider_fails() -> None:
             encoding="utf-8",
         )
 
-        result = runner.invoke(main, ["check", "review", "--adversarial"])
+        result = runner.invoke(main, ["review", "--deep"])
 
         assert result.exit_code != 0
         assert "requires a configured provider" in result.output
@@ -598,7 +603,7 @@ def test_review_adversarial_flag_without_provider_fails() -> None:
 def test_review_requires_initialization() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
-        result = runner.invoke(main, ["check", "review"])
+        result = runner.invoke(main, ["review"])
 
         assert result.exit_code != 0
         assert "Project not initialized" in result.output
@@ -612,13 +617,13 @@ def test_lint_verbose_flag_does_not_crash() -> None:
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        result = runner.invoke(main, ["--verbose", "check", "lint"])
+        result = runner.invoke(main, ["--verbose", "lint"])
 
         assert result.exit_code == 0
         assert "No lint issues found." in result.output
 
 
-def test_query_piped_input_skips_save_confirm() -> None:
+def test_query_piped_input_does_not_save_without_flag() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("sample.md").write_text(
@@ -632,15 +637,14 @@ def test_query_piped_input_skips_save_confirm() -> None:
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             result = runner.invoke(
                 main,
-                ["query", "ask", "traceability"],
-                input="\n",
+                ["ask", "traceability"],
             )
 
         assert result.exit_code == 0
         assert "Saved analysis page:" not in result.output
 
 
-def test_query_self_consistency_flag_requires_provider() -> None:
+def test_ask_self_consistency_flag_requires_provider() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("sample.md").write_text(
@@ -653,8 +657,7 @@ def test_query_self_consistency_flag_requires_provider() -> None:
 
         result = runner.invoke(
             main,
-            ["query", "ask", "--self-consistency", "3", "traceability"],
-            input="\n",
+            ["ask", "--self-consistency", "3", "traceability"],
         )
 
         assert result.exit_code != 0
@@ -690,12 +693,12 @@ def test_ingest_recursive_directory_requires_supported_files() -> None:
         assert "No supported source files found under directory" in result.output
 
 
-def test_export_vault_on_empty_wiki_succeeds() -> None:
+def test_export_on_empty_wiki_succeeds() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        result = runner.invoke(main, ["export", "vault"])
+        result = runner.invoke(main, ["export"])
 
         assert result.exit_code == 0
         assert "Vault Export" in result.output
@@ -727,7 +730,7 @@ def test_provider_override_flag_switches_provider() -> None:
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             result = runner.invoke(
                 main,
-                ["--provider", "openai", "query", "ask", "traceability"],
+                ["--provider", "openai", "ask", "traceability"],
             )
 
         assert result.exit_code == 0
@@ -739,7 +742,580 @@ def test_provider_override_flag_rejects_invalid_name() -> None:
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        result = runner.invoke(main, ["--provider", "invalid", "show", "status"])
+        result = runner.invoke(main, ["--provider", "invalid", "status"])
 
         assert result.exit_code != 0
         assert "Invalid value" in result.output or "invalid" in result.output.lower()
+
+
+# --- Simplified CLI UX tests ---
+
+
+def test_update_compiles_and_generates_concepts() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Sample\n\nBody for update test.\n", encoding="utf-8"
+        )
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        _set_provider_config()
+
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            result = runner.invoke(main, ["update"])
+
+        assert result.exit_code == 0
+        assert "Update Summary" in result.output
+        assert "Compiled 1 source page(s)" in result.output
+        assert "Concept Summary" in result.output
+
+
+def test_update_with_paths_adds_then_compiles() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("note.md").write_text(
+            "# New Note\n\nAdded via update.\n", encoding="utf-8"
+        )
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        _set_provider_config()
+
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            result = runner.invoke(main, ["update", "note.md"])
+
+        assert result.exit_code == 0
+        assert "Added note.md" in result.output
+        assert "Update Summary" in result.output
+        assert "Compiled 1 source page(s)" in result.output
+
+
+def test_build_alias_works() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        _set_provider_config()
+
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            result = runner.invoke(main, ["build"])
+
+        assert result.exit_code == 0
+        assert "Update Summary" in result.output
+
+
+def test_find_command_works() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["find", "missing-topic"])
+
+        assert result.exit_code == 0
+        assert "No wiki pages matched that query." in result.output
+
+
+def test_search_alias_works() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["search", "missing-topic"])
+
+        assert result.exit_code == 0
+        assert "No wiki pages matched that query." in result.output
+
+
+def test_flat_status_shows_knowledge_base_overview() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["status"])
+
+        assert result.exit_code == 0
+        assert "Knowledge Base" in result.output
+        assert "Sources" in result.output
+        assert "0 total" in result.output
+        assert "kb add" in result.output
+
+
+def test_status_changed_flag_shows_diff() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Sample\n\nBody for status --changed test.\n", encoding="utf-8"
+        )
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+
+        result = runner.invoke(main, ["status", "--changed"])
+
+        assert result.exit_code == 0
+        assert "Source Diff" in result.output
+        assert "[NEW]" in result.output
+        assert "new: 1" in result.output
+
+
+def test_flat_export_defaults_to_vault() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["export"])
+
+        assert result.exit_code == 0
+        assert "Vault Export" in result.output
+        assert "Exported 0 markdown file(s)" in result.output
+
+
+def test_config_command_shows_config() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["config"])
+
+        assert result.exit_code == 0
+        assert "Configuration" in result.output
+        assert "project" in result.output
+
+
+def test_history_command_shows_no_runs() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["history"])
+
+        assert result.exit_code == 0
+        assert "No runs recorded yet." in result.output
+
+
+def test_sources_list_shows_empty() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["sources"])
+
+        assert result.exit_code == 0
+        assert "No sources ingested yet." in result.output
+
+
+def test_sources_list_shows_ingested_sources() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text("# Sample\n\nBody.\n", encoding="utf-8")
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+
+        result = runner.invoke(main, ["sources", "list"])
+
+        assert result.exit_code == 0
+        assert "Sources" in result.output
+        assert "sample" in result.output
+        assert "total: 1" in result.output
+
+
+def test_review_deep_flag_aliases_adversarial() -> None:
+    """--deep and --adversarial both set the same adversarial parameter."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        deep_result = runner.invoke(main, ["review", "--deep"])
+        adversarial_result = runner.invoke(main, ["review", "--adversarial"])
+
+        # Both should fail the same way (no provider)
+        assert deep_result.exit_code != 0
+        assert adversarial_result.exit_code != 0
+        assert "requires a configured provider" in deep_result.output
+        assert "requires a configured provider" in adversarial_result.output
+
+
+def test_review_successful_run_shows_no_issues() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        Path("wiki/sources").mkdir(parents=True, exist_ok=True)
+        Path("wiki/sources/alpha.md").write_text(
+            _compiled_page("Alpha", "Unique content about alpha topic."),
+            encoding="utf-8",
+        )
+
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            result = runner.invoke(main, ["review"])
+
+        assert result.exit_code == 0
+        assert "Review mode:" in result.output
+        assert "No review issues found." in result.output
+
+
+def test_review_successful_run_shows_issues() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        Path("wiki/sources").mkdir(parents=True, exist_ok=True)
+        overlap_body = (
+            "knowledge base traceability citation markdown wiki compile "
+            "ingest lint review export vault query"
+        )
+        Path("wiki/sources/alpha.md").write_text(
+            _compiled_page("Alpha", overlap_body), encoding="utf-8"
+        )
+        Path("wiki/sources/beta.md").write_text(
+            _compiled_page("Beta", overlap_body), encoding="utf-8"
+        )
+
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            result = runner.invoke(main, ["review"])
+
+        assert result.exit_code == 0
+        assert "Review mode:" in result.output
+        assert "Total review issues:" in result.output
+
+
+def test_history_shows_runs_after_ask() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Sample\n\nTraceability and citation evidence.\n",
+            encoding="utf-8",
+        )
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            assert runner.invoke(main, ["compile"]).exit_code == 0
+            ask_result = runner.invoke(
+                main,
+                [
+                    "ask",
+                    "--self-consistency",
+                    "2",
+                    "How",
+                    "does",
+                    "traceability",
+                    "work?",
+                ],
+            )
+            assert ask_result.exit_code == 0
+
+            result = runner.invoke(main, ["history"])
+
+        assert result.exit_code == 0
+        assert "Run History" in result.output
+        assert "total:" in result.output
+
+
+def test_history_filters_by_command() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Sample\n\nTraceability and citation.\n",
+            encoding="utf-8",
+        )
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            assert runner.invoke(main, ["compile"]).exit_code == 0
+            ask_result = runner.invoke(
+                main,
+                [
+                    "ask",
+                    "--self-consistency",
+                    "2",
+                    "How",
+                    "does",
+                    "traceability",
+                    "work?",
+                ],
+            )
+            assert ask_result.exit_code == 0
+
+            result = runner.invoke(main, ["history", "--command", "query"])
+
+        assert result.exit_code == 0
+        assert "Run History" in result.output
+
+
+def test_sources_show_displays_details() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text("# Sample\n\nBody.\n", encoding="utf-8")
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+
+        result = runner.invoke(main, ["sources", "show", "sample"])
+
+        assert result.exit_code == 0
+        assert "Source: sample" in result.output
+        assert "source_id:" in result.output
+        assert "raw_path:" in result.output
+        assert "content_hash:" in result.output
+        assert "source_type:" in result.output
+
+
+def test_sources_show_missing_slug_fails() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["sources", "show", "nonexistent"])
+
+        assert result.exit_code != 0
+        assert "Source not found: nonexistent" in result.output
+
+
+def test_ask_show_evidence_flag() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Sample\n\nTraceability and citation evidence.\n",
+            encoding="utf-8",
+        )
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            assert runner.invoke(main, ["compile"]).exit_code == 0
+
+            result = runner.invoke(
+                main,
+                [
+                    "ask",
+                    "--show-evidence",
+                    "How",
+                    "does",
+                    "traceability",
+                    "work?",
+                ],
+            )
+
+        assert result.exit_code == 0
+        assert "Evidence" in result.output
+        assert "Answer" in result.output
+
+
+def test_status_shows_stale_sources_needing_compile() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Sample\n\nBody for status test.\n", encoding="utf-8"
+        )
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+
+        result = runner.invoke(main, ["status"])
+
+        assert result.exit_code == 0
+        assert "1 need compiling" in result.output
+        assert "kb update" in result.output
+
+
+def test_status_shows_current_after_compile() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Sample\n\nBody for status current test.\n", encoding="utf-8"
+        )
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            assert runner.invoke(main, ["compile"]).exit_code == 0
+
+        result = runner.invoke(main, ["status"])
+
+        assert result.exit_code == 0
+        assert "Knowledge base is current." in result.output
+
+
+def test_update_with_directory_path_adds_then_compiles() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("docs").mkdir()
+        Path("docs/alpha.md").write_text("# Alpha\n\nAlpha body.\n", encoding="utf-8")
+        Path("docs/beta.md").write_text("# Beta\n\nBeta body.\n", encoding="utf-8")
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        _set_provider_config()
+
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            result = runner.invoke(main, ["update", "docs"])
+
+        assert result.exit_code == 0
+        assert "Added 2 source(s) from" in result.output
+        assert "Update Summary" in result.output
+        assert "Compiled 2 source page(s)" in result.output
+
+
+def test_update_with_already_present_file() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("note.md").write_text("# Note\n\nNote body.\n", encoding="utf-8")
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "note.md"]).exit_code == 0
+        _set_provider_config()
+
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            result = runner.invoke(main, ["update", "note.md"])
+
+        assert result.exit_code == 0
+        assert "Already present: note.md" in result.output
+        assert "Update Summary" in result.output
+
+
+def test_update_resume_rejects_force_combination() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["update", "--force", "--resume"])
+
+        assert result.exit_code != 0
+        assert "--resume cannot be combined with --force" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Provider preflight in update
+# ---------------------------------------------------------------------------
+
+
+def test_update_fails_without_provider_config() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            result = runner.invoke(main, ["update"])
+
+        assert result.exit_code != 0
+        assert "Provider is not configured" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Config subcommands
+# ---------------------------------------------------------------------------
+
+
+def test_config_show_subcommand() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["config", "show"])
+
+        assert result.exit_code == 0
+        assert "Configuration" in result.output
+
+
+def test_config_provider_set_and_clear() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["config", "provider", "set", "openai"])
+        assert result.exit_code == 0
+        assert "Provider set to openai" in result.output
+
+        config = yaml.safe_load(Path("kb.config.yaml").read_text(encoding="utf-8"))
+        assert config["provider"]["name"] == "openai"
+
+        result = runner.invoke(
+            main,
+            ["config", "provider", "set", "anthropic", "--model", "claude-4"],
+        )
+        assert result.exit_code == 0
+        assert "model=claude-4" in result.output
+
+        result = runner.invoke(main, ["config", "provider", "clear"])
+        assert result.exit_code == 0
+        assert "Provider cleared." in result.output
+
+        config = yaml.safe_load(Path("kb.config.yaml").read_text(encoding="utf-8"))
+        assert config["provider"] == {}
+
+
+# ---------------------------------------------------------------------------
+# --quality flag on ask
+# ---------------------------------------------------------------------------
+
+
+def test_ask_quality_fast_flag() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Sample\n\nTraceability and citation evidence.\n",
+            encoding="utf-8",
+        )
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            assert runner.invoke(main, ["compile"]).exit_code == 0
+
+            result = runner.invoke(
+                main,
+                ["ask", "--quality", "fast", "How", "does", "traceability", "work?"],
+            )
+
+        assert result.exit_code == 0
+        assert "Answer" in result.output
+
+
+def test_ask_quality_deep_flag() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Sample\n\nTraceability and citation evidence.\n",
+            encoding="utf-8",
+        )
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            assert runner.invoke(main, ["compile"]).exit_code == 0
+
+            result = runner.invoke(
+                main,
+                ["ask", "--quality", "deep", "How", "does", "traceability", "work?"],
+            )
+
+        assert result.exit_code == 0
+        assert "Answer" in result.output
+
+
+# ---------------------------------------------------------------------------
+# History with compile runs
+# ---------------------------------------------------------------------------
+
+
+def test_history_shows_compile_runs() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text("# Sample\n\nBody.\n", encoding="utf-8")
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        _set_provider_config()
+
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            assert runner.invoke(main, ["update"]).exit_code == 0
+
+            result = runner.invoke(main, ["history", "--command", "compile"])
+
+        assert result.exit_code == 0
+        assert "compile" in result.output
+
+
+def test_history_compile_filter_excludes_ask_runs() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text("# Sample\n\nTraceability.\n", encoding="utf-8")
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            assert runner.invoke(main, ["compile"]).exit_code == 0
+            assert (
+                runner.invoke(
+                    main, ["ask", "How", "does", "traceability", "work?"]
+                ).exit_code
+                == 0
+            )
+
+            result = runner.invoke(main, ["history", "--command", "compile"])
+
+        assert result.exit_code == 0
+        assert "compile" in result.output

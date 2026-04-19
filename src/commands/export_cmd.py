@@ -6,15 +6,17 @@ from src.commands.common import echo_bullet, echo_section, require_initialized
 from src.models.command_models import CommandContext, CommandSpec
 
 
-SUMMARY = "Export the compiled wiki into the Obsidian-friendly vault folder."
+SUMMARY = (
+    "Export the compiled wiki to the configured target (defaults to Obsidian vault)."
+)
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
-    return CommandSpec(name="export vault", summary=SUMMARY)
+    return CommandSpec(name="export", summary=SUMMARY)
 
 
 def create_command() -> click.Command:
-    @click.command(name="vault", help=SUMMARY, short_help="Export vault files.")
+    @click.command(name="export", help=SUMMARY, short_help="Export the wiki.")
     @click.option(
         "--clean",
         is_flag=True,

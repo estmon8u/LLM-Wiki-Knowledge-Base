@@ -98,6 +98,13 @@ class ConfigService:
             return DEFAULT_SCHEMA
         return self.paths.schema_file.read_text(encoding="utf-8")
 
+    def save(self, config: dict[str, Any]) -> None:
+        """Write *config* back to kb.config.yaml (atomic)."""
+        atomic_write_text(
+            self.paths.config_file,
+            yaml.safe_dump(config, sort_keys=False),
+        )
+
     def ensure_files(self) -> list[str]:
         created: list[str] = []
         if not self.paths.config_file.exists():

@@ -70,6 +70,7 @@ class ProjectPaths:
     wiki_dir: Path
     wiki_sources_dir: Path
     wiki_concepts_dir: Path
+    wiki_analysis_dir: Path
     wiki_index_file: Path
     wiki_index_markdown: Path
     wiki_log_file: Path
@@ -107,6 +108,7 @@ def build_project_paths(root: Path) -> ProjectPaths:
         wiki_dir=wiki_dir,
         wiki_sources_dir=wiki_dir / "sources",
         wiki_concepts_dir=wiki_dir / "concepts",
+        wiki_analysis_dir=wiki_dir / "analysis",
         wiki_index_file=wiki_dir / "_index.json",
         wiki_index_markdown=wiki_dir / "index.md",
         wiki_log_file=wiki_dir / "log.md",
@@ -134,6 +136,7 @@ class ProjectService:
             self.paths.wiki_dir,
             self.paths.wiki_sources_dir,
             self.paths.wiki_concepts_dir,
+            self.paths.wiki_analysis_dir,
             self.paths.vault_dir,
             self.paths.vault_obsidian_dir,
             self.paths.graph_dir,

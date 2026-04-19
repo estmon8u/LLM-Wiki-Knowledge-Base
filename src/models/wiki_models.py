@@ -53,7 +53,11 @@ class StatusSnapshot:
     source_count: int
     compiled_source_count: int
     concept_page_count: int
+    analysis_page_count: int
     last_compile_at: Optional[str]
+    provider_summary: str
+    index_status: str
+    export_status: str
 
 
 @dataclass

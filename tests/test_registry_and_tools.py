@@ -57,10 +57,13 @@ def test_command_registry_resolves_aliases_and_lists_names() -> None:
     assert list_command_names() == sorted(list_command_names())
     assert "add" in list_command_names()
     assert "init" in list_command_names()
-    assert "check" in list_command_names()
-    assert "show" in list_command_names()
+    assert "update" in list_command_names()
+    assert "ask" in list_command_names()
+    assert "find" in list_command_names()
+    assert "status" in list_command_names()
+    assert "review" in list_command_names()
     assert "export" in list_command_names()
-    assert "query" in list_command_names()
+    assert "lint" in list_command_names()
 
 
 def test_command_registry_returns_click_commands_and_specs(test_project) -> None:
@@ -75,25 +78,35 @@ def test_command_registry_returns_click_commands_and_specs(test_project) -> None
     assert get_click_command("missing") is None
     spec_names = {spec.name for spec in specs}
     assert "add" in spec_names
-    assert "compile" in spec_names
-    assert "check lint" in spec_names
-    assert "show status" in spec_names
-    assert "export vault" in spec_names
-    assert "query search" in spec_names
-    assert "query ask" in spec_names
+    assert "update" in spec_names
+    assert "ask" in spec_names
+    assert "find" in spec_names
+    assert "status" in spec_names
+    assert "review" in spec_names
+    assert "export" in spec_names
+    assert "lint" in spec_names
 
 
 @pytest.mark.parametrize(
     "command_name",
     [
         "add",
-        "init",
-        "ingest",
+        "ask",
+        "build",
         "compile",
-        "query",
-        "check",
-        "show",
+        "config",
+        "doctor",
         "export",
+        "find",
+        "history",
+        "ingest",
+        "init",
+        "lint",
+        "review",
+        "search",
+        "sources",
+        "status",
+        "update",
     ],
 )
 def test_each_registered_command_has_a_click_command(command_name: str) -> None:

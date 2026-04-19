@@ -8,62 +8,46 @@ import click
 from src.models.command_models import CommandContext, CommandSpec
 
 
-# Flat top-level commands (primary workflow verbs)
+# ---------------------------------------------------------------------------
+# Primary top-level commands (the simplified public CLI)
+# ---------------------------------------------------------------------------
 FLAT_COMMAND_MODULES = {
     "add": "src.commands.add",
-    "compile": "src.commands.compile",
+    "ask": "src.commands.ask",
+    "config": "src.commands.config_cmd",
     "doctor": "src.commands.doctor",
-    "ingest": "src.commands.ingest",
+    "export": "src.commands.export_cmd",
+    "find": "src.commands.find",
+    "history": "src.commands.history",
     "init": "src.commands.init",
+    "lint": "src.commands.lint",
+    "review": "src.commands.review",
+    "sources": "src.commands.sources",
+    "status": "src.commands.status",
+    "update": "src.commands.update",
 }
 
-# Namespaced command groups: group_name -> {subcommand -> module_path}
-GROUP_COMMAND_MODULES = {
-    "check": {
-        "lint": "src.commands.lint",
-        "review": "src.commands.review",
-    },
-    "export": {
-        "vault": "src.commands.export_vault",
-    },
-    "query": {
-        "ask": "src.commands.query",
-        "search": "src.commands.search",
-    },
-    "show": {
-        "status": "src.commands.status",
-        "diff": "src.commands.diff",
-    },
+# Aliases — flat top-level commands that map to another module.
+ALIAS_COMMAND_MODULES = {
+    "build": "src.commands.update",
+    "compile": "src.commands.compile",
+    "ingest": "src.commands.ingest",
+    "search": "src.commands.find",
 }
 
 
 def list_command_names() -> list[str]:
-    names = list(FLAT_COMMAND_MODULES)
-    names.extend(GROUP_COMMAND_MODULES)
-    return sorted(names)
+    """Return only canonical command names for help output."""
+    return sorted(FLAT_COMMAND_MODULES)
 
 
 def get_click_command(name: str) -> Optional[click.BaseCommand]:
-    module_path = FLAT_COMMAND_MODULES.get(name)
+    """Resolve canonical and alias names to Click commands."""
+    module_path = FLAT_COMMAND_MODULES.get(name) or ALIAS_COMMAND_MODULES.get(name)
     if module_path is not None:
         module = import_module(module_path)
         return module.create_command()
-
-    group_spec = GROUP_COMMAND_MODULES.get(name)
-    if group_spec is not None:
-        return _build_click_group(name, group_spec)
-
     return None
-
-
-def _build_click_group(
-    group_name: str, subcommand_modules: dict[str, str]
-) -> click.Group:
-    group = click.Group(name=group_name)
-    for sub_name, module_path in sorted(subcommand_modules.items()):
-        module = import_module(module_path)
-        group.add_command(module.create_command(), sub_name)
-    return group
 
 
 def build_command_specs(context: CommandContext) -> tuple[CommandSpec, ...]:
@@ -73,15 +57,4 @@ def build_command_specs(context: CommandContext) -> tuple[CommandSpec, ...]:
         spec = module.build_spec(context)
         if spec.availability is None or spec.availability(context):
             specs.append(spec)
-    for group_name in sorted(GROUP_COMMAND_MODULES):
-        for sub_name in sorted(GROUP_COMMAND_MODULES[group_name]):
-            module = import_module(GROUP_COMMAND_MODULES[group_name][sub_name])
-            spec = module.build_spec(context)
-            spec = CommandSpec(
-                name=f"{group_name} {sub_name}",
-                summary=spec.summary,
-                availability=spec.availability,
-            )
-            if spec.availability is None or spec.availability(context):
-                specs.append(spec)
     return tuple(specs)

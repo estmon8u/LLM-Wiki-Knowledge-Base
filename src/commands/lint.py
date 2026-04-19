@@ -10,7 +10,7 @@ SUMMARY = "Run deterministic structural lint checks over the maintained wiki."
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
-    return CommandSpec(name="check lint", summary=SUMMARY)
+    return CommandSpec(name="lint", summary=SUMMARY)
 
 
 def create_command() -> click.Command:

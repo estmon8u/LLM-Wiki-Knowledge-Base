@@ -98,6 +98,7 @@ def test_project_service_creates_structure_and_relative_paths(
     assert "raw" in created
     assert "raw/normalized" in created
     assert "wiki/sources" in created
+    assert "wiki/analysis" in created
     assert project_service.ensure_structure() == []
 
     some_file = uninitialized_project.root / "wiki" / "sources" / "item.md"
@@ -236,6 +237,8 @@ def test_build_services_returns_expected_keys(test_project) -> None:
         "status",
         "query",
         "export",
+        "run_store",
+        "compile_run_store",
     }
 
 
@@ -389,7 +392,9 @@ def test_status_snapshot_none_compile_prints_na() -> None:
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        result = runner.invoke(main, ["show", "status"])
+        result = runner.invoke(main, ["status"])
 
         assert result.exit_code == 0
-        assert "last_compile_at: n/a" in result.output
+        # When no compile has happened, last_compile_at is not shown
+        assert "last_compile_at" not in result.output
+        assert "0 total" in result.output

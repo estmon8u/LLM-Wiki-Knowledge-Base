@@ -506,12 +506,12 @@ def test_export_clean_cli_flag(tmp_path) -> None:
         assert runner.invoke(main, ["init"]).exit_code == 0
         Path("wiki/sources").mkdir(parents=True, exist_ok=True)
         Path("wiki/sources/page.md").write_text("Content", encoding="utf-8")
-        assert runner.invoke(main, ["export", "vault"]).exit_code == 0
+        assert runner.invoke(main, ["export"]).exit_code == 0
 
         # Add a stale file to the vault
         Path("vault/obsidian/sources/stale.md").write_text("Old", encoding="utf-8")
 
-        result = runner.invoke(main, ["export", "vault", "--clean"])
+        result = runner.invoke(main, ["export", "--clean"])
         assert result.exit_code == 0
         assert "Removed" in result.output
         assert not Path("vault/obsidian/sources/stale.md").exists()

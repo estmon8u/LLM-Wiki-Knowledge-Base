@@ -134,7 +134,7 @@ def main(argv: list[str] | None = None) -> int:
     for command_args, allow_failure in (
         (["--help"], False),
         (["--project-root", str(project_root), "init"], False),
-        (["--project-root", str(project_root), "show", "status"], False),
+        (["--project-root", str(project_root), "status"], False),
     ):
         result = run_cli_command(repo_root, log_path, command_args)
         if result.exit_code != 0 and not allow_failure:
@@ -144,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
         result = run_cli_command(
             repo_root,
             log_path,
-            ["--project-root", str(project_root), "ingest", str(source_path)],
+            ["--project-root", str(project_root), "add", str(source_path)],
         )
         if result.exit_code != 0:
             failed_supported_ingests.append(source_path)
@@ -153,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
         result = run_cli_command(
             repo_root,
             log_path,
-            ["--project-root", str(project_root), "ingest", str(unsupported_probe)],
+            ["--project-root", str(project_root), "add", str(unsupported_probe)],
         )
         if result.exit_code == 0:
             unexpected_failures.append(
@@ -161,12 +161,12 @@ def main(argv: list[str] | None = None) -> int:
             )
 
     for command_args in (
-        ["--project-root", str(project_root), "show", "diff"],
+        ["--project-root", str(project_root), "status", "--changed"],
         ["--project-root", str(project_root), "compile"],
-        ["--project-root", str(project_root), "show", "diff"],
-        ["--project-root", str(project_root), "show", "status"],
-        ["--project-root", str(project_root), "query", "search", *args.search_query.split()],
-        ["--project-root", str(project_root), "query", "ask", *args.question.split()],
+        ["--project-root", str(project_root), "status", "--changed"],
+        ["--project-root", str(project_root), "status"],
+        ["--project-root", str(project_root), "find", *args.search_query.split()],
+        ["--project-root", str(project_root), "ask", *args.question.split()],
     ):
         result = run_cli_command(repo_root, log_path, command_args)
         if result.exit_code != 0:
@@ -179,17 +179,17 @@ def main(argv: list[str] | None = None) -> int:
     lint_result = run_cli_command(
         repo_root,
         log_path,
-        ["--project-root", str(project_root), "check", "lint"],
+        ["--project-root", str(project_root), "lint"],
     )
     lint_failed = lint_result.exit_code != 0
 
     export_result = run_cli_command(
         repo_root,
         log_path,
-        ["--project-root", str(project_root), "export", "vault"],
+        ["--project-root", str(project_root), "export"],
     )
     if export_result.exit_code != 0:
-        unexpected_failures.append(f"--project-root {project_root} export vault")
+        unexpected_failures.append(f"--project-root {project_root} export")
 
     summary_lines = [
         "",

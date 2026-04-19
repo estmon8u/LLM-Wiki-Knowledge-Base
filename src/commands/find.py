@@ -10,11 +10,11 @@ SUMMARY = "Search the compiled wiki for relevant pages and snippets."
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
-    return CommandSpec(name="query search", summary=SUMMARY)
+    return CommandSpec(name="find", summary=SUMMARY, aliases=("search",))
 
 
 def create_command() -> click.Command:
-    @click.command(name="search", help=SUMMARY, short_help="Search the compiled wiki.")
+    @click.command(name="find", help=SUMMARY, short_help="Search the compiled wiki.")
     @click.argument("query_terms", nargs=-1)
     @click.option("--limit", default=5, show_default=True, type=int)
     @click.pass_obj

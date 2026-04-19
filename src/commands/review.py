@@ -14,7 +14,7 @@ SUMMARY = (
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
-    return CommandSpec(name="check review", summary=SUMMARY)
+    return CommandSpec(name="review", summary=SUMMARY)
 
 
 def create_command() -> click.Command:
@@ -24,9 +24,17 @@ def create_command() -> click.Command:
         short_help="Semantic review for contradictions and terminology.",
     )
     @click.option(
-        "--adversarial",
+        "--deep",
+        "adversarial",
         is_flag=True,
         help="Run extractor, skeptic, and arbiter review over candidate page pairs.",
+    )
+    @click.option(
+        "--adversarial",
+        "adversarial",
+        is_flag=True,
+        hidden=True,
+        help="Legacy alias for --deep.",
     )
     @click.pass_obj
     def command(command_context: CommandContext, adversarial: bool) -> None:

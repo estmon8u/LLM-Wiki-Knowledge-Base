@@ -16,21 +16,24 @@
 
 ## Command To Service Mapping
 
-Commands are organized into flat verbs and namespaced groups:
+All commands are flat top-level verbs:
 
-| Group | Click Name | Command Wrapper | Main Service |
+| Click Name | Aliases | Command Wrapper | Main Service |
 | --- | --- | --- | --- |
-| *(flat)* | `init` | `src/commands/init.py` | `src/services/project_service.py` and `src/services/config_service.py` |
-| *(flat)* | `add` | `src/commands/add.py` | `src/services/ingest_service.py`, `src/services/normalization_service.py`, and `src/services/manifest_service.py` |
-| *(flat)* | `ingest` | `src/commands/ingest.py` | `src/services/ingest_service.py`, `src/services/normalization_service.py`, and `src/services/manifest_service.py` |
-| *(flat)* | `compile` | `src/commands/compile.py` | `src/services/compile_service.py` (+ `src/services/concept_service.py` with `--with-concepts`) |
-| `query` | `search` | `src/commands/search.py` | `src/services/search_service.py` |
-| `query` | `ask` | `src/commands/query.py` | `src/services/query_service.py` |
-| `check` | `lint` | `src/commands/lint.py` | `src/services/lint_service.py` |
-| `check` | `review` | `src/commands/review.py` | `src/services/review_service.py` |
-| `show` | `status` | `src/commands/status.py` | `src/services/status_service.py` |
-| `show` | `diff` | `src/commands/diff.py` | `src/services/diff_service.py` |
-| `export` | `vault` | `src/commands/export_vault.py` | `src/services/export_service.py` |
+| `init` | | `src/commands/init.py` | `src/services/project_service.py` and `src/services/config_service.py` |
+| `add` | `ingest` | `src/commands/add.py` | `src/services/ingest_service.py`, `src/services/normalization_service.py`, and `src/services/manifest_service.py` |
+| `update` | `build`, `compile` | `src/commands/update.py` | `src/services/compile_service.py`, `src/services/concept_service.py`, `src/services/search_service.py` |
+| `compile` | | `src/commands/compile.py` | `src/services/compile_service.py` (+ `src/services/concept_service.py` with `--with-concepts`) |
+| `find` | `search` | `src/commands/find.py` | `src/services/search_service.py` |
+| `ask` | | `src/commands/ask.py` | `src/services/query_service.py` |
+| `lint` | | `src/commands/lint.py` | `src/services/lint_service.py` |
+| `review` | | `src/commands/review.py` | `src/services/review_service.py` |
+| `status` | | `src/commands/status.py` | `src/services/status_service.py`, `src/services/diff_service.py` (with `--changed`) |
+| `export` | | `src/commands/export_cmd.py` | `src/services/export_service.py` |
+| `doctor` | | `src/commands/doctor.py` | `src/services/doctor_service.py` |
+| `history` | | `src/commands/history.py` | `src/storage/run_store.py` |
+| `config` | | `src/commands/config_cmd.py` | (reads `CommandContext.config` directly) |
+| `sources` | | `src/commands/sources.py` | `src/services/manifest_service.py` |
 
 ## Data Flow
 

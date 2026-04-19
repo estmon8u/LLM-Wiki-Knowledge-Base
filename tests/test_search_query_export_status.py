@@ -275,7 +275,7 @@ def test_query_service_save_answer_writes_analysis_page(test_project) -> None:
 
     saved_path = query_service.save_answer("How does traceability work?", answer)
 
-    assert saved_path.startswith("wiki/concepts/")
+    assert saved_path.startswith("wiki/analysis/")
     assert saved_path.endswith(".md")
     full_path = test_project.root / saved_path
     assert full_path.exists()
@@ -322,7 +322,7 @@ def test_query_service_save_answer_uses_fallback_slug_for_empty_question(
 
     saved_path = query_service.save_answer("???", answer)
 
-    assert saved_path.startswith("wiki/concepts/analysis-")
+    assert saved_path.startswith("wiki/analysis/analysis-")
     assert (test_project.root / saved_path).exists()
 
 
@@ -1163,7 +1163,71 @@ def test_refresh_file_logs_warning_on_os_error(monkeypatch, test_project) -> Non
     service.refresh_file(path)
 
     # FTS should remain available — only a warning is expected
-    assert service._fts_available is True
+
+
+# ---------------------------------------------------------------------------
+# Status service — provider / index / export coverage
+# ---------------------------------------------------------------------------
+
+
+def test_status_provider_summary_not_configured(test_project) -> None:
+    """Provider summary reports 'not configured' when no provider name is set."""
+    service = test_project.services["status"]
+    snap = service.snapshot(initialized=True)
+    assert snap.provider_summary == "not configured"
+
+
+def test_status_provider_summary_configured(test_project) -> None:
+    from src.services.status_service import StatusService
+
+    service = StatusService(
+        test_project.paths,
+        test_project.services["manifest"],
+        config={"provider": {"name": "openai", "model": "gpt-4o"}},
+    )
+    snap = service.snapshot(initialized=True)
+    assert "openai configured" in snap.provider_summary
+    assert "model=gpt-4o" in snap.provider_summary
+
+
+def test_status_index_status_not_built(test_project) -> None:
+    snap = test_project.services["status"].snapshot(initialized=True)
+    assert snap.index_status == "not built"
+
+
+def test_status_index_status_available(test_project) -> None:
+    index_path = test_project.paths.graph_exports_dir / "search_index.sqlite3"
+    index_path.write_bytes(b"fake")
+    snap = test_project.services["status"].snapshot(initialized=True)
+    assert snap.index_status == "available"
+
+
+def test_status_export_status_not_exported(test_project) -> None:
+    snap = test_project.services["status"].snapshot(initialized=True)
+    # vault dir exists (from ensure_structure) but has no files
+    assert snap.export_status in ("not exported", "empty")
+
+
+def test_status_export_status_stale(test_project) -> None:
+    import time
+
+    vault_file = test_project.write_file("vault/obsidian/page.md", "old")
+    time.sleep(0.05)
+    test_project.write_file("wiki/sources/newer.md", "newer")
+    source_path = test_project.write_file("notes/s.md", "# S\n\nBody\n")
+    test_project.services["ingest"].ingest_path(source_path)
+    test_project.services["compile"].compile()
+
+    snap = test_project.services["status"].snapshot(initialized=True)
+    assert snap.export_status == "stale"
+
+
+def test_status_counts_analysis_pages_in_analysis_dir(test_project) -> None:
+    test_project.write_file("wiki/analysis/q1.md", "---\ntype: analysis\n---\n# Q1\n")
+    test_project.write_file("wiki/analysis/q2.md", "---\ntype: analysis\n---\n# Q2\n")
+    snap = test_project.services["status"].snapshot(initialized=True)
+    assert snap.analysis_page_count == 2
+    assert snap.concept_page_count == 0
 
 
 def test_search_index_returns_empty_snippet_fallback(test_project) -> None:

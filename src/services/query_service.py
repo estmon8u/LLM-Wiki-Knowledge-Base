@@ -534,7 +534,7 @@ class QueryService:
             "## Citations\n\n"
             f"{citation_lines or 'No citations.'}\n"
         )
-        dest = self.paths.wiki_concepts_dir / f"{slug}.md"
+        dest = self.paths.wiki_analysis_dir / f"{slug}.md"
         atomic_write_text(dest, page_text)
         self.search_service.refresh_file(dest)
         return dest.relative_to(self.paths.root).as_posix()
