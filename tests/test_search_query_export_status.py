@@ -813,6 +813,7 @@ def test_diff_service_reports_new_source_before_compile(test_project) -> None:
     assert report.changed_count == 0
     assert report.up_to_date_count == 0
     assert report.entries[0].status == "new"
+    assert report.entries[0].title == "Diff"
 
 
 # --- P1 FTS5 improvement tests ---
@@ -917,14 +918,11 @@ def test_selective_frontmatter_excludes_implementation_metadata(test_project) ->
 
 def test_search_index_rebuilds_on_version_mismatch(monkeypatch, test_project) -> None:
     """refresh() must trigger a full rebuild if the stored version doesn't match."""
-    from src.storage.search_index_store import SearchIndexStore
-
     test_project.write_file("wiki/sources/versioned.md", "version check content")
     service = test_project.services["search"]
     service.refresh(force=True)
 
     # Tamper the stored schema version to simulate a stale index
-    original_check = service.index_store.check_version
     monkeypatch.setattr(service.index_store, "check_version", lambda: False)
 
     rebuild_called: list[bool] = []
@@ -948,6 +946,8 @@ def test_refresh_file_upserts_single_file_without_full_rebuild(
     """refresh_file() must call upsert_file, not rebuild."""
     test_project.write_file("wiki/sources/single.md", "upsert candidate content")
     service = test_project.services["search"]
+    # Pre-warm so the version metadata exists and check_version() returns True
+    service.refresh(force=True)
 
     upsert_called: list[bool] = []
     rebuild_called: list[bool] = []
@@ -1110,6 +1110,8 @@ def test_refresh_file_marks_fts_unavailable_on_upsert_error(
 
     path = test_project.write_file("wiki/sources/upsert-fail.md", "content")
     service = test_project.services["search"]
+    # Pre-warm index so check_version() returns True and we reach upsert_file
+    service.refresh(force=True)
 
     def raise_unavailable(*_a, **_kw):
         raise SearchIndexUnavailable("broken")
@@ -1203,11 +1205,10 @@ def test_indexable_chunks_fallback_for_empty_body_page(test_project) -> None:
 
 
 def test_chunk_markdown_body_handles_non_paragraph_section(test_project) -> None:
-    """A section whose text has no blank-line groups must be treated as one paragraph."""
+    """A section with only a run of consecutive non-blank lines (no blank-line separators)
+    is returned as one paragraph by _paragraphs; the chunk must still be non-empty."""
     from src.services.search_service import _chunk_markdown_body
 
-    # Section text with no blank lines — _paragraphs returns [] for single-line-group
-    # but the text itself is non-empty, triggering the fallback
     text = "## Tight Section\n\nline one\nline two\nline three\n"
     chunks = _chunk_markdown_body(text, "Tight Section")
 
@@ -1458,3 +1459,41 @@ def test_save_answer_summary_fallback_for_empty_answer(test_project) -> None:
 
     content = (test_project.root / saved_path).read_text(encoding="utf-8")
     assert "summary: 'Analysis page for: What is traceability?'" in content
+
+
+def test_scan_markdown_skips_maintenance_pages(test_project) -> None:
+    """_scan_markdown_files must skip wiki/index.md and wiki/log.md (consistency with FTS)."""
+    test_project.write_file("wiki/index.md", "maintenance uniquemainttoken content")
+    test_project.write_file("wiki/log.md", "maintenance uniquelogtoken2 activity")
+    service = test_project.services["search"]
+    service._fts_available = False  # force scan path
+
+    assert service.search("uniquemainttoken", limit=5) == []
+    assert service.search("uniquelogtoken2", limit=5) == []
+
+
+def test_refresh_file_triggers_full_rebuild_on_version_mismatch(
+    monkeypatch, test_project
+) -> None:
+    """refresh_file() must call refresh(force=True) when the index version is stale."""
+    path = test_project.write_file(
+        "wiki/sources/version-check.md", "version mismatch page"
+    )
+    service = test_project.services["search"]
+    service.refresh(force=True)
+
+    # Simulate a stale index version
+    monkeypatch.setattr(service.index_store, "check_version", lambda: False)
+
+    rebuild_called: list[bool] = []
+    original_rebuild = service.index_store.rebuild
+
+    def tracking_rebuild(*args, **kwargs):
+        rebuild_called.append(True)
+        return original_rebuild(*args, **kwargs)
+
+    monkeypatch.setattr(service.index_store, "rebuild", tracking_rebuild)
+
+    service.refresh_file(path)
+
+    assert rebuild_called

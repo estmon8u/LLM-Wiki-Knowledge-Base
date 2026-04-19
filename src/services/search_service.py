@@ -88,6 +88,9 @@ class SearchService:
         if not self._fts_available:
             return
         try:
+            if not self.index_store.check_version():
+                self.refresh(force=True)
+                return
             relative_path = file_path.relative_to(self.paths.root).as_posix()
             stat = file_path.stat()
             file_state = IndexedFileState(
@@ -141,6 +144,9 @@ class SearchService:
     ) -> list[SearchResult]:
         results: list[SearchResult] = []
         for file_path in sorted(self.paths.wiki_dir.rglob("*.md")):
+            relative_path = file_path.relative_to(self.paths.root).as_posix()
+            if _is_maintenance_page(relative_path):
+                continue
             if _is_generated_concept_page(file_path, self.paths):
                 continue
             text = file_path.read_text(encoding="utf-8")
