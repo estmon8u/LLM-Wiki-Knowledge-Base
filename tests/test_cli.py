@@ -147,6 +147,7 @@ def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
         assert "Answer" in query_result.output
         assert "Citations" in query_result.output
         assert "wiki/sources/sample-research-note.md" in query_result.output
+        assert "#chunk-" in query_result.output
 
         export_result = runner.invoke(main, ["export", "vault"])
         assert export_result.exit_code == 0

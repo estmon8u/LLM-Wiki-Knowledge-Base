@@ -57,7 +57,10 @@ def create_command() -> click.Command:
             click.echo("")
             echo_section("Citations")
             for citation in answer.citations:
-                echo_bullet(f"{citation.title} [{citation.path}]")
+                line = f"{citation.title} [{citation.citation_ref}]"
+                if citation.section and citation.section != citation.title:
+                    line += f" - {citation.section}"
+                echo_bullet(line)
         if answer.citations:
             try:
                 if click.confirm("\nSave this answer as an analysis page?"):

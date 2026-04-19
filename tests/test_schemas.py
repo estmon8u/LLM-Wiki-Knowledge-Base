@@ -22,14 +22,25 @@ from src.schemas.runs import RunRecord
 class TestEvidenceItem:
     def test_positive_create(self):
         item = EvidenceItem(
-            page_path="wiki/sources/a.md", title="A", snippet="hello", score=5
+            page_path="wiki/sources/a.md",
+            title="A",
+            snippet="hello",
+            score=5,
+            section="Intro",
+            chunk_index=2,
         )
         assert item.page_path == "wiki/sources/a.md"
         assert item.score == 5
+        assert item.section == "Intro"
+        assert item.chunk_index == 2
+        assert item.citation_ref == "wiki/sources/a.md#chunk-2"
 
     def test_default_score(self):
         item = EvidenceItem(page_path="p", title="t", snippet="s")
         assert item.score == 0
+        assert item.section == ""
+        assert item.chunk_index is None
+        assert item.citation_ref == "p"
 
     def test_rejects_wrong_type_strict(self):
         with pytest.raises(ValidationError):
@@ -76,6 +87,33 @@ class TestEvidenceBundle:
         b = EvidenceBundle(
             question="Q",
             items=[EvidenceItem(page_path="p2", title="t", snippet="s")],
+        )
+        assert a.context_hash != b.context_hash
+
+    def test_context_hash_changes_with_chunk_metadata(self):
+        a = EvidenceBundle(
+            question="Q",
+            items=[
+                EvidenceItem(
+                    page_path="p",
+                    title="t",
+                    snippet="s",
+                    section="Intro",
+                    chunk_index=0,
+                )
+            ],
+        )
+        b = EvidenceBundle(
+            question="Q",
+            items=[
+                EvidenceItem(
+                    page_path="p",
+                    title="t",
+                    snippet="s",
+                    section="Intro",
+                    chunk_index=1,
+                )
+            ],
         )
         assert a.context_hash != b.context_hash
 

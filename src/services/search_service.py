@@ -132,6 +132,8 @@ class SearchService:
                     path=hit.page_path,
                     score=hit.score,
                     snippet=snippet,
+                    section=hit.section,
+                    chunk_index=hit.chunk_index,
                 )
             )
             if len(results) >= limit:
@@ -159,9 +161,11 @@ class SearchService:
             results.append(
                 SearchResult(
                     title=file_path.stem.replace("-", " ").title(),
-                    path=file_path.relative_to(self.paths.root).as_posix(),
+                    path=relative_path,
                     score=score,
                     snippet=snippet,
+                    section="",
+                    chunk_index=None,
                 )
             )
         results.sort(key=lambda item: item.score, reverse=True)

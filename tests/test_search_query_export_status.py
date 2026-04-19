@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from src.models.wiki_models import SearchResult
 from src.providers import ProviderConfigurationError, ProviderExecutionError
 from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
 from src.schemas.claims import CandidateAnswer, Claim, EvidenceBundle, EvidenceItem
@@ -223,6 +224,9 @@ def test_search_service_builds_sqlite_index_and_returns_best_chunk(
     assert (test_project.paths.graph_exports_dir / "search_index.sqlite3").exists()
     assert len(results) >= 1
     assert results[0].path == "wiki/sources/chunks.md"
+    assert results[0].section == "Retrieval"
+    assert results[0].chunk_index == 1
+    assert results[0].citation_ref.endswith("#chunk-1")
     assert "SQLite FTS5 chunk search" in results[0].snippet
 
 
@@ -256,6 +260,8 @@ def test_query_service_returns_answer_with_citations(test_project) -> None:
 
     assert answer.citations
     assert answer.citations[0].path == "wiki/sources/citations.md"
+    assert answer.citations[0].chunk_index == 0
+    assert answer.citations[0].citation_ref == "wiki/sources/citations.md#chunk-0"
     assert "traceability appears here" in answer.answer.lower()
 
 
@@ -277,6 +283,31 @@ def test_query_service_save_answer_writes_analysis_page(test_project) -> None:
     assert "How does traceability work?" in content
     assert "type: analysis" in content
     assert "Citations" in content
+    assert "wiki/sources/citations.md#chunk-0" in content
+
+
+def test_query_service_build_evidence_bundle_preserves_chunk_metadata(
+    test_project,
+) -> None:
+    service = QueryService(test_project.paths, test_project.services["search"])
+
+    bundle = service._build_evidence_bundle(
+        "traceability",
+        [
+            SearchResult(
+                title="Traceability Notes",
+                path="wiki/sources/traceability-notes.md",
+                score=7,
+                snippet="Traceability preserves source links.",
+                section="Retrieval",
+                chunk_index=2,
+            )
+        ],
+    )
+
+    assert bundle.items[0].section == "Retrieval"
+    assert bundle.items[0].chunk_index == 2
+    assert bundle.items[0].citation_ref == "wiki/sources/traceability-notes.md#chunk-2"
 
 
 def test_query_service_save_answer_uses_fallback_slug_for_empty_question(
@@ -1152,6 +1183,7 @@ def test_search_index_returns_empty_snippet_fallback(test_project) -> None:
                 page_path=h.page_path,
                 title=h.title,
                 section=h.section,
+                chunk_index=h.chunk_index,
                 snippet="",
                 score=h.score,
             )

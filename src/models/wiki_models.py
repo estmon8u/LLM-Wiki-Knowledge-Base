@@ -37,6 +37,14 @@ class SearchResult:
     path: str
     score: int
     snippet: str
+    section: str = ""
+    chunk_index: Optional[int] = None
+
+    @property
+    def citation_ref(self) -> str:
+        if self.chunk_index is None or self.chunk_index < 0:
+            return self.path
+        return f"{self.path}#chunk-{self.chunk_index}"
 
 
 @dataclass

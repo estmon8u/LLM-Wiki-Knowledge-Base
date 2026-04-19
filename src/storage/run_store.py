@@ -117,22 +117,26 @@ class RunStore:
         # Persist individual citations for queryability.
         # Delete existing citations first to avoid duplicates on re-save.
         conn.execute("DELETE FROM run_citations WHERE run_id = ?", (record.run_id,))
-        all_claims: list[tuple[str, str, str]] = []
+        all_claims: list[tuple[str, str, str, str]] = []
         for candidate in record.candidates:
             for claim in candidate.claims:
-                all_claims.append((record.run_id, claim.text, claim.source_page))
+                all_claims.append(
+                    (record.run_id, claim.text, claim.source_page, claim.section)
+                )
         if record.merged_answer:
             for claim in record.merged_answer.accepted_claims:
-                all_claims.append((record.run_id, claim.text, claim.source_page))
+                all_claims.append(
+                    (record.run_id, claim.text, claim.source_page, claim.section)
+                )
         for finding in record.review_findings:
             all_claims.append(
-                (record.run_id, finding.claim, ",".join(finding.affected_pages))
+                (record.run_id, finding.claim, ",".join(finding.affected_pages), "")
             )
 
         if all_claims:
             conn.executemany(
-                "INSERT INTO run_citations (run_id, claim_text, source_page) "
-                "VALUES (?, ?, ?)",
+                "INSERT INTO run_citations (run_id, claim_text, source_page, section) "
+                "VALUES (?, ?, ?, ?)",
                 all_claims,
             )
 

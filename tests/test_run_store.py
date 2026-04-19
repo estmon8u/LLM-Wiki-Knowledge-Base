@@ -35,14 +35,24 @@ def _make_query_run(**overrides) -> RunRecord:
             question="What is X?",
             items=[
                 EvidenceItem(
-                    page_path="wiki/sources/a.md", title="A", snippet="info about X"
+                    page_path="wiki/sources/a.md",
+                    title="A",
+                    snippet="info about X",
+                    section="Intro",
+                    chunk_index=0,
                 )
             ],
         ),
         candidates=[
             CandidateAnswer(
                 raw_text="X is a concept.",
-                claims=[Claim(text="X is a concept", source_page="wiki/sources/a.md")],
+                claims=[
+                    Claim(
+                        text="X is a concept",
+                        source_page="wiki/sources/a.md",
+                        section="Intro",
+                    )
+                ],
                 model_name="gpt-5.4-mini",
                 latency_ms=200,
             )
@@ -50,7 +60,11 @@ def _make_query_run(**overrides) -> RunRecord:
         merged_answer=MergedAnswer(
             text="X is a concept.",
             accepted_claims=[
-                Claim(text="X is a concept", source_page="wiki/sources/a.md")
+                Claim(
+                    text="X is a concept",
+                    source_page="wiki/sources/a.md",
+                    section="Intro",
+                )
             ],
             candidate_count=1,
         ),
@@ -237,6 +251,22 @@ class TestRunStoreBoundary:
         ids = store.runs_citing_page("wiki/sources/a.md")
         assert r1.run_id in ids
         assert r2.run_id in ids
+
+    def test_query_claim_sections_stored_in_aux_citations(self, store):
+        run = _make_query_run()
+        store.save_run(run)
+
+        row = (
+            store._connect()
+            .execute(
+                "SELECT section FROM run_citations WHERE run_id = ? ORDER BY rowid LIMIT 1",
+                (run.run_id,),
+            )
+            .fetchone()
+        )
+
+        assert row is not None
+        assert row[0] == "Intro"
 
 
 # ── Integration ──────────────────────────────────────────────────────

@@ -76,6 +76,7 @@ class SearchHit:
     page_path: str
     title: str
     section: str
+    chunk_index: int
     snippet: str
     score: int
 
@@ -227,6 +228,7 @@ class SearchIndexStore:
                     page_chunks.page_path,
                     page_chunks.title,
                     page_chunks.section,
+                    page_chunks.chunk_index,
                     snippet(page_chunks_fts, -1, '', '', '...', 24) AS snippet,
                     bm25(page_chunks_fts, 6.0, 3.0, 2.0, 1.0) AS rank
                 FROM page_chunks_fts
@@ -243,8 +245,9 @@ class SearchIndexStore:
                 page_path=row[0],
                 title=row[1],
                 section=row[2],
-                snippet=row[3] or "",
-                score=max(1, int(round(abs(row[4]) * 1000))) if row[4] else 1,
+                chunk_index=row[3],
+                snippet=row[4] or "",
+                score=max(1, int(round(abs(row[5]) * 1000))) if row[5] else 1,
             )
             for row in rows
         ]

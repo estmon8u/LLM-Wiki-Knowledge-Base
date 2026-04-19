@@ -178,7 +178,7 @@ poetry run kb query search --limit 10 "agent architecture"
 | --- | --- | --- |
 | `--limit` | 5 | Maximum number of results to return. |
 
-`kb query search` uses a SQLite FTS5 chunk index stored at `graph/exports/search_index.sqlite3`. It indexes compiled source pages plus saved analysis pages, excludes generated concept pages, ranks hits with BM25-style FTS ordering, and returns page-level results using the best matching chunk snippet for each page.
+`kb query search` uses a SQLite FTS5 chunk index stored at `graph/exports/search_index.sqlite3`. It indexes compiled source pages plus saved analysis pages, excludes generated concept pages, ranks hits with BM25-style FTS ordering, and returns page-level results using the best matching chunk snippet for each page while retaining the winning chunk reference for downstream citations.
 
 ### `kb query ask <question>`
 
@@ -195,11 +195,11 @@ poetry run kb query ask --self-consistency 3 "How is traceability preserved?"
 | `--limit` | 3 | Maximum number of source pages to use as evidence. |
 | `--self-consistency` | 1 | Sample N independent provider answers from the same frozen evidence bundle and merge claims deterministically. |
 
-`kb query ask` requires a configured provider. It retrieves the best-matching indexed wiki chunks as evidence, packages the top chunk snippets into a frozen evidence bundle, sends that evidence to the configured provider, and prints the provider answer followed by a Citations section listing which pages were used. The output begins with a `[mode: …]` tag — `provider:<model>` when a single LLM call synthesizes the answer, or `self-consistency:<model>:N` when multiple provider samples are merged.
+`kb query ask` requires a configured provider. It retrieves the best-matching indexed wiki chunks as evidence, packages the top chunk snippets into a frozen evidence bundle, sends that evidence to the configured provider, and prints the provider answer followed by a Citations section listing the retrieved chunk refs that were used (for example `wiki/sources/foo.md#chunk-2`). The output begins with a `[mode: …]` tag — `provider:<model>` when a single LLM call synthesizes the answer, or `self-consistency:<model>:N` when multiple provider samples are merged.
 
 When `--self-consistency N` is greater than 1, `kb query ask` retrieves evidence once, freezes that evidence bundle, samples `N` independent provider answers in parallel, normalizes them into typed claims, merges near-duplicate grounded claims deterministically, and stores the full run artifact in `graph/exports/run_artifacts.sqlite3`. If the provider is missing or any provider call fails, the command exits with an error instead of falling back.
 
-After displaying the answer, if citations are present the command prompts `Save this answer as an analysis page? [y/N]`. Accepting writes a markdown analysis page to `wiki/concepts/` with YAML frontmatter (`type: analysis`), the question, a timestamp, and backlinks to the cited source pages. Saved analysis pages make your explorations compound in the wiki instead of disappearing in terminal history. In non-interactive contexts the prompt is silently skipped.
+After displaying the answer, if citations are present the command prompts `Save this answer as an analysis page? [y/N]`. Accepting writes a markdown analysis page to `wiki/concepts/` with YAML frontmatter (`type: analysis`), the question, a timestamp, and backlinks to the cited source chunks (or page paths if FTS is unavailable). Saved analysis pages make your explorations compound in the wiki instead of disappearing in terminal history. In non-interactive contexts the prompt is silently skipped.
 
 ### `kb check lint`
 

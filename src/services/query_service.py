@@ -211,6 +211,8 @@ class QueryService:
                     title=match.title,
                     snippet=match.snippet,
                     score=match.score,
+                    section=match.section,
+                    chunk_index=match.chunk_index,
                 )
                 for match in matches
             ],
@@ -224,7 +226,7 @@ class QueryService:
         sample_index: int | None = None,
     ) -> str:
         evidence_block = "\n\n".join(
-            f"### {match.title} ({match.path})\n{match.snippet}" for match in matches
+            self._format_prompt_match(match) for match in matches
         )
         sample_instruction = ""
         if sample_index is not None:
@@ -240,6 +242,13 @@ class QueryService:
             "If the evidence is insufficient, say so explicitly.\n\n"
             f"## Question\n\n{question}"
         )
+
+    def _format_prompt_match(self, match: SearchResult) -> str:
+        lines = [f"### {match.title} ({match.citation_ref})"]
+        if match.section and match.section != match.title:
+            lines.append(f"Section: {match.section}")
+        lines.append(match.snippet)
+        return "\n".join(lines)
 
     async def _sample_candidates(
         self,
@@ -332,7 +341,11 @@ class QueryService:
                     source_page=(
                         matched_item.page_path if matched_item is not None else ""
                     ),
-                    section=matched_item.title if matched_item is not None else "",
+                    section=(
+                        (matched_item.section or matched_item.title)
+                        if matched_item is not None
+                        else ""
+                    ),
                     confidence=confidence,
                     grounded=grounded,
                 )
@@ -500,13 +513,13 @@ class QueryService:
             "type": "analysis",
             "question": question,
             "saved_at": timestamp,
-            "citations": [c.path for c in answer.citations],
+            "citations": [c.citation_ref for c in answer.citations],
         }
         yaml_block = yaml.safe_dump(frontmatter, sort_keys=False).strip()
         citation_lines = ""
         if answer.citations:
             citation_lines = "\n".join(
-                f"- [[{c.title}]] (`{c.path}`)" for c in answer.citations
+                self._format_saved_citation(c) for c in answer.citations
             )
         page_text = (
             f"---\n{yaml_block}\n---\n\n"
@@ -521,3 +534,9 @@ class QueryService:
         dest.write_text(page_text, encoding="utf-8")
         self.search_service.refresh_file(dest)
         return dest.relative_to(self.paths.root).as_posix()
+
+    def _format_saved_citation(self, citation: SearchResult) -> str:
+        line = f"- [[{citation.title}]] (`{citation.citation_ref}`)"
+        if citation.section and citation.section != citation.title:
+            line += f" - Section: {citation.section}"
+        return line

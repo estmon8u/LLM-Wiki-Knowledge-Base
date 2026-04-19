@@ -17,6 +17,14 @@ class EvidenceItem(BaseModel):
     title: str
     snippet: str
     score: int = 0
+    section: str = ""
+    chunk_index: Optional[int] = None
+
+    @property
+    def citation_ref(self) -> str:
+        if self.chunk_index is None or self.chunk_index < 0:
+            return self.page_path
+        return f"{self.page_path}#chunk-{self.chunk_index}"
 
 
 class EvidenceBundle(BaseModel):
@@ -31,7 +39,7 @@ class EvidenceBundle(BaseModel):
     def context_hash(self) -> str:
         """Deterministic hash over the question and retrieved items."""
         parts = [self.question] + [
-            f"{item.page_path}:{item.snippet}" for item in self.items
+            f"{item.citation_ref}:{item.section}:{item.snippet}" for item in self.items
         ]
         return hashlib.sha256("\n".join(parts).encode()).hexdigest()[:16]
 
