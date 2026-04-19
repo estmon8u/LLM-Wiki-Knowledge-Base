@@ -13,6 +13,8 @@ from src.services.config_service import (
 )
 from src.services.project_service import (
     ProjectService,
+    atomic_copy_file,
+    atomic_write_text,
     build_project_paths,
     discover_project_root,
     slugify,
@@ -56,6 +58,29 @@ def test_build_project_paths_uses_expected_layout(tmp_path: Path) -> None:
     assert paths.raw_normalized_dir == tmp_path / "raw" / "normalized"
     assert paths.vault_obsidian_dir == tmp_path / "vault" / "obsidian"
     assert paths.graph_exports_dir == tmp_path / "graph" / "exports"
+
+
+def test_atomic_write_text_overwrites_without_leaving_temp_files(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "output.md"
+
+    atomic_write_text(target, "first")
+    atomic_write_text(target, "second")
+
+    assert target.read_text(encoding="utf-8") == "second"
+    assert not any(path.suffix == ".tmp" for path in tmp_path.iterdir())
+
+
+def test_atomic_copy_file_copies_without_leaving_temp_files(tmp_path: Path) -> None:
+    source = tmp_path / "source.txt"
+    destination = tmp_path / "dest.txt"
+    source.write_text("payload", encoding="utf-8")
+
+    atomic_copy_file(source, destination)
+
+    assert destination.read_text(encoding="utf-8") == "payload"
+    assert not any(path.suffix == ".tmp" for path in tmp_path.iterdir())
 
 
 def test_project_service_creates_structure_and_relative_paths(

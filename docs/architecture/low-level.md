@@ -34,18 +34,18 @@
 
 | File | Responsibility |
 | --- | --- |
-| `src/services/project_service.py` | Project layout and initialization helpers |
+| `src/services/project_service.py` | Project layout, initialization, and shared atomic write/copy helpers |
 | `src/services/config_service.py` | Config loading and defaults |
 | `src/services/manifest_service.py` | Raw-source manifest read/write behavior |
 | `src/services/normalization_service.py` | Document-type normalization routing for direct text inputs, Docling-backed PDFs, and bounded MarkItDown-backed born-digital converters |
 | `src/services/ingest_service.py` | Raw-source copy, normalized-artifact write, duplicate detection, source registration, deterministic recursive directory ingest, and callback-friendly batch progress hooks used by both `kb ingest` and `kb add` |
-| `src/services/compile_service.py` | Derived wiki generation with provider-backed summary generation plus callback-friendly compile planning and progress hooks |
+| `src/services/compile_service.py` | Derived wiki generation with provider-backed summary generation, callback-friendly compile planning/progress hooks, and persisted resume/failure tracking for interrupted compiles |
 | `src/services/diff_service.py` | Pre-compile source diff reporting |
 | `src/services/search_service.py` | Search over compiled artifacts using a SQLite FTS5 chunk index with page-level result deduplication, best-chunk section/index preservation for downstream citations, and fallback markdown scanning if FTS5 is unavailable |
 | `src/services/query_service.py` | Provider-backed query answer assembly from maintained wiki context; self-consistency sampling, claim normalization, deterministic merge, frozen evidence bundles that retain chunk refs, and optional save-to-wiki for analysis pages that also refresh the search index |
 | `src/services/review_service.py` | Provider-required semantic review: deterministic topic overlap and terminology checks, single-pass provider review, adversarial extractor/skeptic/arbiter review, and review-run persistence |
 | `src/services/lint_service.py` | Structural validation for wiki links, markdown links, fragments, headings, titles, typed frontmatter, empty pages, and maintenance findings |
-| `src/services/export_service.py` | Vault export generation |
+| `src/services/export_service.py` | Vault export generation with atomic copies into the Obsidian view |
 | `src/services/status_service.py` | Project and corpus status reporting |
 
 ## Current Model Files
@@ -70,7 +70,8 @@
 
 | File | Responsibility |
 | --- | --- |
-| `src/storage/__init__.py` | Re-exports `RunStore` and `SearchIndexStore` |
+| `src/storage/__init__.py` | Re-exports `CompileRunStore`, `RunStore`, and `SearchIndexStore` |
+| `src/storage/compile_run_store.py` | JSON-backed compile-run state at `graph/exports/compile_runs.json`: active run tracking, failed-run resume candidates, and compile history |
 | `src/storage/search_index_store.py` | SQLite FTS5-backed chunk index at `graph/exports/search_index.sqlite3`: tracked wiki-file inventory, chunk table, and FTS virtual table used by `SearchService`, including best-hit chunk indices for citation refs |
 | `src/storage/run_store.py` | SQLite-backed persistence at `graph/exports/run_artifacts.sqlite3`: `runs` table (full record JSON + indexed columns), `run_citations` table (normalized claim→page/section index) |
 

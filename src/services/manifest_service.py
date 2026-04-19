@@ -4,7 +4,7 @@ import json
 from typing import Any, Optional
 
 from src.models.source_models import RawSourceRecord
-from src.services.project_service import ProjectPaths, utc_now_iso
+from src.services.project_service import ProjectPaths, atomic_write_text, utc_now_iso
 
 
 class ManifestService:
@@ -56,7 +56,7 @@ class ManifestService:
 
     def _write(self, payload: dict[str, Any]) -> None:
         self.paths.raw_manifest_file.parent.mkdir(parents=True, exist_ok=True)
-        self.paths.raw_manifest_file.write_text(
+        atomic_write_text(
+            self.paths.raw_manifest_file,
             json.dumps(payload, indent=2, sort_keys=True),
-            encoding="utf-8",
         )

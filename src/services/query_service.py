@@ -25,7 +25,12 @@ from src.schemas.claims import (
 )
 from src.schemas.runs import RunRecord
 from src.storage.run_store import RunStore
-from src.services.project_service import ProjectPaths, slugify, utc_now_iso
+from src.services.project_service import (
+    ProjectPaths,
+    atomic_write_text,
+    slugify,
+    utc_now_iso,
+)
 from src.services.search_service import SearchService
 
 logger = logging.getLogger(__name__)
@@ -530,8 +535,7 @@ class QueryService:
             f"{citation_lines or 'No citations.'}\n"
         )
         dest = self.paths.wiki_concepts_dir / f"{slug}.md"
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(page_text, encoding="utf-8")
+        atomic_write_text(dest, page_text)
         self.search_service.refresh_file(dest)
         return dest.relative_to(self.paths.root).as_posix()
 

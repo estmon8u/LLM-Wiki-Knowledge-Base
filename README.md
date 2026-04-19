@@ -152,15 +152,18 @@ Compile source pages, refresh the wiki index, and update the activity log. Requi
 ```bash
 poetry run kb compile
 poetry run kb compile --force           # Rebuild every page, even unchanged ones
+poetry run kb compile --resume          # Continue the latest failed or interrupted compile
 poetry run kb compile --with-concepts   # Also generate concept pages and backlinks
 ```
 
 | Option | Default | Description |
 | --- | --- | --- |
 | `--force` | off | Rebuild every source page even if nothing changed. |
+| `--resume` | off | Resume the most recent failed or interrupted compile run from the remaining source pages. Cannot be combined with `--force`. |
 | `--with-concepts` | off | After compiling, generate concept pages in `wiki/concepts/` by grouping related source pages and maintain managed backlink sections in source pages. |
 
 Reads the normalized artifacts from `raw/normalized/` (or directly from `raw/sources/` for markdown/text files) and generates source pages under `wiki/sources/`. Each source page summary is produced by sending document content to the configured provider. Also updates `wiki/index.md`, `wiki/_index.json`, `wiki/log.md`, and the SQLite search index at `graph/exports/search_index.sqlite3`.
+Generated wiki files, manifest updates, normalized artifacts, and vault exports are written through atomic temp-file replacement so interrupted runs do not leave partially written outputs behind. Compile progress is also persisted in `graph/exports/compile_runs.json`, so `kb compile --resume` can continue the most recent failed or interrupted run.
 Interactive terminals show compile progress for source pages; non-interactive runs print a simple `Compiling N source page(s)...` preamble before the compile summary.
 
 When `--with-concepts` is passed, the concept service scans all compiled source pages, groups related pages by term overlap (Jaccard similarity), generates deterministic concept pages with `type: concept` frontmatter, and inserts managed backlink sections into source pages. Stale generated concept pages are automatically removed.
@@ -380,6 +383,11 @@ project-root/
 │   ├── index.md            # Wiki index (human-readable)
 │   ├── _index.json         # Wiki index (machine-readable)
 │   └── log.md              # Compile activity log
+├── graph/
+│   └── exports/
+│       ├── compile_runs.json      # Resume/failure state for compile runs
+│       ├── run_artifacts.sqlite3  # Stored query/review run artifacts
+│       └── search_index.sqlite3   # SQLite FTS5 chunk index
 └── vault/
     └── obsidian/           # Obsidian-friendly export
         └── sources/

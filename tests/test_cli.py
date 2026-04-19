@@ -21,6 +21,22 @@ class _CliFakeProvider(TextProvider):
         )
 
 
+class _CliResumeProvider(TextProvider):
+    name = "cli-resume"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def generate(self, request: ProviderRequest) -> ProviderResponse:
+        self.calls += 1
+        if self.calls == 2:
+            raise RuntimeError("resume summary failure")
+        return ProviderResponse(
+            text="Stub summary of the document.",
+            model_name="cli-resume-v1",
+        )
+
+
 def _compiled_page(title: str, body: str, *, summary: str = "Summary") -> str:
     return (
         "---\n"
@@ -105,6 +121,53 @@ def test_compile_requires_initialization() -> None:
 
         assert result.exit_code != 0
         assert "Project not initialized" in result.output
+
+
+def test_compile_resume_rejects_force_combination() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["compile", "--force", "--resume"])
+
+        assert result.exit_code != 0
+        assert "--resume cannot be combined with --force" in result.output
+
+
+def test_compile_resume_requires_failed_run() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["compile", "--resume"])
+
+        assert result.exit_code != 0
+        assert "No failed compile run is available to resume" in result.output
+
+
+def test_compile_resume_cli_continues_after_failed_compile() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("alpha.md").write_text("# Alpha\n\nBody\n", encoding="utf-8")
+        Path("beta.md").write_text("# Beta\n\nBody\n", encoding="utf-8")
+        provider = _CliResumeProvider()
+
+        with patch("src.services.build_provider", return_value=provider):
+            assert runner.invoke(main, ["init"]).exit_code == 0
+            assert runner.invoke(main, ["ingest", "alpha.md"]).exit_code == 0
+            assert runner.invoke(main, ["ingest", "beta.md"]).exit_code == 0
+
+            failed = runner.invoke(main, ["compile"])
+            resumed = runner.invoke(main, ["compile", "--resume"])
+
+        assert failed.exit_code != 0
+        assert "resume summary failure" in failed.output
+        assert resumed.exit_code == 0
+        assert "[resume]" in resumed.output
+        assert "Compiled 1 source page(s)" in resumed.output
+        assert Path("graph/exports/compile_runs.json").exists()
+        assert Path("wiki/sources/alpha.md").exists()
+        assert Path("wiki/sources/beta.md").exists()
 
 
 def test_end_to_end_cli_flow_for_local_markdown_source() -> None:

@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import os
 from pathlib import Path
 import re
+import shutil
+import time
+import uuid
 
 
 def utc_now_iso() -> str:
@@ -14,6 +18,44 @@ def slugify(value: str) -> str:
     normalized = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower())
     normalized = normalized.strip("-")
     return normalized or "untitled"
+
+
+def _atomic_temp_path(path: Path) -> Path:
+    return path.parent / f".{path.name}.{uuid.uuid4().hex}.tmp"
+
+
+def _replace_with_retry(source: Path, destination: Path) -> None:
+    last_error: OSError | None = None
+    for _ in range(10):
+        try:
+            os.replace(source, destination)
+            return
+        except PermissionError as exc:
+            last_error = exc
+            time.sleep(0.01)
+    if last_error is not None:
+        raise last_error
+    os.replace(source, destination)
+
+
+def atomic_write_text(path: Path, contents: str, *, encoding: str = "utf-8") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = _atomic_temp_path(path)
+    try:
+        temp_path.write_text(contents, encoding=encoding)
+        _replace_with_retry(temp_path, path)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def atomic_copy_file(source: Path, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = _atomic_temp_path(destination)
+    try:
+        shutil.copyfile(source, temp_path)
+        _replace_with_retry(temp_path, destination)
+    finally:
+        temp_path.unlink(missing_ok=True)
 
 
 @dataclass(frozen=True)

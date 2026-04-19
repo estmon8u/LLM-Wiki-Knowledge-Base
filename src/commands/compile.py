@@ -5,6 +5,7 @@ import click
 from src.commands.common import (
     echo_bullet,
     echo_section,
+    echo_status_line,
     progress_report,
     require_initialized,
 )
@@ -33,13 +34,26 @@ def create_command() -> click.Command:
         is_flag=True,
         help="Generate concept pages and maintain source-page backlinks after compiling.",
     )
+    @click.option(
+        "--resume",
+        is_flag=True,
+        help="Resume the most recent interrupted or failed compile run.",
+    )
     @click.pass_obj
     def command(
-        command_context: CommandContext, force: bool, with_concepts: bool
+        command_context: CommandContext,
+        force: bool,
+        with_concepts: bool,
+        resume: bool,
     ) -> None:
         require_initialized(command_context)
+        if force and resume:
+            raise click.ClickException("--resume cannot be combined with --force.")
         compile_service = command_context.services["compile"]
-        plan = compile_service.plan(force=force)
+        try:
+            plan = compile_service.plan(force=force, resume=resume)
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
         try:
             with progress_report(
                 label="Compiling",
@@ -48,11 +62,17 @@ def create_command() -> click.Command:
             ) as advance:
                 result = compile_service.compile(
                     force=force,
+                    resume=resume,
                     progress_callback=lambda _source: advance(),
                 )
-        except ProviderError as exc:
+        except (ProviderError, ValueError) as exc:
             raise click.ClickException(str(exc)) from exc
 
+        if result.resumed_from_run_id:
+            echo_status_line(
+                "resume", f"resumed failed compile run {result.resumed_from_run_id}"
+            )
+            click.echo("")
         echo_section("Compile Summary")
         click.echo(f"Compiled {result.compiled_count} source page(s)")
         click.echo(f"Skipped {result.skipped_count} source page(s)")

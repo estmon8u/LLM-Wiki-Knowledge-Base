@@ -6,11 +6,15 @@ from pathlib import Path
 import pytest
 
 from src.models.wiki_models import LintIssue, LintReport
+from src.providers import ProviderExecutionError
+from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
 from src.services.compile_service import (
     _abstract_paragraphs,
+    _discover_concept_pages,
     _is_content_paragraph,
     _markdown_paragraphs,
     _normalize_newlines,
+    _parse_frontmatter,
     _plain_text_fallback,
     _safe_int,
     _sorted_sources,
@@ -47,6 +51,30 @@ def _compiled_page(title: str, body: str, *, summary: str = "Summary") -> str:
         f"# {title}\n\n"
         f"{body}\n"
     )
+
+
+class _FailOnSecondSummaryProvider(TextProvider):
+    name = "fail-on-second"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def generate(self, request: ProviderRequest) -> ProviderResponse:
+        self.calls += 1
+        if self.calls == 2:
+            raise RuntimeError("summary failure")
+        return ProviderResponse(
+            text="Stub summary of the document.", model_name="fail-on-second-v1"
+        )
+
+
+class _StableSummaryProvider(TextProvider):
+    name = "stable-summary"
+
+    def generate(self, request: ProviderRequest) -> ProviderResponse:
+        return ProviderResponse(
+            text="Stub summary of the document.", model_name="stable-summary-v1"
+        )
 
 
 def test_markdown_paragraphs_strip_frontmatter_and_headings() -> None:
@@ -157,6 +185,132 @@ def test_compile_service_uses_provider_summary_for_minimal_content(
     assert "Stub summary of the document." in article_text
     assert "## Summary" in article_text
     assert "## Key Excerpt" in article_text
+
+
+def test_compile_service_resume_requires_failed_run(test_project) -> None:
+    with pytest.raises(ValueError, match="No failed compile run"):
+        test_project.services["compile"].compile(resume=True)
+
+
+def test_compile_service_plan_rejects_force_resume_combination(test_project) -> None:
+    with pytest.raises(ValueError, match="cannot be combined"):
+        test_project.services["compile"].plan(force=True, resume=True)
+
+
+def test_compile_service_records_failure_and_resumes_remaining_sources(
+    test_project,
+) -> None:
+    _ingest_source(test_project, "notes/alpha.md", "# Alpha\n\nBody\n")
+    _ingest_source(test_project, "notes/beta.md", "# Beta\n\nBody\n")
+    compile_service = test_project.services["compile"]
+    compile_service.provider = _FailOnSecondSummaryProvider()
+
+    with pytest.raises(ProviderExecutionError, match="summary failure"):
+        compile_service.compile()
+
+    resume_record = compile_service.compile_run_store.resume_candidate()
+    assert resume_record is not None
+    assert resume_record.completed_source_slugs == ["alpha"]
+    assert resume_record.pending_source_slugs == ["beta"]
+    assert resume_record.failed_source_slug == "beta"
+    assert (test_project.root / "wiki/sources/alpha.md").exists()
+    assert not (test_project.root / "wiki/sources/beta.md").exists()
+
+    compile_service.provider = _StableSummaryProvider()
+    result = compile_service.compile(resume=True)
+
+    assert result.compiled_count == 1
+    assert result.resumed_from_run_id == resume_record.run_id
+    assert (test_project.root / "wiki/sources/beta.md").exists()
+    assert compile_service.compile_run_store.resume_candidate() is None
+
+
+def test_compile_service_resume_handles_post_loop_failure_with_no_pending_sources(
+    monkeypatch, test_project
+) -> None:
+    _ingest_source(test_project, "notes/doc.md", "# Doc\n\nBody\n")
+    compile_service = test_project.services["compile"]
+    original_write_index = compile_service._write_index
+    fail_once = {"value": True}
+
+    def flaky_write_index(*args, **kwargs):
+        if fail_once["value"]:
+            fail_once["value"] = False
+            raise OSError("index write failure")
+        return original_write_index(*args, **kwargs)
+
+    monkeypatch.setattr(compile_service, "_write_index", flaky_write_index)
+
+    with pytest.raises(OSError, match="index write failure"):
+        compile_service.compile()
+
+    resume_record = compile_service.compile_run_store.resume_candidate()
+    assert resume_record is not None
+    assert resume_record.pending_source_slugs == []
+
+    result = compile_service.compile(resume=True)
+
+    assert result.compiled_count == 0
+    assert result.resumed_from_run_id == resume_record.run_id
+    assert test_project.paths.wiki_index_file.exists()
+    assert compile_service.compile_run_store.resume_candidate() is None
+
+
+def test_compile_service_append_log_adds_separator_for_non_newline_file(
+    test_project,
+) -> None:
+    compile_service = test_project.services["compile"]
+    test_project.paths.wiki_log_file.parent.mkdir(parents=True, exist_ok=True)
+    test_project.paths.wiki_log_file.write_text("# Activity Log", encoding="utf-8")
+
+    compile_service._append_log(1, 0, False, resumed=True)
+
+    log_text = test_project.paths.wiki_log_file.read_text(encoding="utf-8")
+    assert "# Activity Log\n- " in log_text
+    assert "resume=true" in log_text
+
+
+def test_is_content_paragraph_rejects_link_heavy_navigation_text() -> None:
+    assert _is_content_paragraph("[one](a) [two](b) [three](c) leftover text") is False
+
+
+def test_parse_frontmatter_returns_empty_dict_for_invalid_inputs() -> None:
+    assert _parse_frontmatter("plain text") == {}
+    assert _parse_frontmatter("---\ntitle: broken") == {}
+    assert _parse_frontmatter("---\ntitle: [broken\n---\nBody\n") == {}
+
+
+def test_discover_concept_pages_handles_missing_and_unreadable_files(
+    monkeypatch, test_project
+) -> None:
+    concept_dir = test_project.paths.wiki_concepts_dir
+    for path in concept_dir.glob("*.md"):
+        path.unlink()
+    concept_dir.rmdir()
+
+    assert _discover_concept_pages(test_project.paths) == []
+
+    concept_dir.mkdir(parents=True, exist_ok=True)
+    readable = concept_dir / "good.md"
+    unreadable = concept_dir / "bad.md"
+    readable.write_text("---\ntitle: Good Concept\n---\nBody\n", encoding="utf-8")
+    unreadable.write_text("content", encoding="utf-8")
+    original_read_text = Path.read_text
+
+    def flaky_read_text(self, *args, **kwargs):
+        if self == unreadable:
+            raise OSError("locked")
+        return original_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", flaky_read_text)
+
+    assert _discover_concept_pages(test_project.paths) == [
+        {
+            "title": "Good Concept",
+            "slug": "good",
+            "path": "wiki/concepts/good.md",
+        }
+    ]
 
 
 def test_split_frontmatter_parses_valid_yaml_and_invalid_text() -> None:

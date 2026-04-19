@@ -13,7 +13,13 @@ from src.services.normalization_service import (
     NormalizationService,
     is_supported_source_path,
 )
-from src.services.project_service import ProjectPaths, slugify, utc_now_iso
+from src.services.project_service import (
+    ProjectPaths,
+    atomic_copy_file,
+    atomic_write_text,
+    slugify,
+    utc_now_iso,
+)
 
 
 @dataclass
@@ -84,14 +90,12 @@ class IngestService:
         raw_destination = (
             self.paths.raw_sources_dir / f"{slug}{source_path.suffix.lower()}"
         )
-        raw_destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source_path, raw_destination)
+        atomic_copy_file(source_path, raw_destination)
 
         normalized_destination = (
             self.paths.raw_normalized_dir / f"{slug}{normalized.normalized_suffix}"
         )
-        normalized_destination.parent.mkdir(parents=True, exist_ok=True)
-        normalized_destination.write_text(normalized.normalized_text, encoding="utf-8")
+        atomic_write_text(normalized_destination, normalized.normalized_text)
 
         source = RawSourceRecord(
             source_id=str(uuid.uuid4()),

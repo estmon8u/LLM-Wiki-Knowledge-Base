@@ -7,7 +7,12 @@ import re
 
 import yaml
 
-from src.services.project_service import ProjectPaths, slugify, utc_now_iso
+from src.services.project_service import (
+    ProjectPaths,
+    atomic_write_text,
+    slugify,
+    utc_now_iso,
+)
 
 
 _WORD_PATTERN = re.compile(r"[a-z]+(?:-[a-z]+)*")
@@ -257,8 +262,7 @@ class ConceptService:
             "## Source Pages\n\n"
             f"{source_lines}\n"
         )
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(page_text, encoding="utf-8")
+        atomic_write_text(destination, page_text)
         return destination.relative_to(self.paths.root).as_posix()
 
     def _resolve_destination(self, slug: str, managed_pages: set[Path]) -> Path:
@@ -297,7 +301,7 @@ class ConceptService:
                 ),
             )
             if updated_text != current:
-                page.file_path.write_text(updated_text, encoding="utf-8")
+                atomic_write_text(page.file_path, updated_text)
                 updated.append(page.relative_path)
         return updated
 

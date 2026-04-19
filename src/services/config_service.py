@@ -6,7 +6,7 @@ from typing import Any
 
 import yaml
 
-from src.services.project_service import ProjectPaths
+from src.services.project_service import ProjectPaths, atomic_write_text
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -90,13 +90,13 @@ class ConfigService:
     def ensure_files(self) -> list[str]:
         created: list[str] = []
         if not self.paths.config_file.exists():
-            self.paths.config_file.write_text(
+            atomic_write_text(
+                self.paths.config_file,
                 yaml.safe_dump(DEFAULT_CONFIG, sort_keys=False),
-                encoding="utf-8",
             )
             created.append(self.paths.config_file.name)
         if not self.paths.schema_file.exists():
-            self.paths.schema_file.write_text(DEFAULT_SCHEMA, encoding="utf-8")
+            atomic_write_text(self.paths.schema_file, DEFAULT_SCHEMA)
             created.append(self.paths.schema_file.name)
         return created
 

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import shutil
 
-from src.services.project_service import ProjectPaths
+from src.services.project_service import ProjectPaths, atomic_copy_file
 
 
 @dataclass
@@ -23,8 +22,7 @@ class ExportService:
         for file_path in sorted(self.paths.wiki_dir.rglob("*.md")):
             relative = file_path.relative_to(self.paths.wiki_dir)
             destination = self.paths.vault_obsidian_dir / relative
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(file_path, destination)
+            atomic_copy_file(file_path, destination)
             exported_paths.append(destination.relative_to(self.paths.root).as_posix())
         # Remove stale vault files that no longer exist in wiki.
         if clean and self.paths.vault_obsidian_dir.exists():
