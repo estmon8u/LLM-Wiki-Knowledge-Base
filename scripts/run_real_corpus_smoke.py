@@ -162,7 +162,7 @@ def main(argv: list[str] | None = None) -> int:
 
     for command_args in (
         ["--project-root", str(project_root), "status", "--changed"],
-        ["--project-root", str(project_root), "compile"],
+        ["--project-root", str(project_root), "update"],
         ["--project-root", str(project_root), "status", "--changed"],
         ["--project-root", str(project_root), "status"],
         ["--project-root", str(project_root), "find", *args.search_query.split()],
@@ -171,7 +171,10 @@ def main(argv: list[str] | None = None) -> int:
         result = run_cli_command(repo_root, log_path, command_args)
         if result.exit_code != 0:
             command_text = " ".join(command_args)
-            if "requires a configured provider" in result.output:
+            if (
+                "requires a configured provider" in result.output
+                or "Provider is not configured" in result.output
+            ):
                 skipped_provider_commands.append(command_text)
             else:
                 unexpected_failures.append(command_text)

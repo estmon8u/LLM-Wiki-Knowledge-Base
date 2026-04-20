@@ -10,7 +10,7 @@ SUMMARY = "Search the compiled wiki for relevant pages and snippets."
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
-    return CommandSpec(name="find", summary=SUMMARY, aliases=("search",))
+    return CommandSpec(name="find", summary=SUMMARY)
 
 
 def create_command() -> click.Command:

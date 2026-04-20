@@ -521,7 +521,7 @@ def test_query_service_without_provider_raises_configuration_error(
 ) -> None:
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
 
-    with pytest.raises(ProviderConfigurationError, match="kb query requires"):
+    with pytest.raises(ProviderConfigurationError, match="kb ask requires"):
         test_project.services["query"].answer_question("traceability")
 
 

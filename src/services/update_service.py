@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Iterator, Optional
 
 from src.providers import ProviderError
 from src.services.compile_service import CompileResult, CompileService
@@ -73,6 +74,9 @@ class UpdateService:
         *,
         ingest_progress: Callable[[Path], None] | None = None,
         compile_progress: Callable[[str], None] | None = None,
+        compile_progress_factory: (
+            Callable[[int], contextmanager[Iterator[Callable]]] | None
+        ) = None,
     ) -> UpdateResult:
         if options.force and options.resume:
             raise ValueError("--resume cannot be combined with --force.")
@@ -85,16 +89,22 @@ class UpdateService:
             summary = self._ingest_one(source_path, progress=ingest_progress)
             result.ingest_summaries.append(summary)
 
-        # Compile phase
-        self._compile.plan(force=options.force, resume=options.resume)
-        try:
+        # Compile phase — plan AFTER ingestion so new sources are included.
+        plan = self._compile.plan(force=options.force, resume=options.resume)
+
+        if compile_progress_factory is not None:
+            with compile_progress_factory(plan.pending_count) as progress_cb:
+                result.compile_result = self._compile.compile(
+                    force=options.force,
+                    resume=options.resume,
+                    progress_callback=progress_cb,
+                )
+        else:
             result.compile_result = self._compile.compile(
                 force=options.force,
                 resume=options.resume,
                 progress_callback=compile_progress,
             )
-        except (ProviderError, ValueError):
-            raise
 
         # Concepts phase
         result.concept_result = self._concepts.generate()

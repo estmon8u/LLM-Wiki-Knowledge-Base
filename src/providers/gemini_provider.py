@@ -29,7 +29,7 @@ class GeminiProvider(TextProvider):
             )
         self._client = genai.Client(api_key=api_key)
 
-    _EFFORT_TO_LEVEL = {"low": "low", "high": "high"}
+    _EFFORT_TO_LEVEL = {"low": "low", "medium": "medium", "high": "high"}
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
         thinking_level = self._EFFORT_TO_LEVEL.get(self._reasoning_effort, "high")

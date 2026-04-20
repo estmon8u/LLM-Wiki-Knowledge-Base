@@ -36,7 +36,7 @@ def create_command() -> click.Command:
         "filter_command",
         type=str,
         default=None,
-        help="Filter runs by command name (e.g. ask, review, compile).",
+        help="Filter runs by command name (e.g. ask, review, update).",
     )
     @click.option("--limit", default=20, show_default=True, type=int)
     @click.pass_obj

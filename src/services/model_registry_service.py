@@ -84,10 +84,8 @@ PROVIDERS = tuple(_PROFILES.keys())
 
 # Task-specific default tiers
 TASK_TIER_DEFAULTS: dict[str, str] = {
-    "compile": "fast",
     "update": "fast",
     "ask": "balanced",
-    "query": "balanced",
     "review": "balanced",
 }
 

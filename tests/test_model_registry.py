@@ -30,7 +30,7 @@ class TestModelRegistryService:
         assert self.registry.list_profiles("unknown") == []
 
     def test_default_tier_for_task(self):
-        assert self.registry.default_tier_for_task("compile") == "fast"
+        assert self.registry.default_tier_for_task("update") == "fast"
         assert self.registry.default_tier_for_task("ask") == "balanced"
         assert self.registry.default_tier_for_task("review") == "balanced"
         assert self.registry.default_tier_for_task("unknown") == "balanced"
@@ -62,20 +62,20 @@ class TestModelRegistryService:
 
     def test_resolve_task_default_tier(self):
         config = {"provider": {"name": "gemini"}}
-        resolved = self.registry.resolve(config=config, task="compile")
+        resolved = self.registry.resolve(config=config, task="update")
         assert resolved.tier == "fast"
         assert resolved.model == "gemini-3.1-flash-lite-preview"
 
     def test_resolve_tier_overrides_task_default(self):
         config = {"provider": {"name": "gemini"}}
-        resolved = self.registry.resolve(config=config, tier="deep", task="compile")
+        resolved = self.registry.resolve(config=config, tier="deep", task="update")
         assert resolved.tier == "deep"
 
     def test_resolve_config_tier_overrides_task_default(self):
         """Persisted config tier beats task-specific default."""
         config = {"provider": {"name": "openai", "tier": "deep"}}
-        resolved = self.registry.resolve(config=config, task="compile")
-        # compile default is "fast", but config tier "deep" wins.
+        resolved = self.registry.resolve(config=config, task="update")
+        # update default is "fast", but config tier "deep" wins.
         assert resolved.tier == "deep"
         assert resolved.model == "gpt-5.4"
 

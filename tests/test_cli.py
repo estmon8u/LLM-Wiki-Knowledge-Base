@@ -124,62 +124,6 @@ def test_status_before_init_shows_uninitialized_state() -> None:
         assert "kb init" in result.output
 
 
-def test_compile_requires_initialization() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        result = runner.invoke(main, ["compile"])
-
-        assert result.exit_code != 0
-        assert "Project not initialized" in result.output
-
-
-def test_compile_resume_rejects_force_combination() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        assert runner.invoke(main, ["init"]).exit_code == 0
-
-        result = runner.invoke(main, ["compile", "--force", "--resume"])
-
-        assert result.exit_code != 0
-        assert "--resume cannot be combined with --force" in result.output
-
-
-def test_compile_resume_requires_failed_run() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        assert runner.invoke(main, ["init"]).exit_code == 0
-
-        result = runner.invoke(main, ["compile", "--resume"])
-
-        assert result.exit_code != 0
-        assert "No failed compile run is available to resume" in result.output
-
-
-def test_compile_resume_cli_continues_after_failed_compile() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        Path("alpha.md").write_text("# Alpha\n\nBody\n", encoding="utf-8")
-        Path("beta.md").write_text("# Beta\n\nBody\n", encoding="utf-8")
-        provider = _CliResumeProvider()
-
-        with patch("src.services.build_provider", return_value=provider):
-            assert runner.invoke(main, ["init"]).exit_code == 0
-            assert runner.invoke(main, ["ingest", "alpha.md"]).exit_code == 0
-            assert runner.invoke(main, ["ingest", "beta.md"]).exit_code == 0
-
-            failed = runner.invoke(main, ["compile"])
-            resumed = runner.invoke(main, ["compile", "--resume"])
-
-        assert failed.exit_code != 0
-        assert "resume summary failure" in failed.output
-        assert resumed.exit_code == 0
-        assert "[resume]" in resumed.output
-        assert "Compiled 1 source page(s)" in resumed.output
-        assert Path("graph/exports/compile_runs.json").exists()
-        assert Path("wiki/sources/alpha.md").exists()
-        assert Path("wiki/sources/beta.md").exists()
-
-
 def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
@@ -196,12 +140,12 @@ def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
         assert ingest_result.exit_code == 0
         assert "Ingested Sample Research Note" in ingest_result.output
 
+        _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            compile_result = runner.invoke(main, ["compile"])
-        assert compile_result.exit_code == 0
-        assert "Compiling 1 source page(s)..." in compile_result.output
-        assert "Compile Summary" in compile_result.output
-        assert "Compiled 1 source page(s)" in compile_result.output
+            update_result = runner.invoke(main, ["update"])
+        assert update_result.exit_code == 0
+        assert "Update Summary" in update_result.output
+        assert "Compiled 1 source page(s)" in update_result.output
 
         lint_result = runner.invoke(main, ["lint"])
         assert lint_result.exit_code == 0
@@ -212,6 +156,7 @@ def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
         assert "wiki/sources/sample-research-note.md" in search_result.output
         assert Path("graph/exports/search_index.sqlite3").exists()
 
+        _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             query_result = runner.invoke(main, ["ask", "traceability", "knowledge"])
         assert query_result.exit_code == 0
@@ -236,15 +181,16 @@ def test_end_to_end_cli_flow_for_local_html_source() -> None:
 
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        ingest_result = runner.invoke(main, ["ingest", "sample.html"])
+        ingest_result = runner.invoke(main, ["add", "sample.html"])
         assert ingest_result.exit_code == 0
         assert "Ingested HTML Research Note" in ingest_result.output
         assert "raw/normalized/html-research-note.md" in ingest_result.output
 
+        _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            compile_result = runner.invoke(main, ["compile"])
-        assert compile_result.exit_code == 0
-        assert "Compiled 1 source page(s)" in compile_result.output
+            update_result = runner.invoke(main, ["update"])
+        assert update_result.exit_code == 0
+        assert "Compiled 1 source page(s)" in update_result.output
 
         search_result = runner.invoke(main, ["find", "traceability"])
         assert search_result.exit_code == 0
@@ -285,7 +231,7 @@ def test_ingest_reports_click_error_for_unsupported_file_type() -> None:
         Path("sample.bin").write_text("not a supported source", encoding="utf-8")
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        result = runner.invoke(main, ["ingest", "sample.bin"])
+        result = runner.invoke(main, ["add", "sample.bin"])
 
         assert result.exit_code != 0
         assert "Supported ingest inputs are canonical text" in result.output
@@ -485,7 +431,7 @@ def test_diff_end_to_end_new_then_compiled() -> None:
         )
 
         assert runner.invoke(main, ["init"]).exit_code == 0
-        assert runner.invoke(main, ["ingest", "sample.md"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
 
         diff_before = runner.invoke(main, ["status", "--changed"])
         assert diff_before.exit_code == 0
@@ -493,8 +439,9 @@ def test_diff_end_to_end_new_then_compiled() -> None:
         assert "[NEW]" in diff_before.output
         assert "new: 1" in diff_before.output
 
+        _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["compile"]).exit_code == 0
+            assert runner.invoke(main, ["update"]).exit_code == 0
 
         diff_after = runner.invoke(main, ["status", "--changed"])
         assert diff_after.exit_code == 0
@@ -512,7 +459,7 @@ def test_cli_supports_explicit_project_root_option(tmp_path: Path) -> None:
 
     init_result = runner.invoke(main, ["--project-root", str(tmp_path), "init"])
     ingest_result = runner.invoke(
-        main, ["--project-root", str(tmp_path), "ingest", str(source_path)]
+        main, ["--project-root", str(tmp_path), "add", str(source_path)]
     )
     status_result = runner.invoke(main, ["--project-root", str(tmp_path), "status"])
 
@@ -530,10 +477,12 @@ def test_ask_save_flag_creates_analysis_page() -> None:
             encoding="utf-8",
         )
         assert runner.invoke(main, ["init"]).exit_code == 0
-        assert runner.invoke(main, ["ingest", "sample.md"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["compile"]).exit_code == 0
+            assert runner.invoke(main, ["update"]).exit_code == 0
 
+        _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             result = runner.invoke(
                 main,
@@ -630,10 +579,12 @@ def test_query_piped_input_does_not_save_without_flag() -> None:
             "# Sample\n\nTraceability evidence.\n", encoding="utf-8"
         )
         assert runner.invoke(main, ["init"]).exit_code == 0
-        assert runner.invoke(main, ["ingest", "sample.md"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["compile"]).exit_code == 0
+            assert runner.invoke(main, ["update"]).exit_code == 0
 
+        _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             result = runner.invoke(
                 main,
@@ -651,9 +602,17 @@ def test_ask_self_consistency_flag_requires_provider() -> None:
             "# Sample\n\nTraceability evidence.\n", encoding="utf-8"
         )
         assert runner.invoke(main, ["init"]).exit_code == 0
-        assert runner.invoke(main, ["ingest", "sample.md"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["compile"]).exit_code == 0
+            assert runner.invoke(main, ["update"]).exit_code == 0
+
+        # Clear provider config so ask fails on missing provider.
+        config = yaml.safe_load(Path("kb.config.yaml").read_text(encoding="utf-8"))
+        config.pop("provider", None)
+        Path("kb.config.yaml").write_text(
+            yaml.safe_dump(config, sort_keys=False), encoding="utf-8"
+        )
 
         result = runner.invoke(
             main,
@@ -671,7 +630,7 @@ def test_ingest_recursively_ingests_directory_by_default() -> None:
         Path("mydir/alpha.md").parent.mkdir(parents=True, exist_ok=True)
         Path("mydir/alpha.md").write_text("# Alpha\n\nAlpha body.\n", encoding="utf-8")
 
-        result = runner.invoke(main, ["ingest", "mydir"])
+        result = runner.invoke(main, ["add", "mydir"])
 
         assert result.exit_code == 0
         assert "Ingesting 1 source file(s)..." in result.output
@@ -687,7 +646,7 @@ def test_ingest_recursive_directory_requires_supported_files() -> None:
         Path("bulk").mkdir()
         Path("bulk/ignored.bin").write_text("ignore me", encoding="utf-8")
 
-        result = runner.invoke(main, ["ingest", "bulk"])
+        result = runner.invoke(main, ["add", "bulk"])
 
         assert result.exit_code != 0
         assert "No supported source files found under directory" in result.output
@@ -723,10 +682,12 @@ def test_provider_override_flag_switches_provider() -> None:
             "# Traceability\n\nTraceability evidence.\n",
             encoding="utf-8",
         )
-        assert runner.invoke(main, ["ingest", "sample.md"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["compile"]).exit_code == 0
+            assert runner.invoke(main, ["update"]).exit_code == 0
 
+        _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             result = runner.invoke(
                 main,
@@ -765,6 +726,7 @@ def test_provider_override_clears_tier_and_api_key_env() -> None:
             yaml.safe_dump(config, sort_keys=False), encoding="utf-8"
         )
 
+        _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             result = runner.invoke(
                 main,
@@ -814,36 +776,12 @@ def test_update_with_paths_adds_then_compiles() -> None:
         assert "Compiled 1 source page(s)" in result.output
 
 
-def test_build_alias_works() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        assert runner.invoke(main, ["init"]).exit_code == 0
-        _set_provider_config()
-
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            result = runner.invoke(main, ["build"])
-
-        assert result.exit_code == 0
-        assert "Update Summary" in result.output
-
-
 def test_find_command_works() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
         result = runner.invoke(main, ["find", "missing-topic"])
-
-        assert result.exit_code == 0
-        assert "No wiki pages matched that query." in result.output
-
-
-def test_search_alias_works() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        assert runner.invoke(main, ["init"]).exit_code == 0
-
-        result = runner.invoke(main, ["search", "missing-topic"])
 
         assert result.exit_code == 0
         assert "No wiki pages matched that query." in result.output
@@ -967,6 +905,7 @@ def test_review_successful_run_shows_no_issues() -> None:
             encoding="utf-8",
         )
 
+        _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             result = runner.invoke(main, ["review"])
 
@@ -991,6 +930,7 @@ def test_review_successful_run_shows_issues() -> None:
             _compiled_page("Beta", overlap_body), encoding="utf-8"
         )
 
+        _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             result = runner.invoke(main, ["review"])
 
@@ -1008,8 +948,9 @@ def test_history_shows_runs_after_ask() -> None:
         )
         assert runner.invoke(main, ["init"]).exit_code == 0
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["compile"]).exit_code == 0
+            assert runner.invoke(main, ["update"]).exit_code == 0
             ask_result = runner.invoke(
                 main,
                 [
@@ -1040,8 +981,9 @@ def test_history_filters_by_command() -> None:
         )
         assert runner.invoke(main, ["init"]).exit_code == 0
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["compile"]).exit_code == 0
+            assert runner.invoke(main, ["update"]).exit_code == 0
             ask_result = runner.invoke(
                 main,
                 [
@@ -1099,8 +1041,9 @@ def test_ask_show_evidence_flag() -> None:
         )
         assert runner.invoke(main, ["init"]).exit_code == 0
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["compile"]).exit_code == 0
+            assert runner.invoke(main, ["update"]).exit_code == 0
 
             result = runner.invoke(
                 main,
@@ -1143,8 +1086,9 @@ def test_status_shows_current_after_compile() -> None:
         )
         assert runner.invoke(main, ["init"]).exit_code == 0
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["compile"]).exit_code == 0
+            assert runner.invoke(main, ["update"]).exit_code == 0
 
         result = runner.invoke(main, ["status"])
 
@@ -1212,6 +1156,41 @@ def test_update_fails_without_provider_config() -> None:
 
         assert result.exit_code != 0
         assert "Provider is not configured" in result.output
+
+
+def test_update_generic_service_error_becomes_click_exception() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("note.md").write_text("# Note\n\nBody.\n", encoding="utf-8")
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "note.md"]).exit_code == 0
+        _set_provider_config()
+
+        with patch(
+            "src.services.build_provider", return_value=_CliFakeProvider()
+        ), patch(
+            "src.services.update_service.UpdateService.run",
+            side_effect=RuntimeError("boom"),
+        ):
+            result = runner.invoke(main, ["update"])
+
+        assert result.exit_code != 0
+        assert "boom" in result.output
+
+
+def test_update_with_tier_override() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("note.md").write_text("# Note\n\nBody.\n", encoding="utf-8")
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "note.md"]).exit_code == 0
+        _set_provider_config()
+
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            result = runner.invoke(main, ["--tier", "fast", "update"])
+
+        assert result.exit_code == 0
+        assert "Update Summary" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -1399,8 +1378,9 @@ def test_ask_quality_fast_flag() -> None:
         )
         assert runner.invoke(main, ["init"]).exit_code == 0
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["compile"]).exit_code == 0
+            assert runner.invoke(main, ["update"]).exit_code == 0
 
             result = runner.invoke(
                 main,
@@ -1420,8 +1400,9 @@ def test_ask_quality_deep_flag() -> None:
         )
         assert runner.invoke(main, ["init"]).exit_code == 0
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["compile"]).exit_code == 0
+            assert runner.invoke(main, ["update"]).exit_code == 0
 
             result = runner.invoke(
                 main,
@@ -1449,8 +1430,9 @@ def test_ask_quality_deep_implies_tier_with_known_provider() -> None:
             yaml.safe_dump(config, sort_keys=False), encoding="utf-8"
         )
 
+        _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["compile"]).exit_code == 0
+            assert runner.invoke(main, ["update"]).exit_code == 0
 
         # Patch both the services-level and ask-level build_provider so the
         # quality→tier rebuild succeeds with the fake provider.
@@ -1467,7 +1449,7 @@ def test_ask_quality_deep_implies_tier_with_known_provider() -> None:
 
 
 # ---------------------------------------------------------------------------
-# History with compile runs
+# History with update runs
 # ---------------------------------------------------------------------------
 
 
@@ -1482,7 +1464,7 @@ def test_history_shows_compile_runs() -> None:
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             assert runner.invoke(main, ["update"]).exit_code == 0
 
-            result = runner.invoke(main, ["history", "--command", "compile"])
+            result = runner.invoke(main, ["history", "--command", "update"])
 
         assert result.exit_code == 0
         assert "update" in result.output
@@ -1494,8 +1476,9 @@ def test_history_compile_filter_excludes_ask_runs() -> None:
         Path("sample.md").write_text("# Sample\n\nTraceability.\n", encoding="utf-8")
         assert runner.invoke(main, ["init"]).exit_code == 0
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["compile"]).exit_code == 0
+            assert runner.invoke(main, ["update"]).exit_code == 0
             assert (
                 runner.invoke(
                     main, ["ask", "How", "does", "traceability", "work?"]
@@ -1503,7 +1486,7 @@ def test_history_compile_filter_excludes_ask_runs() -> None:
                 == 0
             )
 
-            result = runner.invoke(main, ["history", "--command", "compile"])
+            result = runner.invoke(main, ["history", "--command", "update"])
 
         assert result.exit_code == 0
         assert "update" in result.output

@@ -35,8 +35,21 @@ def create_command() -> click.BaseCommand:
     @click.pass_obj
     def show_cmd(command_context: CommandContext) -> None:
         require_initialized(command_context)
+        config_service = command_context.services.get("config")
+        if config_service is None:
+            raise click.ClickException("Config service unavailable.")
+        persisted = config_service.load()
+        visible = {k: v for k, v in persisted.items() if not k.startswith("_")}
         echo_section("Configuration")
-        click.echo(yaml.dump(command_context.config, default_flow_style=False).rstrip())
+        click.echo(yaml.dump(visible, default_flow_style=False).rstrip())
+
+        # Show active runtime overrides if any.
+        runtime = command_context.config.get("_runtime") or {}
+        if runtime:
+            click.echo("")
+            click.echo("Runtime overrides active:")
+            for key, val in runtime.items():
+                click.echo(f"  {key}: {val}")
 
     # -- provider subgroup --------------------------------------------------
 

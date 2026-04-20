@@ -31,6 +31,5 @@ AvailabilityChecker = Callable[[CommandContext], bool]
 class CommandSpec:
     name: str
     summary: str
-    aliases: tuple[str, ...] = ()
     availability: Optional[AvailabilityChecker] = None
     run: Optional[CommandRunner] = None

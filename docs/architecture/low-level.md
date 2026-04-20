@@ -19,15 +19,14 @@
 | --- | --- |
 | `src/commands/common.py` | Shared command helpers for initialization checks, terminal section formatting, bullets, status lines, and progress reporting |
 | `src/commands/init.py` | Project initialization behavior |
-| `src/commands/add.py` | User-friendly alias for the ingest command, including default-recursive directory ingest |
-| `src/commands/ingest.py` | Source ingest command for single files and directory ingest that recurses by default |
-| `src/commands/compile.py` | Low-level wiki compilation command |
-| `src/commands/update.py` | Full update workflow: ingest → compile → concepts → search refresh, with progress bar; delegates to `UpdateService` |
+| `src/commands/add.py` | Primary source-add command, delegates to `src/commands/ingest.py` for shared implementation |
+| `src/commands/ingest.py` | Shared ingest implementation for single files and directory ingest that recurses by default |
+| `src/commands/update.py` | Full update workflow: add → build wiki pages → concepts → search refresh, with progress bar; delegates to `UpdateService` |
 | `src/commands/find.py` | Search the compiled wiki |
 | `src/commands/ask.py` | Answer a question from compiled evidence; `--quality` implies model tier |
 | `src/commands/review.py` | Semantic review command; `--deep` runs extractor/skeptic/arbiter |
 | `src/commands/lint.py` | Deterministic structural lint command |
-| `src/commands/status.py` | Status command; `--changed` for pre-compile diff view |
+| `src/commands/status.py` | Status command; `--changed` for pre-update diff view |
 | `src/commands/export_cmd.py` | Vault export command; `--clean` removes stale files |
 | `src/commands/doctor.py` | Project health checks |
 | `src/commands/history.py` | Run history display with public command names |
@@ -42,9 +41,9 @@
 | `src/services/config_service.py` | Config loading, defaults, and in-place migration of legacy `kb.config.yaml` versions |
 | `src/services/manifest_service.py` | Raw-source manifest read/write behavior |
 | `src/services/normalization_service.py` | Document-type normalization routing for direct text inputs, Docling-backed PDFs, and bounded MarkItDown-backed born-digital converters |
-| `src/services/ingest_service.py` | Raw-source copy, normalized-artifact write, duplicate detection, source registration, deterministic recursive directory ingest, and callback-friendly batch progress hooks used by both `kb ingest` and `kb add` |
+| `src/services/ingest_service.py` | Raw-source copy, normalized-artifact write, duplicate detection, source registration, deterministic recursive directory ingest, and callback-friendly batch progress hooks used by `kb add` |
 | `src/services/compile_service.py` | Derived wiki generation with provider-backed summary generation, callback-friendly compile planning/progress hooks, and persisted resume/failure tracking for interrupted compiles |
-| `src/services/diff_service.py` | Pre-compile source diff reporting |
+| `src/services/diff_service.py` | Pre-update source diff reporting |
 | `src/services/search_service.py` | Search over compiled artifacts using a SQLite FTS5 chunk index with page-level result deduplication, best-chunk section/index preservation for downstream citations, and fallback markdown scanning if FTS5 is unavailable |
 | `src/services/query_service.py` | Provider-backed query answer assembly from maintained wiki context; self-consistency sampling, claim normalization, deterministic merge, frozen evidence bundles that retain chunk refs, and optional save-to-wiki for analysis pages that also refresh the search index |
 | `src/services/review_service.py` | Provider-required semantic review: deterministic topic overlap and terminology checks, single-pass provider review, adversarial extractor/skeptic/arbiter review, and review-run persistence |

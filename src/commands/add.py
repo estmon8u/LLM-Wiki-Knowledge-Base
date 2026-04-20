@@ -10,7 +10,7 @@ SUMMARY = "Add and normalize source files or folders."
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
-    return CommandSpec(name="add", summary=SUMMARY, aliases=("ingest",))
+    return CommandSpec(name="add", summary=SUMMARY)
 
 
 def create_command() -> click.Command:

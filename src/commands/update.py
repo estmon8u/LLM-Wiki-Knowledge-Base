@@ -29,7 +29,6 @@ def build_spec(_: CommandContext = None) -> CommandSpec:
     return CommandSpec(
         name="update",
         summary=SUMMARY,
-        aliases=("build",),
     )
 
 
@@ -77,17 +76,18 @@ def create_command() -> click.Command:
         options = UpdateOptions(source_paths=source_paths, force=force, resume=resume)
 
         try:
-            # Size the progress bar from the compile plan.
-            plan = command_context.services["compile"].plan(force=force, resume=resume)
-            with progress_report(
-                label="Compiling",
-                length=plan.pending_count,
-                item_label="source",
-            ) as advance:
-                result = service.run(
-                    options,
-                    compile_progress=advance,
+
+            def _progress_factory(pending_count):
+                return progress_report(
+                    label="Compiling",
+                    length=pending_count,
+                    item_label="source",
                 )
+
+            result = service.run(
+                options,
+                compile_progress_factory=_progress_factory,
+            )
         except (UpdatePreflightError, ValueError) as exc:
             raise click.ClickException(str(exc)) from exc
         except Exception as exc:

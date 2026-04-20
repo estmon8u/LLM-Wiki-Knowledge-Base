@@ -27,15 +27,6 @@ FLAT_COMMAND_MODULES = {
     "update": "src.commands.update",
 }
 
-# Aliases — flat top-level commands that map to another module.
-# compile is a separate legacy/developer command, not a true alias for update.
-ALIAS_COMMAND_MODULES = {
-    "build": "src.commands.update",
-    "compile": "src.commands.compile",
-    "ingest": "src.commands.ingest",
-    "search": "src.commands.find",
-}
-
 
 def list_command_names() -> list[str]:
     """Return only canonical command names for help output."""
@@ -43,8 +34,8 @@ def list_command_names() -> list[str]:
 
 
 def get_click_command(name: str) -> Optional[click.BaseCommand]:
-    """Resolve canonical and alias names to Click commands."""
-    module_path = FLAT_COMMAND_MODULES.get(name) or ALIAS_COMMAND_MODULES.get(name)
+    """Resolve a canonical command name to a Click command."""
+    module_path = FLAT_COMMAND_MODULES.get(name)
     if module_path is not None:
         module = import_module(module_path)
         return module.create_command()

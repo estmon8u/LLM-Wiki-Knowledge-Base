@@ -404,13 +404,22 @@ def test_compile_with_concepts_flag_cli() -> None:
         )
 
         assert runner.invoke(main, ["init"]).exit_code == 0
-        assert runner.invoke(main, ["ingest", "alpha.md"]).exit_code == 0
-        assert runner.invoke(main, ["ingest", "beta.md"]).exit_code == 0
+        assert runner.invoke(main, ["add", "alpha.md"]).exit_code == 0
+        assert runner.invoke(main, ["add", "beta.md"]).exit_code == 0
+
+        import yaml
+
+        config = yaml.safe_load(Path("kb.config.yaml").read_text(encoding="utf-8"))
+        config["provider"] = {"name": "stub"}
+        Path("kb.config.yaml").write_text(
+            yaml.safe_dump(config, sort_keys=False), encoding="utf-8"
+        )
+
         with patch("src.services.build_provider", return_value=_FakeProvider()):
-            result = runner.invoke(main, ["compile", "--with-concepts"])
+            result = runner.invoke(main, ["update"])
 
         assert result.exit_code == 0
-        assert "concept page(s)" in result.output
+        assert "Concept Summary" in result.output
 
 
 def test_split_frontmatter_handles_invalid_yaml() -> None:

@@ -22,42 +22,24 @@ This creates a local `.venv` and installs all dependencies. The CLI entrypoint i
 # 1. Initialize a new project
 poetry run kb init
 
-# 2. Check project health (provider, converters, structure)
-poetry run kb doctor
-
-# 3. Add some source documents
+# 2. Add some source documents
 poetry run kb add path/to/paper.pdf
 poetry run kb add path/to/notes.md
 poetry run kb add path/to/slides.pptx
 poetry run kb add path/to/research-folder
 
-# 4. Update the knowledge base (compile, generate concepts, refresh indexes)
+# 3. Update the knowledge base (generates pages, concepts, and search indexes)
 poetry run kb update
-poetry run kb update --force        # Rebuild every page, even unchanged ones
 
-# 5. Search the compiled wiki
+# 4. Search the wiki
 poetry run kb find "knowledge base traceability"
 
-# 6. Ask a question with citations
+# 5. Ask a question with citations
 poetry run kb ask "How does the wiki handle stale pages?"
-poetry run kb ask --quality deep "What normalization converters are supported?"
-poetry run kb ask --save "How is traceability preserved?"
-
-# 7. Check wiki health (deterministic structural checks)
-poetry run kb lint
-
-# 8. Run semantic review for contradictions and terminology drift
-poetry run kb review
-poetry run kb review --deep
-
-# 9. See project status (add --changed for a pre-compile diff view)
-poetry run kb status
-poetry run kb status --changed
-
-# 10. Export to an Obsidian-friendly vault (--clean removes stale files)
-poetry run kb export
-poetry run kb export --clean
 ```
+
+That's the everyday workflow: **add → update → find / ask**. Everything else
+is optional.
 
 Before running `kb update`, `kb ask`, or `kb review`, add a `provider`
 section to `kb.config.yaml` and set the matching API key environment variable.
@@ -82,23 +64,33 @@ poetry run kb --project-root /path/to/project status
 
 ## Commands
 
-All commands are flat top-level verbs:
+### Everyday Commands
 
-| Command | Aliases | Description |
-| --- | --- | --- |
-| `init` | | Create project folders, config, schema, and manifest |
-| `add` | `ingest` | Ingest and normalize source documents |
-| `update` | `build` | Compile, generate concepts, and refresh indexes |
-| `find` | `search` | Search the compiled wiki |
-| `ask` | | Answer a question from compiled evidence |
-| `status` | | Show project state; `--changed` for a pre-compile diff view |
-| `review` | | Semantic review for contradictions and terminology drift |
-| `lint` | | Deterministic structural checks |
-| `export` | | Export the wiki to Obsidian vault |
-| `doctor` | | Validate structure, provider, API keys, and converters |
-| `history` | | Show prior ask, review, and update runs |
-| `config` | | View project configuration |
-| `sources` | | Manage source inventory |
+These are the commands you will use most often. The happy path is
+**init → add → update → find / ask**.
+
+| Command | Description |
+| --- | --- |
+| `init` | Create project folders, config, schema, and manifest |
+| `add` | Add and normalize source documents |
+| `update` | Build wiki pages, generate concepts, and refresh indexes |
+| `find` | Search the wiki |
+| `ask` | Answer a question from compiled evidence |
+| `status` | Show project state and what to do next |
+
+### Advanced Commands
+
+Use these for maintenance, quality checks, and deeper analysis.
+
+| Command | Description |
+| --- | --- |
+| `lint` | Deterministic structural checks on the wiki |
+| `review` | Semantic review for contradictions and terminology drift |
+| `export` | Export the wiki to an Obsidian vault |
+| `doctor` | Validate structure, provider, API keys, and converters |
+| `history` | Show prior ask, review, and update runs |
+| `config` | View and manage project configuration |
+| `sources` | Manage source inventory |
 
 ### `kb init`
 
@@ -119,7 +111,7 @@ Creates:
 - `vault/obsidian/` — directory for vault export
 
 Running `init` again is safe — it skips files that already exist.
-The scaffold writes `kb.config.yaml` at config version 2. Older version 1 configs are migrated in place on load so deprecated fields such as `compile.summary_paragraph_limit` are removed and newer sections such as `provider` and `storage.raw_normalized_dir` are persisted automatically.
+The scaffold writes `kb.config.yaml` at config version 2. Older version 1 configs are migrated in place on load so deprecated fields are removed and newer sections such as `provider` and `storage.raw_normalized_dir` are persisted automatically.
 
 ### `kb doctor`
 
@@ -136,18 +128,14 @@ poetry run kb doctor --strict
 
 Prints formatted health-check sections with `[OK]`, `[WARNING]`, or `[FAIL]` entries. Exits with code 1 if any check fails. Without `--strict`, a missing provider or API key is a warning rather than a failure, so new projects pass doctor out of the box.
 
-### `kb ingest <source_path>` / `kb add <source_path>`
+### `kb add <source_path>`
 
-Ingest and normalize a source file into the raw corpus, or recursively ingest a directory of supported source files.
+Add and normalize a source file into the raw corpus, or recursively add a directory of supported source files.
 
 ```bash
 poetry run kb add path/to/document.pdf
-poetry run kb ingest path/to/document.pdf
 poetry run kb add path/to/research-folder
 ```
-
-`kb add` is the primary command; `kb ingest` is a legacy alias. Both commands
-use the same normalization, duplicate-detection, and manifest-registration path.
 
 What happens:
 
@@ -155,31 +143,14 @@ What happens:
 2. A canonical markdown or plain-text artifact is created in `raw/normalized/` (for non-text formats).
 3. The source is registered in `raw/_manifest.json` with metadata including the content hash, converter used, and timestamps.
 
-Duplicate detection: if you ingest the same file again, it will be detected and skipped.
+Duplicate detection: if you add the same file again, it will be detected and skipped.
 
-When the input is a directory, the command walks the directory tree recursively by default, ingests only supported file types, and prints a batch summary showing how many files were created or skipped as duplicates. Unsupported files inside the directory are ignored.
+When the input is a directory, the command walks the directory tree recursively by default, adds only supported file types, and prints a batch summary showing how many files were created or skipped as duplicates. Unsupported files inside the directory are ignored.
 Interactive terminals show directory-ingest progress; non-interactive runs print a simple `Ingesting N source file(s)...` preamble before the summary.
-
-### `kb compile`
-
-Compile source pages, refresh the wiki index, and update the activity log. Requires a configured provider. This is the low-level compile step; prefer `kb update` for the full workflow.
-
-```bash
-poetry run kb compile
-poetry run kb compile --force
-poetry run kb compile --resume
-poetry run kb compile --with-concepts
-```
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `--force` | off | Rebuild every source page even if nothing changed. |
-| `--resume` | off | Resume the most recent failed or interrupted compile run from the remaining source pages. Cannot be combined with `--force`. |
-| `--with-concepts` | off | After compiling, generate concept pages in `wiki/concepts/` by grouping related source pages and maintain managed backlink sections in source pages. |
 
 ### `kb update [SOURCE_PATHS...]`
 
-Bring the knowledge base current. Optionally add new sources first, then compile, generate concepts, and refresh indexes. `build` and `compile` are aliases.
+Bring the knowledge base current. Optionally add new sources first, then build wiki pages, generate concepts, and refresh indexes.
 
 ```bash
 poetry run kb update
@@ -191,13 +162,13 @@ poetry run kb update --resume
 | Option | Default | Description |
 | --- | --- | --- |
 | `--force` | off | Rebuild every source page even if nothing changed. |
-| `--resume` | off | Resume the most recent failed or interrupted compile run. Cannot be combined with `--force`. |
+| `--resume` | off | Resume the most recent failed or interrupted update run. Cannot be combined with `--force`. |
 
-When source paths are provided, the command ingests them first before compiling. Always generates concept pages and refreshes the search index after compile.
+When source paths are provided, the command adds them first. Always generates concept pages and refreshes the search index after building.
 
 ### `kb find <terms>`
 
-Search the compiled wiki for relevant pages and snippets. `search` is an alias.
+Search the wiki for relevant pages and snippets.
 
 ```bash
 poetry run kb find "traceability citation"
@@ -219,7 +190,7 @@ poetry run kb ask "How does the wiki handle stale pages?"
 poetry run kb ask --limit 5 "What normalization converters are supported?"
 poetry run kb ask --self-consistency 3 "How is traceability preserved?"
 poetry run kb ask --quality deep "How is traceability preserved?"
-poetry run kb ask --save "What does the compile pipeline do?"
+poetry run kb ask --save "What does the update pipeline do?"
 poetry run kb ask --save-as freshness "How is freshness tracked?"
 poetry run kb ask --show-evidence "What formats are supported?"
 ```
@@ -272,9 +243,9 @@ poetry run kb status --changed
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--changed` | off | Show a pre-compile preview of new, changed, and up-to-date sources. |
+| `--changed` | off | Show a preview of new, changed, and up-to-date sources. |
 
-Default view shows a Knowledge Base overview with source and wiki counts, the last compile timestamp, and a suggestion for what to do next. With `--changed`, shows each source with a status tag (`[NEW]`, `[CHANGED]`, `[OK]`) followed by a summary section with counts.
+Default view shows a Knowledge Base overview with source and wiki counts, the last update timestamp, and a suggestion for what to do next. With `--changed`, shows each source with a status tag (`[NEW]`, `[CHANGED]`, `[OK]`) followed by a summary section with counts.
 
 ### `kb review`
 
@@ -326,7 +297,7 @@ poetry run kb history --limit 10
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--command` | | Filter runs by command name (e.g. `ask`, `review`, `update`). Both public and legacy names are accepted. |
+| `--command` | | Filter runs by command name (e.g. `ask`, `review`, `update`). |
 | `--limit` | 20 | Maximum number of runs to show. |
 
 ### `kb config`
@@ -406,7 +377,7 @@ You can also override the provider per-invocation without editing the config fil
 kb --provider anthropic ask "How does REALM differ from RAG?"
 kb --provider gemini review --deep
 kb --tier fast update
-kb --tier deep ask "Explain the compile pipeline in detail"
+kb --tier deep ask "Explain the update pipeline in detail"
 kb --model gpt-5.4 ask "Complex analysis question"
 ```
 
@@ -455,10 +426,10 @@ project-root/
 │   ├── analysis/           # Saved analysis pages from kb ask --save
 │   ├── index.md            # Wiki index (human-readable)
 │   ├── _index.json         # Wiki index (machine-readable)
-│   └── log.md              # Compile activity log
+│   └── log.md              # Update activity log
 ├── graph/
 │   └── exports/
-│       ├── compile_runs.json      # Resume/failure state for compile runs
+│       ├── compile_runs.json      # Resume/failure state for update runs
 │       ├── run_artifacts.sqlite3  # Stored query/review run artifacts
 │       └── search_index.sqlite3   # SQLite FTS5 chunk index
 └── vault/

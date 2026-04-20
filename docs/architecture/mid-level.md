@@ -18,22 +18,21 @@
 
 All commands are flat top-level verbs:
 
-| Click Name | Aliases | Command Wrapper | Main Service |
-| --- | --- | --- | --- |
-| `init` | | `src/commands/init.py` | `src/services/project_service.py` and `src/services/config_service.py` |
-| `add` | `ingest` | `src/commands/add.py` | `src/services/ingest_service.py`, `src/services/normalization_service.py`, and `src/services/manifest_service.py` |
-| `update` | `build`, `compile` | `src/commands/update.py` | `src/services/compile_service.py`, `src/services/concept_service.py`, `src/services/search_service.py` |
-| `compile` | | `src/commands/compile.py` | `src/services/compile_service.py` (+ `src/services/concept_service.py` with `--with-concepts`) |
-| `find` | `search` | `src/commands/find.py` | `src/services/search_service.py` |
-| `ask` | | `src/commands/ask.py` | `src/services/query_service.py` |
-| `lint` | | `src/commands/lint.py` | `src/services/lint_service.py` |
-| `review` | | `src/commands/review.py` | `src/services/review_service.py` |
-| `status` | | `src/commands/status.py` | `src/services/status_service.py`, `src/services/diff_service.py` (with `--changed`) |
-| `export` | | `src/commands/export_cmd.py` | `src/services/export_service.py` |
-| `doctor` | | `src/commands/doctor.py` | `src/services/doctor_service.py` |
-| `history` | | `src/commands/history.py` | `src/storage/run_store.py` |
-| `config` | | `src/commands/config_cmd.py` | `src/services/config_service.py`, `src/services/model_registry_service.py` |
-| `sources` | | `src/commands/sources.py` | `src/services/manifest_service.py` |
+| Click Name | Command Wrapper | Main Service |
+| --- | --- | --- |
+| `init` | `src/commands/init.py` | `src/services/project_service.py` and `src/services/config_service.py` |
+| `add` | `src/commands/add.py` | `src/services/ingest_service.py`, `src/services/normalization_service.py`, and `src/services/manifest_service.py` |
+| `update` | `src/commands/update.py` | `src/services/compile_service.py`, `src/services/concept_service.py`, `src/services/search_service.py` |
+| `find` | `src/commands/find.py` | `src/services/search_service.py` |
+| `ask` | `src/commands/ask.py` | `src/services/query_service.py` |
+| `lint` | `src/commands/lint.py` | `src/services/lint_service.py` |
+| `review` | `src/commands/review.py` | `src/services/review_service.py` |
+| `status` | `src/commands/status.py` | `src/services/status_service.py`, `src/services/diff_service.py` (with `--changed`) |
+| `export` | `src/commands/export_cmd.py` | `src/services/export_service.py` |
+| `doctor` | `src/commands/doctor.py` | `src/services/doctor_service.py` |
+| `history` | `src/commands/history.py` | `src/storage/run_store.py` |
+| `config` | `src/commands/config_cmd.py` | `src/services/config_service.py`, `src/services/model_registry_service.py` |
+| `sources` | `src/commands/sources.py` | `src/services/manifest_service.py` |
 
 ## Data Flow
 
@@ -50,10 +49,10 @@ All commands are flat top-level verbs:
 
 ## Current Ingest Scope
 
-- The current implementation ingests `.md`, `.markdown`, and `.txt` files directly, routes `.pdf` files through Docling, and uses MarkItDown for a bounded born-digital subset such as HTML, CSV, Office documents, notebooks, and EPUB.
-- `kb add` is a user-facing alias for `kb ingest`; both commands route through the same ingest and normalization services.
-- Directory inputs for `kb add` and `kb ingest` now walk recursively by default, ingest only supported source files, and leave unsupported files untouched.
-- OCR-backed ingest is still deferred and should arrive as a provider-backed fallback, with Mistral OCR as the current preferred OCR path for scanned or image-heavy inputs.
+- The current implementation adds `.md`, `.markdown`, and `.txt` files directly, routes `.pdf` files through Docling, and uses MarkItDown for a bounded born-digital subset such as HTML, CSV, Office documents, notebooks, and EPUB.
+- `kb add` is the primary ingestion command; `src/commands/ingest.py` provides the shared implementation.
+- Directory inputs for `kb add` walk recursively by default, add only supported source files, and leave unsupported files untouched.
+- OCR-backed ingestion is still deferred and should arrive as a provider-backed fallback, with Mistral OCR as the current preferred OCR path for scanned or image-heavy inputs.
 
 ## Planned Deliberation Pipelines
 
@@ -69,7 +68,7 @@ All commands are flat top-level verbs:
 - The command layer owns terminal-only concerns such as section headings, list formatting, and progress display; long-running services expose callback-friendly hooks instead of writing directly to the terminal.
 - Services should remain deterministic unless the feature explicitly requires model-backed synthesis.
 - `kb lint` checks links, fragments, headings, titles, and metadata deterministically; `kb review` prepends deterministic overlap checks to a required provider-backed single-pass or adversarial pipeline.
-- `build_services()` resolves per-task providers through `ModelRegistryService`: compile gets `fast`, ask gets `balanced`, review gets `balanced` by default. Global `--tier` and `--model` flags override. `--quality` on `kb ask` also implies a matching tier.
+- `build_services()` resolves per-task providers through `ModelRegistryService`: update gets `fast`, ask gets `balanced`, review gets `balanced` by default. Global `--tier` and `--model` flags override. `--quality` on `kb ask` also implies a matching tier.
 - Raw sources remain the source of truth; compiled pages are derived artifacts.
 - Compile should prefer the normalized canonical artifact when one exists rather than reparsing the original raw source.
 - Optional LLM-based cleanup or reconstruction should remain an explicit provider-mediated step instead of a silent default ingest behavior.

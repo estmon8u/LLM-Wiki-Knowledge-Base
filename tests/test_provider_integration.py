@@ -327,7 +327,7 @@ def test_query_service_raises_without_provider(test_project) -> None:
         provider=None,
     )
 
-    with pytest.raises(ProviderConfigurationError, match="kb query requires"):
+    with pytest.raises(ProviderConfigurationError, match="kb ask requires"):
         query_service.answer_question("knowledge base")
 
 
