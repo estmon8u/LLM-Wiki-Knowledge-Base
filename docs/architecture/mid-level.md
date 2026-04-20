@@ -32,7 +32,7 @@ All commands are flat top-level verbs:
 | `export` | | `src/commands/export_cmd.py` | `src/services/export_service.py` |
 | `doctor` | | `src/commands/doctor.py` | `src/services/doctor_service.py` |
 | `history` | | `src/commands/history.py` | `src/storage/run_store.py` |
-| `config` | | `src/commands/config_cmd.py` | (reads `CommandContext.config` directly) |
+| `config` | | `src/commands/config_cmd.py` | `src/services/config_service.py`, `src/services/model_registry_service.py` |
 | `sources` | | `src/commands/sources.py` | `src/services/manifest_service.py` |
 
 ## Data Flow
@@ -68,7 +68,8 @@ All commands are flat top-level verbs:
 - Commands should stay thin and delegate quickly.
 - The command layer owns terminal-only concerns such as section headings, list formatting, and progress display; long-running services expose callback-friendly hooks instead of writing directly to the terminal.
 - Services should remain deterministic unless the feature explicitly requires model-backed synthesis.
-- `kb check lint` checks links, fragments, headings, titles, and metadata deterministically; `kb check review` prepends deterministic overlap checks to a required provider-backed single-pass or adversarial pipeline.
+- `kb lint` checks links, fragments, headings, titles, and metadata deterministically; `kb review` prepends deterministic overlap checks to a required provider-backed single-pass or adversarial pipeline.
+- `build_services()` resolves per-task providers through `ModelRegistryService`: compile gets `fast`, ask gets `balanced`, review gets `balanced` by default. Global `--tier` and `--model` flags override. `--quality` on `kb ask` also implies a matching tier.
 - Raw sources remain the source of truth; compiled pages are derived artifacts.
 - Compile should prefer the normalized canonical artifact when one exists rather than reparsing the original raw source.
 - Optional LLM-based cleanup or reconstruction should remain an explicit provider-mediated step instead of a silent default ingest behavior.

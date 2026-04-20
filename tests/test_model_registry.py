@@ -71,6 +71,21 @@ class TestModelRegistryService:
         resolved = self.registry.resolve(config=config, tier="deep", task="compile")
         assert resolved.tier == "deep"
 
+    def test_resolve_config_tier_overrides_task_default(self):
+        """Persisted config tier beats task-specific default."""
+        config = {"provider": {"name": "openai", "tier": "deep"}}
+        resolved = self.registry.resolve(config=config, task="compile")
+        # compile default is "fast", but config tier "deep" wins.
+        assert resolved.tier == "deep"
+        assert resolved.model == "gpt-5.4"
+
+    def test_resolve_runtime_tier_overrides_config_tier(self):
+        """Explicit --tier flag beats persisted config tier."""
+        config = {"provider": {"name": "openai", "tier": "deep"}}
+        resolved = self.registry.resolve(config=config, tier="fast")
+        assert resolved.tier == "fast"
+        assert resolved.model == "gpt-5.4-nano"
+
     def test_resolve_config_model_preserved_when_no_tier_or_task(self):
         config = {"provider": {"name": "openai", "model": "gpt-5.4"}}
         resolved = self.registry.resolve(config=config)
@@ -111,6 +126,22 @@ class TestModelRegistryService:
     def test_all_task_defaults_are_valid_tiers(self):
         for task, tier in TASK_TIER_DEFAULTS.items():
             assert tier in TIERS, f"Task {task} has invalid default tier {tier}"
+
+    def test_openai_fast_model_is_nano(self):
+        config = {"provider": {"name": "openai"}}
+        resolved = self.registry.resolve(config=config, tier="fast")
+        assert resolved.model == "gpt-5.4-nano"
+        assert resolved.reasoning_effort == "low"
+
+    def test_openai_balanced_reasoning_is_medium(self):
+        config = {"provider": {"name": "openai"}}
+        resolved = self.registry.resolve(config=config, tier="balanced")
+        assert resolved.reasoning_effort == "medium"
+
+    def test_gemini_balanced_reasoning_is_medium(self):
+        config = {"provider": {"name": "gemini"}}
+        resolved = self.registry.resolve(config=config, tier="balanced")
+        assert resolved.reasoning_effort == "medium"
 
 
 # ── ResolvedProviderConfig frozen ────────────────────────────────────

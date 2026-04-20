@@ -45,7 +45,7 @@ def create_command() -> click.BaseCommand:
         pass
 
     @provider_group.command(name="set", help="Set the LLM provider.")
-    @click.argument("name")
+    @click.argument("name", type=click.Choice(list(PROVIDERS), case_sensitive=False))
     @click.option("--model", default=None, help="Override the default model.")
     @click.option(
         "--tier",

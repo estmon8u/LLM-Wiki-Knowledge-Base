@@ -10,7 +10,7 @@ _PROFILES: dict[str, dict[str, ModelProfile]] = {
     "openai": {
         "fast": ModelProfile(
             provider="openai",
-            model="gpt-5.4-mini",
+            model="gpt-5.4-nano",
             tier="fast",
             reasoning_effort="low",
             thinking_budget=0,
@@ -19,7 +19,7 @@ _PROFILES: dict[str, dict[str, ModelProfile]] = {
             provider="openai",
             model="gpt-5.4-mini",
             tier="balanced",
-            reasoning_effort="high",
+            reasoning_effort="medium",
             thinking_budget=0,
         ),
         "deep": ModelProfile(
@@ -65,7 +65,7 @@ _PROFILES: dict[str, dict[str, ModelProfile]] = {
             provider="gemini",
             model="gemini-2.5-flash",
             tier="balanced",
-            reasoning_effort="high",
+            reasoning_effort="medium",
             thinking_budget=0,
         ),
         "deep": ModelProfile(
@@ -123,9 +123,10 @@ class ModelRegistryService:
         Priority (highest → lowest):
           1. Explicit ``--model`` flag  (pins both model and provider)
           2. Explicit ``--tier`` flag
-          3. Task-specific default tier
-          4. Config-file model (if set)
-          5. Config-file defaults (provider name → balanced tier)
+          3. Config-file tier (persisted via ``config provider set --tier``)
+          4. Config-file model (if set, look up its tier)
+          5. Task-specific default tier
+          6. Balanced fallback
         """
         provider_cfg = config.get("provider") or {}
         provider_name = provider_override or provider_cfg.get("name", "")
@@ -161,12 +162,13 @@ class ModelRegistryService:
                 thinking_budget=10_000 if provider_name == "anthropic" else 0,
             )
 
-        # Tier resolution: explicit > task default > "balanced"
+        # Tier resolution: explicit > config tier > config model > task default > balanced
         effective_tier = tier
-        if not effective_tier and task:
-            effective_tier = self.default_tier_for_task(task)
         if not effective_tier:
-            # If config has a model but no tier requested, look up that model's tier
+            cfg_tier = provider_cfg.get("tier", "")
+            if cfg_tier and cfg_tier in TIERS:
+                effective_tier = cfg_tier
+        if not effective_tier:
             cfg_model = provider_cfg.get("model", "")
             if cfg_model:
                 profile = self._find_profile_by_model(provider_name, cfg_model)
@@ -188,6 +190,9 @@ class ModelRegistryService:
                     reasoning_effort="high",
                     thinking_budget=10_000 if provider_name == "anthropic" else 0,
                 )
+        if not effective_tier and task:
+            effective_tier = self.default_tier_for_task(task)
+        if not effective_tier:
             effective_tier = "balanced"
 
         # Look up the tier profile

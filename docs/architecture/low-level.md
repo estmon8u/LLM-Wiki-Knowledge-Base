@@ -8,10 +8,10 @@
 | `src/engine/command_registry.py` | Registers the available CLI commands |
 | `src/engine/tool_registry.py` | Holds the internal tool boundary for future agent-style actions |
 | `src/providers/base.py` | Defines the provider abstraction: `ProviderRequest`, `ProviderResponse`, `TextProvider` |
-| `src/providers/__init__.py` | Factory `build_provider(config)` — lazy-imports the right provider by name |
-| `src/providers/openai_provider.py` | OpenAI chat-completions provider (`gpt-5.4-mini`); `reasoning_effort="high"` |
-| `src/providers/anthropic_provider.py` | Anthropic messages provider (`claude-sonnet-4-6`); extended thinking enabled (10 000-token budget) |
-| `src/providers/gemini_provider.py` | Google Gemini provider (`gemini-3.1-flash-lite-preview`); `thinking_level="high"` |
+| `src/providers/__init__.py` | Factory `build_provider(config, resolved=)` — lazy-imports the right provider by name; accepts an optional `ResolvedProviderConfig` from the model registry for tier-driven reasoning effort and thinking budget |
+| `src/providers/openai_provider.py` | OpenAI chat-completions provider; reasoning effort set by tier profile |
+| `src/providers/anthropic_provider.py` | Anthropic messages provider; thinking budget set by tier profile |
+| `src/providers/gemini_provider.py` | Google Gemini provider; reasoning effort set by tier profile |
 
 ## Current Command Files
 
@@ -21,14 +21,18 @@
 | `src/commands/init.py` | Project initialization behavior |
 | `src/commands/add.py` | User-friendly alias for the ingest command, including default-recursive directory ingest |
 | `src/commands/ingest.py` | Source ingest command for single files and directory ingest that recurses by default |
-| `src/commands/compile.py` | Wiki compilation command |
-| `src/commands/diff.py` | Pre-compile source diff command |
-| `src/commands/search.py` | Search command |
-| `src/commands/query.py` | Query command; forwards `--self-consistency N` into `QueryService` |
-| `src/commands/review.py` | Semantic review command; forwards `--adversarial` into `ReviewService` |
-| `src/commands/lint.py` | Lint command |
-| `src/commands/status.py` | Status command |
-| `src/commands/export_vault.py` | Vault export command |
+| `src/commands/compile.py` | Low-level wiki compilation command |
+| `src/commands/update.py` | Full update workflow: ingest → compile → concepts → search refresh, with progress bar; delegates to `UpdateService` |
+| `src/commands/find.py` | Search the compiled wiki |
+| `src/commands/ask.py` | Answer a question from compiled evidence; `--quality` implies model tier |
+| `src/commands/review.py` | Semantic review command; `--deep` runs extractor/skeptic/arbiter |
+| `src/commands/lint.py` | Deterministic structural lint command |
+| `src/commands/status.py` | Status command; `--changed` for pre-compile diff view |
+| `src/commands/export_cmd.py` | Vault export command; `--clean` removes stale files |
+| `src/commands/doctor.py` | Project health checks |
+| `src/commands/history.py` | Run history display with public command names |
+| `src/commands/config_cmd.py` | Config display, provider management (validated `click.Choice`), model tier inspection |
+| `src/commands/sources.py` | Source inventory management |
 
 ## Current Service Files
 
@@ -47,6 +51,8 @@
 | `src/services/lint_service.py` | Structural validation for wiki links, markdown links, fragments, headings, titles, typed frontmatter, empty pages, and maintenance findings |
 | `src/services/export_service.py` | Vault export generation with atomic copies into the Obsidian view |
 | `src/services/status_service.py` | Project and corpus status reporting |
+| `src/services/model_registry_service.py` | Resolves (provider, tier, model) triples into `ResolvedProviderConfig`; built-in profiles per provider/tier; task-specific default tiers; priority: runtime `--model` > runtime `--tier` > config tier > config model > task default > balanced |
+| `src/services/update_service.py` | Orchestrates the full update workflow: preflight → ingest → compile → concepts → search refresh |
 
 ## Current Model Files
 
@@ -55,6 +61,7 @@
 | `src/models/command_models.py` | Command-facing dataclasses and result types |
 | `src/models/source_models.py` | Source metadata models |
 | `src/models/tool_models.py` | Tool-facing data structures |
+| `src/models/provider_models.py` | `ModelProfile` and `ResolvedProviderConfig` dataclasses for the tier registry |
 | `src/models/wiki_models.py` | Wiki-oriented dataclasses including `ReviewReport` with typed findings and optional `run_id` |
 
 ## Schema Files (Pydantic)

@@ -30,17 +30,21 @@ def build_runtime_context(
     config = config_service.load()
     if provider_override:
         config.setdefault("provider", {})["name"] = provider_override
-        # Clear a stale model that belongs to a different provider.
+        # Clear stale fields that belong to a different provider.
         config["provider"].pop("model", None)
+        config["provider"].pop("tier", None)
+        config["provider"].pop("api_key_env", None)
     schema_text = config_service.load_schema()
-    services = build_services(paths, config)
 
-    # Stash runtime overrides so commands can pass them to the registry.
+    # Stash runtime overrides BEFORE building services so the registry
+    # can read them during per-task provider construction.
     config["_runtime"] = {}
     if tier_override:
         config["_runtime"]["tier"] = tier_override
     if model_override:
         config["_runtime"]["model"] = model_override
+
+    services = build_services(paths, config)
 
     return CommandContext(
         project_root=paths.root,

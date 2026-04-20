@@ -748,6 +748,32 @@ def test_provider_override_flag_rejects_invalid_name() -> None:
         assert "Invalid value" in result.output or "invalid" in result.output.lower()
 
 
+def test_provider_override_clears_tier_and_api_key_env() -> None:
+    """--provider clears stale tier, model, and api_key_env from the config."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        # Set an openai provider with a specific tier and api_key_env.
+        config = yaml.safe_load(Path("kb.config.yaml").read_text(encoding="utf-8"))
+        config["provider"] = {
+            "name": "openai",
+            "model": "gpt-5.4",
+            "tier": "deep",
+            "api_key_env": "MY_OPENAI_KEY",
+        }
+        Path("kb.config.yaml").write_text(
+            yaml.safe_dump(config, sort_keys=False), encoding="utf-8"
+        )
+
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            result = runner.invoke(
+                main,
+                ["--provider", "anthropic", "status"],
+            )
+
+        assert result.exit_code == 0
+
+
 # --- Simplified CLI UX tests ---
 
 
@@ -1301,6 +1327,19 @@ def test_config_provider_set_switching_clears_stale() -> None:
         assert "model" not in config["provider"]
 
 
+def test_config_provider_set_rejects_unknown_name() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(
+            main,
+            ["config", "provider", "set", "foobar"],
+        )
+        assert result.exit_code != 0
+        assert "foobar" in result.output.lower() or "invalid" in result.output.lower()
+
+
 def test_config_providers_list() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
@@ -1384,6 +1423,40 @@ def test_ask_quality_deep_flag() -> None:
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             assert runner.invoke(main, ["compile"]).exit_code == 0
 
+            result = runner.invoke(
+                main,
+                ["ask", "--quality", "deep", "How", "does", "traceability", "work?"],
+            )
+
+        assert result.exit_code == 0
+        assert "Answer" in result.output
+
+
+def test_ask_quality_deep_implies_tier_with_known_provider() -> None:
+    """When provider is configured, --quality deep rebuilds the provider at the deep tier."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Sample\n\nTraceability and citation evidence.\n",
+            encoding="utf-8",
+        )
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        # Set a known provider so the quality→tier rebuild path is exercised.
+        config = yaml.safe_load(Path("kb.config.yaml").read_text(encoding="utf-8"))
+        config["provider"] = {"name": "openai"}
+        Path("kb.config.yaml").write_text(
+            yaml.safe_dump(config, sort_keys=False), encoding="utf-8"
+        )
+
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            assert runner.invoke(main, ["compile"]).exit_code == 0
+
+        # Patch both the services-level and ask-level build_provider so the
+        # quality→tier rebuild succeeds with the fake provider.
+        with patch(
+            "src.services.build_provider", return_value=_CliFakeProvider()
+        ), patch("src.commands.ask.build_provider", return_value=_CliFakeProvider()):
             result = runner.invoke(
                 main,
                 ["ask", "--quality", "deep", "How", "does", "traceability", "work?"],

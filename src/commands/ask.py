@@ -6,7 +6,8 @@ import click
 
 from src.commands.common import echo_bullet, echo_section, require_initialized
 from src.models.command_models import CommandContext, CommandSpec
-from src.providers import ProviderError
+from src.providers import ProviderError, build_provider
+from src.services.model_registry_service import ModelRegistryService
 
 
 SUMMARY = (
@@ -82,6 +83,30 @@ def create_command() -> click.Command:
                 limit = preset_limit
             if self_consistency is None:
                 self_consistency = preset_sc
+
+            # --quality also implies a model tier when the user did not
+            # supply an explicit --tier or --model on the top-level CLI.
+            _quality_tier_map = {"fast": "fast", "normal": "balanced", "deep": "deep"}
+            runtime = command_context.config.get("_runtime") or {}
+            provider_name = (command_context.config.get("provider") or {}).get(
+                "name", ""
+            )
+            if provider_name and "tier" not in runtime and "model" not in runtime:
+                implied_tier = _quality_tier_map[quality]
+                registry = ModelRegistryService()
+                try:
+                    resolved = registry.resolve(
+                        config=command_context.config,
+                        tier=implied_tier,
+                        task="ask",
+                    )
+                    new_provider = build_provider(
+                        command_context.config, resolved=resolved
+                    )
+                    if new_provider is not None:
+                        command_context.services["query"].provider = new_provider
+                except ValueError:
+                    pass  # unknown provider — keep existing
         if limit is None:
             limit = 3
         if self_consistency is None:

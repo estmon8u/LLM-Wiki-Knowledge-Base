@@ -40,7 +40,7 @@ poetry run kb find "knowledge base traceability"
 
 # 6. Ask a question with citations
 poetry run kb ask "How does the wiki handle stale pages?"
-poetry run kb ask --self-consistency 3 "What normalization converters are supported?"
+poetry run kb ask --quality deep "What normalization converters are supported?"
 poetry run kb ask --save "How is traceability preserved?"
 
 # 7. Check wiki health (deterministic structural checks)
@@ -162,7 +162,7 @@ Interactive terminals show directory-ingest progress; non-interactive runs print
 
 ### `kb compile`
 
-Compile source pages, refresh the wiki index, and update the activity log. Requires a configured provider. This is a low-level alias for `kb update`; prefer `kb update` for the full workflow.
+Compile source pages, refresh the wiki index, and update the activity log. Requires a configured provider. This is the low-level compile step; prefer `kb update` for the full workflow.
 
 ```bash
 poetry run kb compile
@@ -218,6 +218,7 @@ Answer a question from compiled wiki evidence with provider-backed synthesis and
 poetry run kb ask "How does the wiki handle stale pages?"
 poetry run kb ask --limit 5 "What normalization converters are supported?"
 poetry run kb ask --self-consistency 3 "How is traceability preserved?"
+poetry run kb ask --quality deep "How is traceability preserved?"
 poetry run kb ask --save "What does the compile pipeline do?"
 poetry run kb ask --save-as freshness "How is freshness tracked?"
 poetry run kb ask --show-evidence "What formats are supported?"
@@ -226,7 +227,8 @@ poetry run kb ask --show-evidence "What formats are supported?"
 | Option | Default | Description |
 | --- | --- | --- |
 | `--limit` | 3 | Maximum number of source pages to use as evidence. |
-| `--self-consistency` | 1 | Sample N independent provider answers from the same frozen evidence bundle and merge claims deterministically. |
+| `--quality` | | Preset quality level: `fast` (1 call, 2 pages), `normal` (1 call, 3 pages), `deep` (self-consistency, 5 pages). Also implies the matching model tier unless `--tier` or `--model` is set. |
+| `--self-consistency` | 1 | (Advanced) Sample N independent provider answers from the same frozen evidence bundle and merge claims deterministically. |
 | `--save` | off | Save the answer as an analysis page in the wiki. |
 | `--save-as` | | Save the answer as an analysis page with a custom slug. |
 | `--show-evidence` | off | Print the retrieved evidence snippets before the answer. |
@@ -411,6 +413,8 @@ kb --model gpt-5.4 ask "Complex analysis question"
 The `--tier` flag selects a cost/quality preset (`fast`, `balanced`, `deep`) with
 provider-specific model and reasoning settings. The `--model` flag pins a specific
 model. Both override the config-file defaults for a single invocation.
+The `--quality` flag on `kb ask` also implies a matching tier (`fast`/`normal`/`deep`
+→ `fast`/`balanced`/`deep`) unless `--tier` or `--model` is set.
 
 Set the matching API key as an environment variable:
 
