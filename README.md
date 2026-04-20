@@ -68,6 +68,9 @@ See `Provider Configuration` below.
 | Option | Description |
 | --- | --- |
 | `--project-root PATH` | Run the CLI against a specific project directory instead of the current working directory. |
+| `--provider NAME` | Override the configured provider (`openai`, `anthropic`, `gemini`) for this invocation. Clears any stale model setting. |
+| `--tier TIER` | Select model tier: `fast`, `balanced`, or `deep`. |
+| `--model MODEL` | Override the model for this invocation. |
 | `--verbose` | Enable verbose output. |
 | `-h`, `--help` | Show help for any command. |
 
@@ -85,7 +88,7 @@ All commands are flat top-level verbs:
 | --- | --- | --- |
 | `init` | | Create project folders, config, schema, and manifest |
 | `add` | `ingest` | Ingest and normalize source documents |
-| `update` | `build`, `compile` | Compile, generate concepts, and refresh indexes |
+| `update` | `build` | Compile, generate concepts, and refresh indexes |
 | `find` | `search` | Search the compiled wiki |
 | `ask` | | Answer a question from compiled evidence |
 | `status` | | Show project state; `--changed` for a pre-compile diff view |
@@ -124,9 +127,14 @@ Run health checks on the project: structure, config, provider, API keys, convert
 
 ```bash
 poetry run kb doctor
+poetry run kb doctor --strict
 ```
 
-Prints formatted health-check sections with `[OK]` or `[FAIL]` entries and exits with code 1 if any check fails.
+| Option | Default | Description |
+| --- | --- | --- |
+| `--strict` | off | Treat warnings (missing provider, API key) as errors. |
+
+Prints formatted health-check sections with `[OK]`, `[WARNING]`, or `[FAIL]` entries. Exits with code 1 if any check fails. Without `--strict`, a missing provider or API key is a warning rather than a failure, so new projects pass doctor out of the box.
 
 ### `kb ingest <source_path>` / `kb add <source_path>`
 
@@ -138,8 +146,8 @@ poetry run kb ingest path/to/document.pdf
 poetry run kb add path/to/research-folder
 ```
 
-`kb add` is a first-class alias for `kb ingest`. Both commands use the same
-normalization, duplicate-detection, and manifest-registration path.
+`kb add` is the primary command; `kb ingest` is a legacy alias. Both commands
+use the same normalization, duplicate-detection, and manifest-registration path.
 
 What happens:
 
@@ -200,7 +208,7 @@ poetry run kb find --limit 10 "agent architecture"
 | --- | --- | --- |
 | `--limit` | 5 | Maximum number of results to return. |
 
-Uses a SQLite FTS5 chunk index stored at `graph/exports/search_index.sqlite3`. Indexes compiled source pages plus saved analysis pages, excludes generated concept pages, ranks hits with BM25-style FTS ordering, and returns page-level results using the best matching chunk snippet.
+Uses a SQLite FTS5 chunk index stored at `graph/exports/search_index.sqlite3`. Indexes all wiki pages (source pages, concept pages, and saved analysis pages), ranks hits with BM25-style FTS ordering, and returns page-level results using the best matching chunk snippet.
 
 ### `kb ask <question>`
 
@@ -227,7 +235,7 @@ Requires a configured provider. Retrieves the best-matching indexed wiki chunks 
 
 When `--self-consistency N` is greater than 1, retrieves evidence once, freezes the bundle, samples N independent provider answers in parallel, normalizes them into typed claims, merges near-duplicate grounded claims deterministically, and stores the full run artifact in `graph/exports/run_artifacts.sqlite3`.
 
-Use `--save` or `--save-as` to persist the answer as a markdown analysis page in `wiki/concepts/` with YAML frontmatter (`type: analysis`), the question, a timestamp, and backlinks to cited source chunks. Saved analysis pages are indexed for future searches.
+Use `--save` or `--save-as` to persist the answer as a markdown analysis page in `wiki/analysis/` with YAML frontmatter (`type: analysis`), the question, a timestamp, and backlinks to cited source chunks. Saved analysis pages are indexed for future searches.
 
 ### `kb lint`
 
@@ -316,16 +324,32 @@ poetry run kb history --limit 10
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--command` | | Filter runs by command name (e.g. ask, review). |
+| `--command` | | Filter runs by command name (e.g. `ask`, `review`, `update`). Both public and legacy names are accepted. |
 | `--limit` | 20 | Maximum number of runs to show. |
 
 ### `kb config`
 
-View project configuration as YAML.
+View project configuration as YAML, or manage provider and model settings.
 
 ```bash
 poetry run kb config
+poetry run kb config show
+poetry run kb config provider set openai
+poetry run kb config provider set anthropic --model claude-opus-4-6
+poetry run kb config provider set gemini --tier deep
+poetry run kb config provider clear
+poetry run kb config providers
+poetry run kb config models
+poetry run kb config models openai
 ```
+
+| Subcommand | Description |
+| --- | --- |
+| `show` | Display the current configuration (default). |
+| `provider set <name>` | Set the LLM provider. `--model` pins a specific model; `--tier` (`fast`/`balanced`/`deep`) selects the tier's default model. Changing provider clears any stale model. |
+| `provider clear` | Remove the LLM provider setting. |
+| `providers` | List supported provider names. |
+| `models [PROVIDER]` | Show available model tiers for a provider. Defaults to the configured provider. |
 
 ### `kb sources`
 
@@ -379,9 +403,14 @@ You can also override the provider per-invocation without editing the config fil
 ```bash
 kb --provider anthropic ask "How does REALM differ from RAG?"
 kb --provider gemini review --deep
+kb --tier fast update
+kb --tier deep ask "Explain the compile pipeline in detail"
+kb --model gpt-5.4 ask "Complex analysis question"
 ```
 
-This makes it easy to compare all three providers against the same compiled wiki without maintaining separate project directories.
+The `--tier` flag selects a cost/quality preset (`fast`, `balanced`, `deep`) with
+provider-specific model and reasoning settings. The `--model` flag pins a specific
+model. Both override the config-file defaults for a single invocation.
 
 Set the matching API key as an environment variable:
 
@@ -418,7 +447,8 @@ project-root/
 │   └── normalized/         # Canonical markdown/text artifacts
 ├── wiki/
 │   ├── sources/            # Generated source pages
-│   ├── concepts/           # Saved analysis pages and future concept pages
+│   ├── concepts/           # Generated concept pages
+│   ├── analysis/           # Saved analysis pages from kb ask --save
 │   ├── index.md            # Wiki index (human-readable)
 │   ├── _index.json         # Wiki index (machine-readable)
 │   └── log.md              # Compile activity log

@@ -26,7 +26,7 @@ def create_command() -> click.Command:
             raise click.ClickException("Provide at least one search term.")
         search_service = command_context.services["search"]
         query = " ".join(query_terms)
-        results = search_service.search(query, limit=limit)
+        results = search_service.search(query, limit=limit, include_concepts=True)
         if not results:
             click.echo("No wiki pages matched that query.")
             return

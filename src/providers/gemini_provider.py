@@ -17,8 +17,10 @@ class GeminiProvider(TextProvider):
         self,
         model: str = "gemini-3.1-flash-lite-preview",
         api_key_env: str = "GEMINI_API_KEY",
+        reasoning_effort: str = "high",
     ) -> None:
         self.model = model
+        self._reasoning_effort = reasoning_effort
         api_key = os.environ.get(api_key_env, "")
         if not api_key:
             raise ValueError(
@@ -27,10 +29,13 @@ class GeminiProvider(TextProvider):
             )
         self._client = genai.Client(api_key=api_key)
 
+    _EFFORT_TO_LEVEL = {"low": "low", "high": "high"}
+
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        thinking_level = self._EFFORT_TO_LEVEL.get(self._reasoning_effort, "high")
         config_kwargs: dict = {
             "max_output_tokens": request.max_tokens,
-            "thinking_config": types.ThinkingConfig(thinking_level="high"),
+            "thinking_config": types.ThinkingConfig(thinking_level=thinking_level),
         }
         if request.system_prompt:
             config_kwargs["system_instruction"] = request.system_prompt

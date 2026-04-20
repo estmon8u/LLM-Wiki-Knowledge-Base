@@ -13,9 +13,13 @@ class OpenAIProvider(TextProvider):
     name = "openai"
 
     def __init__(
-        self, model: str = "gpt-5.4-mini", api_key_env: str = "OPENAI_API_KEY"
+        self,
+        model: str = "gpt-5.4-mini",
+        api_key_env: str = "OPENAI_API_KEY",
+        reasoning_effort: str = "high",
     ) -> None:
         self.model = model
+        self._reasoning_effort = reasoning_effort
         api_key = os.environ.get(api_key_env, "")
         if not api_key:
             raise ValueError(
@@ -33,7 +37,7 @@ class OpenAIProvider(TextProvider):
             model=self.model,
             messages=messages,
             max_completion_tokens=request.max_tokens,
-            reasoning_effort="high",
+            reasoning_effort=self._reasoning_effort,
         )
         text = completion.choices[0].message.content or ""
         return ProviderResponse(text=text.strip(), model_name=self.model)

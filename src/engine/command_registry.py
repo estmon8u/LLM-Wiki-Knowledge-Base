@@ -28,6 +28,7 @@ FLAT_COMMAND_MODULES = {
 }
 
 # Aliases — flat top-level commands that map to another module.
+# compile is a separate legacy/developer command, not a true alias for update.
 ALIAS_COMMAND_MODULES = {
     "build": "src.commands.update",
     "compile": "src.commands.compile",

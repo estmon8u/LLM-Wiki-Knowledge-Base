@@ -15,6 +15,7 @@ class DoctorCheck:
     name: str
     ok: bool
     detail: str
+    severity: str = "error"  # "ok", "warning", or "error"
 
 
 @dataclass
@@ -23,15 +24,19 @@ class DoctorReport:
 
     @property
     def ok(self) -> bool:
-        return all(c.ok for c in self.checks)
+        return all(c.severity != "error" for c in self.checks)
 
     @property
     def passed_count(self) -> int:
-        return sum(1 for c in self.checks if c.ok)
+        return sum(1 for c in self.checks if c.severity == "ok")
+
+    @property
+    def warning_count(self) -> int:
+        return sum(1 for c in self.checks if c.severity == "warning")
 
     @property
     def failed_count(self) -> int:
-        return sum(1 for c in self.checks if not c.ok)
+        return sum(1 for c in self.checks if c.severity == "error")
 
 
 class DoctorService:
@@ -45,14 +50,14 @@ class DoctorService:
         self.config = config
         self.provider = provider
 
-    def diagnose(self) -> DoctorReport:
+    def diagnose(self, *, strict: bool = False) -> DoctorReport:
         checks: list[DoctorCheck] = []
         checks.append(self._check_project_structure())
         checks.append(self._check_config_file())
         checks.append(self._check_schema_file())
         checks.append(self._check_manifest())
-        checks.append(self._check_provider_config())
-        checks.append(self._check_api_key())
+        checks.append(self._check_provider_config(strict=strict))
+        checks.append(self._check_api_key(strict=strict))
         checks.append(self._check_converters())
         checks.append(self._check_run_store_db())
         return DoctorReport(checks=checks)
@@ -75,9 +80,13 @@ class DoctorService:
                 name="project_structure",
                 ok=False,
                 detail=f"Missing directories: {', '.join(missing)}",
+                severity="error",
             )
         return DoctorCheck(
-            name="project_structure", ok=True, detail="All project directories exist."
+            name="project_structure",
+            ok=True,
+            detail="All project directories exist.",
+            severity="ok",
         )
 
     def _check_config_file(self) -> DoctorCheck:
@@ -86,9 +95,13 @@ class DoctorService:
                 name="config_file",
                 ok=False,
                 detail="kb.config.yaml not found. Run 'kb init'.",
+                severity="error",
             )
         return DoctorCheck(
-            name="config_file", ok=True, detail="kb.config.yaml present."
+            name="config_file",
+            ok=True,
+            detail="kb.config.yaml present.",
+            severity="ok",
         )
 
     def _check_schema_file(self) -> DoctorCheck:
@@ -97,8 +110,14 @@ class DoctorService:
                 name="schema_file",
                 ok=False,
                 detail="kb.schema.md not found. Run 'kb init'.",
+                severity="error",
             )
-        return DoctorCheck(name="schema_file", ok=True, detail="kb.schema.md present.")
+        return DoctorCheck(
+            name="schema_file",
+            ok=True,
+            detail="kb.schema.md present.",
+            severity="ok",
+        )
 
     def _check_manifest(self) -> DoctorCheck:
         if not self.paths.raw_manifest_file.exists():
@@ -106,17 +125,25 @@ class DoctorService:
                 name="manifest",
                 ok=False,
                 detail="raw/_manifest.json not found. Run 'kb init'.",
+                severity="error",
             )
-        return DoctorCheck(name="manifest", ok=True, detail="Manifest file present.")
+        return DoctorCheck(
+            name="manifest",
+            ok=True,
+            detail="Manifest file present.",
+            severity="ok",
+        )
 
-    def _check_provider_config(self) -> DoctorCheck:
+    def _check_provider_config(self, *, strict: bool = False) -> DoctorCheck:
         provider_cfg = self.config.get("provider") or {}
         name = provider_cfg.get("name", "")
         if not name:
+            sev = "error" if strict else "warning"
             return DoctorCheck(
                 name="provider_config",
                 ok=False,
-                detail="No provider configured in kb.config.yaml.",
+                detail="No provider configured. Required for update, ask, and review.",
+                severity=sev,
             )
         supported = {"openai", "anthropic", "gemini"}
         if name not in supported:
@@ -124,22 +151,26 @@ class DoctorService:
                 name="provider_config",
                 ok=False,
                 detail=f"Unknown provider '{name}'. Supported: {', '.join(sorted(supported))}.",
+                severity="error",
             )
         model = provider_cfg.get("model", "(default)")
         return DoctorCheck(
             name="provider_config",
             ok=True,
             detail=f"Provider '{name}' configured with model '{model}'.",
+            severity="ok",
         )
 
-    def _check_api_key(self) -> DoctorCheck:
+    def _check_api_key(self, *, strict: bool = False) -> DoctorCheck:
         provider_cfg = self.config.get("provider") or {}
         name = provider_cfg.get("name", "")
         if not name:
+            sev = "error" if strict else "warning"
             return DoctorCheck(
                 name="api_key",
                 ok=False,
-                detail="No provider configured — cannot check API key.",
+                detail="Cannot check API key until a provider is selected.",
+                severity=sev,
             )
         env_var = provider_cfg.get("api_key_env", _DEFAULT_API_KEY_ENVS.get(name, ""))
         if not env_var:
@@ -147,17 +178,21 @@ class DoctorService:
                 name="api_key",
                 ok=False,
                 detail=f"No API key env variable known for provider '{name}'.",
+                severity="error",
             )
         if os.environ.get(env_var):
             return DoctorCheck(
                 name="api_key",
                 ok=True,
                 detail=f"Environment variable {env_var} is set.",
+                severity="ok",
             )
+        sev = "error" if strict else "warning"
         return DoctorCheck(
             name="api_key",
             ok=False,
             detail=f"Environment variable {env_var} is not set.",
+            severity=sev,
         )
 
     def _check_converters(self) -> DoctorCheck:
@@ -181,11 +216,13 @@ class DoctorService:
                 ok=False,
                 detail=f"Available: {', '.join(available) or 'none'}. "
                 f"Missing: {', '.join(missing)}.",
+                severity="warning",
             )
         return DoctorCheck(
             name="converters",
             ok=True,
             detail=f"All converters available: {', '.join(available)}.",
+            severity="ok",
         )
 
     def _check_run_store_db(self) -> DoctorCheck:
@@ -195,6 +232,7 @@ class DoctorService:
                 name="run_store",
                 ok=True,
                 detail="Run-artifact database not yet created (OK for new projects).",
+                severity="ok",
             )
         try:
             size = db_path.stat().st_size
@@ -202,10 +240,12 @@ class DoctorService:
                 name="run_store",
                 ok=True,
                 detail=f"Run-artifact database present ({size} bytes).",
+                severity="ok",
             )
         except OSError as exc:
             return DoctorCheck(
                 name="run_store",
                 ok=False,
                 detail=f"Cannot read run-artifact database: {exc}",
+                severity="error",
             )

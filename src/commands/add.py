@@ -6,10 +6,7 @@ from src.commands.ingest import create_command as create_ingest_command
 from src.models.command_models import CommandContext, CommandSpec
 
 
-SUMMARY = (
-    "Add and normalize a source file or directory into the raw corpus "
-    "(alias for ingest)."
-)
+SUMMARY = "Add and normalize source files or folders."
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:

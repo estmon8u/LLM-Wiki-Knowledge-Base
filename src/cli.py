@@ -13,6 +13,7 @@ from src.engine.command_registry import (
 from src.models.command_models import CommandContext
 from src.services import build_services
 from src.services.config_service import ConfigService
+from src.services.model_registry_service import TIERS, ModelRegistryService
 from src.services.project_service import build_project_paths, discover_project_root
 
 
@@ -21,14 +22,26 @@ def build_runtime_context(
     *,
     verbose: bool,
     provider_override: Optional[str] = None,
+    tier_override: Optional[str] = None,
+    model_override: Optional[str] = None,
 ) -> CommandContext:
     paths = build_project_paths(project_root)
     config_service = ConfigService(paths)
     config = config_service.load()
     if provider_override:
         config.setdefault("provider", {})["name"] = provider_override
+        # Clear a stale model that belongs to a different provider.
+        config["provider"].pop("model", None)
     schema_text = config_service.load_schema()
     services = build_services(paths, config)
+
+    # Stash runtime overrides so commands can pass them to the registry.
+    config["_runtime"] = {}
+    if tier_override:
+        config["_runtime"]["tier"] = tier_override
+    if model_override:
+        config["_runtime"]["model"] = model_override
+
     return CommandContext(
         project_root=paths.root,
         cwd=Path.cwd().resolve(),
@@ -68,16 +81,36 @@ class KBGroup(click.Group):
     default=None,
     help="Override the configured provider for this invocation.",
 )
+@click.option(
+    "--tier",
+    "tier_override",
+    type=click.Choice(list(TIERS), case_sensitive=False),
+    default=None,
+    help="Select model tier: fast, balanced, or deep.",
+)
+@click.option(
+    "--model",
+    "model_override",
+    type=str,
+    default=None,
+    help="Override the model for this invocation.",
+)
 @click.pass_context
 def main(
     ctx: click.Context,
     project_root: Optional[Path],
     verbose: bool,
     provider_override: Optional[str],
+    tier_override: Optional[str],
+    model_override: Optional[str],
 ) -> None:
     root = discover_project_root(project_root or Path.cwd())
     ctx.obj = build_runtime_context(
-        root, verbose=verbose, provider_override=provider_override
+        root,
+        verbose=verbose,
+        provider_override=provider_override,
+        tier_override=tier_override,
+        model_override=model_override,
     )
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())

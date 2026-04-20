@@ -40,7 +40,9 @@ class SearchService:
         )
         self._fts_available = True
 
-    def search(self, query: str, *, limit: int = 5) -> list[SearchResult]:
+    def search(
+        self, query: str, *, limit: int = 5, include_concepts: bool = False
+    ) -> list[SearchResult]:
         terms = _query_terms(query)
         if not terms:
             return []
@@ -48,9 +50,13 @@ class SearchService:
         if self._fts_available:
             self.refresh()
             if self._fts_available:
-                return self._search_index(terms, limit=limit)
+                return self._search_index(
+                    terms, limit=limit, include_concepts=include_concepts
+                )
 
-        return self._scan_markdown_files(terms, limit=limit)
+        return self._scan_markdown_files(
+            terms, limit=limit, include_concepts=include_concepts
+        )
 
     def refresh(self, *, force: bool = False) -> bool:
         if not self._fts_available:
@@ -106,7 +112,9 @@ class SearchService:
         except OSError as exc:
             logger.warning("Search index file refresh skipped: %s", exc)
 
-    def _search_index(self, terms: list[str], *, limit: int) -> list[SearchResult]:
+    def _search_index(
+        self, terms: list[str], *, limit: int, include_concepts: bool = False
+    ) -> list[SearchResult]:
         try:
             hits = self.index_store.search(
                 _build_match_query(terms),
@@ -115,12 +123,16 @@ class SearchService:
         except SearchIndexUnavailable as exc:
             logger.warning("SQLite FTS5 search query unavailable: %s", exc)
             self._fts_available = False
-            return self._scan_markdown_files(terms, limit=limit)
+            return self._scan_markdown_files(
+                terms, limit=limit, include_concepts=include_concepts
+            )
 
         results: list[SearchResult] = []
         seen_paths: set[str] = set()
         for hit in hits:
             if hit.page_path in seen_paths:
+                continue
+            if not include_concepts and hit.page_type == "concept":
                 continue
             seen_paths.add(hit.page_path)
             snippet = " ".join(hit.snippet.split())
@@ -142,14 +154,16 @@ class SearchService:
         return results
 
     def _scan_markdown_files(
-        self, terms: list[str], *, limit: int
+        self, terms: list[str], *, limit: int, include_concepts: bool = False
     ) -> list[SearchResult]:
         results: list[SearchResult] = []
         for file_path in sorted(self.paths.wiki_dir.rglob("*.md")):
             relative_path = file_path.relative_to(self.paths.root).as_posix()
             if _is_maintenance_page(relative_path):
                 continue
-            if _is_generated_concept_page(file_path, self.paths):
+            if not include_concepts and _is_generated_concept_page(
+                file_path, self.paths
+            ):
                 continue
             text = file_path.read_text(encoding="utf-8")
             normalized = text.lower()
@@ -186,9 +200,6 @@ class SearchService:
     def _indexable_chunks(
         self, file_path: Path, relative_path: str
     ) -> list[IndexedChunk]:
-        if _is_generated_concept_page(file_path, self.paths):
-            return []
-
         if _is_maintenance_page(relative_path):
             return []
 

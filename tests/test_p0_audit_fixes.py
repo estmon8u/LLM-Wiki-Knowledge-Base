@@ -369,7 +369,8 @@ def test_doctor_no_provider_means_no_api_key_check(test_project) -> None:
     report = doctor.diagnose()
     api_check = next(c for c in report.checks if c.name == "api_key")
     assert not api_check.ok
-    assert "No provider configured" in api_check.detail
+    assert "Cannot check API key" in api_check.detail
+    assert api_check.severity == "warning"
 
 
 def test_doctor_unknown_provider_has_no_api_key_env(test_project) -> None:
@@ -407,8 +408,8 @@ def test_doctor_report_ok_property() -> None:
 
     report = DoctorReport(
         checks=[
-            DoctorCheck(name="a", ok=True, detail="good"),
-            DoctorCheck(name="b", ok=True, detail="fine"),
+            DoctorCheck(name="a", ok=True, detail="good", severity="ok"),
+            DoctorCheck(name="b", ok=True, detail="fine", severity="ok"),
         ]
     )
     assert report.ok is True
@@ -417,13 +418,23 @@ def test_doctor_report_ok_property() -> None:
 
     report2 = DoctorReport(
         checks=[
-            DoctorCheck(name="a", ok=True, detail="good"),
-            DoctorCheck(name="b", ok=False, detail="bad"),
+            DoctorCheck(name="a", ok=True, detail="good", severity="ok"),
+            DoctorCheck(name="b", ok=False, detail="bad", severity="error"),
         ]
     )
     assert report2.ok is False
     assert report2.passed_count == 1
     assert report2.failed_count == 1
+
+    # Warnings don't fail the report
+    report3 = DoctorReport(
+        checks=[
+            DoctorCheck(name="a", ok=True, detail="good", severity="ok"),
+            DoctorCheck(name="b", ok=False, detail="meh", severity="warning"),
+        ]
+    )
+    assert report3.ok is True
+    assert report3.warning_count == 1
 
 
 def test_doctor_detects_missing_converters(test_project) -> None:

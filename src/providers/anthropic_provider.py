@@ -13,9 +13,13 @@ class AnthropicProvider(TextProvider):
     name = "anthropic"
 
     def __init__(
-        self, model: str = "claude-sonnet-4-6", api_key_env: str = "ANTHROPIC_API_KEY"
+        self,
+        model: str = "claude-sonnet-4-6",
+        api_key_env: str = "ANTHROPIC_API_KEY",
+        thinking_budget: int = 10_000,
     ) -> None:
         self.model = model
+        self._thinking_budget = thinking_budget
         api_key = os.environ.get(api_key_env, "")
         if not api_key:
             raise ValueError(
@@ -24,19 +28,18 @@ class AnthropicProvider(TextProvider):
             )
         self._client = Anthropic(api_key=api_key)
 
-    _THINKING_BUDGET = 10_000
-
     def generate(self, request: ProviderRequest) -> ProviderResponse:
-        max_tokens = max(request.max_tokens, self._THINKING_BUDGET + 4096)
+        max_tokens = max(request.max_tokens, self._thinking_budget + 4096)
         kwargs: dict = {
             "model": self.model,
             "max_tokens": max_tokens,
             "messages": [{"role": "user", "content": request.prompt}],
-            "thinking": {
-                "type": "enabled",
-                "budget_tokens": self._THINKING_BUDGET,
-            },
         }
+        if self._thinking_budget > 0:
+            kwargs["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": self._thinking_budget,
+            }
         if request.system_prompt:
             kwargs["system"] = request.system_prompt
         message = self._client.messages.create(**kwargs)

@@ -1231,6 +1231,121 @@ def test_config_provider_set_and_clear() -> None:
         assert config["provider"] == {}
 
 
+def test_config_provider_set_tier() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(
+            main,
+            ["config", "provider", "set", "openai", "--tier", "deep"],
+        )
+        assert result.exit_code == 0
+        assert "tier=deep" in result.output
+        assert "gpt-5.4" in result.output
+
+        config = yaml.safe_load(Path("kb.config.yaml").read_text(encoding="utf-8"))
+        assert config["provider"]["name"] == "openai"
+        assert config["provider"]["tier"] == "deep"
+        assert config["provider"]["model"] == "gpt-5.4"
+
+
+def test_config_provider_set_tier_and_model_exclusive() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(
+            main,
+            ["config", "provider", "set", "openai", "--tier", "fast", "--model", "x"],
+        )
+        assert result.exit_code != 0
+        assert "mutually exclusive" in result.output
+
+
+def test_config_provider_set_clears_tier_on_model_override() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        runner.invoke(
+            main,
+            ["config", "provider", "set", "openai", "--tier", "deep"],
+        )
+        result = runner.invoke(
+            main,
+            ["config", "provider", "set", "openai", "--model", "custom"],
+        )
+        assert result.exit_code == 0
+        config = yaml.safe_load(Path("kb.config.yaml").read_text(encoding="utf-8"))
+        assert config["provider"]["model"] == "custom"
+        assert "tier" not in config["provider"]
+
+
+def test_config_provider_set_switching_clears_stale() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        runner.invoke(
+            main,
+            ["config", "provider", "set", "openai", "--model", "gpt-5.4"],
+        )
+        result = runner.invoke(
+            main,
+            ["config", "provider", "set", "anthropic"],
+        )
+        assert result.exit_code == 0
+        config = yaml.safe_load(Path("kb.config.yaml").read_text(encoding="utf-8"))
+        assert config["provider"]["name"] == "anthropic"
+        assert "model" not in config["provider"]
+
+
+def test_config_providers_list() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["config", "providers"])
+        assert result.exit_code == 0
+        assert "openai" in result.output
+        assert "anthropic" in result.output
+        assert "gemini" in result.output
+
+
+def test_config_models_for_provider() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["config", "models", "openai"])
+        assert result.exit_code == 0
+        assert "fast" in result.output
+        assert "balanced" in result.output
+        assert "deep" in result.output
+
+
+def test_config_models_uses_configured_provider() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        runner.invoke(main, ["config", "provider", "set", "anthropic"])
+
+        result = runner.invoke(main, ["config", "models"])
+        assert result.exit_code == 0
+        assert "anthropic" in result.output
+
+
+def test_config_models_no_provider_fails() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["config", "models"])
+        assert result.exit_code != 0
+        assert "Specify a provider" in result.output
+
+
 # ---------------------------------------------------------------------------
 # --quality flag on ask
 # ---------------------------------------------------------------------------
@@ -1297,7 +1412,7 @@ def test_history_shows_compile_runs() -> None:
             result = runner.invoke(main, ["history", "--command", "compile"])
 
         assert result.exit_code == 0
-        assert "compile" in result.output
+        assert "update" in result.output
 
 
 def test_history_compile_filter_excludes_ask_runs() -> None:
@@ -1318,4 +1433,4 @@ def test_history_compile_filter_excludes_ask_runs() -> None:
             result = runner.invoke(main, ["history", "--command", "compile"])
 
         assert result.exit_code == 0
-        assert "compile" in result.output
+        assert "update" in result.output

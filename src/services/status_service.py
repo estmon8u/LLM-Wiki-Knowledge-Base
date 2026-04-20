@@ -102,11 +102,11 @@ class StatusService:
         if not vault_files:
             return "empty"
         if last_compile_at:
-            # If any source page is newer than the oldest vault file, it may be stale
+            # If any wiki page is newer than the oldest vault file, export is stale
             vault_mtime = min(f.stat().st_mtime for f in vault_files)
-            wiki_sources = list(self.paths.wiki_sources_dir.glob("*.md"))
-            if wiki_sources:
-                wiki_mtime = max(f.stat().st_mtime for f in wiki_sources)
+            wiki_files = list(self.paths.wiki_dir.rglob("*.md"))
+            if wiki_files:
+                wiki_mtime = max(f.stat().st_mtime for f in wiki_files)
                 if wiki_mtime > vault_mtime:
                     return "stale"
         return "current"

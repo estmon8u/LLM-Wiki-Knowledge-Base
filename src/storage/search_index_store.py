@@ -74,6 +74,7 @@ class IndexedChunk:
 @dataclass(frozen=True)
 class SearchHit:
     page_path: str
+    page_type: str
     title: str
     section: str
     chunk_index: int
@@ -226,6 +227,7 @@ class SearchIndexStore:
                 """
                 SELECT
                     page_chunks.page_path,
+                    page_chunks.page_type,
                     page_chunks.title,
                     page_chunks.section,
                     page_chunks.chunk_index,
@@ -243,11 +245,12 @@ class SearchIndexStore:
         return [
             SearchHit(
                 page_path=row[0],
-                title=row[1],
-                section=row[2],
-                chunk_index=row[3],
-                snippet=row[4] or "",
-                score=max(1, int(round(abs(row[5]) * 1000))) if row[5] else 1,
+                page_type=row[1] or "",
+                title=row[2],
+                section=row[3],
+                chunk_index=row[4],
+                snippet=row[5] or "",
+                score=max(1, int(round(abs(row[6]) * 1000))) if row[6] else 1,
             )
             for row in rows
         ]

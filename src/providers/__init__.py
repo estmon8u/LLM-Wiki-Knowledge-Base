@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
+from src.models.provider_models import ResolvedProviderConfig
 from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
 
 logger = logging.getLogger(__name__)
@@ -49,8 +50,16 @@ _DEFAULT_MODELS = {
 }
 
 
-def build_provider(config: dict[str, Any]) -> Optional[TextProvider]:
+def build_provider(
+    config: dict[str, Any],
+    *,
+    resolved: ResolvedProviderConfig | None = None,
+) -> Optional[TextProvider]:
     """Build a provider from the ``provider`` section of kb config.
+
+    When *resolved* is supplied (from the model registry), its model,
+    reasoning-effort, and thinking-budget values take precedence over the
+    raw config dict.
 
     Returns ``None`` when no provider is configured, so deterministic
     commands can proceed without one.  Generation commands (compile, query,
@@ -62,22 +71,44 @@ def build_provider(config: dict[str, Any]) -> Optional[TextProvider]:
     if not name:
         return None
 
-    model = provider_cfg.get("model", _DEFAULT_MODELS.get(name, ""))
-    api_key_env = provider_cfg.get("api_key_env", _DEFAULT_API_KEY_ENVS.get(name, ""))
+    if resolved:
+        model = resolved.model
+        api_key_env = resolved.api_key_env
+        reasoning_effort = resolved.reasoning_effort
+        thinking_budget = resolved.thinking_budget
+    else:
+        model = provider_cfg.get("model", _DEFAULT_MODELS.get(name, ""))
+        api_key_env = provider_cfg.get(
+            "api_key_env", _DEFAULT_API_KEY_ENVS.get(name, "")
+        )
+        reasoning_effort = "high"
+        thinking_budget = 10_000 if name == "anthropic" else 0
 
     try:
         if name == "openai":
             from src.providers.openai_provider import OpenAIProvider
 
-            return OpenAIProvider(model=model, api_key_env=api_key_env)
+            return OpenAIProvider(
+                model=model,
+                api_key_env=api_key_env,
+                reasoning_effort=reasoning_effort,
+            )
         if name == "anthropic":
             from src.providers.anthropic_provider import AnthropicProvider
 
-            return AnthropicProvider(model=model, api_key_env=api_key_env)
+            return AnthropicProvider(
+                model=model,
+                api_key_env=api_key_env,
+                thinking_budget=thinking_budget,
+            )
         if name == "gemini":
             from src.providers.gemini_provider import GeminiProvider
 
-            return GeminiProvider(model=model, api_key_env=api_key_env)
+            return GeminiProvider(
+                model=model,
+                api_key_env=api_key_env,
+                reasoning_effort=reasoning_effort,
+            )
         message = (
             f"Unknown provider name {name!r}. Supported providers are: "
             "openai, anthropic, gemini."

@@ -8,6 +8,18 @@ from src.models.command_models import CommandContext, CommandSpec
 
 SUMMARY = "Show prior ask, review, compile, and update runs."
 
+# Map internal/legacy command names to user-facing names.
+_DISPLAY_COMMAND_NAMES = {
+    "query": "ask",
+    "compile": "update",
+}
+
+# Accept both public and legacy names when filtering.
+_FILTER_ALIASES = {
+    "ask": "query",
+    "update": "compile",
+}
+
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
     return CommandSpec(name="history", summary=SUMMARY)
@@ -37,24 +49,33 @@ def create_command() -> click.Command:
         run_store = command_context.services.get("run_store")
         compile_run_store = command_context.services.get("compile_run_store")
 
+        # Resolve filter aliases: accept both public and legacy names.
+        internal_filter = filter_command
+        if filter_command in _FILTER_ALIASES:
+            internal_filter = _FILTER_ALIASES[filter_command]
+
         # Collect provider-backed runs (ask, review, etc.)
         provider_runs: list[dict] = []
-        if run_store is not None and filter_command != "compile":
-            for run in run_store.list_runs(command=filter_command, limit=limit):
+        show_provider = filter_command not in ("compile", "update")
+        if run_store is not None and show_provider:
+            store_filter = internal_filter if filter_command else None
+            for run in run_store.list_runs(command=store_filter, limit=limit):
                 ts = run.timestamp[:19] if len(run.timestamp) > 19 else run.timestamp
+                display_name = _DISPLAY_COMMAND_NAMES.get(run.command, run.command)
                 provider_runs.append(
                     {
                         "timestamp": ts,
-                        "kind": run.command,
+                        "kind": display_name,
                         "detail": run.model_id,
                         "extra": f"citations={run_store.citation_count(run.run_id)}",
                         "preview": run.final_text,
                     }
                 )
 
-        # Collect compile runs
+        # Collect compile runs (shown when no filter, or filter is compile/update)
         compile_runs: list[dict] = []
-        if compile_run_store is not None and filter_command in (None, "compile"):
+        show_compile = filter_command in (None, "compile", "update")
+        if compile_run_store is not None and show_compile:
             for rec in compile_run_store.load_history():
                 ts = rec.started_at[:19] if len(rec.started_at) > 19 else rec.started_at
                 n_done = len(rec.completed_source_slugs)
@@ -65,7 +86,7 @@ def create_command() -> click.Command:
                 compile_runs.append(
                     {
                         "timestamp": ts,
-                        "kind": "compile",
+                        "kind": _DISPLAY_COMMAND_NAMES.get("compile", "compile"),
                         "detail": detail,
                         "extra": "",
                         "preview": rec.error if rec.error else "",

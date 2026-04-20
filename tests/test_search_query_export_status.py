@@ -750,7 +750,8 @@ def test_save_answer_refreshes_search_index_for_analysis_pages(test_project) -> 
     assert saved_path in paths
 
 
-def test_indexable_chunks_skip_generated_concepts(test_project) -> None:
+def test_indexable_chunks_include_generated_concepts_for_index(test_project) -> None:
+    """Generated concept pages are indexed (filtering happens at search time)."""
     service = test_project.services["search"]
     path = test_project.write_file(
         "wiki/concepts/generated.md",
@@ -760,7 +761,8 @@ def test_indexable_chunks_skip_generated_concepts(test_project) -> None:
 
     chunks = service._indexable_chunks(path, "wiki/concepts/generated.md")
 
-    assert chunks == []
+    assert len(chunks) >= 1
+    assert chunks[0].page_type == "concept"
 
 
 def test_indexable_chunks_returns_empty_for_unreadable_file(
@@ -1245,6 +1247,7 @@ def test_search_index_returns_empty_snippet_fallback(test_project) -> None:
         return [
             SearchHit(
                 page_path=h.page_path,
+                page_type=h.page_type,
                 title=h.title,
                 section=h.section,
                 chunk_index=h.chunk_index,

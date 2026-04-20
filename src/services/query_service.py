@@ -504,10 +504,15 @@ class QueryService:
                 return token[: -len(suffix)]
         return token
 
-    def save_answer(self, question: str, answer: QueryAnswer) -> str:
-        slug = slugify(question)
-        if not slug or slug == "untitled":
-            slug = "analysis-" + slugify(answer.answer[:40])
+    def save_answer(
+        self, question: str, answer: QueryAnswer, *, slug: str | None = None
+    ) -> str:
+        if slug:
+            safe_slug = slugify(slug)
+        else:
+            safe_slug = slugify(question)
+        if not safe_slug or safe_slug == "untitled":
+            safe_slug = "analysis-" + slugify(answer.answer[:40])
         timestamp = utc_now_iso()
         summary = answer.answer.replace("\n", " ").strip()[:280].rstrip()
         if not summary:
@@ -534,7 +539,7 @@ class QueryService:
             "## Citations\n\n"
             f"{citation_lines or 'No citations.'}\n"
         )
-        dest = self.paths.wiki_analysis_dir / f"{slug}.md"
+        dest = self.paths.wiki_analysis_dir / f"{safe_slug}.md"
         atomic_write_text(dest, page_text)
         self.search_service.refresh_file(dest)
         return dest.relative_to(self.paths.root).as_posix()
