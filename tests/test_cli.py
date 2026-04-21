@@ -541,26 +541,6 @@ def test_review_command_reports_overlapping_topics_requires_provider() -> None:
         assert "requires a configured provider" in result.output
 
 
-def test_review_deep_flag_without_provider_fails() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        assert runner.invoke(main, ["init"]).exit_code == 0
-        Path("wiki/sources").mkdir(parents=True, exist_ok=True)
-        Path("wiki/sources/alpha.md").write_text(
-            "# Alpha\n\n## Timeline\n\nIn 2026 the workflow stores source hashes.\n",
-            encoding="utf-8",
-        )
-        Path("wiki/sources/beta.md").write_text(
-            "# Beta\n\n## Timeline\n\nIn 2026 the workflow exports vault files.\n",
-            encoding="utf-8",
-        )
-
-        result = runner.invoke(main, ["review", "--deep"])
-
-        assert result.exit_code != 0
-        assert "requires a configured provider" in result.output
-
-
 def test_review_requires_initialization() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
@@ -605,34 +585,6 @@ def test_query_piped_input_does_not_save_without_flag() -> None:
 
         assert result.exit_code == 0
         assert "Saved analysis page:" not in result.output
-
-
-def test_ask_self_consistency_flag_requires_provider() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        Path("sample.md").write_text(
-            "# Sample\n\nTraceability evidence.\n", encoding="utf-8"
-        )
-        assert runner.invoke(main, ["init"]).exit_code == 0
-        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
-        _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["update"]).exit_code == 0
-
-        # Clear provider config so ask fails on missing provider.
-        config = yaml.safe_load(Path("kb.config.yaml").read_text(encoding="utf-8"))
-        config.pop("provider", None)
-        Path("kb.config.yaml").write_text(
-            yaml.safe_dump(config, sort_keys=False), encoding="utf-8"
-        )
-
-        result = runner.invoke(
-            main,
-            ["ask", "--self-consistency", "3", "traceability"],
-        )
-
-        assert result.exit_code != 0
-        assert "requires a configured provider" in result.output
 
 
 def test_ingest_recursively_ingests_directory_by_default() -> None:
@@ -854,17 +806,6 @@ def test_config_command_shows_config() -> None:
         assert "project" in result.output
 
 
-def test_history_command_shows_no_runs() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        assert runner.invoke(main, ["init"]).exit_code == 0
-
-        result = runner.invoke(main, ["history"])
-
-        assert result.exit_code == 0
-        assert "No runs recorded yet." in result.output
-
-
 def test_sources_list_shows_empty() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
@@ -889,19 +830,6 @@ def test_sources_list_shows_ingested_sources() -> None:
         assert "Sources" in result.output
         assert "sample" in result.output
         assert "total: 1" in result.output
-
-
-def test_review_deep_flag() -> None:
-    """--deep triggers the deep review pipeline."""
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        assert runner.invoke(main, ["init"]).exit_code == 0
-
-        deep_result = runner.invoke(main, ["review", "--deep"])
-
-        # Should fail (no provider)
-        assert deep_result.exit_code != 0
-        assert "requires a configured provider" in deep_result.output
 
 
 def test_review_successful_run_shows_no_issues() -> None:
@@ -946,71 +874,6 @@ def test_review_successful_run_shows_issues() -> None:
         assert result.exit_code == 0
         assert "Review mode:" in result.output
         assert "Total review issues:" in result.output
-
-
-def test_history_shows_runs_after_ask() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        Path("sample.md").write_text(
-            "# Sample\n\nTraceability and citation evidence.\n",
-            encoding="utf-8",
-        )
-        assert runner.invoke(main, ["init"]).exit_code == 0
-        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
-        _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["update"]).exit_code == 0
-            ask_result = runner.invoke(
-                main,
-                [
-                    "ask",
-                    "--self-consistency",
-                    "2",
-                    "How",
-                    "does",
-                    "traceability",
-                    "work?",
-                ],
-            )
-            assert ask_result.exit_code == 0
-
-            result = runner.invoke(main, ["history"])
-
-        assert result.exit_code == 0
-        assert "Run History" in result.output
-        assert "total:" in result.output
-
-
-def test_history_filters_by_command() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        Path("sample.md").write_text(
-            "# Sample\n\nTraceability and citation.\n",
-            encoding="utf-8",
-        )
-        assert runner.invoke(main, ["init"]).exit_code == 0
-        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
-        _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["update"]).exit_code == 0
-            ask_result = runner.invoke(
-                main,
-                [
-                    "ask",
-                    "--self-consistency",
-                    "2",
-                    "How",
-                    "does",
-                    "traceability",
-                    "work?",
-                ],
-            )
-            assert ask_result.exit_code == 0
-
-            result = runner.invoke(main, ["history", "--command", "query"])
-
-        assert result.exit_code == 0
-        assert "Run History" in result.output
 
 
 def test_sources_show_displays_details() -> None:
@@ -1374,134 +1237,6 @@ def test_config_models_no_provider_fails() -> None:
 
 
 # ---------------------------------------------------------------------------
-# --quality flag on ask
-# ---------------------------------------------------------------------------
-
-
-def test_ask_quality_fast_flag() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        Path("sample.md").write_text(
-            "# Sample\n\nTraceability and citation evidence.\n",
-            encoding="utf-8",
-        )
-        assert runner.invoke(main, ["init"]).exit_code == 0
-        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
-        _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["update"]).exit_code == 0
-
-            result = runner.invoke(
-                main,
-                ["ask", "--quality", "fast", "How", "does", "traceability", "work?"],
-            )
-
-        assert result.exit_code == 0
-        assert "Answer" in result.output
-
-
-def test_ask_quality_deep_flag() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        Path("sample.md").write_text(
-            "# Sample\n\nTraceability and citation evidence.\n",
-            encoding="utf-8",
-        )
-        assert runner.invoke(main, ["init"]).exit_code == 0
-        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
-        _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["update"]).exit_code == 0
-
-            result = runner.invoke(
-                main,
-                ["ask", "--quality", "deep", "How", "does", "traceability", "work?"],
-            )
-
-        assert result.exit_code == 0
-        assert "Answer" in result.output
-
-
-def test_ask_quality_deep_implies_tier_with_known_provider() -> None:
-    """When provider is configured, --quality deep rebuilds the provider at the deep tier."""
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        Path("sample.md").write_text(
-            "# Sample\n\nTraceability and citation evidence.\n",
-            encoding="utf-8",
-        )
-        assert runner.invoke(main, ["init"]).exit_code == 0
-        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
-        # Set a known provider so the quality→tier rebuild path is exercised.
-        config = yaml.safe_load(Path("kb.config.yaml").read_text(encoding="utf-8"))
-        config["provider"] = {"name": "openai"}
-        Path("kb.config.yaml").write_text(
-            yaml.safe_dump(config, sort_keys=False), encoding="utf-8"
-        )
-
-        _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["update"]).exit_code == 0
-
-        # Patch both the services-level and ask-level build_provider so the
-        # quality→tier rebuild succeeds with the fake provider.
-        with patch(
-            "src.services.build_provider", return_value=_CliFakeProvider()
-        ), patch("src.commands.ask.build_provider", return_value=_CliFakeProvider()):
-            result = runner.invoke(
-                main,
-                ["ask", "--quality", "deep", "How", "does", "traceability", "work?"],
-            )
-
-        assert result.exit_code == 0
-        assert "Answer" in result.output
-
-
-# ---------------------------------------------------------------------------
-# History with update runs
-# ---------------------------------------------------------------------------
-
-
-def test_history_shows_compile_runs() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        Path("sample.md").write_text("# Sample\n\nBody.\n", encoding="utf-8")
-        assert runner.invoke(main, ["init"]).exit_code == 0
-        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
-        _set_provider_config()
-
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["update"]).exit_code == 0
-
-            result = runner.invoke(main, ["history", "--command", "update"])
-
-        assert result.exit_code == 0
-        assert "update" in result.output
-
-
-def test_history_compile_filter_excludes_ask_runs() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        Path("sample.md").write_text("# Sample\n\nTraceability.\n", encoding="utf-8")
-        assert runner.invoke(main, ["init"]).exit_code == 0
-        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
-        _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["update"]).exit_code == 0
-            assert (
-                runner.invoke(
-                    main, ["ask", "How", "does", "traceability", "work?"]
-                ).exit_code
-                == 0
-            )
-
-            result = runner.invoke(main, ["history", "--command", "update"])
-
-        assert result.exit_code == 0
-        assert "update" in result.output
-
-
-# ---------------------------------------------------------------------------
 # --json flag tests
 # ---------------------------------------------------------------------------
 
@@ -1589,38 +1324,6 @@ def test_status_changed_json_output() -> None:
         data = json.loads(result.output)
         assert "entries" in data
         assert data["new"] >= 1
-
-
-def test_history_json_output() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        Path("sample.md").write_text(
-            "# Sample\n\nTraceability and citation.\n", encoding="utf-8"
-        )
-        assert runner.invoke(main, ["init"]).exit_code == 0
-        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
-        _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["update"]).exit_code == 0
-
-            result = runner.invoke(main, ["history", "--json"])
-
-        assert result.exit_code == 0
-        data = json.loads(result.output)
-        assert isinstance(data, list)
-        assert len(data) > 0
-
-
-def test_history_json_empty() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        assert runner.invoke(main, ["init"]).exit_code == 0
-
-        result = runner.invoke(main, ["history", "--json"])
-
-        assert result.exit_code == 0
-        data = json.loads(result.output)
-        assert data == []
 
 
 def test_sources_list_json_output() -> None:

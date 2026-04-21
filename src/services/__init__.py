@@ -21,7 +21,6 @@ from src.services.review_service import ReviewService
 from src.services.search_service import SearchService
 from src.services.status_service import StatusService
 from src.storage.compile_run_store import CompileRunStore
-from src.storage.run_store import RunStore
 
 
 def _resolve_provider(
@@ -54,7 +53,6 @@ def build_services(paths: ProjectPaths, config: dict[str, Any]) -> dict[str, Any
     compile_provider = _resolve_provider(config, registry, "update")
     query_provider = _resolve_provider(config, registry, "ask")
     review_provider = _resolve_provider(config, registry, "review")
-    run_store = RunStore(paths.graph_exports_dir / "run_artifacts.sqlite3")
     compile_run_store = CompileRunStore(paths.graph_exports_dir / "compile_runs.json")
     return {
         "project": ProjectService(paths),
@@ -78,10 +76,8 @@ def build_services(paths: ProjectPaths, config: dict[str, Any]) -> dict[str, Any
             paths,
             search_service,
             provider=query_provider,
-            run_store=run_store,
         ),
         "export": ExportService(paths),
-        "review": ReviewService(paths, provider=review_provider, run_store=run_store),
-        "run_store": run_store,
+        "review": ReviewService(paths, provider=review_provider),
         "compile_run_store": compile_run_store,
     }

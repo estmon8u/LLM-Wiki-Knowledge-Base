@@ -237,7 +237,6 @@ def test_build_services_returns_expected_keys(test_project) -> None:
         "status",
         "query",
         "export",
-        "run_store",
         "compile_run_store",
     }
 

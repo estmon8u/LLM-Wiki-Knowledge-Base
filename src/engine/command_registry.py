@@ -18,7 +18,6 @@ FLAT_COMMAND_MODULES = {
     "doctor": "src.commands.doctor",
     "export": "src.commands.export_cmd",
     "find": "src.commands.find",
-    "history": "src.commands.history",
     "init": "src.commands.init",
     "lint": "src.commands.lint",
     "review": "src.commands.review",

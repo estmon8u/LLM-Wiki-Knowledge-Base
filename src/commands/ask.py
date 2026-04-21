@@ -7,8 +7,7 @@ from rich.markdown import Markdown as RichMarkdown
 
 from src.commands.common import console, echo_bullet, echo_section, require_initialized
 from src.models.command_models import CommandContext, CommandSpec
-from src.providers import ProviderError, build_provider
-from src.services.model_registry_service import ModelRegistryService
+from src.providers import ProviderError
 
 
 SUMMARY = (
@@ -25,20 +24,7 @@ def create_command() -> click.Command:
         name="ask", help=SUMMARY, short_help="Answer from compiled wiki evidence."
     )
     @click.argument("question_terms", nargs=-1)
-    @click.option("--limit", default=None, type=int, help="Evidence page limit.")
-    @click.option(
-        "--self-consistency",
-        default=None,
-        type=click.IntRange(1),
-        hidden=True,
-        help="(Advanced) Sample N independent provider answers.",
-    )
-    @click.option(
-        "--quality",
-        type=click.Choice(["fast", "normal", "deep"], case_sensitive=False),
-        default=None,
-        help="Preset quality level: fast (1 call, 2 pages), normal (1 call, 3 pages), deep (self-consistency, 5 pages).",
-    )
+    @click.option("--limit", default=3, type=int, help="Evidence page limit.")
     @click.option(
         "--save",
         "save_answer",
@@ -61,9 +47,7 @@ def create_command() -> click.Command:
     def command(
         command_context: CommandContext,
         question_terms: tuple[str, ...],
-        limit: Optional[int],
-        self_consistency: Optional[int],
-        quality: Optional[str],
+        limit: int,
         save_answer: bool,
         save_as_name: Optional[str],
         show_evidence: bool,
@@ -72,53 +56,12 @@ def create_command() -> click.Command:
         if not question_terms:
             raise click.ClickException("Provide a question to answer.")
 
-        # Resolve --quality preset into limit + self_consistency
-        quality_presets = {
-            "fast": (2, 1),
-            "normal": (3, 1),
-            "deep": (5, 3),
-        }
-        if quality:
-            preset_limit, preset_sc = quality_presets[quality]
-            if limit is None:
-                limit = preset_limit
-            if self_consistency is None:
-                self_consistency = preset_sc
-
-            # --quality also implies a model tier when the user did not
-            # supply an explicit --tier or --model on the top-level CLI.
-            _quality_tier_map = {"fast": "fast", "normal": "balanced", "deep": "deep"}
-            runtime = command_context.config.get("_runtime") or {}
-            provider_name = (command_context.config.get("provider") or {}).get(
-                "name", ""
-            )
-            if provider_name and "tier" not in runtime and "model" not in runtime:
-                implied_tier = _quality_tier_map[quality]
-                registry = ModelRegistryService()
-                try:
-                    resolved = registry.resolve(
-                        config=command_context.config,
-                        tier=implied_tier,
-                        task="ask",
-                    )
-                    new_provider = build_provider(
-                        command_context.config, resolved=resolved
-                    )
-                    if new_provider is not None:
-                        command_context.services["query"].provider = new_provider
-                except ValueError:
-                    pass  # unknown provider — keep existing
-        if limit is None:
-            limit = 3
-        if self_consistency is None:
-            self_consistency = 1
         query_service = command_context.services["query"]
         question = " ".join(question_terms)
         try:
             answer = query_service.answer_question(
                 question,
                 limit=limit,
-                self_consistency=self_consistency,
             )
         except ProviderError as exc:
             raise click.ClickException(str(exc)) from exc

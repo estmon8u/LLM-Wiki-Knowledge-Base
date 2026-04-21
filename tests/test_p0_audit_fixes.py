@@ -1,5 +1,5 @@
 """Tests for P0 audit fixes: doctor, export --clean, search analysis pages,
-diff/status file-hash recomputation, RunStore dedup, and click.Group migration."""
+diff/status file-hash recomputation, and click.Group migration."""
 
 from __future__ import annotations
 
@@ -16,15 +16,6 @@ from src.services.search_service import (
     _extract_frontmatter_type,
     _is_generated_concept_page,
 )
-from src.storage.run_store import RunStore
-from src.schemas.claims import (
-    CandidateAnswer,
-    Claim,
-    EvidenceBundle,
-    EvidenceItem,
-    MergedAnswer,
-)
-from src.schemas.runs import RunRecord
 
 
 # ── Search: analysis pages are now searchable ────────────────────────
@@ -207,45 +198,6 @@ def test_export_vault_without_clean_keeps_stale_files(test_project) -> None:
     assert result.removed_paths == []
 
 
-# ── RunStore: duplicate citation fix ─────────────────────────────────
-
-
-def test_run_store_resave_does_not_duplicate_citations(tmp_path) -> None:
-    store = RunStore(db_path=tmp_path / "dedup.db")
-    try:
-        run = RunRecord(
-            command="query",
-            model_id="stub",
-            candidates=[
-                CandidateAnswer(
-                    raw_text="X is a concept.",
-                    claims=[
-                        Claim(text="X is a concept", source_page="wiki/sources/a.md")
-                    ],
-                    model_name="stub",
-                )
-            ],
-            merged_answer=MergedAnswer(
-                text="X is a concept.",
-                accepted_claims=[
-                    Claim(text="X is a concept", source_page="wiki/sources/a.md")
-                ],
-                candidate_count=1,
-            ),
-            final_text="X is a concept.",
-        )
-        store.save_run(run)
-        count1 = store.citation_count(run.run_id)
-
-        # Re-save the same run
-        store.save_run(run)
-        count2 = store.citation_count(run.run_id)
-
-        assert count1 == count2
-    finally:
-        store.close()
-
-
 # ── Diff/Status: file-based hash recomputation ──────────────────────
 
 
@@ -343,13 +295,6 @@ def test_doctor_checks_converters(test_project) -> None:
     assert isinstance(conv_check.ok, bool)
 
 
-def test_doctor_run_store_check_new_project(test_project) -> None:
-    doctor = test_project.services["doctor"]
-    report = doctor.diagnose()
-    rs_check = next(c for c in report.checks if c.name == "run_store")
-    assert rs_check.ok  # new project, DB not yet created is OK
-
-
 def test_doctor_fails_for_uninitialized_project(uninitialized_project) -> None:
     doctor = DoctorService(uninitialized_project.paths, {})
     report = doctor.diagnose()
@@ -380,17 +325,6 @@ def test_doctor_unknown_provider_has_no_api_key_env(test_project) -> None:
     api_check = next(c for c in report.checks if c.name == "api_key")
     assert not api_check.ok
     assert "No API key env variable" in api_check.detail
-
-
-def test_doctor_run_store_db_present(test_project) -> None:
-    db_path = test_project.paths.graph_exports_dir / "run_artifacts.sqlite3"
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    db_path.write_bytes(b"SQLite dummy")
-    doctor = test_project.services["doctor"]
-    report = doctor.diagnose()
-    rs_check = next(c for c in report.checks if c.name == "run_store")
-    assert rs_check.ok
-    assert "bytes" in rs_check.detail
 
 
 def test_doctor_configured_provider_with_model(test_project) -> None:

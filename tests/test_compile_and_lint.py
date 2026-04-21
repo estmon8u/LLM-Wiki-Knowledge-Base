@@ -905,7 +905,7 @@ def test_compile_appends_to_existing_log(test_project) -> None:
     assert "compiled 1 source page(s)" in log_text
 
 
-# --- P4 adversarial tests ---
+# --- P4 boundary tests ---
 
 
 def test_lint_circular_wiki_links_terminates(test_project) -> None:

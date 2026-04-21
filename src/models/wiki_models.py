@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-from src.schemas.review import ReviewFinding
-
 
 @dataclass
 class LintIssue:
@@ -72,8 +70,6 @@ class ReviewIssue:
 class ReviewReport:
     issues: list[ReviewIssue] = field(default_factory=list)
     mode: str = ""
-    findings: list[ReviewFinding] = field(default_factory=list)
-    run_id: Optional[str] = None
 
     @property
     def issue_count(self) -> int:

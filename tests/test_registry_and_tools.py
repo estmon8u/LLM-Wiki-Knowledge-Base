@@ -88,7 +88,6 @@ def test_command_registry_returns_click_commands_and_specs(test_project) -> None
         "doctor",
         "export",
         "find",
-        "history",
         "init",
         "lint",
         "review",

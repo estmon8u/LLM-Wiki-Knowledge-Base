@@ -30,18 +30,12 @@ def create_command() -> click.Command:
         help=SUMMARY,
         short_help="Semantic review for contradictions and terminology.",
     )
-    @click.option(
-        "--deep",
-        "adversarial",
-        is_flag=True,
-        help="Run extractor, skeptic, and arbiter review over candidate page pairs.",
-    )
     @click.pass_obj
-    def command(command_context: CommandContext, adversarial: bool) -> None:
+    def command(command_context: CommandContext) -> None:
         require_initialized(command_context)
         review_service = command_context.services["review"]
         try:
-            report = review_service.review(adversarial=adversarial)
+            report = review_service.review()
         except ProviderError as exc:
             raise click.ClickException(str(exc)) from exc
 

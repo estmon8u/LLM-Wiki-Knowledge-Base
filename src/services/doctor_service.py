@@ -61,7 +61,6 @@ class DoctorService:
         checks.append(self._check_provider_model_tier())
         checks.append(self._check_api_key(strict=strict))
         checks.append(self._check_converters())
-        checks.append(self._check_run_store_db())
         return DoctorReport(checks=checks)
 
     def _check_project_structure(self) -> DoctorCheck:
@@ -261,28 +260,3 @@ class DoctorService:
             detail=f"All converters available: {', '.join(available)}.",
             severity="ok",
         )
-
-    def _check_run_store_db(self) -> DoctorCheck:
-        db_path = self.paths.graph_exports_dir / "run_artifacts.sqlite3"
-        if not db_path.exists():
-            return DoctorCheck(
-                name="run_store",
-                ok=True,
-                detail="Run-artifact database not yet created (OK for new projects).",
-                severity="ok",
-            )
-        try:
-            size = db_path.stat().st_size
-            return DoctorCheck(
-                name="run_store",
-                ok=True,
-                detail=f"Run-artifact database present ({size} bytes).",
-                severity="ok",
-            )
-        except OSError as exc:
-            return DoctorCheck(
-                name="run_store",
-                ok=False,
-                detail=f"Cannot read run-artifact database: {exc}",
-                severity="error",
-            )

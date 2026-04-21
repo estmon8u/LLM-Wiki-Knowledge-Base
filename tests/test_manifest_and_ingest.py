@@ -372,7 +372,7 @@ def test_manifest_write_creates_missing_parent(uninitialized_project) -> None:
     assert manifest_file.exists()
 
 
-# --- P4 adversarial tests ---
+# --- P4 boundary tests ---
 
 
 def test_ingest_source_with_null_bytes(test_project) -> None:
