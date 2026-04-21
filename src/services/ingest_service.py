@@ -75,8 +75,11 @@ class IngestService:
         content_hash = hashlib.sha256(
             normalized.normalized_text.encode("utf-8")
         ).hexdigest()
+        origin_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
 
-        duplicate = self.manifest_service.find_by_hash(content_hash)
+        duplicate = self.manifest_service.find_by_origin_hash(
+            origin_hash
+        ) or self.manifest_service.find_by_hash(content_hash)
         if duplicate is not None:
             return IngestResult(
                 created=False,
@@ -108,6 +111,7 @@ class IngestService:
                 self.paths.root
             ).as_posix(),
             content_hash=content_hash,
+            origin_hash=origin_hash,
             ingested_at=utc_now_iso(),
             metadata={
                 "original_name": source_path.name,

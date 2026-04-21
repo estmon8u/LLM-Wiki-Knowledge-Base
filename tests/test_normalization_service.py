@@ -93,7 +93,7 @@ def test_normalization_service_routes_pdf_to_docling(tmp_path: Path) -> None:
     )
 
     assert pdf_converter.paths == [source_path]
-    assert result.title == "PDF Note"
+    assert result.title == "Sample"
     assert result.normalized_suffix == ".md"
     assert result.metadata["ingest_mode"] == "docling-pdf-convert"
     assert result.metadata["converter"] == "docling"
@@ -213,7 +213,7 @@ def test_normalization_service_lazy_loads_pdf_converter(
     result = NormalizationService().normalize_path(source_path)
 
     assert FakeServicePdfConverter.instances == 1
-    assert result.title == "Lazy Service PDF"
+    assert result.title == "Sample"
     assert result.metadata["converter"] == "docling"
 
 
@@ -259,6 +259,20 @@ def test_normalization_service_rejects_unsupported_suffix(tmp_path: Path) -> Non
 
     with pytest.raises(ValueError, match="Supported ingest inputs are canonical text"):
         NormalizationService().normalize_path(source_path)
+
+
+def test_pdf_title_derived_from_filename_not_content(tmp_path: Path) -> None:
+    source_path = tmp_path / "retrieval-augmented-generation.pdf"
+    source_path.write_text("not-a-real-pdf", encoding="utf-8")
+    pdf_converter = FakePdfConverter(
+        "Figure 1: Overview of our approach\n\nSome body text.\n"
+    )
+
+    result = NormalizationService(pdf_converter=pdf_converter).normalize_path(
+        source_path
+    )
+
+    assert result.title == "Retrieval Augmented Generation"
 
 
 # --- P1 boundary/negative tests ---

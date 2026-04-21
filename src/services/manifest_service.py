@@ -33,6 +33,12 @@ class ManifestService:
                 return source
         return None
 
+    def find_by_origin_hash(self, origin_hash: str) -> Optional[RawSourceRecord]:
+        for source in self.list_sources():
+            if source.origin_hash == origin_hash:
+                return source
+        return None
+
     def save_source(self, source: RawSourceRecord) -> None:
         payload = self._read()
         sources = [RawSourceRecord.from_dict(item) for item in payload["sources"]]

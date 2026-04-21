@@ -29,7 +29,9 @@ def create_command(
 ) -> click.Command:
     @click.command(name=name, help=help_text, short_help=short_help)
     @click.argument(
-        "source_path",
+        "source_paths",
+        nargs=-1,
+        required=True,
         type=click.Path(exists=True, file_okay=True, dir_okay=True, path_type=Path),
     )
     @click.option(
@@ -40,31 +42,32 @@ def create_command(
     @click.pass_obj
     def command(
         command_context: CommandContext,
-        source_path: Path,
+        source_paths: tuple[Path, ...],
         recursive: bool,
     ) -> None:
         require_initialized(command_context)
         ingest_service = command_context.services["ingest"]
-        try:
-            if source_path.is_dir():
-                candidate_paths = ingest_service.discover_source_paths(source_path)
-                with progress_report(
-                    label="Ingesting",
-                    length=len(candidate_paths),
-                    item_label="source file",
-                ) as advance:
-                    directory_result = ingest_service.ingest_directory(
-                        source_path,
-                        progress_callback=lambda _path: advance(),
-                    )
-                _echo_directory_result(directory_result)
-                return
+        for source_path in source_paths:
+            try:
+                if source_path.is_dir():
+                    candidate_paths = ingest_service.discover_source_paths(source_path)
+                    with progress_report(
+                        label="Ingesting",
+                        length=len(candidate_paths),
+                        item_label="source file",
+                    ) as advance:
+                        directory_result = ingest_service.ingest_directory(
+                            source_path,
+                            progress_callback=lambda _path: advance(),
+                        )
+                    _echo_directory_result(directory_result)
+                    continue
 
-            result = ingest_service.ingest_path(source_path)
-        except (FileNotFoundError, ValueError) as error:
-            raise click.ClickException(str(error)) from error
+                result = ingest_service.ingest_path(source_path)
+            except (FileNotFoundError, ValueError) as error:
+                raise click.ClickException(str(error)) from error
 
-        _echo_single_result(result)
+            _echo_single_result(result)
 
     return command
 
