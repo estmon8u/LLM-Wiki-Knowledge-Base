@@ -62,7 +62,7 @@ def build_provider(
     raw config dict.
 
     Returns ``None`` when no provider is configured, so deterministic
-    commands can proceed without one.  Generation commands (compile, query,
+    commands can proceed without one.  Generation commands (update, ask,
     review) should check for ``None`` and raise a clear
     ``ProviderConfigurationError`` instead of silently falling back.
     """

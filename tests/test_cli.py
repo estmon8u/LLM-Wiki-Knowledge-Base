@@ -891,20 +891,17 @@ def test_sources_list_shows_ingested_sources() -> None:
         assert "total: 1" in result.output
 
 
-def test_review_deep_flag_aliases_adversarial() -> None:
-    """--deep and --adversarial both set the same adversarial parameter."""
+def test_review_deep_flag() -> None:
+    """--deep triggers the deep review pipeline."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
         deep_result = runner.invoke(main, ["review", "--deep"])
-        adversarial_result = runner.invoke(main, ["review", "--adversarial"])
 
-        # Both should fail the same way (no provider)
+        # Should fail (no provider)
         assert deep_result.exit_code != 0
-        assert adversarial_result.exit_code != 0
         assert "requires a configured provider" in deep_result.output
-        assert "requires a configured provider" in adversarial_result.output
 
 
 def test_review_successful_run_shows_no_issues() -> None:
@@ -1151,56 +1148,6 @@ def test_update_resume_rejects_force_combination() -> None:
 
         assert result.exit_code != 0
         assert "--resume cannot be combined with --force" in result.output
-
-
-# ---------------------------------------------------------------------------
-# Compile command CLI tests
-# ---------------------------------------------------------------------------
-
-
-def test_compile_command_produces_summary() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        Path("sample.md").write_text(
-            "# Sample\n\nCompile test body.\n", encoding="utf-8"
-        )
-        assert runner.invoke(main, ["init"]).exit_code == 0
-        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
-        _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            result = runner.invoke(main, ["compile"])
-
-        assert result.exit_code == 0
-        assert "Compile Summary" in result.output
-        assert "Compiled 1 source page(s)" in result.output
-
-
-def test_compile_resume_rejects_force_combination() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        assert runner.invoke(main, ["init"]).exit_code == 0
-
-        result = runner.invoke(main, ["compile", "--resume", "--force"])
-
-        assert result.exit_code != 0
-        assert "--resume cannot be combined with --force" in result.output
-
-
-def test_compile_with_concepts_flag() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        Path("sample.md").write_text(
-            "# Sample\n\nConcept compile body.\n", encoding="utf-8"
-        )
-        assert runner.invoke(main, ["init"]).exit_code == 0
-        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
-        _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            result = runner.invoke(main, ["compile", "--with-concepts"])
-
-        assert result.exit_code == 0
-        assert "Compile Summary" in result.output
-        assert "Concept Summary" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -1702,51 +1649,6 @@ def test_sources_list_json_empty() -> None:
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data == []
-
-
-# ---------------------------------------------------------------------------
-# Coverage gap: compile error paths
-# ---------------------------------------------------------------------------
-
-
-def test_compile_plan_value_error() -> None:
-    """compile plan() raising ValueError renders as ClickException."""
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        assert runner.invoke(main, ["init"]).exit_code == 0
-        _set_provider_config()
-        with patch(
-            "src.services.build_provider", return_value=_CliFakeProvider()
-        ), patch(
-            "src.services.compile_service.CompileService.plan",
-            side_effect=ValueError("No resumable run found."),
-        ):
-            result = runner.invoke(main, ["compile", "--resume"])
-
-        assert result.exit_code != 0
-        assert "No resumable run found" in result.output
-
-
-def test_compile_provider_error() -> None:
-    """ProviderError during compile renders as ClickException."""
-    from src.providers import ProviderError
-
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        Path("note.md").write_text("# Note\n\nBody.\n", encoding="utf-8")
-        assert runner.invoke(main, ["init"]).exit_code == 0
-        assert runner.invoke(main, ["add", "note.md"]).exit_code == 0
-        _set_provider_config()
-        with patch(
-            "src.services.build_provider", return_value=_CliFakeProvider()
-        ), patch(
-            "src.services.compile_service.CompileService.compile",
-            side_effect=ProviderError("rate limit exceeded"),
-        ):
-            result = runner.invoke(main, ["compile"])
-
-        assert result.exit_code != 0
-        assert "rate limit exceeded" in result.output
 
 
 # ---------------------------------------------------------------------------

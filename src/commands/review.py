@@ -36,13 +36,6 @@ def create_command() -> click.Command:
         is_flag=True,
         help="Run extractor, skeptic, and arbiter review over candidate page pairs.",
     )
-    @click.option(
-        "--adversarial",
-        "adversarial",
-        is_flag=True,
-        hidden=True,
-        help="Legacy alias for --deep.",
-    )
     @click.pass_obj
     def command(command_context: CommandContext, adversarial: bool) -> None:
         require_initialized(command_context)

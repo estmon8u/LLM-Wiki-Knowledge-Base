@@ -62,7 +62,7 @@ def create_command() -> click.Command:
     @click.option(
         "--resume",
         is_flag=True,
-        help="Resume the most recent interrupted or failed compile run.",
+        help="Resume the most recent interrupted or failed update run.",
     )
     @click.pass_obj
     def command(
@@ -107,11 +107,11 @@ def create_command() -> click.Command:
         if result.ingest_summaries:
             console.print("")
 
-        # Render compile phase
+        # Render build phase
         cr = result.compile_result
         if cr.resumed_from_run_id:
             echo_status_line(
-                "resume", f"resumed failed compile run {cr.resumed_from_run_id}"
+                "resume", f"resumed interrupted update run {cr.resumed_from_run_id}"
             )
             console.print("")
 

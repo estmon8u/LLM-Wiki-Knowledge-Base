@@ -13,18 +13,16 @@ from src.commands.common import (
 from src.models.command_models import CommandContext, CommandSpec
 
 
-SUMMARY = "Show prior ask, review, compile, and update runs."
+SUMMARY = "Show prior ask, review, and update runs."
 
-# Map internal/legacy command names to user-facing names.
+# Map internal command names to user-facing names.
 _DISPLAY_COMMAND_NAMES = {
     "query": "ask",
-    "compile": "update",
 }
 
-# Accept both public and legacy names when filtering.
+# Accept alternative names when filtering.
 _FILTER_ALIASES = {
     "ask": "query",
-    "update": "compile",
 }
 
 
@@ -58,14 +56,13 @@ def create_command() -> click.Command:
         run_store = command_context.services.get("run_store")
         compile_run_store = command_context.services.get("compile_run_store")
 
-        # Resolve filter aliases: accept both public and legacy names.
         internal_filter = filter_command
         if filter_command in _FILTER_ALIASES:
             internal_filter = _FILTER_ALIASES[filter_command]
 
         # Collect provider-backed runs (ask, review, etc.)
         provider_runs: list[dict] = []
-        show_provider = filter_command not in ("compile", "update")
+        show_provider = filter_command != "update"
         if run_store is not None and show_provider:
             store_filter = internal_filter if filter_command else None
             for run in run_store.list_runs(command=store_filter, limit=limit):
@@ -81,10 +78,10 @@ def create_command() -> click.Command:
                     }
                 )
 
-        # Collect compile runs (shown when no filter, or filter is compile/update)
-        compile_runs: list[dict] = []
-        show_compile = filter_command in (None, "compile", "update")
-        if compile_run_store is not None and show_compile:
+        # Collect update runs from the build-run store.
+        update_runs: list[dict] = []
+        show_updates = filter_command in (None, "update")
+        if compile_run_store is not None and show_updates:
             for rec in compile_run_store.load_history():
                 ts = rec.started_at[:19] if len(rec.started_at) > 19 else rec.started_at
                 n_done = len(rec.completed_source_slugs)
@@ -92,10 +89,10 @@ def create_command() -> click.Command:
                 detail = f"{rec.status}  {n_done}/{n_planned} sources"
                 if rec.force:
                     detail += "  --force"
-                compile_runs.append(
+                update_runs.append(
                     {
                         "timestamp": ts,
-                        "kind": _DISPLAY_COMMAND_NAMES.get("compile", "compile"),
+                        "kind": "update",
                         "detail": detail,
                         "extra": "",
                         "preview": rec.error if rec.error else "",
@@ -103,7 +100,7 @@ def create_command() -> click.Command:
                 )
 
         # Merge and sort by timestamp descending, then limit
-        all_runs = provider_runs + compile_runs
+        all_runs = provider_runs + update_runs
         all_runs.sort(key=lambda r: r["timestamp"], reverse=True)
         all_runs = all_runs[:limit]
 

@@ -86,7 +86,6 @@ Use these for maintenance, quality checks, and deeper analysis.
 | --- | --- |
 | `lint` | Deterministic structural checks on the wiki |
 | `review` | Semantic review for contradictions and terminology drift |
-| `compile` | Compile source pages without running the full update pipeline |
 | `export` | Export the wiki to an Obsidian vault |
 | `doctor` | Validate structure, provider, API keys, and converters |
 | `history` | Show prior ask, review, and update runs |
@@ -167,25 +166,6 @@ poetry run kb update --resume
 | `--resume` | off | Resume the most recent failed or interrupted update run. Cannot be combined with `--force`. |
 
 When source paths are provided, the command adds them first. Always generates concept pages and refreshes the search index after building.
-
-### `kb compile`
-
-Compile source pages into the wiki without running the full update pipeline.
-
-```bash
-poetry run kb compile
-poetry run kb compile --force
-poetry run kb compile --with-concepts
-poetry run kb compile --resume
-```
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `--force` | off | Rebuild every source page even if nothing changed. |
-| `--with-concepts` | off | Generate concept pages and maintain source-page backlinks after compiling. |
-| `--resume` | off | Resume the most recent failed or interrupted compile. Cannot be combined with `--force`. |
-
-Requires a configured provider. This is the compile step of `kb update` exposed as a standalone command.
 
 ### `kb find <terms>`
 
