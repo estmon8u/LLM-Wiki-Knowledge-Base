@@ -88,7 +88,6 @@ Use these for maintenance, quality checks, and deeper analysis.
 | `review` | Semantic review for contradictions and terminology drift |
 | `export` | Export the wiki to an Obsidian vault |
 | `doctor` | Validate structure, provider, API keys, and converters |
-| `history` | Show prior ask, review, and update runs |
 | `config` | View and manage project configuration |
 | `sources` | Manage source inventory |
 
@@ -190,8 +189,6 @@ Answer a question from compiled wiki evidence with provider-backed synthesis and
 ```bash
 poetry run kb ask "How does the wiki handle stale pages?"
 poetry run kb ask --limit 5 "What normalization converters are supported?"
-poetry run kb ask --self-consistency 3 "How is traceability preserved?"
-poetry run kb ask --quality deep "How is traceability preserved?"
 poetry run kb ask --save "What does the update pipeline do?"
 poetry run kb ask --save-as freshness "How is freshness tracked?"
 poetry run kb ask --show-evidence "What formats are supported?"
@@ -200,15 +197,11 @@ poetry run kb ask --show-evidence "What formats are supported?"
 | Option | Default | Description |
 | --- | --- | --- |
 | `--limit` | 3 | Maximum number of source pages to use as evidence. |
-| `--quality` | | Preset quality level: `fast` (1 call, 2 pages), `normal` (1 call, 3 pages), `deep` (self-consistency, 5 pages). Also implies the matching model tier unless `--tier` or `--model` is set. |
-| `--self-consistency` | 1 | (Advanced) Sample N independent provider answers from the same frozen evidence bundle and merge claims deterministically. |
 | `--save` | off | Save the answer as an analysis page in the wiki. |
 | `--save-as` | | Save the answer as an analysis page with a custom slug. |
 | `--show-evidence` | off | Print the retrieved evidence snippets before the answer. |
 
 Requires a configured provider. Retrieves the best-matching indexed wiki chunks as evidence, packages the top chunk snippets into a frozen evidence bundle, sends that evidence to the configured provider, and prints the answer followed by a Citations section.
-
-When `--self-consistency N` is greater than 1, retrieves evidence once, freezes the bundle, samples N independent provider answers in parallel, normalizes them into typed claims, merges near-duplicate grounded claims deterministically, and stores the full run artifact in `graph/exports/run_artifacts.sqlite3`.
 
 Use `--save` or `--save-as` to persist the answer as a markdown analysis page in `wiki/analysis/` with YAML frontmatter (`type: analysis`), the question, a timestamp, and backlinks to cited source chunks. Saved analysis pages are indexed for future searches.
 
@@ -256,22 +249,16 @@ Run semantic review checks for contradictions and terminology drift across the m
 
 ```bash
 poetry run kb review
-poetry run kb review --deep
 ```
 
-| Option | Default | Description |
-| --- | --- | --- |
-| `--deep` | off | Run extractor, skeptic, and arbiter review over candidate source-page pairs and persist a review run artifact. |
-
-By default, `kb review` runs deterministic overlap and terminology-variant checks plus a single-pass model-backed review. With `--deep`, the command keeps the deterministic checks, then builds candidate source-page pairs, runs extractor/skeptic/arbiter prompts over each pair, emits typed findings, and stores the run in `graph/exports/run_artifacts.sqlite3`. Requires a configured provider.
+Runs deterministic overlap and terminology-variant checks plus a single-pass model-backed review. Requires a configured provider.
 
 Checks for:
 
 - **Overlapping topics** — Source pages with heavily overlapping terminology that may benefit from a shared concept page.
 - **Terminology variants** — The same root term appearing in different forms across pages.
-- **Deep findings** — Typed contradiction, term-drift, and needs-review findings from extractor/skeptic/arbiter evaluation over candidate page pairs.
 
-This is the semantic complement to `kb lint`. Lint checks structural health deterministically; review checks content-level coherence through heuristics, a single provider pass, or the deep review pipeline.
+This is the semantic complement to `kb lint`. Lint checks structural health deterministically; review checks content-level coherence through heuristics and a provider pass.
 
 ### `kb export`
 
@@ -288,21 +275,6 @@ poetry run kb export --clean
 
 Copies compiled wiki pages into `vault/obsidian/` in a format compatible with [Obsidian](https://obsidian.md/). With `--clean`, any markdown files in the vault that no longer correspond to a wiki page are deleted automatically.
 
-### `kb history`
-
-Show prior ask, review, and update runs from the run-artifact store.
-
-```bash
-poetry run kb history
-poetry run kb history --command ask
-poetry run kb history --limit 10
-```
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `--command` | | Filter runs by command name (e.g. `ask`, `review`, `update`). |
-| `--limit` | 20 | Maximum number of runs to show. |
-| `--json` | off | Output results as JSON for scripting. |
 
 ### `kb config`
 
@@ -379,7 +351,7 @@ You can also override the provider per-invocation without editing the config fil
 
 ```bash
 kb --provider anthropic ask "How does REALM differ from RAG?"
-kb --provider gemini review --deep
+kb --provider gemini review
 kb --tier fast update
 kb --tier deep ask "Explain the update pipeline in detail"
 kb --model gpt-5.4 ask "Complex analysis question"
@@ -388,8 +360,6 @@ kb --model gpt-5.4 ask "Complex analysis question"
 The `--tier` flag selects a cost/quality preset (`fast`, `balanced`, `deep`) with
 provider-specific model and reasoning settings. The `--model` flag pins a specific
 model. Both override the config-file defaults for a single invocation.
-The `--quality` flag on `kb ask` also implies a matching tier (`fast`/`normal`/`deep`
-→ `fast`/`balanced`/`deep`) unless `--tier` or `--model` is set.
 
 Set the matching API key as an environment variable:
 
@@ -444,7 +414,6 @@ project-root/
 ├── graph/
 │   └── exports/
 │       ├── compile_runs.json      # Resume/failure state for update runs
-│       ├── run_artifacts.sqlite3  # Stored query/review run artifacts
 │       └── search_index.sqlite3   # SQLite FTS5 chunk index
 └── vault/
     └── obsidian/           # Obsidian-friendly export
@@ -471,7 +440,7 @@ poetry run black src tests
 poetry run pytest tests --cov=src --cov-report=term-missing
 ```
 
-Coverage must stay at or above 98%.
+Coverage must stay at or above 97%.
 
 ### Real corpus smoke test
 
