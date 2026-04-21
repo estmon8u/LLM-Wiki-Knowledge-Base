@@ -17,6 +17,9 @@ google-genai = "^1.73.1"
 pydantic = "^2.13.0"
 langsmith = "^0.7.33"
 langgraph = ">=0.4,<1"
+langchain-openai = ">=0.3,<1"
+langchain-anthropic = ">=0.3,<2"
+langchain-google-genai = ">=2,<5"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=7.4,<8.0"

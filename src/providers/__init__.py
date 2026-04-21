@@ -84,6 +84,27 @@ def build_provider(
         reasoning_effort = "high"
         thinking_budget = 10_000 if name == "anthropic" else 0
 
+    # --- LangChain backend path ---
+    ecosystem = config.get("ecosystem") or {}
+    providers_cfg = ecosystem.get("providers") or {}
+    backend = providers_cfg.get("backend", "direct")
+
+    if backend == "langchain":
+        try:
+            from src.providers.langchain_provider import LangChainProvider
+
+            return LangChainProvider(
+                provider_name=name,
+                model=model,
+                api_key_env=api_key_env,
+                reasoning_effort=reasoning_effort,
+                thinking_budget=thinking_budget,
+            )
+        except (ImportError, ValueError) as exc:
+            logger.warning("LangChain backend for %r unavailable: %s", name, exc)
+            return UnavailableProvider(str(exc), provider_name=name)
+
+    # --- Direct SDK backend path (default) ---
     try:
         if name == "openai":
             from src.providers.openai_provider import OpenAIProvider
