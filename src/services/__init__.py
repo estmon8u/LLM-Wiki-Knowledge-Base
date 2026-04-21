@@ -46,14 +46,43 @@ def _resolve_provider(
     return build_provider(config, resolved=resolved)
 
 
+def _maybe_trace_provider(provider: Any, config: dict[str, Any], task: str) -> Any:
+    """Wrap *provider* in a LangSmith tracing decorator when enabled."""
+    if provider is None:
+        return provider
+
+    ecosystem = config.get("ecosystem") or {}
+    observability = ecosystem.get("observability") or {}
+
+    if not observability.get("enabled"):
+        return provider
+
+    if observability.get("backend") != "langsmith":
+        return provider
+
+    from src.observability.langsmith_provider import LangSmithTracingProvider
+
+    return LangSmithTracingProvider(
+        provider,
+        task=task,
+        project_name=observability.get("project"),
+    )
+
+
 def build_services(paths: ProjectPaths, config: dict[str, Any]) -> dict[str, Any]:
     config_service = ConfigService(paths)
     manifest_service = ManifestService(paths)
     search_service = SearchService(paths)
     registry = ModelRegistryService()
-    compile_provider = _resolve_provider(config, registry, "update")
-    query_provider = _resolve_provider(config, registry, "ask")
-    review_provider = _resolve_provider(config, registry, "review")
+    compile_provider = _maybe_trace_provider(
+        _resolve_provider(config, registry, "update"), config, "update"
+    )
+    query_provider = _maybe_trace_provider(
+        _resolve_provider(config, registry, "ask"), config, "ask"
+    )
+    review_provider = _maybe_trace_provider(
+        _resolve_provider(config, registry, "review"), config, "review"
+    )
     run_store = RunStore(paths.graph_exports_dir / "run_artifacts.sqlite3")
     compile_run_store = CompileRunStore(paths.graph_exports_dir / "compile_runs.json")
     return {
