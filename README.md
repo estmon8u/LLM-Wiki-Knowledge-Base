@@ -86,6 +86,7 @@ Use these for maintenance, quality checks, and deeper analysis.
 | --- | --- |
 | `lint` | Deterministic structural checks on the wiki |
 | `review` | Semantic review for contradictions and terminology drift |
+| `compile` | Compile source pages without running the full update pipeline |
 | `export` | Export the wiki to an Obsidian vault |
 | `doctor` | Validate structure, provider, API keys, and converters |
 | `history` | Show prior ask, review, and update runs |
@@ -122,11 +123,12 @@ poetry run kb doctor
 poetry run kb doctor --strict
 ```
 
+Prints formatted health-check sections with `[OK]`, `[WARNING]`, or `[FAIL]` entries. Exits with code 1 if any check fails. Without `--strict`, a missing provider or API key is a warning rather than a failure, so new projects pass doctor out of the box.
+
 | Option | Default | Description |
 | --- | --- | --- |
 | `--strict` | off | Treat warnings (missing provider, API key) as errors. |
-
-Prints formatted health-check sections with `[OK]`, `[WARNING]`, or `[FAIL]` entries. Exits with code 1 if any check fails. Without `--strict`, a missing provider or API key is a warning rather than a failure, so new projects pass doctor out of the box.
+| `--json` | off | Output results as JSON for scripting. |
 
 ### `kb add <source_path>`
 
@@ -166,6 +168,25 @@ poetry run kb update --resume
 
 When source paths are provided, the command adds them first. Always generates concept pages and refreshes the search index after building.
 
+### `kb compile`
+
+Compile source pages into the wiki without running the full update pipeline.
+
+```bash
+poetry run kb compile
+poetry run kb compile --force
+poetry run kb compile --with-concepts
+poetry run kb compile --resume
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--force` | off | Rebuild every source page even if nothing changed. |
+| `--with-concepts` | off | Generate concept pages and maintain source-page backlinks after compiling. |
+| `--resume` | off | Resume the most recent failed or interrupted compile. Cannot be combined with `--force`. |
+
+Requires a configured provider. This is the compile step of `kb update` exposed as a standalone command.
+
 ### `kb find <terms>`
 
 Search the wiki for relevant pages and snippets.
@@ -178,6 +199,7 @@ poetry run kb find --limit 10 "agent architecture"
 | Option | Default | Description |
 | --- | --- | --- |
 | `--limit` | 5 | Maximum number of results to return. |
+| `--json` | off | Output results as JSON for scripting. |
 
 Uses a SQLite FTS5 chunk index stored at `graph/exports/search_index.sqlite3`. Indexes all wiki pages (source pages, concept pages, and saved analysis pages), ranks hits with BM25-style FTS ordering, and returns page-level results using the best matching chunk snippet.
 
@@ -244,6 +266,7 @@ poetry run kb status --changed
 | Option | Default | Description |
 | --- | --- | --- |
 | `--changed` | off | Show a preview of new, changed, and up-to-date sources. |
+| `--json` | off | Output results as JSON for scripting. |
 
 Default view shows a Knowledge Base overview with source and wiki counts, the last update timestamp, and a suggestion for what to do next. With `--changed`, shows each source with a status tag (`[NEW]`, `[CHANGED]`, `[OK]`) followed by a summary section with counts.
 
@@ -299,6 +322,7 @@ poetry run kb history --limit 10
 | --- | --- | --- |
 | `--command` | | Filter runs by command name (e.g. `ask`, `review`, `update`). |
 | `--limit` | 20 | Maximum number of runs to show. |
+| `--json` | off | Output results as JSON for scripting. |
 
 ### `kb config`
 
@@ -398,7 +422,17 @@ Set the matching API key as an environment variable:
 If the provider is not configured, `kb update`, `kb ask`, and `kb review`
 fail with a configuration error. If the provider is configured but the API key
 is missing or the provider call fails, those commands fail instead of falling
-back.
+back. Provider calls retry transient failures (rate limits, timeouts, server
+errors) automatically with exponential backoff and jitter.
+
+## Environment Variables
+
+| Variable | Description |
+| --- | --- |
+| `OPENAI_API_KEY` | API key for the OpenAI provider. |
+| `ANTHROPIC_API_KEY` | API key for the Anthropic provider. |
+| `GEMINI_API_KEY` | API key for the Google Gemini provider. |
+| `NO_COLOR` | When set (any value), disables colored CLI output. Respected automatically by Rich. |
 
 You can override the environment variable name with `api_key_env`:
 

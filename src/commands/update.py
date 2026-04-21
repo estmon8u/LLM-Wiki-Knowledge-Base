@@ -5,6 +5,7 @@ from pathlib import Path
 import click
 
 from src.commands.common import (
+    console,
     echo_bullet,
     echo_section,
     echo_status_line,
@@ -96,15 +97,15 @@ def create_command() -> click.Command:
         # Render ingest phase
         for summary in result.ingest_summaries:
             if summary.is_dir:
-                click.echo(
+                console.print(
                     f"Added {summary.created_count} source(s) from {summary.path}"
                 )
             elif summary.message:
-                click.echo(summary.message)
+                console.print(summary.message)
             else:
-                click.echo(f"Added {summary.path.name}")
+                console.print(f"Added {summary.path.name}")
         if result.ingest_summaries:
-            click.echo("")
+            console.print("")
 
         # Render compile phase
         cr = result.compile_result
@@ -112,24 +113,24 @@ def create_command() -> click.Command:
             echo_status_line(
                 "resume", f"resumed failed compile run {cr.resumed_from_run_id}"
             )
-            click.echo("")
+            console.print("")
 
         echo_section("Update Summary")
-        click.echo(f"Compiled {cr.compiled_count} source page(s)")
-        click.echo(f"Skipped {cr.skipped_count} source page(s)")
+        console.print(f"Compiled {cr.compiled_count} source page(s)")
+        console.print(f"Skipped {cr.skipped_count} source page(s)")
         for path in cr.compiled_paths:
             echo_bullet(f"updated {path}")
 
         # Render concept phase
-        click.echo("")
+        console.print("")
         echo_section("Concept Summary")
         concept_result = result.concept_result
-        click.echo(f"Generated {len(concept_result.concept_paths)} concept page(s)")
-        click.echo(
+        console.print(f"Generated {len(concept_result.concept_paths)} concept page(s)")
+        console.print(
             f"Updated {len(concept_result.updated_source_paths)} source page backlink section(s)"
         )
         if concept_result.removed_paths:
-            click.echo(
+            console.print(
                 f"Removed {len(concept_result.removed_paths)} stale concept page(s)"
             )
         for path in concept_result.concept_paths:

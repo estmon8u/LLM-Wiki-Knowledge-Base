@@ -9,15 +9,16 @@
 | `src/engine/tool_registry.py` | Holds the internal tool boundary for future agent-style actions |
 | `src/providers/base.py` | Defines the provider abstraction: `ProviderRequest`, `ProviderResponse`, `TextProvider` |
 | `src/providers/__init__.py` | Factory `build_provider(config, resolved=)` — lazy-imports the right provider by name; accepts an optional `ResolvedProviderConfig` from the model registry for tier-driven reasoning effort and thinking budget |
-| `src/providers/openai_provider.py` | OpenAI chat-completions provider; reasoning effort set by tier profile |
-| `src/providers/anthropic_provider.py` | Anthropic messages provider; thinking budget set by tier profile |
-| `src/providers/gemini_provider.py` | Google Gemini provider; reasoning effort set by tier profile |
+| `src/providers/retry.py` | Shared Tenacity retry decorator (`provider_retry()`) for all `generate()` calls: 3 attempts, exponential backoff with jitter, transient-only retry |
+| `src/providers/openai_provider.py` | OpenAI chat-completions provider; reasoning effort set by tier profile; `@provider_retry()` on `generate()` |
+| `src/providers/anthropic_provider.py` | Anthropic messages provider; thinking budget set by tier profile; `@provider_retry()` on `generate()` |
+| `src/providers/gemini_provider.py` | Google Gemini provider; reasoning effort set by tier profile; `@provider_retry()` on `generate()` |
 
 ## Current Command Files
 
 | File | Responsibility |
 | --- | --- |
-| `src/commands/common.py` | Shared command helpers for initialization checks, terminal section formatting, bullets, status lines, and progress reporting |
+| `src/commands/common.py` | Shared Rich-based command helpers: initialization checks, `echo_section`, `echo_bullet`, `echo_kv`, `echo_status_line`, `make_table`, `progress_report`, `emit_json`; module-level `console` and `err_console` with automatic TTY and `NO_COLOR` detection |
 | `src/commands/init.py` | Project initialization behavior |
 | `src/commands/add.py` | Primary source-add command, delegates to `src/commands/ingest.py` for shared implementation |
 | `src/commands/ingest.py` | Shared ingest implementation for single files and directory ingest that recurses by default |
@@ -28,6 +29,7 @@
 | `src/commands/lint.py` | Deterministic structural lint command |
 | `src/commands/status.py` | Status command; `--changed` for pre-update diff view |
 | `src/commands/export_cmd.py` | Vault export command; `--clean` removes stale files |
+| `src/commands/compile.py` | Standalone compile command with `--force`, `--with-concepts`, and `--resume` flags |
 | `src/commands/doctor.py` | Project health checks |
 | `src/commands/history.py` | Run history display with public command names |
 | `src/commands/config_cmd.py` | Config display, provider management (validated `click.Choice`), model tier inspection |

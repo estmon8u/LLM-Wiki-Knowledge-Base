@@ -3,8 +3,9 @@ from __future__ import annotations
 from typing import Optional
 
 import click
+from rich.markdown import Markdown as RichMarkdown
 
-from src.commands.common import echo_bullet, echo_section, require_initialized
+from src.commands.common import console, echo_bullet, echo_section, require_initialized
 from src.models.command_models import CommandContext, CommandSpec
 from src.providers import ProviderError, build_provider
 from src.services.model_registry_service import ModelRegistryService
@@ -126,15 +127,15 @@ def create_command() -> click.Command:
             echo_section("Evidence")
             for citation in answer.citations:
                 echo_bullet(f"{citation.title} [{citation.citation_ref}]")
-            click.echo("")
+            console.print("")
 
         echo_section("Answer")
-        click.echo(f"[mode: {answer.mode}]")
-        click.echo("")
-        click.echo(answer.answer)
+        console.print(f"[dim]\\[mode: {answer.mode}][/dim]")
+        console.print("")
+        console.print(RichMarkdown(answer.answer))
 
         if answer.citations:
-            click.echo("")
+            console.print("")
             echo_section("Citations")
             for citation in answer.citations:
                 line = f"{citation.title} [{citation.citation_ref}]"
@@ -145,6 +146,6 @@ def create_command() -> click.Command:
         should_save = save_answer or save_as_name is not None
         if should_save and answer.citations:
             saved_path = query_service.save_answer(question, answer, slug=save_as_name)
-            click.echo(f"\nSaved analysis page: {saved_path}")
+            console.print(f"\nSaved analysis page: {saved_path}")
 
     return command

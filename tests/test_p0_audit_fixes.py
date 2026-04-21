@@ -512,7 +512,6 @@ def test_doctor_cli_runs(tmp_path) -> None:
         assert runner.invoke(main, ["init"]).exit_code == 0
         result = runner.invoke(main, ["doctor"])
         assert "Health Checks" in result.output
-        assert "Summary" in result.output
         assert "project_structure" in result.output
         assert "passed" in result.output
 

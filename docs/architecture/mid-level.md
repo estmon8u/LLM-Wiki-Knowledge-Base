@@ -9,7 +9,7 @@
 | `src/services/` | Deterministic normalization, ingest, compile, concept, diff, lint, review, search, query, export, status, config, and manifest services |
 | `src/models/` | Shared command, source, tool, and wiki dataclasses |
 | `src/engine/` | Command and tool registry boundaries |
-| `src/providers/` | Provider abstraction layer with OpenAI, Anthropic, and Gemini implementations |
+| `src/providers/` | Provider abstraction layer with OpenAI, Anthropic, and Gemini implementations; shared Tenacity retry decorator for transient failures |
 | `src/schemas/` | Pydantic models for claims, evidence bundles, review findings, and run artifacts |
 | `src/prompts/` (planned) | Versioned prompt assets per agent role (answerer, judge, extractor, skeptic, arbiter) |
 | `src/storage/` | SQLite run-artifact persistence plus SQLite FTS5 chunk-index storage |
@@ -23,6 +23,7 @@ All commands are flat top-level verbs:
 | `init` | `src/commands/init.py` | `src/services/project_service.py` and `src/services/config_service.py` |
 | `add` | `src/commands/add.py` | `src/services/ingest_service.py`, `src/services/normalization_service.py`, and `src/services/manifest_service.py` |
 | `update` | `src/commands/update.py` | `src/services/compile_service.py`, `src/services/concept_service.py`, `src/services/search_service.py` |
+| `compile` | `src/commands/compile.py` | `src/services/compile_service.py`, `src/services/concept_service.py`, `src/services/search_service.py` |
 | `find` | `src/commands/find.py` | `src/services/search_service.py` |
 | `ask` | `src/commands/ask.py` | `src/services/query_service.py` |
 | `lint` | `src/commands/lint.py` | `src/services/lint_service.py` |
@@ -65,7 +66,7 @@ All commands are flat top-level verbs:
 ## Structural Rules
 
 - Commands should stay thin and delegate quickly.
-- The command layer owns terminal-only concerns such as section headings, list formatting, and progress display; long-running services expose callback-friendly hooks instead of writing directly to the terminal.
+- The command layer owns terminal-only concerns such as section headings, list formatting, and progress display via Rich (`Console`, `Table`, `Progress`); long-running services expose callback-friendly hooks instead of writing directly to the terminal. User-supplied content is markup-escaped via `rich.markup.escape`.
 - Services should remain deterministic unless the feature explicitly requires model-backed synthesis.
 - `kb lint` checks links, fragments, headings, titles, and metadata deterministically; `kb review` prepends deterministic overlap checks to a required provider-backed single-pass or adversarial pipeline.
 - `build_services()` resolves per-task providers through `ModelRegistryService`: update gets `fast`, ask gets `balanced`, review gets `balanced` by default. Global `--tier` and `--model` flags override. `--quality` on `kb ask` also implies a matching tier.

@@ -5,6 +5,7 @@ import os
 from openai import OpenAI
 
 from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
+from src.providers.retry import provider_retry
 
 
 class OpenAIProvider(TextProvider):
@@ -28,6 +29,7 @@ class OpenAIProvider(TextProvider):
             )
         self._client = OpenAI(api_key=api_key)
 
+    @provider_retry()
     def generate(self, request: ProviderRequest) -> ProviderResponse:
         messages: list[dict[str, str]] = []
         if request.system_prompt:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import click
 import yaml
 
-from src.commands.common import echo_section, require_initialized
+from src.commands.common import console, echo_section, make_table, require_initialized
 from src.models.command_models import CommandContext, CommandSpec
 from src.services.model_registry_service import (
     PROVIDERS,
@@ -41,15 +41,15 @@ def create_command() -> click.BaseCommand:
         persisted = config_service.load()
         visible = {k: v for k, v in persisted.items() if not k.startswith("_")}
         echo_section("Configuration")
-        click.echo(yaml.dump(visible, default_flow_style=False).rstrip())
+        console.print(yaml.dump(visible, default_flow_style=False).rstrip())
 
         # Show active runtime overrides if any.
         runtime = command_context.config.get("_runtime") or {}
         if runtime:
-            click.echo("")
-            click.echo("Runtime overrides active:")
+            console.print("")
+            console.print("Runtime overrides active:")
             for key, val in runtime.items():
-                click.echo(f"  {key}: {val}")
+                console.print(f"  {key}: {val}")
 
     # -- provider subgroup --------------------------------------------------
 
@@ -107,7 +107,7 @@ def create_command() -> click.BaseCommand:
             msg += f" (tier={tier}, model={tier_map[tier].model})"
         elif model:
             msg += f" (model={model})"
-        click.echo(msg)
+        console.print(msg)
 
     @provider_group.command(name="clear", help="Remove the LLM provider setting.")
     @click.pass_obj
@@ -119,14 +119,14 @@ def create_command() -> click.BaseCommand:
         config = config_service.load()
         config["provider"] = {}
         config_service.save(config)
-        click.echo("Provider cleared.")
+        console.print("Provider cleared.")
 
     # -- model inspection commands ------------------------------------------
 
     @config_group.command(name="providers", help="List supported providers.")
     def providers_cmd() -> None:
         for name in PROVIDERS:
-            click.echo(name)
+            console.print(name)
 
     @config_group.command(
         name="models", help="Show available model tiers for a provider."
@@ -147,8 +147,15 @@ def create_command() -> click.BaseCommand:
         profiles = registry.list_profiles(name)
         if not profiles:
             raise click.ClickException(f"Unknown provider: {name}")
-        echo_section(f"Model tiers for {name}")
-        for p in profiles:
-            click.echo(f"  {p.tier:<10s} {p.model}")
+        rows = [(p.tier, p.model) for p in profiles]
+        table = make_table(
+            columns=[
+                ("Tier", {"style": "bold"}),
+                ("Model", {}),
+            ],
+            rows=rows,
+            title=f"Model tiers for {name}",
+        )
+        console.print(table)
 
     return config_group

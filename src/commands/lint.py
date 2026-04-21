@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import click
 
-from src.commands.common import require_initialized
+from src.commands.common import console, require_initialized
 from src.models.command_models import CommandContext, CommandSpec
+from rich.markup import escape as _esc
 
 
 SUMMARY = "Run deterministic structural lint checks over the maintained wiki."
@@ -11,6 +12,13 @@ SUMMARY = "Run deterministic structural lint checks over the maintained wiki."
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
     return CommandSpec(name="lint", summary=SUMMARY)
+
+
+_SEVERITY_STYLE = {
+    "error": "red",
+    "warning": "yellow",
+    "suggestion": "dim",
+}
 
 
 def create_command() -> click.Command:
@@ -22,16 +30,30 @@ def create_command() -> click.Command:
         report = lint_service.lint()
 
         if not report.issues:
-            click.echo("No lint issues found.")
+            console.print("[green]No lint issues found.[/green]")
             return
 
         for severity in ("error", "warning", "suggestion"):
             scoped = [issue for issue in report.issues if issue.severity == severity]
             if not scoped:
                 continue
-            click.echo(f"{severity.upper()}S ({len(scoped)}):")
+            style = _SEVERITY_STYLE.get(severity)
+            if style:
+                console.print(
+                    f"[{style}]{severity.upper()}S ({len(scoped)}):[/{style}]"
+                )
+            else:
+                console.print(f"{severity.upper()}S ({len(scoped)}):")
             for issue in scoped:
-                click.echo(f"- {issue.code} [{issue.path}] {issue.message}")
+                code = _esc(issue.code)
+                path = _esc(issue.path)
+                msg = _esc(issue.message)
+                if style:
+                    console.print(
+                        f"  [{style}]\u2022[/{style}] {code} \\[{path}] {msg}"
+                    )
+                else:
+                    console.print(f"  \u2022 {code} \\[{path}] {msg}")
 
         if report.error_count > 0:
             raise click.exceptions.Exit(1)

@@ -2,15 +2,22 @@ from __future__ import annotations
 
 import click
 
-from src.commands.common import require_initialized
+from src.commands.common import console, require_initialized
 from src.models.command_models import CommandContext, CommandSpec
 from src.providers import ProviderError
+from rich.markup import escape as _esc
 
 
 SUMMARY = (
     "Run semantic review checks for contradictions and terminology drift "
     "(requires a configured provider)."
 )
+
+_SEVERITY_STYLE = {
+    "error": "red",
+    "warning": "yellow",
+    "info": "dim",
+}
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
@@ -45,19 +52,23 @@ def create_command() -> click.Command:
         except ProviderError as exc:
             raise click.ClickException(str(exc)) from exc
 
-        click.echo(f"Review mode: {report.mode}")
+        console.print(f"Review mode: [bold]{report.mode}[/bold]")
 
         if not report.issues:
-            click.echo("No review issues found.")
+            console.print("[green]No review issues found.[/green]")
             return
 
         for issue in report.issues:
             pages = ", ".join(issue.pages)
-            click.echo(
-                f"[{issue.severity.upper()}] {issue.code}: {issue.message} ({pages})"
-            )
+            sev_label = _esc(issue.severity.upper())
+            body = f"{_esc(issue.code)}: {_esc(issue.message)} ({_esc(pages)})"
+            style = _SEVERITY_STYLE.get(issue.severity)
+            if style:
+                console.print(f"[{style}]\\[{sev_label}][/{style}] {body}")
+            else:
+                console.print(f"\\[{sev_label}] {body}")
 
-        click.echo("")
-        click.echo(f"Total review issues: {report.issue_count}")
+        console.print("")
+        console.print(f"Total review issues: {report.issue_count}")
 
     return command

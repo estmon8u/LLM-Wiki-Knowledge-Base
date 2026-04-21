@@ -5,6 +5,7 @@ from pathlib import Path
 import click
 
 from src.commands.common import (
+    console,
     echo_bullet,
     echo_section,
     progress_report,
@@ -74,7 +75,7 @@ def create_command(
 
 def _echo_single_result(result) -> None:
     echo_section("Ingest Summary")
-    click.echo(result.message)
+    console.print(result.message)
     if result.source is not None:
         echo_bullet(f"slug: {result.source.slug}")
         echo_bullet(f"raw path: {result.source.raw_path}")
@@ -84,7 +85,7 @@ def _echo_single_result(result) -> None:
 
 def _echo_directory_result(result) -> None:
     echo_section("Ingest Summary")
-    click.echo(
+    console.print(
         "Processed "
         f"{result.scanned_file_count} supported source file(s) under "
         f"{result.directory_path}"

@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import os
+
+# Set a wide terminal width so Rich tables do not wrap cell content in tests.
+os.environ.setdefault("COLUMNS", "300")
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any

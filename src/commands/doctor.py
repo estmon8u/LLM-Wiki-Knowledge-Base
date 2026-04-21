@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import click
 
-from src.commands.common import echo_section, echo_status_line
+from src.commands.common import console, emit_json, echo_section, make_table
 from src.models.command_models import CommandContext, CommandSpec
 
 
@@ -24,22 +24,62 @@ def create_command() -> click.Command:
         is_flag=True,
         help="Treat warnings (e.g. missing provider) as errors.",
     )
+    @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
     @click.pass_obj
-    def command(command_context: CommandContext, strict: bool) -> None:
+    def command(command_context: CommandContext, strict: bool, as_json: bool) -> None:
         doctor_service = command_context.services["doctor"]
         report = doctor_service.diagnose(strict=strict)
-        echo_section("Health Checks")
-        _SEVERITY_LABELS = {"ok": "OK", "warning": "WARNING", "error": "FAIL"}
+
+        if as_json:
+            emit_json(
+                {
+                    "ok": report.ok,
+                    "passed": report.passed_count,
+                    "warnings": report.warning_count,
+                    "failed": report.failed_count,
+                    "checks": [
+                        {
+                            "name": c.name,
+                            "severity": c.severity,
+                            "detail": c.detail,
+                        }
+                        for c in report.checks
+                    ],
+                }
+            )
+            if not report.ok:
+                raise SystemExit(1)
+            return
+
+        _SEVERITY_STYLE = {
+            "ok": "[green]OK[/green]",
+            "warning": "[yellow]WARNING[/yellow]",
+            "error": "[red]FAIL[/red]",
+        }
+        rows = []
         for check in report.checks:
-            label = _SEVERITY_LABELS.get(check.severity, "FAIL")
-            echo_status_line(label, f"{check.name}: {check.detail}")
-        click.echo("")
-        echo_section("Summary")
-        parts = [f"{report.passed_count} passed"]
+            status = _SEVERITY_STYLE.get(check.severity, "[red]FAIL[/red]")
+            rows.append((check.name, status, check.detail))
+
+        table = make_table(
+            columns=[
+                ("Check", {"style": "bold"}),
+                ("Status", {}),
+                ("Detail", {}),
+            ],
+            rows=rows,
+            title="Health Checks",
+        )
+        console.print(table)
+
+        console.print("")
+        parts = [f"[green]{report.passed_count} passed[/green]"]
         if report.warning_count:
-            parts.append(f"{report.warning_count} warnings")
-        parts.append(f"{report.failed_count} failed")
-        click.echo(", ".join(parts))
+            parts.append(f"[yellow]{report.warning_count} warnings[/yellow]")
+        parts.append(
+            f"{'[red]' if report.failed_count else ''}{report.failed_count} failed{'[/red]' if report.failed_count else ''}"
+        )
+        console.print(", ".join(parts))
         if not report.ok:
             raise SystemExit(1)
 

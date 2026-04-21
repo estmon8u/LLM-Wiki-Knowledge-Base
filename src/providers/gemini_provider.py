@@ -6,6 +6,7 @@ from google import genai
 from google.genai import types
 
 from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
+from src.providers.retry import provider_retry
 
 
 class GeminiProvider(TextProvider):
@@ -31,6 +32,7 @@ class GeminiProvider(TextProvider):
 
     _EFFORT_TO_LEVEL = {"low": "low", "medium": "medium", "high": "high"}
 
+    @provider_retry()
     def generate(self, request: ProviderRequest) -> ProviderResponse:
         thinking_level = self._EFFORT_TO_LEVEL.get(self._reasoning_effort, "high")
         config_kwargs: dict = {

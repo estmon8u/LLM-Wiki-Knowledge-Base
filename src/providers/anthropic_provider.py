@@ -5,6 +5,7 @@ import os
 from anthropic import Anthropic
 
 from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
+from src.providers.retry import provider_retry
 
 
 class AnthropicProvider(TextProvider):
@@ -28,6 +29,7 @@ class AnthropicProvider(TextProvider):
             )
         self._client = Anthropic(api_key=api_key)
 
+    @provider_retry()
     def generate(self, request: ProviderRequest) -> ProviderResponse:
         max_tokens = max(request.max_tokens, self._thinking_budget + 4096)
         kwargs: dict = {

@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import click
 
-from src.commands.common import echo_kv, echo_section, require_initialized
+from src.commands.common import (
+    console,
+    echo_kv,
+    echo_section,
+    emit_json,
+    make_table,
+    require_initialized,
+)
 from src.models.command_models import CommandContext, CommandSpec
 
 
@@ -39,11 +46,13 @@ def create_command() -> click.Command:
         help="Filter runs by command name (e.g. ask, review, update).",
     )
     @click.option("--limit", default=20, show_default=True, type=int)
+    @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
     @click.pass_obj
     def command(
         command_context: CommandContext,
         filter_command: str | None,
         limit: int,
+        as_json: bool,
     ) -> None:
         require_initialized(command_context)
         run_store = command_context.services.get("run_store")
@@ -99,20 +108,39 @@ def create_command() -> click.Command:
         all_runs = all_runs[:limit]
 
         if not all_runs:
-            click.echo("No runs recorded yet.")
+            if as_json:
+                emit_json([])
+            else:
+                console.print("No runs recorded yet.")
             return
 
-        echo_section("Run History")
-        for run in all_runs:
-            line = f"  {run['timestamp']}  {run['kind']:<10s}  {run['detail']}"
-            if run["extra"]:
-                line += f"  {run['extra']}"
-            click.echo(line)
-            if run["preview"]:
-                preview = run["preview"][:80].replace("\n", " ")
-                click.echo(f"    {preview}...")
+        if as_json:
+            emit_json(all_runs)
+            return
 
-        click.echo("")
+        rows = []
+        for run in all_runs:
+            detail = run["detail"]
+            if run["extra"]:
+                detail += f"  {run['extra']}"
+            preview = ""
+            if run["preview"]:
+                preview = run["preview"][:80].replace("\n", " ") + "..."
+            rows.append((run["timestamp"], run["kind"], detail, preview))
+
+        table = make_table(
+            columns=[
+                ("Timestamp", {}),
+                ("Command", {"style": "bold"}),
+                ("Detail", {}),
+                ("Preview", {"style": "dim"}),
+            ],
+            rows=rows,
+            title="Run History",
+        )
+        console.print(table)
+
+        console.print("")
         echo_kv("total", len(all_runs))
 
     return command

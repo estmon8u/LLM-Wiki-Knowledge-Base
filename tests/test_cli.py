@@ -250,7 +250,7 @@ def test_add_alias_ingests_source_file() -> None:
         assert result.exit_code == 0
         assert "Ingest Summary" in result.output
         assert "Ingested Added Sample" in result.output
-        assert "- slug: added-sample" in result.output
+        assert "slug: added-sample" in result.output
         assert Path("raw/sources/added-sample.md").exists()
 
 
@@ -267,7 +267,7 @@ def test_add_alias_recursively_ingests_directory_by_default() -> None:
         assert "Ingesting 1 source file(s)..." in result.output
         assert "Ingest Summary" in result.output
         assert "Processed 1 supported source file(s)" in result.output
-        assert "- created: 1" in result.output
+        assert "created: 1" in result.output
 
 
 def test_add_alias_recursively_ingests_supported_directory_files() -> None:
@@ -287,10 +287,10 @@ def test_add_alias_recursively_ingests_supported_directory_files() -> None:
         assert "Ingesting 2 source file(s)..." in result.output
         assert "Ingest Summary" in result.output
         assert "Processed 2 supported source file(s)" in result.output
-        assert "- created: 2" in result.output
-        assert "- duplicates skipped: 0" in result.output
-        assert "- ingested: alpha (raw/sources/alpha.md)" in result.output
-        assert "- ingested: beta-title (raw/sources/beta-title.txt)" in result.output
+        assert "created: 2" in result.output
+        assert "duplicates skipped: 0" in result.output
+        assert "ingested: alpha (raw/sources/alpha.md)" in result.output
+        assert "ingested: beta-title (raw/sources/beta-title.txt)" in result.output
         assert Path("raw/sources/alpha.md").exists()
         assert Path("raw/sources/beta-title.txt").exists()
 
@@ -308,9 +308,9 @@ def test_add_alias_recursive_directory_reports_duplicates() -> None:
 
         assert result.exit_code == 0
         assert "Ingest Summary" in result.output
-        assert "- created: 1" in result.output
-        assert "- duplicates skipped: 1" in result.output
-        assert "- duplicate: shared" in result.output
+        assert "created: 1" in result.output
+        assert "duplicates skipped: 1" in result.output
+        assert "duplicate: shared" in result.output
 
 
 def test_add_accepts_multiple_source_paths() -> None:
@@ -329,9 +329,7 @@ def test_add_accepts_multiple_source_paths() -> None:
         assert Path("raw/sources/beta.md").exists()
 
 
-def test_echo_directory_result_ignores_missing_source_entries(monkeypatch) -> None:
-    captured = []
-    monkeypatch.setattr("click.echo", captured.append)
+def test_echo_directory_result_ignores_missing_source_entries(capsys) -> None:
     result = IngestDirectoryResult(
         directory_path=Path("bulk"),
         scanned_file_count=2,
@@ -348,13 +346,11 @@ def test_echo_directory_result_ignores_missing_source_entries(monkeypatch) -> No
 
     _echo_directory_result(result)
 
-    assert captured == [
-        "Ingest Summary",
-        "==============",
-        "Processed 2 supported source file(s) under bulk",
-        "- created: 1",
-        "- duplicates skipped: 1",
-    ]
+    output = capsys.readouterr().out
+    assert "Ingest Summary" in output
+    assert "Processed 2 supported source file(s) under bulk" in output
+    assert "created: 1" in output
+    assert "duplicates skipped: 1" in output
 
 
 def test_lint_returns_nonzero_when_errors_exist() -> None:
@@ -652,7 +648,7 @@ def test_ingest_recursively_ingests_directory_by_default() -> None:
         assert "Ingesting 1 source file(s)..." in result.output
         assert "Ingest Summary" in result.output
         assert "Processed 1 supported source file(s)" in result.output
-        assert "- created: 1" in result.output
+        assert "created: 1" in result.output
 
 
 def test_ingest_recursive_directory_requires_supported_files() -> None:
@@ -1158,6 +1154,56 @@ def test_update_resume_rejects_force_combination() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Compile command CLI tests
+# ---------------------------------------------------------------------------
+
+
+def test_compile_command_produces_summary() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Sample\n\nCompile test body.\n", encoding="utf-8"
+        )
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        _set_provider_config()
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            result = runner.invoke(main, ["compile"])
+
+        assert result.exit_code == 0
+        assert "Compile Summary" in result.output
+        assert "Compiled 1 source page(s)" in result.output
+
+
+def test_compile_resume_rejects_force_combination() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["compile", "--resume", "--force"])
+
+        assert result.exit_code != 0
+        assert "--resume cannot be combined with --force" in result.output
+
+
+def test_compile_with_concepts_flag() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Sample\n\nConcept compile body.\n", encoding="utf-8"
+        )
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        _set_provider_config()
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            result = runner.invoke(main, ["compile", "--with-concepts"])
+
+        assert result.exit_code == 0
+        assert "Compile Summary" in result.output
+        assert "Concept Summary" in result.output
+
+
+# ---------------------------------------------------------------------------
 # Provider preflight in update
 # ---------------------------------------------------------------------------
 
@@ -1506,3 +1552,247 @@ def test_history_compile_filter_excludes_ask_runs() -> None:
 
         assert result.exit_code == 0
         assert "update" in result.output
+
+
+# ---------------------------------------------------------------------------
+# --json flag tests
+# ---------------------------------------------------------------------------
+
+import json
+
+
+def test_doctor_json_output() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["doctor", "--json"])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["ok"] is True
+        assert "checks" in data
+        assert data["passed"] > 0
+
+
+def test_find_json_output() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Sample\n\nTraceability and citation.\n", encoding="utf-8"
+        )
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        _set_provider_config()
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            assert runner.invoke(main, ["update"]).exit_code == 0
+
+        result = runner.invoke(main, ["find", "--json", "traceability"])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert isinstance(data, list)
+        assert len(data) > 0
+        assert "title" in data[0]
+        assert "path" in data[0]
+        assert "score" in data[0]
+
+
+def test_find_json_empty_results() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["find", "--json", "missing-topic"])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data == []
+
+
+def test_status_json_output() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Sample\n\nBody for JSON status.\n", encoding="utf-8"
+        )
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+
+        result = runner.invoke(main, ["status", "--json"])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["source_count"] == 1
+        assert data["initialized"] is True
+
+
+def test_status_changed_json_output() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Sample\n\nBody for JSON diff.\n", encoding="utf-8"
+        )
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+
+        result = runner.invoke(main, ["status", "--changed", "--json"])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "entries" in data
+        assert data["new"] >= 1
+
+
+def test_history_json_output() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Sample\n\nTraceability and citation.\n", encoding="utf-8"
+        )
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        _set_provider_config()
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            assert runner.invoke(main, ["update"]).exit_code == 0
+
+            result = runner.invoke(main, ["history", "--json"])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert isinstance(data, list)
+        assert len(data) > 0
+
+
+def test_history_json_empty() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["history", "--json"])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data == []
+
+
+def test_sources_list_json_output() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text("# Sample\n\nBody.\n", encoding="utf-8")
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+
+        result = runner.invoke(main, ["sources", "list", "--json"])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert isinstance(data, list)
+        assert len(data) == 1
+        assert data[0]["slug"] == "sample"
+
+
+def test_sources_list_json_empty() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["sources", "list", "--json"])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data == []
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap: compile error paths
+# ---------------------------------------------------------------------------
+
+
+def test_compile_plan_value_error() -> None:
+    """compile plan() raising ValueError renders as ClickException."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        _set_provider_config()
+        with patch(
+            "src.services.build_provider", return_value=_CliFakeProvider()
+        ), patch(
+            "src.services.compile_service.CompileService.plan",
+            side_effect=ValueError("No resumable run found."),
+        ):
+            result = runner.invoke(main, ["compile", "--resume"])
+
+        assert result.exit_code != 0
+        assert "No resumable run found" in result.output
+
+
+def test_compile_provider_error() -> None:
+    """ProviderError during compile renders as ClickException."""
+    from src.providers import ProviderError
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("note.md").write_text("# Note\n\nBody.\n", encoding="utf-8")
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "note.md"]).exit_code == 0
+        _set_provider_config()
+        with patch(
+            "src.services.build_provider", return_value=_CliFakeProvider()
+        ), patch(
+            "src.services.compile_service.CompileService.compile",
+            side_effect=ProviderError("rate limit exceeded"),
+        ):
+            result = runner.invoke(main, ["compile"])
+
+        assert result.exit_code != 0
+        assert "rate limit exceeded" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap: config show with runtime overrides
+# ---------------------------------------------------------------------------
+
+
+def test_config_show_runtime_overrides() -> None:
+    """config show displays runtime overrides when --tier is passed."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["--tier", "fast", "config", "show"])
+
+        assert result.exit_code == 0
+        assert "Runtime overrides active" in result.output
+        assert "tier" in result.output
+        assert "fast" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap: doctor with failures
+# ---------------------------------------------------------------------------
+
+
+def test_doctor_failure_exits_nonzero() -> None:
+    """doctor raises SystemExit(1) when a check fails."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["doctor", "--strict"])
+
+        # --strict treats missing provider as error → non-zero exit
+        assert result.exit_code != 0
+
+
+def test_doctor_json_failure_exits_nonzero() -> None:
+    """doctor --json raises SystemExit(1) when a check fails."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["doctor", "--strict", "--json"])
+
+        assert result.exit_code != 0
+        data = json.loads(result.output)
+        assert data["ok"] is False

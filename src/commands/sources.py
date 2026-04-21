@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import click
 
-from src.commands.common import echo_bullet, echo_kv, echo_section, require_initialized
+from src.commands.common import (
+    console,
+    echo_kv,
+    echo_section,
+    emit_json,
+    make_table,
+    require_initialized,
+)
 from src.models.command_models import CommandContext, CommandSpec
 
 
@@ -26,22 +33,50 @@ def create_command() -> click.Command:
             ctx.invoke(sources_list)
 
     @sources_group.command(name="list")
+    @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
     @click.pass_obj
-    def sources_list(command_context: CommandContext) -> None:
+    def sources_list(command_context: CommandContext, as_json: bool) -> None:
         """List all ingested sources."""
         require_initialized(command_context)
         manifest_service = command_context.services["manifest"]
         sources = manifest_service.list_sources()
         if not sources:
-            click.echo("No sources ingested yet.")
+            if as_json:
+                emit_json([])
+            else:
+                console.print("No sources ingested yet.")
             return
 
-        echo_section("Sources")
+        if as_json:
+            emit_json(
+                [
+                    {
+                        "slug": s.slug,
+                        "raw_path": s.raw_path,
+                        "status": "compiled" if s.compiled_from_hash else "pending",
+                    }
+                    for s in sources
+                ]
+            )
+            return
+
+        rows = []
         for source in sources:
             status = "compiled" if source.compiled_from_hash else "pending"
-            echo_bullet(f"{source.slug} ({source.raw_path}) [{status}]")
+            rows.append((source.slug, source.raw_path, status))
 
-        click.echo("")
+        table = make_table(
+            columns=[
+                ("Slug", {"style": "bold"}),
+                ("Path", {}),
+                ("Status", {}),
+            ],
+            rows=rows,
+            title="Sources",
+        )
+        console.print(table)
+
+        console.print("")
         echo_kv("total", len(sources))
 
     @sources_group.command(name="show")

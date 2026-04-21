@@ -14,6 +14,7 @@ from src.models.command_models import CommandContext, CommandSpec
 FLAT_COMMAND_MODULES = {
     "add": "src.commands.add",
     "ask": "src.commands.ask",
+    "compile": "src.commands.compile",
     "config": "src.commands.config_cmd",
     "doctor": "src.commands.doctor",
     "export": "src.commands.export_cmd",
