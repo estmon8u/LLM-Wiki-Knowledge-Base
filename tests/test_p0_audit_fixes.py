@@ -164,12 +164,13 @@ def test_export_vault_clean_removes_stale_files(test_project) -> None:
     test_project.write_file("wiki/sources/keep.md", "Keep this page")
     test_project.write_file("wiki/index.md", "Index")
 
-    # First export with two pages
+    # First export — log.md is seeded by init, plus the two pages above
     export_service = test_project.services["export"]
     result1 = export_service.export_vault()
-    assert len(result1.exported_paths) == 2
+    assert len(result1.exported_paths) == 3
     assert (test_project.paths.vault_obsidian_dir / "sources" / "keep.md").exists()
     assert (test_project.paths.vault_obsidian_dir / "index.md").exists()
+    assert (test_project.paths.vault_obsidian_dir / "log.md").exists()
 
     # Add a stale file directly in vault (simulating deleted wiki page)
     stale = test_project.paths.vault_obsidian_dir / "sources" / "deleted.md"

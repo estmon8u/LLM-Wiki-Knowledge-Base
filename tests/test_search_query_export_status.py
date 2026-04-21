@@ -284,6 +284,22 @@ def test_query_service_save_answer_writes_analysis_page(test_project) -> None:
     assert "wiki/sources/citations.md#chunk-0" in content
 
 
+def test_save_answer_appends_to_wiki_log(test_project) -> None:
+    test_project.write_file("wiki/sources/citations.md", "traceability appears here")
+    query_service = _provider_query_service(
+        test_project,
+        "Traceability appears here. [Citations]",
+    )
+    answer = query_service.answer_question("traceability")
+
+    query_service.save_answer("How does traceability work?", answer)
+
+    log_text = test_project.paths.wiki_log_file.read_text(encoding="utf-8")
+    assert "saved analysis" in log_text
+    assert "How does traceability work?" in log_text
+    assert "wiki/analysis/" in log_text
+
+
 def test_query_service_save_answer_uses_fallback_slug_for_empty_question(
     test_project,
 ) -> None:
@@ -453,6 +469,7 @@ def test_export_service_copies_all_markdown_files(test_project) -> None:
 
     assert set(result.exported_paths) == {
         "vault/obsidian/index.md",
+        "vault/obsidian/log.md",
         "vault/obsidian/sources/a.md",
     }
 

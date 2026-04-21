@@ -99,6 +99,7 @@ def test_project_service_creates_structure_and_relative_paths(
     assert "raw/normalized" in created
     assert "wiki/sources" in created
     assert "wiki/analysis" in created
+    assert "wiki/log.md" in created
     assert project_service.ensure_structure() == []
 
     some_file = uninitialized_project.root / "wiki" / "sources" / "item.md"
@@ -311,6 +312,21 @@ def test_ensure_structure_returns_only_newly_created(test_project) -> None:
     second_run = project_service.ensure_structure()
     assert "graph/exports" in second_run
     assert len(second_run) == 1
+
+
+def test_ensure_structure_seeds_wiki_log_file(uninitialized_project) -> None:
+    project_service = ProjectService(uninitialized_project.paths)
+
+    project_service.ensure_structure()
+
+    log_file = uninitialized_project.paths.wiki_log_file
+    assert log_file.exists()
+    assert log_file.read_text(encoding="utf-8") == "# Activity Log\n"
+
+    # Idempotent — second call does not overwrite
+    log_file.write_text("# Activity Log\n\n- existing entry\n", encoding="utf-8")
+    project_service.ensure_structure()
+    assert "existing entry" in log_file.read_text(encoding="utf-8")
 
 
 def test_slugify_all_special_characters() -> None:

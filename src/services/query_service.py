@@ -150,7 +150,20 @@ class QueryService:
         dest = self.paths.wiki_analysis_dir / f"{safe_slug}.md"
         atomic_write_text(dest, page_text)
         self.search_service.refresh_file(dest)
+        self._append_log(question, dest)
         return dest.relative_to(self.paths.root).as_posix()
+
+    def _append_log(self, question: str, dest: "Path") -> None:
+        """Append a saved-analysis entry to wiki/log.md."""
+        timestamp = utc_now_iso()
+        current = "# Activity Log\n\n"
+        if self.paths.wiki_log_file.exists():
+            current = self.paths.wiki_log_file.read_text(encoding="utf-8")
+        if not current.endswith("\n"):
+            current += "\n"
+        rel = dest.relative_to(self.paths.root).as_posix()
+        current += f"- {timestamp}: saved analysis [[{rel}]] for: {question}\n"
+        atomic_write_text(self.paths.wiki_log_file, current)
 
     def _format_saved_citation(self, citation: SearchResult) -> str:
         line = f"- [[{citation.title}]] (`{citation.citation_ref}`)"

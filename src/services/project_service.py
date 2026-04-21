@@ -145,6 +145,11 @@ class ProjectService:
             if not directory.exists():
                 directory.mkdir(parents=True, exist_ok=True)
                 created.append(directory.relative_to(self.paths.root).as_posix() or ".")
+        if not self.paths.wiki_log_file.exists():
+            atomic_write_text(self.paths.wiki_log_file, "# Activity Log\n")
+            created.append(
+                self.paths.wiki_log_file.relative_to(self.paths.root).as_posix()
+            )
         return created
 
     def to_relative_path(self, path: Path) -> str:

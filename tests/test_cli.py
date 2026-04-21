@@ -625,7 +625,7 @@ def test_export_on_empty_wiki_succeeds() -> None:
 
         assert result.exit_code == 0
         assert "Vault Export" in result.output
-        assert "Exported 0 markdown file(s)" in result.output
+        assert "Exported 1 markdown file(s)" in result.output
 
 
 def test_unknown_command_shows_error() -> None:
@@ -791,7 +791,7 @@ def test_flat_export_defaults_to_vault() -> None:
 
         assert result.exit_code == 0
         assert "Vault Export" in result.output
-        assert "Exported 0 markdown file(s)" in result.output
+        assert "Exported 1 markdown file(s)" in result.output
 
 
 def test_config_command_shows_config() -> None:
