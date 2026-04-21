@@ -175,6 +175,10 @@ class CompileService:
             )
             raise
 
+    def refresh_index(self) -> None:
+        """Rewrite the wiki index from the current source and concept pages."""
+        self._write_index(_sorted_sources(self.manifest_service.list_sources()))
+
     def _render_source_page(
         self, source: RawSourceRecord, contents: str, compiled_at: str
     ) -> str:

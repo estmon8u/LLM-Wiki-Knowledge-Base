@@ -20,6 +20,7 @@ from src.services.compile_service import (
     _sorted_sources,
     _strip_frontmatter,
 )
+from src.services.update_service import UpdateOptions, UpdateService
 from src.services.lint_service import (
     _split_frontmatter,
     _split_markdown_target,
@@ -1042,6 +1043,44 @@ def test_compile_index_lists_concept_pages(test_project) -> None:
     )
     slugs = [cp["slug"] for cp in index_json["concept_pages"]]
     assert "my-topic" in slugs
+
+
+def test_update_refreshes_index_after_removing_stale_concept_page(test_project) -> None:
+    _ingest_source(test_project, "notes/doc.md", "# Doc\n\nBody text.\n")
+    test_project.config["provider"] = {"name": "openai"}
+    test_project.write_file(
+        "wiki/concepts/stale-topic.md",
+        (
+            "---\n"
+            "title: Stale Topic\n"
+            "type: concept\n"
+            "generator: concept-service-v1\n"
+            "---\n\n"
+            "# Stale Topic\n\n"
+            "Old generated concept.\n"
+        ),
+    )
+
+    update_service = UpdateService(
+        ingest_service=test_project.services["ingest"],
+        compile_service=test_project.services["compile"],
+        concept_service=test_project.services["concepts"],
+        search_service=test_project.services["search"],
+        config=test_project.config,
+    )
+
+    result = update_service.run(UpdateOptions())
+
+    assert result.concept_result.removed_paths == ["wiki/concepts/stale-topic.md"]
+    index_text = test_project.paths.wiki_index_markdown.read_text(encoding="utf-8")
+    assert "[[stale-topic]]" not in index_text
+    assert "No concept pages compiled yet." in index_text
+
+    report = test_project.services["lint"].lint()
+    assert not any(
+        issue.code == "broken-link" and issue.path == "wiki/index.md"
+        for issue in report.issues
+    )
 
 
 def test_markdown_paragraphs_skips_fenced_code_blocks() -> None:

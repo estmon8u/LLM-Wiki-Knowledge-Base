@@ -109,6 +109,10 @@ class UpdateService:
         # Concepts phase
         result.concept_result = self._concepts.generate()
 
+        # Compile writes the index before concepts are regenerated. Refresh it here so
+        # wiki/index.md and wiki/_index.json reflect the current concept set.
+        self._compile.refresh_index()
+
         # Search refresh
         self._search.refresh(force=True)
         result.search_refreshed = True
