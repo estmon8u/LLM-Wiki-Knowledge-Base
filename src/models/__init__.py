@@ -2,7 +2,6 @@
 
 from src.models.command_models import CommandContext, CommandResult, CommandSpec
 from src.models.source_models import RawSourceRecord
-from src.models.tool_models import ToolContext, ToolResult, ToolSpec
 from src.models.wiki_models import LintIssue, LintReport, SearchResult, StatusSnapshot
 
 __all__ = [
@@ -14,7 +13,4 @@ __all__ = [
     "RawSourceRecord",
     "SearchResult",
     "StatusSnapshot",
-    "ToolContext",
-    "ToolResult",
-    "ToolSpec",
 ]

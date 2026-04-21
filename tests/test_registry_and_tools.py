@@ -20,16 +20,7 @@ from src.engine.command_registry import (
     get_click_command,
     list_command_names,
 )
-from src.engine.tool_registry import (
-    _lint_wiki,
-    _read_manifest,
-    _review_wiki,
-    _search_wiki,
-    _unsupported,
-    build_tool_specs,
-)
 from src.services.config_service import CURRENT_CONFIG_VERSION
-from src.models.tool_models import ToolContext
 
 
 class _FakeStream:
@@ -233,94 +224,3 @@ def test_emit_json_outputs_valid_json(capsys) -> None:
     output = capsys.readouterr().out
     data = json.loads(output)
     assert data == {"key": "value", "count": 42}
-
-
-def test_build_tool_specs_contains_expected_contracts() -> None:
-    specs = build_tool_specs()
-
-    assert [spec.name for spec in specs] == [
-        "SearchWiki",
-        "ReadManifest",
-        "IngestSource",
-        "LintWiki",
-        "ReviewWiki",
-        "ExportVault",
-    ]
-    assert specs[0].is_concurrency_safe is True
-    assert specs[2].is_concurrency_safe is False
-
-
-def test_search_wiki_tool_requires_query_and_returns_results(test_project) -> None:
-    test_project.write_file("wiki/sources/result.md", "traceability traceability")
-    tool_context = ToolContext(
-        project_root=str(test_project.root),
-        config=test_project.config,
-        session_state={},
-        services=test_project.services,
-        messages=[],
-        cancel_requested=lambda: False,
-    )
-
-    missing = _search_wiki({}, tool_context)
-    found = _search_wiki({"query": "traceability", "limit": 1}, tool_context)
-
-    assert missing.ok is False
-    assert missing.content == "Missing search query."
-    assert found.ok is True
-    assert found.data["results"][0]["path"] == "wiki/sources/result.md"
-
-
-def test_read_manifest_and_lint_tools_return_structured_payloads(test_project) -> None:
-    source_path = test_project.write_file("notes/manifest.md", "# Manifest\n\nBody\n")
-    test_project.services["ingest"].ingest_path(source_path)
-    tool_context = ToolContext(
-        project_root=str(test_project.root),
-        config=test_project.config,
-        session_state={},
-        services=test_project.services,
-        messages=[],
-        cancel_requested=lambda: False,
-    )
-
-    manifest_result = _read_manifest({}, tool_context)
-    lint_result = _lint_wiki({}, tool_context)
-
-    assert manifest_result.ok is True
-    assert manifest_result.data["sources"][0]["slug"] == "manifest"
-    assert lint_result.ok is True
-    assert any(
-        issue["code"] == "stale-source-page" for issue in lint_result.data["issues"]
-    )
-
-
-def test_review_wiki_tool_returns_structured_payload(test_project) -> None:
-    tool_context = ToolContext(
-        project_root=str(test_project.root),
-        config=test_project.config,
-        session_state={},
-        services=test_project.services,
-        messages=[],
-        cancel_requested=lambda: False,
-    )
-
-    result = _review_wiki({}, tool_context)
-
-    assert result.ok is True
-    assert result.data["mode"] == "no-sources"
-    assert isinstance(result.data["issues"], list)
-
-
-def test_unsupported_tool_reports_stubbed_execution(test_project) -> None:
-    tool_context = ToolContext(
-        project_root=str(test_project.root),
-        config=test_project.config,
-        session_state={},
-        services=test_project.services,
-        messages=[],
-        cancel_requested=lambda: False,
-    )
-
-    result = _unsupported({}, tool_context)
-
-    assert result.ok is False
-    assert "not wired into the CLI yet" in result.content
