@@ -51,8 +51,6 @@ See `Provider Configuration` below.
 | --- | --- |
 | `--project-root PATH` | Run the CLI against a specific project directory instead of the current working directory. |
 | `--provider NAME` | Override the configured provider (`openai`, `anthropic`, `gemini`) for this invocation. Clears any stale model setting. |
-| `--tier TIER` | Select model tier: `fast`, `balanced`, or `deep`. |
-| `--model MODEL` | Override the model for this invocation. |
 | `--verbose` | Enable verbose output. |
 | `-h`, `--help` | Show help for any command. |
 
@@ -285,20 +283,14 @@ poetry run kb config
 poetry run kb config show
 poetry run kb config provider set openai
 poetry run kb config provider set anthropic --model claude-opus-4-6
-poetry run kb config provider set gemini --tier deep
 poetry run kb config provider clear
-poetry run kb config providers
-poetry run kb config models
-poetry run kb config models openai
 ```
 
 | Subcommand | Description |
 | --- | --- |
 | `show` | Display the current configuration (default). |
-| `provider set <name>` | Set the LLM provider. `--model` pins a specific model; `--tier` (`fast`/`balanced`/`deep`) selects the tier's default model. Changing provider clears any stale model. |
+| `provider set <name>` | Set the LLM provider. `--model` pins a specific model. Changing provider clears any stale model. |
 | `provider clear` | Remove the LLM provider setting. |
-| `providers` | List supported provider names. |
-| `models [PROVIDER]` | Show available model tiers for a provider. Defaults to the configured provider. |
 
 ### `kb sources`
 
@@ -352,14 +344,7 @@ You can also override the provider per-invocation without editing the config fil
 ```bash
 kb --provider anthropic ask "How does REALM differ from RAG?"
 kb --provider gemini review
-kb --tier fast update
-kb --tier deep ask "Explain the update pipeline in detail"
-kb --model gpt-5.4 ask "Complex analysis question"
 ```
-
-The `--tier` flag selects a cost/quality preset (`fast`, `balanced`, `deep`) with
-provider-specific model and reasoning settings. The `--model` flag pins a specific
-model. Both override the config-file defaults for a single invocation.
 
 Set the matching API key as an environment variable:
 

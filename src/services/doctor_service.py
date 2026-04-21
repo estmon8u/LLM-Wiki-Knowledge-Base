@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from src.providers import _DEFAULT_API_KEY_ENVS
-from src.services.model_registry_service import ModelRegistryService
 from src.services.project_service import ProjectPaths
 
 
@@ -58,7 +57,6 @@ class DoctorService:
         checks.append(self._check_schema_file())
         checks.append(self._check_manifest())
         checks.append(self._check_provider_config(strict=strict))
-        checks.append(self._check_provider_model_tier())
         checks.append(self._check_api_key(strict=strict))
         checks.append(self._check_converters())
         return DoctorReport(checks=checks)
@@ -194,41 +192,6 @@ class DoctorService:
             ok=False,
             detail=f"Environment variable {env_var} is not set.",
             severity=sev,
-        )
-
-    def _check_provider_model_tier(self) -> DoctorCheck:
-        provider_cfg = self.config.get("provider") or {}
-        name = provider_cfg.get("name", "")
-        tier = provider_cfg.get("tier", "")
-        model = provider_cfg.get("model", "")
-        if not name or not tier or not model:
-            return DoctorCheck(
-                name="provider_model",
-                ok=True,
-                detail="No tier/model conflict to check.",
-                severity="ok",
-            )
-        registry = ModelRegistryService()
-        profiles = registry.list_profiles(name)
-        tier_map = {p.tier: p for p in profiles}
-        profile = tier_map.get(tier)
-        if profile and profile.model != model:
-            return DoctorCheck(
-                name="provider_model",
-                ok=True,
-                detail=(
-                    f"provider.model '{model}' does not match provider.tier "
-                    f"'{tier}' (expected '{profile.model}'). "
-                    f"Run `kb config provider set {name} --tier {tier}` or "
-                    f"pin with `--model`."
-                ),
-                severity="warning",
-            )
-        return DoctorCheck(
-            name="provider_model",
-            ok=True,
-            detail="Provider model and tier are consistent.",
-            severity="ok",
         )
 
     def _check_converters(self) -> DoctorCheck:

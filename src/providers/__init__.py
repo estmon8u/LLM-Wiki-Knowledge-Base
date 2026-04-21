@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from src.models.provider_models import ResolvedProviderConfig
 from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
 
 logger = logging.getLogger(__name__)
@@ -52,14 +51,8 @@ _DEFAULT_MODELS = {
 
 def build_provider(
     config: dict[str, Any],
-    *,
-    resolved: ResolvedProviderConfig | None = None,
 ) -> Optional[TextProvider]:
     """Build a provider from the ``provider`` section of kb config.
-
-    When *resolved* is supplied (from the model registry), its model,
-    reasoning-effort, and thinking-budget values take precedence over the
-    raw config dict.
 
     Returns ``None`` when no provider is configured, so deterministic
     commands can proceed without one.  Generation commands (update, ask,
@@ -71,18 +64,10 @@ def build_provider(
     if not name:
         return None
 
-    if resolved:
-        model = resolved.model
-        api_key_env = resolved.api_key_env
-        reasoning_effort = resolved.reasoning_effort
-        thinking_budget = resolved.thinking_budget
-    else:
-        model = provider_cfg.get("model", _DEFAULT_MODELS.get(name, ""))
-        api_key_env = provider_cfg.get(
-            "api_key_env", _DEFAULT_API_KEY_ENVS.get(name, "")
-        )
-        reasoning_effort = "high"
-        thinking_budget = 10_000 if name == "anthropic" else 0
+    model = provider_cfg.get("model", _DEFAULT_MODELS.get(name, ""))
+    api_key_env = provider_cfg.get("api_key_env", _DEFAULT_API_KEY_ENVS.get(name, ""))
+    reasoning_effort = "high"
+    thinking_budget = 10_000 if name == "anthropic" else 0
 
     try:
         if name == "openai":

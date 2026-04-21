@@ -1050,21 +1050,6 @@ def test_update_generic_service_error_becomes_click_exception() -> None:
         assert "boom" in result.output
 
 
-def test_update_with_tier_override() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        Path("note.md").write_text("# Note\n\nBody.\n", encoding="utf-8")
-        assert runner.invoke(main, ["init"]).exit_code == 0
-        assert runner.invoke(main, ["add", "note.md"]).exit_code == 0
-        _set_provider_config()
-
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            result = runner.invoke(main, ["--tier", "fast", "update"])
-
-        assert result.exit_code == 0
-        assert "Update Summary" in result.output
-
-
 # ---------------------------------------------------------------------------
 # Config subcommands
 # ---------------------------------------------------------------------------
@@ -1108,57 +1093,6 @@ def test_config_provider_set_and_clear() -> None:
         assert config["provider"] == {}
 
 
-def test_config_provider_set_tier() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        assert runner.invoke(main, ["init"]).exit_code == 0
-
-        result = runner.invoke(
-            main,
-            ["config", "provider", "set", "openai", "--tier", "deep"],
-        )
-        assert result.exit_code == 0
-        assert "tier=deep" in result.output
-        assert "gpt-5.4" in result.output
-
-        config = yaml.safe_load(Path("kb.config.yaml").read_text(encoding="utf-8"))
-        assert config["provider"]["name"] == "openai"
-        assert config["provider"]["tier"] == "deep"
-        assert config["provider"]["model"] == "gpt-5.4"
-
-
-def test_config_provider_set_tier_and_model_exclusive() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        assert runner.invoke(main, ["init"]).exit_code == 0
-
-        result = runner.invoke(
-            main,
-            ["config", "provider", "set", "openai", "--tier", "fast", "--model", "x"],
-        )
-        assert result.exit_code != 0
-        assert "mutually exclusive" in result.output
-
-
-def test_config_provider_set_clears_tier_on_model_override() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        assert runner.invoke(main, ["init"]).exit_code == 0
-
-        runner.invoke(
-            main,
-            ["config", "provider", "set", "openai", "--tier", "deep"],
-        )
-        result = runner.invoke(
-            main,
-            ["config", "provider", "set", "openai", "--model", "custom"],
-        )
-        assert result.exit_code == 0
-        config = yaml.safe_load(Path("kb.config.yaml").read_text(encoding="utf-8"))
-        assert config["provider"]["model"] == "custom"
-        assert "tier" not in config["provider"]
-
-
 def test_config_provider_set_switching_clears_stale() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
@@ -1189,51 +1123,6 @@ def test_config_provider_set_rejects_unknown_name() -> None:
         )
         assert result.exit_code != 0
         assert "foobar" in result.output.lower() or "invalid" in result.output.lower()
-
-
-def test_config_providers_list() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        assert runner.invoke(main, ["init"]).exit_code == 0
-
-        result = runner.invoke(main, ["config", "providers"])
-        assert result.exit_code == 0
-        assert "openai" in result.output
-        assert "anthropic" in result.output
-        assert "gemini" in result.output
-
-
-def test_config_models_for_provider() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        assert runner.invoke(main, ["init"]).exit_code == 0
-
-        result = runner.invoke(main, ["config", "models", "openai"])
-        assert result.exit_code == 0
-        assert "fast" in result.output
-        assert "balanced" in result.output
-        assert "deep" in result.output
-
-
-def test_config_models_uses_configured_provider() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        assert runner.invoke(main, ["init"]).exit_code == 0
-        runner.invoke(main, ["config", "provider", "set", "anthropic"])
-
-        result = runner.invoke(main, ["config", "models"])
-        assert result.exit_code == 0
-        assert "anthropic" in result.output
-
-
-def test_config_models_no_provider_fails() -> None:
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        assert runner.invoke(main, ["init"]).exit_code == 0
-
-        result = runner.invoke(main, ["config", "models"])
-        assert result.exit_code != 0
-        assert "Specify a provider" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -1352,25 +1241,6 @@ def test_sources_list_json_empty() -> None:
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data == []
-
-
-# ---------------------------------------------------------------------------
-# Coverage gap: config show with runtime overrides
-# ---------------------------------------------------------------------------
-
-
-def test_config_show_runtime_overrides() -> None:
-    """config show displays runtime overrides when --tier is passed."""
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        assert runner.invoke(main, ["init"]).exit_code == 0
-
-        result = runner.invoke(main, ["--tier", "fast", "config", "show"])
-
-        assert result.exit_code == 0
-        assert "Runtime overrides active" in result.output
-        assert "tier" in result.output
-        assert "fast" in result.output
 
 
 # ---------------------------------------------------------------------------
