@@ -62,6 +62,7 @@ class DoctorService:
         checks.append(self._check_api_key(strict=strict))
         checks.append(self._check_converters())
         checks.append(self._check_run_store_db())
+        checks.append(self._check_ecosystem_config())
         return DoctorReport(checks=checks)
 
     def _check_project_structure(self) -> DoctorCheck:
@@ -286,3 +287,55 @@ class DoctorService:
                 detail=f"Cannot read run-artifact database: {exc}",
                 severity="error",
             )
+
+    _VALID_OBSERVABILITY_BACKENDS = {"none", "langsmith"}
+    _VALID_WORKFLOW_BACKENDS = {"python", "langgraph"}
+    _VALID_PROVIDER_BACKENDS = {"direct", "langchain"}
+    _VALID_RETRIEVAL_MODES = {"lexical", "hybrid", "semantic"}
+
+    def _check_ecosystem_config(self) -> DoctorCheck:
+        eco = self.config.get("ecosystem") or {}
+        problems: list[str] = []
+
+        obs_backend = (eco.get("observability") or {}).get("backend", "none")
+        if obs_backend not in self._VALID_OBSERVABILITY_BACKENDS:
+            problems.append(
+                f"observability.backend '{obs_backend}' not in "
+                f"{sorted(self._VALID_OBSERVABILITY_BACKENDS)}"
+            )
+
+        for key in ("query_backend", "review_backend"):
+            wf_val = (eco.get("workflows") or {}).get(key, "python")
+            if wf_val not in self._VALID_WORKFLOW_BACKENDS:
+                problems.append(
+                    f"workflows.{key} '{wf_val}' not in "
+                    f"{sorted(self._VALID_WORKFLOW_BACKENDS)}"
+                )
+
+        prov_backend = (eco.get("providers") or {}).get("backend", "direct")
+        if prov_backend not in self._VALID_PROVIDER_BACKENDS:
+            problems.append(
+                f"providers.backend '{prov_backend}' not in "
+                f"{sorted(self._VALID_PROVIDER_BACKENDS)}"
+            )
+
+        ret_mode = (eco.get("retrieval") or {}).get("mode", "lexical")
+        if ret_mode not in self._VALID_RETRIEVAL_MODES:
+            problems.append(
+                f"retrieval.mode '{ret_mode}' not in "
+                f"{sorted(self._VALID_RETRIEVAL_MODES)}"
+            )
+
+        if problems:
+            return DoctorCheck(
+                name="ecosystem_config",
+                ok=False,
+                detail="; ".join(problems),
+                severity="warning",
+            )
+        return DoctorCheck(
+            name="ecosystem_config",
+            ok=True,
+            detail="Ecosystem feature flags are valid.",
+            severity="ok",
+        )

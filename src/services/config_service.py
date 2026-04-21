@@ -9,7 +9,7 @@ import yaml
 from src.services.project_service import ProjectPaths, atomic_write_text
 
 
-CURRENT_CONFIG_VERSION = 2
+CURRENT_CONFIG_VERSION = 3
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -39,6 +39,22 @@ DEFAULT_CONFIG: dict[str, Any] = {
         ],
     },
     "provider": {},
+    "ecosystem": {
+        "observability": {
+            "backend": "none",
+            "enabled": False,
+        },
+        "workflows": {
+            "query_backend": "python",
+            "review_backend": "python",
+        },
+        "providers": {
+            "backend": "direct",
+        },
+        "retrieval": {
+            "mode": "lexical",
+        },
+    },
 }
 
 
@@ -153,6 +169,11 @@ def _apply_config_migrations(config: dict[str, Any]) -> tuple[dict[str, Any], bo
             changed = True
             version = _config_version(migrated)
             continue
+        if version == 2:
+            migrated = _migrate_v2_to_v3(migrated)
+            changed = True
+            version = _config_version(migrated)
+            continue
         raise ValueError(f"Unsupported kb.config.yaml version: {version}")
 
     return migrated, changed
@@ -173,4 +194,11 @@ def _migrate_v1_to_v2(config: dict[str, Any]) -> dict[str, Any]:
 
     migrated.setdefault("provider", {})
     migrated["version"] = 2
+    return migrated
+
+
+def _migrate_v2_to_v3(config: dict[str, Any]) -> dict[str, Any]:
+    migrated = deepcopy(config)
+    migrated.setdefault("ecosystem", deepcopy(DEFAULT_CONFIG["ecosystem"]))
+    migrated["version"] = 3
     return migrated
