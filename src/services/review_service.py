@@ -177,10 +177,12 @@ class ReviewService:
         *,
         provider: Optional[TextProvider] = None,
         run_store: Optional[RunStore] = None,
+        workflow_backend: str = "python",
     ) -> None:
         self.paths = paths
         self.provider = provider
         self.run_store = run_store
+        self.workflow_backend = workflow_backend
 
     def review(self, *, adversarial: bool = False) -> ReviewReport:
         self._require_provider("kb review")
@@ -191,7 +193,12 @@ class ReviewService:
         issues.extend(self._check_terminology_variants(page_tokens))
 
         if adversarial:
-            findings, mode, run_id = self._adversarial_review()
+            if self.workflow_backend == "langgraph":
+                from src.workflows.review_graph import run_review_graph
+
+                findings, mode, run_id = run_review_graph(self)
+            else:
+                findings, mode, run_id = self._adversarial_review()
             issues.extend(self._findings_to_issues(findings))
             return ReviewReport(
                 issues=issues,

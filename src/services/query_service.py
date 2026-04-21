@@ -72,11 +72,13 @@ class QueryService:
         *,
         provider: Optional[TextProvider] = None,
         run_store: Optional[RunStore] = None,
+        workflow_backend: str = "python",
     ) -> None:
         self.paths = paths
         self.search_service = search_service
         self.provider = provider
         self.run_store = run_store
+        self.workflow_backend = workflow_backend
 
     def answer_question(
         self, question: str, *, limit: int = 3, self_consistency: int = 1
@@ -91,6 +93,12 @@ class QueryService:
             )
 
         if self_consistency > 1:
+            if self.workflow_backend == "langgraph":
+                from src.workflows.query_graph import run_query_graph
+
+                return run_query_graph(
+                    self, question, matches, self_consistency, provider
+                )
             return self._self_consistent_answer(
                 question, matches, sample_count=self_consistency, provider=provider
             )

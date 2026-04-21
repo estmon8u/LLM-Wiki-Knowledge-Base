@@ -85,6 +85,12 @@ def build_services(paths: ProjectPaths, config: dict[str, Any]) -> dict[str, Any
     )
     run_store = RunStore(paths.graph_exports_dir / "run_artifacts.sqlite3")
     compile_run_store = CompileRunStore(paths.graph_exports_dir / "compile_runs.json")
+
+    ecosystem = config.get("ecosystem") or {}
+    workflows = ecosystem.get("workflows") or {}
+    query_backend = workflows.get("query_backend", "python")
+    review_backend = workflows.get("review_backend", "python")
+
     return {
         "project": ProjectService(paths),
         "config": config_service,
@@ -108,9 +114,15 @@ def build_services(paths: ProjectPaths, config: dict[str, Any]) -> dict[str, Any
             search_service,
             provider=query_provider,
             run_store=run_store,
+            workflow_backend=query_backend,
         ),
         "export": ExportService(paths),
-        "review": ReviewService(paths, provider=review_provider, run_store=run_store),
+        "review": ReviewService(
+            paths,
+            provider=review_provider,
+            run_store=run_store,
+            workflow_backend=review_backend,
+        ),
         "run_store": run_store,
         "compile_run_store": compile_run_store,
     }
