@@ -164,9 +164,9 @@ def test_ingest_service_routes_pdf_sources_through_docling(test_project) -> None
 
     assert result.created is True
     assert result.source is not None
-    assert result.source.slug == "pdf-research-note"
-    assert result.source.raw_path == "raw/sources/pdf-research-note.pdf"
-    assert result.source.normalized_path == "raw/normalized/pdf-research-note.md"
+    assert result.source.slug == "example"
+    assert result.source.raw_path == "raw/sources/example.pdf"
+    assert result.source.normalized_path == "raw/normalized/example.md"
     assert result.source.metadata["ingest_mode"] == "docling-pdf-convert"
     assert result.source.metadata["converter"] == "docling"
     assert result.source.metadata["normalization_route"] == "docling-pdf"
@@ -408,3 +408,64 @@ def test_fifty_sources_compile_lint_search_complete(test_project) -> None:
 
     search_results = test_project.services["search"].search("body paragraph")
     assert len(search_results) >= 1
+
+
+def test_raw_source_record_origin_hash_round_trip() -> None:
+    record = RawSourceRecord(
+        source_id="origin-1",
+        slug="origin-test",
+        title="Origin Test",
+        origin="origin.md",
+        source_type="file",
+        raw_path="raw/sources/origin-test.md",
+        content_hash="content-hash",
+        ingested_at=utc_now_iso(),
+        origin_hash="origin-hash-abc",
+    )
+
+    restored = RawSourceRecord.from_dict(record.to_dict())
+
+    assert restored.origin_hash == "origin-hash-abc"
+    assert restored == record
+
+
+def test_manifest_find_by_origin_hash(test_project) -> None:
+    manifest = test_project.services["manifest"]
+    record = RawSourceRecord(
+        source_id="oh-1",
+        slug="oh-test",
+        title="Origin Hash Test",
+        origin="oh.md",
+        source_type="file",
+        raw_path="raw/sources/oh-test.md",
+        content_hash="ch-1",
+        ingested_at=utc_now_iso(),
+        origin_hash="oh-deadbeef",
+    )
+    manifest.save_source(record)
+
+    assert manifest.find_by_origin_hash("oh-deadbeef") is not None
+    assert manifest.find_by_origin_hash("oh-deadbeef").source_id == "oh-1"
+    assert manifest.find_by_origin_hash("nonexistent") is None
+
+
+def test_ingest_detects_duplicate_by_origin_hash(test_project) -> None:
+    """Same file ingested twice must be detected even if normalized text differs."""
+    source = test_project.write_file("notes/stable.md", "# Stable\n\nBody.\n")
+    ingest = test_project.services["ingest"]
+
+    first = ingest.ingest_path(source)
+    assert first.created is True
+    assert first.source.origin_hash is not None
+
+    second = ingest.ingest_path(source)
+    assert second.created is False
+    assert second.duplicate_of is not None
+
+
+def test_ingest_stores_origin_hash_on_record(test_project) -> None:
+    source = test_project.write_file("notes/hashme.md", "# HashMe\n\nBody.\n")
+    result = test_project.services["ingest"].ingest_path(source)
+
+    assert result.source.origin_hash is not None
+    assert len(result.source.origin_hash) == 64  # SHA256 hex digest

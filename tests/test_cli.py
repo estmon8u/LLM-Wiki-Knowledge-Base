@@ -313,6 +313,22 @@ def test_add_alias_recursive_directory_reports_duplicates() -> None:
         assert "- duplicate: shared" in result.output
 
 
+def test_add_accepts_multiple_source_paths() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("a.md").write_text("# Alpha\n\nAlpha body.\n", encoding="utf-8")
+        Path("b.md").write_text("# Beta\n\nBeta body.\n", encoding="utf-8")
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["add", "a.md", "b.md"])
+
+        assert result.exit_code == 0
+        assert "Ingested Alpha" in result.output
+        assert "Ingested Beta" in result.output
+        assert Path("raw/sources/alpha.md").exists()
+        assert Path("raw/sources/beta.md").exists()
+
+
 def test_echo_directory_result_ignores_missing_source_entries(monkeypatch) -> None:
     captured = []
     monkeypatch.setattr("click.echo", captured.append)

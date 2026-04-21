@@ -153,7 +153,7 @@ class NormalizationService:
         return NormalizationResult(
             normalized_text=normalized_text,
             normalized_suffix=".md",
-            title=_extract_title(normalized_text, source_path),
+            title=_filename_title(source_path),
             metadata={
                 "converter": "docling",
                 "converter_version": package_version("docling"),
@@ -211,6 +211,11 @@ def is_supported_source_path(source_path: Path) -> bool:
 
 def _ensure_trailing_newline(contents: str) -> str:
     return contents.rstrip() + "\n"
+
+
+def _filename_title(source_path: Path) -> str:
+    """Derive a human-readable title from the filename stem."""
+    return source_path.stem.replace("_", " ").replace("-", " ").title()
 
 
 def _extract_title(contents: str, source_path: Path) -> str:
