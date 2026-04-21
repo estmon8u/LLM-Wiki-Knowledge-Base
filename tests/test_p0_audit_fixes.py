@@ -403,6 +403,21 @@ def test_doctor_configured_provider_with_model(test_project) -> None:
     assert "claude-opus-4-6" in prov_check.detail
 
 
+def test_doctor_warns_on_model_tier_mismatch(test_project) -> None:
+    config = {
+        "provider": {
+            "name": "anthropic",
+            "tier": "deep",
+            "model": "wrong-model-name",
+        }
+    }
+    doctor = DoctorService(test_project.paths, config)
+    report = doctor.diagnose()
+    model_check = next(c for c in report.checks if c.name == "provider_model")
+    assert model_check.severity == "warning"
+    assert "does not match" in model_check.detail
+
+
 def test_doctor_report_ok_property() -> None:
     from src.services.doctor_service import DoctorCheck, DoctorReport
 
