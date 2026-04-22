@@ -9,6 +9,7 @@ from src.models.wiki_models import LintIssue, LintReport
 from src.providers import ProviderExecutionError
 from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
 from src.services.compile_service import (
+    SOURCE_PAGE_CONTRACT_VERSION,
     _abstract_paragraphs,
     _discover_concept_pages,
     _is_content_paragraph,
@@ -39,11 +40,19 @@ def _ingest_source(test_project, relative_path: str, content: str):
     return test_project.services["ingest"].ingest_path(path).source
 
 
-def _compiled_page(title: str, body: str, *, summary: str = "Summary") -> str:
+def _compiled_page(
+    title: str,
+    body: str,
+    *,
+    summary: str = "Summary",
+    page_type: str | None = "source",
+) -> str:
+    type_block = f"type: {page_type}\n" if page_type else ""
     return (
         "---\n"
         f"title: {title}\n"
         f"summary: {summary}\n"
+        f"{type_block}"
         "source_id: source-1\n"
         "raw_path: raw/source.md\n"
         "source_hash: hash-1\n"
@@ -75,6 +84,19 @@ class _StableSummaryProvider(TextProvider):
     def generate(self, request: ProviderRequest) -> ProviderResponse:
         return ProviderResponse(
             text="Stub summary of the document.", model_name="stable-summary-v1"
+        )
+
+
+class _RecordingSummaryProvider(TextProvider):
+    name = "recording-summary"
+
+    def __init__(self) -> None:
+        self.requests: list[ProviderRequest] = []
+
+    def generate(self, request: ProviderRequest) -> ProviderResponse:
+        self.requests.append(request)
+        return ProviderResponse(
+            text="Stub summary of the document.", model_name="recording-summary-v1"
         )
 
 
@@ -121,8 +143,9 @@ def test_compile_service_compiles_source_pages_index_and_log(test_project) -> No
         test_project.paths.wiki_index_file.read_text(encoding="utf-8")
     )
     assert index_payload["source_pages"][0]["slug"] == source.slug
-    assert "compiled 1 source page(s)" in test_project.paths.wiki_log_file.read_text(
-        encoding="utf-8"
+    assert (
+        "update | 1 compiled, 0 skipped"
+        in test_project.paths.wiki_log_file.read_text(encoding="utf-8")
     )
 
 
@@ -267,8 +290,9 @@ def test_compile_service_append_log_adds_separator_for_non_newline_file(
     compile_service._append_log(1, 0, False, resumed=True)
 
     log_text = test_project.paths.wiki_log_file.read_text(encoding="utf-8")
-    assert "# Activity Log\n- " in log_text
-    assert "resume=true" in log_text
+    assert "## [" in log_text
+    assert "update |" in log_text
+    assert "(resume)" in log_text
 
 
 def test_is_content_paragraph_rejects_link_heavy_navigation_text() -> None:
@@ -902,7 +926,7 @@ def test_compile_appends_to_existing_log(test_project) -> None:
 
     log_text = test_project.paths.wiki_log_file.read_text(encoding="utf-8")
     assert "Pre-existing entry." in log_text
-    assert "compiled 1 source page(s)" in log_text
+    assert "update | 1 compiled, 0 skipped" in log_text
 
 
 # --- P4 boundary tests ---
@@ -1460,3 +1484,136 @@ def test_abstract_paragraphs_strips_frontmatter() -> None:
     result = _abstract_paragraphs(contents)
 
     assert result == ["Content after frontmatter."]
+
+
+# --- Phase 7: schema/index centrality tests ---
+
+
+def test_compiled_source_page_has_type_source(test_project) -> None:
+    _ingest_source(test_project, "notes/typed.md", "# Typed\n\nBody.\n")
+
+    test_project.services["compile"].compile()
+
+    page_text = (test_project.root / "wiki/sources/typed.md").read_text(
+        encoding="utf-8"
+    )
+    assert "type: source" in page_text
+
+
+def test_lint_warns_on_old_source_page_missing_type(test_project) -> None:
+    source = _ingest_source(test_project, "notes/old.md", "# Old\n\nBody.\n")
+    source.compiled_at = "2026-04-21T00:00:00Z"
+    source.compiled_from_hash = source.content_hash
+    source.metadata = {}
+    test_project.services["manifest"].save_source(source)
+    test_project.write_file(
+        "wiki/sources/old.md",
+        _compiled_page("Old", "No type field.", page_type=None),
+    )
+
+    report = test_project.services["lint"].lint()
+    codes = [i.code for i in report.issues]
+
+    assert "missing-type" in codes
+    issue = next(i for i in report.issues if i.code == "missing-type")
+    assert issue.severity == "warning"
+    assert "kb update --force" in issue.message
+
+
+def test_lint_errors_when_current_source_page_loses_type(test_project) -> None:
+    _ingest_source(test_project, "notes/current.md", "# Current\n\nBody.\n")
+
+    test_project.services["compile"].compile()
+
+    page_path = test_project.root / "wiki/sources/current.md"
+    page_text = page_path.read_text(encoding="utf-8").replace("type: source\n", "", 1)
+    page_path.write_text(page_text, encoding="utf-8")
+
+    source = test_project.services["manifest"].list_sources()[0]
+    assert (
+        source.metadata["source_page_contract_version"] == SOURCE_PAGE_CONTRACT_VERSION
+    )
+
+    report = test_project.services["lint"].lint()
+    issue = next(i for i in report.issues if i.code == "missing-type")
+
+    assert issue.severity == "error"
+    assert "required frontmatter field: type" in issue.message
+
+
+def test_lint_no_missing_type_warning_when_type_present(test_project) -> None:
+    test_project.write_file(
+        "wiki/sources/new.md",
+        "---\ntitle: New\nsummary: S\ntype: source\nsource_id: s\n"
+        "raw_path: raw/s.md\nsource_hash: h\ncompiled_at: 2026-04-21\n---\n\n# New\n\nBody.\n",
+    )
+
+    report = test_project.services["lint"].lint()
+    missing_type = [i for i in report.issues if i.code == "missing-type"]
+
+    assert missing_type == []
+
+
+def test_index_includes_analysis_pages_section(test_project) -> None:
+    test_project.write_file(
+        "wiki/analysis/my-question.md",
+        "---\ntitle: My Question\ntype: analysis\n---\n\n# My Question\n",
+    )
+
+    test_project.services["compile"]._write_index([])
+
+    index_text = test_project.paths.wiki_index_markdown.read_text(encoding="utf-8")
+    assert "## Analysis Pages" in index_text
+    assert "[[my-question]]" in index_text
+
+    index_json = json.loads(
+        test_project.paths.wiki_index_file.read_text(encoding="utf-8")
+    )
+    assert "analysis_pages" in index_json
+    assert any(e["slug"] == "my-question" for e in index_json["analysis_pages"])
+
+
+def test_index_shows_empty_analysis_section_when_none(test_project) -> None:
+    test_project.services["compile"]._write_index([])
+
+    index_text = test_project.paths.wiki_index_markdown.read_text(encoding="utf-8")
+    assert "## Analysis Pages" in index_text
+    assert "No analysis pages saved yet." in index_text
+
+
+def test_compile_prompt_includes_schema_excerpt(test_project) -> None:
+    from src.services.config_service import DEFAULT_SCHEMA
+
+    provider = _RecordingSummaryProvider()
+    compile_service = test_project.services["compile"]
+    compile_service.provider = provider
+    compile_service.schema_text = DEFAULT_SCHEMA
+    _ingest_source(test_project, "notes/schema.md", "# Schema\n\nBody.\n")
+
+    compile_service.compile()
+
+    assert provider.requests
+    system_prompt = provider.requests[0].system_prompt or ""
+    assert "## Source Pages" in system_prompt
+    assert "Create one source page" in system_prompt
+    assert "## Query Behavior" not in system_prompt
+
+
+def test_log_entry_uses_heading_format(test_project) -> None:
+    compile_service = test_project.services["compile"]
+    compile_service._append_log(3, 7, True)
+
+    log_text = test_project.paths.wiki_log_file.read_text(encoding="utf-8")
+    # Entry should be grep-parseable heading format
+    assert "## [" in log_text
+    assert "update | 3 compiled, 7 skipped (force)" in log_text
+
+
+def test_log_entry_no_flags_when_not_force_or_resume(test_project) -> None:
+    compile_service = test_project.services["compile"]
+    compile_service._append_log(2, 0, False)
+
+    log_text = test_project.paths.wiki_log_file.read_text(encoding="utf-8")
+    assert "update | 2 compiled, 0 skipped\n" in log_text
+    assert "(force)" not in log_text
+    assert "(resume)" not in log_text

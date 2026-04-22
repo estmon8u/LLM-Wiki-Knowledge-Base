@@ -329,6 +329,39 @@ def test_ensure_structure_seeds_wiki_log_file(uninitialized_project) -> None:
     assert "existing entry" in log_file.read_text(encoding="utf-8")
 
 
+# --- schema_excerpt tests ---
+
+
+def test_schema_excerpt_extracts_matching_section() -> None:
+    from src.services.config_service import DEFAULT_SCHEMA, schema_excerpt
+
+    result = schema_excerpt(DEFAULT_SCHEMA, ["Source Pages"])
+    assert "## Source Pages" in result
+    assert "Create one source page" in result
+    assert "## Query Behavior" not in result
+
+
+def test_schema_excerpt_returns_multiple_sections() -> None:
+    from src.services.config_service import DEFAULT_SCHEMA, schema_excerpt
+
+    result = schema_excerpt(DEFAULT_SCHEMA, ["Source Pages", "Query Behavior"])
+    assert "## Source Pages" in result
+    assert "## Query Behavior" in result
+
+
+def test_schema_excerpt_missing_heading_returns_empty() -> None:
+    from src.services.config_service import schema_excerpt
+
+    result = schema_excerpt("# Just a title\n\nNo sections.\n", ["Missing Heading"])
+    assert result == ""
+
+
+def test_schema_excerpt_empty_schema_returns_empty() -> None:
+    from src.services.config_service import schema_excerpt
+
+    assert schema_excerpt("", ["Source Pages"]) == ""
+
+
 def test_slugify_all_special_characters() -> None:
     assert slugify("!!!???") == "untitled"
     assert slugify("@#$%^&*") == "untitled"

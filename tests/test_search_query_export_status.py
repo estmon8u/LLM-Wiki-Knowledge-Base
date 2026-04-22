@@ -42,10 +42,22 @@ def _provider_query_service(test_project, *responses: object) -> QueryService:
 
 
 def _compiled_page(title: str, body: str, *, summary: str = "Summary") -> str:
+    return _compiled_page_with_type(title, body, summary=summary)
+
+
+def _compiled_page_with_type(
+    title: str,
+    body: str,
+    *,
+    summary: str = "Summary",
+    page_type: str | None = "source",
+) -> str:
+    type_block = f"type: {page_type}\n" if page_type else ""
     return (
         "---\n"
         f"title: {title}\n"
         f"summary: {summary}\n"
+        f"{type_block}"
         "source_id: source-1\n"
         "raw_path: raw/source.md\n"
         "source_hash: hash-1\n"
@@ -295,9 +307,72 @@ def test_save_answer_appends_to_wiki_log(test_project) -> None:
     query_service.save_answer("How does traceability work?", answer)
 
     log_text = test_project.paths.wiki_log_file.read_text(encoding="utf-8")
-    assert "saved analysis" in log_text
+    assert "ask --save" in log_text
     assert "How does traceability work?" in log_text
     assert "wiki/analysis/" in log_text
+
+
+def test_save_answer_refreshes_index_with_analysis_page(test_project) -> None:
+    test_project.write_file("wiki/sources/citations.md", "traceability appears here")
+    compile_svc = test_project.services["compile"]
+    query_service = QueryService(
+        test_project.paths,
+        test_project.services["search"],
+        provider=SequencedProvider(["Traceability appears here. [Citations]"]),
+        refresh_index=compile_svc.refresh_index,
+    )
+    answer = query_service.answer_question("traceability")
+
+    query_service.save_answer("How does traceability work?", answer)
+
+    # Index should now include the analysis page
+    index_text = test_project.paths.wiki_index_markdown.read_text(encoding="utf-8")
+    assert "## Analysis Pages" in index_text
+    assert "[[how-does-traceability-work]]" in index_text
+
+
+def test_query_prompt_includes_schema_excerpt(test_project) -> None:
+    from src.services.config_service import DEFAULT_SCHEMA
+
+    provider = SequencedProvider(["Traceability appears here. [Citations]"])
+    test_project.write_file("wiki/sources/citations.md", "traceability appears here")
+    query_service = QueryService(
+        test_project.paths,
+        test_project.services["search"],
+        provider=provider,
+        schema_text=DEFAULT_SCHEMA,
+    )
+
+    query_service.answer_question("traceability")
+
+    assert provider.requests
+    system_prompt = provider.requests[0].system_prompt or ""
+    assert "## Query Behavior" in system_prompt
+    assert "Answer from wiki evidence only" in system_prompt
+    assert "## Source Pages" not in system_prompt
+
+
+def test_save_answer_sanitizes_log_question_text(test_project) -> None:
+    from src.services.query_service import QueryAnswer
+
+    answer = QueryAnswer(
+        answer="Traceability stays grounded.", citations=[], mode="test"
+    )
+
+    test_project.services["query"].save_answer(
+        'What is "traceability"\nand why?',
+        answer,
+    )
+
+    lines = [
+        line
+        for line in test_project.paths.wiki_log_file.read_text(
+            encoding="utf-8"
+        ).splitlines()
+        if line.startswith("## [")
+    ]
+    assert len(lines) == 1
+    assert 'ask --save | "What is \\"traceability\\" and why?" ->' in lines[0]
 
 
 def test_query_service_save_answer_uses_fallback_slug_for_empty_question(

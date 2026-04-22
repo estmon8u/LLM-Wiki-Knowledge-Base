@@ -1,6 +1,7 @@
 ---
 title: Example Source
 summary: Stub summary of the document.
+type: source
 source_id: src-123
 source_hash: hash-example
 raw_path: raw/sources/example.md

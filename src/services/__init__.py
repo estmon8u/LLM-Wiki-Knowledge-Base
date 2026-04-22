@@ -27,19 +27,22 @@ def build_services(paths: ProjectPaths, config: dict[str, Any]) -> dict[str, Any
     manifest_service = ManifestService(paths)
     search_service = SearchService(paths)
     provider = build_provider(config)
+    schema_text = config_service.load_schema()
     compile_run_store = CompileRunStore(paths.graph_exports_dir / "compile_runs.json")
+    compile_service = CompileService(
+        paths,
+        config,
+        manifest_service,
+        provider=provider,
+        compile_run_store=compile_run_store,
+        schema_text=schema_text,
+    )
     return {
         "project": ProjectService(paths),
         "config": config_service,
         "manifest": manifest_service,
         "ingest": IngestService(paths, manifest_service),
-        "compile": CompileService(
-            paths,
-            config,
-            manifest_service,
-            provider=provider,
-            compile_run_store=compile_run_store,
-        ),
+        "compile": compile_service,
         "concepts": ConceptService(paths),
         "diff": DiffService(paths, manifest_service),
         "doctor": DoctorService(paths, config, provider=provider),
@@ -50,6 +53,8 @@ def build_services(paths: ProjectPaths, config: dict[str, Any]) -> dict[str, Any
             paths,
             search_service,
             provider=provider,
+            refresh_index=compile_service.refresh_index,
+            schema_text=schema_text,
         ),
         "export": ExportService(paths),
         "review": ReviewService(paths, provider=provider),

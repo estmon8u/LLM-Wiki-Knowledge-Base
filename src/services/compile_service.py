@@ -15,6 +15,7 @@ from src.providers import (
     UnavailableProvider,
 )
 from src.providers.base import ProviderRequest, TextProvider
+from src.services.config_service import schema_excerpt
 from src.services.manifest_service import ManifestService
 from src.services.project_service import ProjectPaths, atomic_write_text, utc_now_iso
 from src.storage.compile_run_store import CompileRunStore
@@ -30,6 +31,8 @@ _SUMMARY_SYSTEM_PROMPT = (
 )
 
 _SUMMARY_CONTENT_LIMIT = 12000
+SOURCE_PAGE_CONTRACT_VERSION_KEY = "source_page_contract_version"
+SOURCE_PAGE_CONTRACT_VERSION = 2
 
 
 @dataclass
@@ -59,6 +62,7 @@ class CompileService:
         *,
         provider: Optional[TextProvider] = None,
         compile_run_store: Optional[CompileRunStore] = None,
+        schema_text: str = "",
     ) -> None:
         self.paths = paths
         self.config = config
@@ -67,6 +71,7 @@ class CompileService:
         self.compile_run_store = compile_run_store or CompileRunStore(
             self.paths.graph_exports_dir / "compile_runs.json"
         )
+        self.schema_text = schema_text
 
     def _require_provider(self) -> TextProvider:
         if self.provider is None:
@@ -140,6 +145,10 @@ class CompileService:
 
                 source.compiled_at = compiled_at
                 source.compiled_from_hash = source.content_hash
+                source.metadata = dict(source.metadata or {})
+                source.metadata[
+                    SOURCE_PAGE_CONTRACT_VERSION_KEY
+                ] = SOURCE_PAGE_CONTRACT_VERSION
                 self.manifest_service.save_source(source)
                 self.compile_run_store.mark_source_compiled(run_record.run_id, source)
 
@@ -187,6 +196,7 @@ class CompileService:
         frontmatter = {
             "title": source.title,
             "summary": summary,
+            "type": "source",
             "source_id": source.source_id,
             "source_hash": source.content_hash,
             "raw_path": source.raw_path,
@@ -221,11 +231,16 @@ class CompileService:
         truncated = _plain_text_fallback(contents)[:_SUMMARY_CONTENT_LIMIT]
         if not truncated.strip():
             return "No content available for summarization."
+        system_prompt = _SUMMARY_SYSTEM_PROMPT
+        if self.schema_text:
+            excerpt = schema_excerpt(self.schema_text, ["Source Pages"])
+            if excerpt:
+                system_prompt = f"{system_prompt}\n\n{excerpt}"
         try:
             response = provider.generate(
                 ProviderRequest(
                     prompt=truncated,
-                    system_prompt=_SUMMARY_SYSTEM_PROMPT,
+                    system_prompt=system_prompt,
                     max_tokens=512,
                 )
             )
@@ -258,6 +273,7 @@ class CompileService:
 
     def _write_index(self, sources: list[RawSourceRecord]) -> None:
         concept_entries = _discover_concept_pages(self.paths)
+        analysis_entries = _discover_analysis_pages(self.paths)
         index_payload = {
             "generated_at": utc_now_iso(),
             "source_pages": [
@@ -270,6 +286,7 @@ class CompileService:
                 for source in _sorted_sources(sources)
             ],
             "concept_pages": concept_entries,
+            "analysis_pages": analysis_entries,
         }
         self.paths.wiki_index_file.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(
@@ -300,6 +317,16 @@ class CompileService:
             lines.extend(
                 ["## Concept Pages", "", "- No concept pages compiled yet.", ""]
             )
+
+        if analysis_entries:
+            lines.extend(["## Analysis Pages", ""])
+            for page in analysis_entries:
+                lines.append(f"- [[{page['slug']}]]")
+            lines.append("")
+        else:
+            lines.extend(
+                ["## Analysis Pages", "", "- No analysis pages saved yet.", ""]
+            )
         atomic_write_text(self.paths.wiki_index_markdown, "\n".join(lines))
 
     def _append_log(
@@ -310,16 +337,21 @@ class CompileService:
         *,
         resumed: bool = False,
     ) -> None:
-        timestamp = utc_now_iso()
-        current = "# Activity Log\n\n"
+        timestamp = utc_now_iso()[:10]
+        current = "# Activity Log\n"
         if self.paths.wiki_log_file.exists():
             current = self.paths.wiki_log_file.read_text(encoding="utf-8")
         if not current.endswith("\n"):
             current += "\n"
+        flags = []
+        if force:
+            flags.append("force")
+        if resumed:
+            flags.append("resume")
+        flag_str = f" ({', '.join(flags)})" if flags else ""
         current += (
-            f"- {timestamp}: compiled {compiled_count} source page(s), "
-            f"skipped {skipped_count}, force={str(force).lower()}, "
-            f"resume={str(resumed).lower()}\n"
+            f"\n## [{timestamp}] update | "
+            f"{compiled_count} compiled, {skipped_count} skipped{flag_str}\n"
         )
         atomic_write_text(self.paths.wiki_log_file, current)
 
@@ -437,6 +469,27 @@ def _discover_concept_pages(paths: ProjectPaths) -> list[dict[str, str]]:
                     "title": fm.get("title", cp.stem.replace("-", " ").title()),
                     "slug": cp.stem,
                     "path": f"wiki/concepts/{cp.name}",
+                }
+            )
+        except Exception:
+            continue
+    return entries
+
+
+def _discover_analysis_pages(paths: ProjectPaths) -> list[dict[str, str]]:
+    """Scan wiki/analysis/ for saved analysis pages."""
+    entries: list[dict[str, str]] = []
+    if not paths.wiki_analysis_dir.exists():
+        return entries
+    for ap in sorted(paths.wiki_analysis_dir.glob("*.md")):
+        try:
+            text = ap.read_text(encoding="utf-8")
+            fm = _parse_frontmatter(text)
+            entries.append(
+                {
+                    "title": fm.get("title", ap.stem.replace("-", " ").title()),
+                    "slug": ap.stem,
+                    "path": f"wiki/analysis/{ap.name}",
                 }
             )
         except Exception:

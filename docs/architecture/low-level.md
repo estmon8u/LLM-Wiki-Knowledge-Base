@@ -40,16 +40,16 @@
 | File | Responsibility |
 | --- | --- |
 | `src/services/project_service.py` | Project layout, initialization, and shared atomic write/copy helpers |
-| `src/services/config_service.py` | Config loading, defaults, and in-place migration of legacy `kb.config.yaml` versions |
+| `src/services/config_service.py` | Config loading, defaults, `schema_excerpt()` helper for extracting schema sections by heading, and in-place migration of legacy `kb.config.yaml` versions |
 | `src/services/manifest_service.py` | Raw-source manifest read/write behavior |
 | `src/services/normalization_service.py` | Document-type normalization routing for direct text inputs, Docling-backed PDFs, and bounded MarkItDown-backed born-digital converters |
 | `src/services/ingest_service.py` | Raw-source copy, normalized-artifact write, duplicate detection, source registration, deterministic recursive directory ingest, and callback-friendly batch progress hooks used by `kb add` |
-| `src/services/compile_service.py` | Derived wiki generation with provider-backed summary generation, callback-friendly compile planning/progress hooks, and persisted resume/failure tracking for interrupted compiles |
+| `src/services/compile_service.py` | Derived wiki generation with provider-backed summary generation, schema-excerpt-enhanced prompts, `type: source` frontmatter, analysis-page discovery for index, parseable heading-style log entries, callback-friendly compile planning/progress hooks, and persisted resume/failure tracking for interrupted compiles |
 | `src/services/diff_service.py` | Pre-update source diff reporting |
 | `src/services/search_service.py` | Search over compiled artifacts using a SQLite FTS5 chunk index with page-level result deduplication, best-chunk section/index preservation for downstream citations, and fallback markdown scanning if FTS5 is unavailable |
-| `src/services/query_service.py` | Provider-backed query answer assembly from maintained wiki context; self-consistency sampling, claim normalization, deterministic merge, frozen evidence bundles that retain chunk refs, and optional save-to-wiki for analysis pages that also refresh the search index |
+| `src/services/query_service.py` | Provider-backed query answer assembly from maintained wiki context; schema-excerpt-enhanced prompts, parseable heading-style log entries, optional save-to-wiki for analysis pages that also refresh the search index and wiki index immediately |
 | `src/services/review_service.py` | Provider-required semantic review: deterministic topic overlap and terminology checks, single-pass provider review, adversarial extractor/skeptic/arbiter review, and review-run persistence |
-| `src/services/lint_service.py` | Structural validation for wiki links, markdown links, fragments, headings, titles, typed frontmatter, empty pages, and maintenance findings |
+| `src/services/lint_service.py` | Structural validation for wiki links, markdown links, fragments, headings, titles, typed frontmatter (including `missing-type` warning for legacy source pages), empty pages, and maintenance findings |
 | `src/services/export_service.py` | Vault export generation with atomic copies into the Obsidian view |
 | `src/services/status_service.py` | Project and corpus status reporting |
 | `src/services/model_registry_service.py` | Resolves (provider, tier, model) triples into `ResolvedProviderConfig`; built-in profiles per provider/tier; task-specific default tiers; priority: runtime `--model` > runtime `--tier` > config tier > config model > task default > balanced |

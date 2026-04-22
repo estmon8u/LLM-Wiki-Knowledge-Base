@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -44,33 +45,78 @@ DEFAULT_CONFIG: dict[str, Any] = {
 
 DEFAULT_SCHEMA = """# kb.schema.md
 
-This file defines the default compilation rules for the capstone knowledge base.
+Operational rules for building and maintaining this knowledge base.
+
+## Page Types
+
+- source — one per ingested document, in wiki/sources/
+- concept — synthesizes multiple source pages, in wiki/concepts/
+- analysis — saved answer to a user question, in wiki/analysis/
 
 ## Source Pages
 
 - Create one source page for every ingested document.
-- Preserve source traceability with raw-path and source-id metadata.
-- Keep the summary concise and grounded in the ingested file.
-- Prefer extracting the document's core thesis, methods, findings, and open questions.
+- Preserve source traceability: include source_id, raw_path, and content hash.
+- Keep the summary concise (2-4 sentences) and grounded in the ingested file.
+- Extract the document's core thesis, methods, findings, and open questions.
+- Do not include author names, affiliations, or publication metadata in the summary.
 
 ## Concept Pages
 
 - Concept pages synthesize across multiple source pages.
-- Only create or update concept pages when more than one source supports the topic.
-- Prefer explicit backlinks instead of inferred links with no supporting text.
+- Only create a concept page when two or more sources support the topic.
+- Use explicit backlinks to source pages with wiki-link syntax.
+
+## Analysis Pages
+
+- Saved answers to user questions, stored under wiki/analysis/.
+- Include the original question, the answer, and citation backlinks.
+- Analysis pages are indexed and searchable like any other wiki page.
+
+## Index Rules
+
+- wiki/index.md catalogs all source, concept, and analysis pages.
+- wiki/_index.json provides the same catalog in machine-readable form.
+- The index is regenerated after every compile and after saving an analysis page.
+
+## Log Rules
+
+- wiki/log.md records every wiki-modifying action chronologically.
+- Each entry uses a heading format: ## [ISO-date] action | details.
+- Log entries must be parseable with grep or simple text tools.
 
 ## Query Behavior
 
-- Search the compiled wiki first.
-- Prefer source-backed answers with page citations.
-- Surface gaps when no compiled page answers the question well.
+- Search the compiled wiki first using the local index.
+- Answer from wiki evidence only; cite each claim with [Source Title].
+- If the evidence is insufficient, say so explicitly.
+- Saved answers compound into the wiki as analysis pages.
 
 ## Lint Goals
 
 - Treat broken links and missing citations as errors.
-- Treat empty summaries and orphan pages as warnings.
-- Treat possible improvements, such as weak cross-linking, as suggestions.
+- Treat empty summaries, orphan pages, and missing page-type fields as warnings.
+- Treat weak cross-linking as a suggestion.
 """
+
+
+def schema_excerpt(schema_text: str, headings: list[str]) -> str:
+    """Extract specific sections from the schema by heading name.
+
+    Returns the concatenated text of all matching ``## Heading`` sections.
+    Sections are extracted in the order they appear in *headings*.
+    """
+    parts: list[str] = []
+    for heading in headings:
+        pattern = rf"(?m)^## {re.escape(heading)}\s*\n"
+        match = re.search(pattern, schema_text)
+        if match is None:
+            continue
+        start = match.start()
+        next_heading = re.search(r"(?m)^## ", schema_text[match.end() :])
+        end = match.end() + next_heading.start() if next_heading else len(schema_text)
+        parts.append(schema_text[start:end].rstrip())
+    return "\n\n".join(parts)
 
 
 class ConfigService:

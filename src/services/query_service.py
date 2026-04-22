@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from typing import Optional
@@ -13,6 +14,7 @@ from src.providers import (
     UnavailableProvider,
 )
 from src.providers.base import ProviderRequest, TextProvider
+from src.services.config_service import schema_excerpt
 from src.services.project_service import (
     ProjectPaths,
     atomic_write_text,
@@ -46,10 +48,14 @@ class QueryService:
         search_service: SearchService,
         *,
         provider: Optional[TextProvider] = None,
+        refresh_index: Optional["Callable[[], None]"] = None,
+        schema_text: str = "",
     ) -> None:
         self.paths = paths
         self.search_service = search_service
         self.provider = provider
+        self._refresh_index = refresh_index
+        self.schema_text = schema_text
 
     def answer_question(self, question: str, *, limit: int = 3) -> QueryAnswer:
         provider = self._require_provider()
@@ -77,11 +83,16 @@ class QueryService:
         self, question: str, matches: list[SearchResult], *, provider: TextProvider
     ) -> QueryAnswer:
         prompt = self._build_prompt(question, matches)
+        system_prompt = _QUERY_SYSTEM_PROMPT
+        if self.schema_text:
+            excerpt = schema_excerpt(self.schema_text, ["Query Behavior"])
+            if excerpt:
+                system_prompt = f"{system_prompt}\n\n{excerpt}"
         try:
             response = provider.generate(
                 ProviderRequest(
                     prompt=prompt,
-                    system_prompt=_QUERY_SYSTEM_PROMPT,
+                    system_prompt=system_prompt,
                     max_tokens=1024,
                 )
             )
@@ -151,18 +162,21 @@ class QueryService:
         atomic_write_text(dest, page_text)
         self.search_service.refresh_file(dest)
         self._append_log(question, dest)
+        if self._refresh_index is not None:
+            self._refresh_index()
         return dest.relative_to(self.paths.root).as_posix()
 
     def _append_log(self, question: str, dest: "Path") -> None:
         """Append a saved-analysis entry to wiki/log.md."""
-        timestamp = utc_now_iso()
-        current = "# Activity Log\n\n"
+        timestamp = utc_now_iso()[:10]
+        current = "# Activity Log\n"
         if self.paths.wiki_log_file.exists():
             current = self.paths.wiki_log_file.read_text(encoding="utf-8")
         if not current.endswith("\n"):
             current += "\n"
         rel = dest.relative_to(self.paths.root).as_posix()
-        current += f"- {timestamp}: saved analysis [[{rel}]] for: {question}\n"
+        question_summary = _log_safe_text(question)
+        current += f"\n## [{timestamp}] ask --save | {question_summary} -> {rel}\n"
         atomic_write_text(self.paths.wiki_log_file, current)
 
     def _format_saved_citation(self, citation: SearchResult) -> str:
@@ -170,3 +184,10 @@ class QueryService:
         if citation.section and citation.section != citation.title:
             line += f" - Section: {citation.section}"
         return line
+
+
+def _log_safe_text(text: str, *, max_length: int = 160) -> str:
+    collapsed = " ".join(text.split())
+    if len(collapsed) > max_length:
+        collapsed = collapsed[: max_length - 3].rstrip() + "..."
+    return json.dumps(collapsed)

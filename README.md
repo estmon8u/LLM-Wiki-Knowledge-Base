@@ -201,7 +201,7 @@ poetry run kb ask --show-evidence "What formats are supported?"
 
 Requires a configured provider. Retrieves the best-matching indexed wiki chunks as evidence, packages the top chunk snippets into a frozen evidence bundle, sends that evidence to the configured provider, and prints the answer followed by a Citations section.
 
-Use `--save` or `--save-as` to persist the answer as a markdown analysis page in `wiki/analysis/` with YAML frontmatter (`type: analysis`), the question, a timestamp, and backlinks to cited source chunks. Saved analysis pages are indexed for future searches.
+Use `--save` or `--save-as` to persist the answer as a markdown analysis page in `wiki/analysis/` with YAML frontmatter (`type: analysis`), the question, a timestamp, and backlinks to cited source chunks. Saved analysis pages are indexed for future searches and appear in `wiki/index.md` immediately.
 
 ### `kb lint`
 
@@ -219,6 +219,7 @@ Checks for:
 - Missing frontmatter or provenance metadata on compiled pages
 - Typed frontmatter validation: string, date (ISO format), and list fields
 - Empty compiled pages that have no body content beyond headings
+- Source pages missing `type` frontmatter field (warning; run `kb update --force` to refresh)
 - Orphan pages with no inbound wiki or markdown links
 - Stale compiled pages whose source hash changed
 - Other structural issues

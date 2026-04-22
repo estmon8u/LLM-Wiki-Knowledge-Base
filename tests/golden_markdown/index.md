@@ -10,3 +10,7 @@ Generated: 2026-04-20T12:00:00+00:00
 ## Concept Pages
 
 - [[analysis-note]]
+
+## Analysis Pages
+
+- No analysis pages saved yet.

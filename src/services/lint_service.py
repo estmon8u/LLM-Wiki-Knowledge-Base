@@ -10,6 +10,10 @@ import yaml
 
 from src.models.source_models import RawSourceRecord
 from src.models.wiki_models import LintIssue, LintReport
+from src.services.compile_service import (
+    SOURCE_PAGE_CONTRACT_VERSION,
+    SOURCE_PAGE_CONTRACT_VERSION_KEY,
+)
 from src.services.manifest_service import ManifestService
 from src.services.project_service import ProjectPaths, slugify
 
@@ -71,6 +75,8 @@ class LintService:
 
     def lint(self) -> LintReport:
         issues: list[LintIssue] = []
+        source_records = self.manifest_service.list_sources()
+        source_records_by_slug = {source.slug: source for source in source_records}
         markdown_files = sorted(self.paths.wiki_dir.rglob("*.md"))
         page_states = [
             _build_page_state(file_path, self.paths) for file_path in markdown_files
@@ -104,6 +110,9 @@ class LintService:
                         state.file_path.parent == self.paths.wiki_concepts_dir
                         and page_type in {"analysis", "concept"}
                     )
+                    is_source_page = (
+                        state.file_path.parent == self.paths.wiki_sources_dir
+                    )
                     if is_concept_page and page_type == "concept":
                         required_fields = [
                             "title",
@@ -128,6 +137,13 @@ class LintService:
                                     message=f"Missing required frontmatter field: {field_name}",
                                 )
                             )
+                    if is_source_page and "type" not in state.frontmatter:
+                        issues.append(
+                            self._source_type_issue(
+                                state,
+                                source_records_by_slug.get(state.file_path.stem),
+                            )
+                        )
                     if not str(state.frontmatter.get("summary", "")).strip():
                         issues.append(
                             LintIssue(
@@ -187,10 +203,32 @@ class LintService:
                     )
                 )
 
-        for source in self.manifest_service.list_sources():
+        for source in source_records:
             issues.extend(self._lint_manifest_state(source))
 
         return LintReport(issues=issues)
+
+    def _source_type_issue(
+        self,
+        page_state: _PageState,
+        source_record: Optional[RawSourceRecord],
+    ) -> LintIssue:
+        contract_version = _source_page_contract_version(source_record)
+        if source_record is None or contract_version >= SOURCE_PAGE_CONTRACT_VERSION:
+            return LintIssue(
+                severity="error",
+                code="missing-type",
+                path=page_state.relative_path,
+                message="Source page missing required frontmatter field: type.",
+            )
+        return LintIssue(
+            severity="warning",
+            code="missing-type",
+            path=page_state.relative_path,
+            message=(
+                "Source page missing 'type' field; " "run kb update --force to refresh."
+            ),
+        )
 
     def _lint_frontmatter_types(self, page_state: _PageState) -> list[LintIssue]:
         issues: list[LintIssue] = []
@@ -567,3 +605,14 @@ def _strip_fenced_code_blocks(text: str) -> str:
             lines.append(line)
 
     return "\n".join(lines)
+
+
+def _source_page_contract_version(source: Optional[RawSourceRecord]) -> int:
+    if source is None or not isinstance(source.metadata, dict):
+        return 0
+    version = source.metadata.get(SOURCE_PAGE_CONTRACT_VERSION_KEY, 0)
+    try:
+        parsed = int(version)
+    except (TypeError, ValueError):
+        return 0
+    return max(parsed, 0)
