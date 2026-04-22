@@ -44,7 +44,7 @@ def build_services(
         "project": ProjectService(paths),
         "config": config_service,
         "manifest": manifest_service,
-        "ingest": IngestService(paths, manifest_service),
+        "ingest": IngestService(paths, manifest_service, config=config),
         "compile": compile_service,
         "concepts": ConceptService(paths),
         "diff": DiffService(paths, manifest_service),

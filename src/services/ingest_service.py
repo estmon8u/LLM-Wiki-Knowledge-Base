@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 from pathlib import Path
-import shutil
 from typing import Callable, Optional
 import uuid
 
@@ -59,10 +58,13 @@ class IngestService:
         paths: ProjectPaths,
         manifest_service: ManifestService,
         normalization_service: Optional[NormalizationService] = None,
+        config: Optional[dict[str, object]] = None,
     ) -> None:
         self.paths = paths
         self.manifest_service = manifest_service
-        self.normalization_service = normalization_service or NormalizationService()
+        self.normalization_service = normalization_service or NormalizationService(
+            config
+        )
 
     def ingest_path(self, raw_input_path: Path) -> IngestResult:
         source_path = raw_input_path.resolve()

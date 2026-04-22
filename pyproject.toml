@@ -16,6 +16,8 @@ anthropic = "^0.95.0"
 google-genai = "^1.73.1"
 rich = "^15.0.0"
 tenacity = "^9.1.4"
+mistralai = "^2.4.1"
+pdfkit = "^1.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=7.4,<8.0"

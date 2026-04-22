@@ -41,12 +41,30 @@ def test_stem_token_strips_common_suffixes() -> None:
     assert _stem_token("few") == "few"
 
 
+def test_stem_token_minimum_length_guard() -> None:
+    """Stemmer must not produce stems shorter than 4 characters."""
+    assert _stem_token("canonical") == "canonical"
+    assert _stem_token("canonic") == "canonic"
+    assert _stem_token("real") == "real"
+    assert _stem_token("based") == "based"
+
+
 def test_extract_terms_skips_stopwords_and_short_tokens() -> None:
     terms = _extract_terms("The models are used for retrieval tasks.")
     assert "the" not in terms
     assert "are" not in terms
     assert "for" not in terms
     assert "retriev" in terms
+
+
+def test_extract_terms_filters_stemmed_generic_tokens() -> None:
+    terms = _extract_terms(
+        "Question answering with language models and learning systems."
+    )
+
+    assert "answer" not in terms
+    assert "languag" not in terms
+    assert "learn" not in terms
 
 
 def test_split_frontmatter_parses_yaml() -> None:
@@ -142,6 +160,46 @@ def test_derive_topic_terms_uses_frequency() -> None:
     assert len(result) <= 3
 
 
+def test_derive_topic_terms_rejects_broad_generic_themes() -> None:
+    pages = [
+        _SourcePage(
+            file_path=None,
+            relative_path="wiki/sources/a.md",
+            slug="a",
+            title="Question Answering with Language Models",
+            summary="Knowledge intensive language model workflows.",
+            terms=_extract_terms(
+                "Question Answering with Language Models "
+                "Knowledge intensive language model workflows."
+            ),
+        ),
+        _SourcePage(
+            file_path=None,
+            relative_path="wiki/sources/b.md",
+            slug="b",
+            title="Language Models for Question Answering",
+            summary="Knowledge intensive tasks for question answering.",
+            terms=_extract_terms(
+                "Language Models for Question Answering "
+                "Knowledge intensive tasks for question answering."
+            ),
+        ),
+        _SourcePage(
+            file_path=None,
+            relative_path="wiki/sources/c.md",
+            slug="c",
+            title="Knowledge in Language Models for Question Answering",
+            summary="Question answering tasks depend on language model knowledge.",
+            terms=_extract_terms(
+                "Knowledge in Language Models for Question Answering "
+                "Question answering tasks depend on language model knowledge."
+            ),
+        ),
+    ]
+
+    assert _derive_topic_terms(pages) == []
+
+
 # --- Service integration tests ---
 
 
@@ -183,6 +241,14 @@ def test_generate_creates_concept_page_for_related_sources(test_project) -> None
             "Dense retrieval dual encoder knowledge base search.",
         ),
     )
+    test_project.write_file(
+        "wiki/sources/gamma.md",
+        _compiled_page(
+            "Dense Retrieval for Open-Domain QA",
+            "Dense retrieval supports open-domain question answering workflows.",
+            "Dense retrieval question answering knowledge base search.",
+        ),
+    )
 
     service = ConceptService(test_project.paths)
     result = service.generate()
@@ -211,6 +277,14 @@ def test_generate_adds_backlinks_to_source_pages(test_project) -> None:
             "Dense Retrieval Using Dual Encoders",
             "A dense retrieval method using dual encoder architecture.",
             "Dense retrieval dual encoder knowledge base search.",
+        ),
+    )
+    test_project.write_file(
+        "wiki/sources/gamma.md",
+        _compiled_page(
+            "Dense Retrieval for Open-Domain QA",
+            "Dense retrieval supports open-domain question answering workflows.",
+            "Dense retrieval question answering knowledge base search.",
         ),
     )
 
@@ -510,3 +584,67 @@ def test_list_managed_pages_handles_unreadable_file(test_project) -> None:
     managed = service._list_managed_pages()
 
     assert bad_path not in managed
+
+
+def test_generate_zero_output_when_no_themes_qualify(test_project) -> None:
+    """Three pages with disjoint terms produce zero concept pages."""
+    for i, (slug, title) in enumerate(
+        [
+            ("alpha", "Alpha mechanics"),
+            ("beta", "Beta kinetics"),
+            ("gamma", "Gamma optics"),
+        ]
+    ):
+        fm = {
+            "title": title,
+            "summary": f"Topic {slug} is unrelated to the others.",
+            "type": "source",
+            "source_id": f"src_{i}",
+            "source_hash": f"hash_{i}",
+            "raw_path": f"raw/sources/{slug}.md",
+            "origin": "local",
+            "compiled_at": "2026-04-22T00:00:00Z",
+            "ingested_at": "2026-04-22T00:00:00Z",
+            "tags": [],
+        }
+        import yaml
+
+        page = f"---\n{yaml.safe_dump(fm, sort_keys=False)}---\n\n# {title}\n\n## Summary\n\n{fm['summary']}\n"
+        test_project.paths.wiki_sources_dir.mkdir(parents=True, exist_ok=True)
+        (test_project.paths.wiki_sources_dir / f"{slug}.md").write_text(
+            page, encoding="utf-8"
+        )
+
+    service = ConceptService(test_project.paths)
+    result = service.generate()
+
+    assert result.concept_paths == []
+
+
+def test_load_source_pages_ignores_placeholder_summaries(test_project) -> None:
+    """Placeholder summaries should not contribute to concept term derivation."""
+    fm = {
+        "title": "Dense Passage Retrieval",
+        "summary": "No summary available yet.",
+        "type": "source",
+        "source_id": "src_1",
+        "source_hash": "hash_1",
+        "raw_path": "raw/sources/dpr.md",
+        "origin": "local",
+        "compiled_at": "2026-04-22T00:00:00Z",
+        "ingested_at": "2026-04-22T00:00:00Z",
+        "tags": [],
+    }
+    import yaml
+
+    page = f"---\n{yaml.safe_dump(fm, sort_keys=False)}---\n\n# Dense Passage Retrieval\n\n## Summary\n\nNo summary available yet.\n"
+    test_project.paths.wiki_sources_dir.mkdir(parents=True, exist_ok=True)
+    (test_project.paths.wiki_sources_dir / "dpr.md").write_text(page, encoding="utf-8")
+
+    service = ConceptService(test_project.paths)
+    pages = service._load_source_pages()
+
+    assert len(pages) == 1
+    assert pages[0].summary == ""
+    assert "summar" not in pages[0].terms
+    assert "avail" not in pages[0].terms

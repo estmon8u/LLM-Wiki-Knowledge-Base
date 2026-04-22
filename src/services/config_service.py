@@ -9,7 +9,7 @@ import yaml
 from src.services.project_service import ProjectPaths, atomic_write_text
 
 
-CURRENT_CONFIG_VERSION = 3
+CURRENT_CONFIG_VERSION = 4
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -54,6 +54,23 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "model": "gemini-3.1-flash-lite-preview",
             "api_key_env": "GEMINI_API_KEY",
             "reasoning_effort": "high",
+        },
+    },
+    "conversion": {
+        "mistral_ocr": {
+            "model": "mistral-ocr-latest",
+            "api_key_env": "MISTRAL_API_KEY",
+            "table_format": "markdown",
+        },
+        "html": {
+            "renderer": "wkhtmltopdf",
+            "wkhtmltopdf_path": None,
+        },
+        "fallbacks": {
+            "pdf": "docling",
+            "docx": "markitdown",
+            "pptx": "markitdown",
+            "html": "markitdown",
         },
     },
 }
@@ -155,6 +172,7 @@ class ConfigService:
         merged = deepcopy(DEFAULT_CONFIG)
         merged = _deep_merge(merged, migrated)
         _validate_provider_configs(merged)
+        _validate_conversion_config(merged)
         return merged
 
     def load_schema(self) -> str:
@@ -222,6 +240,11 @@ def _apply_config_migrations(config: dict[str, Any]) -> tuple[dict[str, Any], bo
             changed = True
             version = _config_version(migrated)
             continue
+        if version == 3:
+            migrated = _migrate_v3_to_v4(migrated)
+            changed = True
+            version = _config_version(migrated)
+            continue
         raise ValueError(f"Unsupported kb.config.yaml version: {version}")
 
     return migrated, changed
@@ -272,6 +295,17 @@ def _migrate_v2_to_v3(config: dict[str, Any]) -> dict[str, Any]:
                     target[key] = provider_section.pop(key)
 
     migrated["version"] = 3
+    return migrated
+
+
+def _migrate_v3_to_v4(config: dict[str, Any]) -> dict[str, Any]:
+    migrated = deepcopy(config)
+    existing_conversion = migrated.get("conversion", {})
+    conversion = deepcopy(DEFAULT_CONFIG["conversion"])
+    if isinstance(existing_conversion, dict):
+        conversion = _deep_merge(conversion, existing_conversion)
+    migrated["conversion"] = conversion
+    migrated["version"] = 4
     return migrated
 
 
@@ -333,3 +367,93 @@ def _validate_provider_configs(config: dict[str, Any]) -> None:
                     raise ValueError(
                         f"kb.config.yaml 'providers.{name}.{key}' must be a non-empty string."
                     )
+
+
+def _validate_conversion_config(config: dict[str, Any]) -> None:
+    conversion = config.get("conversion")
+    if not isinstance(conversion, dict):
+        raise ValueError("kb.config.yaml 'conversion' must contain a YAML mapping.")
+
+    extra_sections = sorted(set(conversion) - {"mistral_ocr", "html", "fallbacks"})
+    if extra_sections:
+        raise ValueError(
+            "kb.config.yaml 'conversion' contains unknown sections: "
+            f"{', '.join(extra_sections)}."
+        )
+
+    mistral_ocr = conversion.get("mistral_ocr")
+    if not isinstance(mistral_ocr, dict):
+        raise ValueError(
+            "kb.config.yaml 'conversion.mistral_ocr' must contain a YAML mapping."
+        )
+
+    expected_mistral_keys = {"model", "api_key_env", "table_format"}
+    extra_mistral_keys = sorted(set(mistral_ocr) - expected_mistral_keys)
+    if extra_mistral_keys:
+        raise ValueError(
+            "kb.config.yaml 'conversion.mistral_ocr' contains unknown keys: "
+            f"{', '.join(extra_mistral_keys)}."
+        )
+    for key in ("model", "api_key_env"):
+        value = mistral_ocr.get(key)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(
+                f"kb.config.yaml 'conversion.mistral_ocr.{key}' must be a non-empty string."
+            )
+    table_format = mistral_ocr.get("table_format")
+    if table_format not in {"markdown", "html"}:
+        raise ValueError(
+            "kb.config.yaml 'conversion.mistral_ocr.table_format' must be "
+            "'markdown' or 'html'."
+        )
+
+    html = conversion.get("html")
+    if not isinstance(html, dict):
+        raise ValueError(
+            "kb.config.yaml 'conversion.html' must contain a YAML mapping."
+        )
+
+    expected_html_keys = {"renderer", "wkhtmltopdf_path"}
+    extra_html_keys = sorted(set(html) - expected_html_keys)
+    if extra_html_keys:
+        raise ValueError(
+            "kb.config.yaml 'conversion.html' contains unknown keys: "
+            f"{', '.join(extra_html_keys)}."
+        )
+    if html.get("renderer") != "wkhtmltopdf":
+        raise ValueError(
+            "kb.config.yaml 'conversion.html.renderer' must be 'wkhtmltopdf'."
+        )
+    wkhtmltopdf_path = html.get("wkhtmltopdf_path")
+    if wkhtmltopdf_path is not None and (
+        not isinstance(wkhtmltopdf_path, str) or not wkhtmltopdf_path.strip()
+    ):
+        raise ValueError(
+            "kb.config.yaml 'conversion.html.wkhtmltopdf_path' must be null or a "
+            "non-empty string."
+        )
+
+    fallbacks = conversion.get("fallbacks")
+    if not isinstance(fallbacks, dict):
+        raise ValueError(
+            "kb.config.yaml 'conversion.fallbacks' must contain a YAML mapping."
+        )
+    expected_fallbacks = {
+        "pdf": "docling",
+        "docx": "markitdown",
+        "pptx": "markitdown",
+        "html": "markitdown",
+    }
+    extra_fallback_keys = sorted(set(fallbacks) - set(expected_fallbacks))
+    if extra_fallback_keys:
+        raise ValueError(
+            "kb.config.yaml 'conversion.fallbacks' contains unknown keys: "
+            f"{', '.join(extra_fallback_keys)}."
+        )
+    for key, expected_value in expected_fallbacks.items():
+        value = fallbacks.get(key)
+        if value != expected_value:
+            raise ValueError(
+                f"kb.config.yaml 'conversion.fallbacks.{key}' must be "
+                f"'{expected_value}'."
+            )

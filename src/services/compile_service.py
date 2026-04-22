@@ -11,7 +11,6 @@ import yaml
 from src.models.source_models import RawSourceRecord
 from src.providers import (
     ProviderConfigurationError,
-    ProviderExecutionError,
     UnavailableProvider,
 )
 from src.providers.base import ProviderRequest, TextProvider
@@ -33,6 +32,15 @@ _SUMMARY_SYSTEM_PROMPT = (
 _SUMMARY_CONTENT_LIMIT = 12000
 SOURCE_PAGE_CONTRACT_VERSION_KEY = "source_page_contract_version"
 SOURCE_PAGE_CONTRACT_VERSION = 2
+_PLACEHOLDER_SUMMARIES = {
+    "no summary available yet.",
+    "summary unavailable.",
+    "summary not available.",
+}
+_SUMMARY_PROMPT_ECHO_PATTERN = re.compile(
+    r"(?:^|\s)(source_id|raw_path|content_hash|source_hash|compiled_at|summary)\s*:",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -245,11 +253,15 @@ class CompileService:
                 )
             )
             summary = response.text.strip()
-            return summary or "No summary available yet."
+            if _is_weak_summary(summary):
+                return _deterministic_summary(contents)
+            return summary
         except Exception as exc:
-            raise ProviderExecutionError(
-                f"Provider summary generation failed: {exc}"
-            ) from exc
+            logger.warning(
+                "Provider summary generation failed; using deterministic fallback: %s",
+                exc,
+            )
+            return _deterministic_summary(contents)
 
     def _extract_excerpt(self, contents: str) -> str:
         abstract_paragraphs = _abstract_paragraphs(contents)
@@ -264,7 +276,11 @@ class CompileService:
             default=900,
             minimum=1,
         )
-        excerpt = clean[:character_limit].rstrip()
+        excerpt = _truncate_with_boundary(
+            clean,
+            character_limit,
+            add_ellipsis=True,
+        )
         return excerpt or "No excerpt available yet."
 
     def _compile_config(self) -> dict[str, Any]:
@@ -574,6 +590,74 @@ def _plain_text_fallback(contents: str) -> str:
     text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
     text = re.sub(r"[*`_~>\[\](){}#+\-|:]+", " ", text)
     return " ".join(text.split()).strip()
+
+
+def _deterministic_summary(contents: str) -> str:
+    summary_source = " ".join(_abstract_paragraphs(contents)).strip()
+    if not summary_source:
+        paragraphs = _markdown_paragraphs(contents)
+        summary_source = " ".join(paragraphs[:2]).strip()
+    if not summary_source:
+        summary_source = _plain_text_fallback(contents)
+    if not summary_source:
+        return "No content available for summarization."
+
+    sentences = _split_sentences(summary_source)
+    if len(sentences) >= 2:
+        return " ".join(sentences[:2]).strip()
+    if sentences:
+        return sentences[0].strip()
+    return _truncate_with_boundary(summary_source, 280, add_ellipsis=True)
+
+
+def _split_sentences(text: str) -> list[str]:
+    normalized = " ".join(text.split()).strip()
+    if not normalized:
+        return []
+    return [
+        sentence.strip()
+        for sentence in re.split(r"(?<=[.!?])\s+", normalized)
+        if sentence.strip()
+    ]
+
+
+def _is_weak_summary(summary: str) -> bool:
+    normalized = summary.strip()
+    if not normalized:
+        return True
+    if normalized.casefold() in _PLACEHOLDER_SUMMARIES:
+        return True
+    if _SUMMARY_PROMPT_ECHO_PATTERN.search(normalized):
+        return True
+    return len(normalized.split()) < 5
+
+
+def _truncate_with_boundary(text: str, limit: int, *, add_ellipsis: bool) -> str:
+    clean = " ".join(text.split()).strip()
+    if not clean or limit <= 0:
+        return ""
+    if len(clean) <= limit:
+        return clean
+
+    ellipsis = "..." if add_ellipsis and limit > 3 else ""
+    effective_limit = limit - len(ellipsis)
+    window = clean[:effective_limit]
+    sentence_start = max(0, effective_limit - 160)
+    sentence_window = window[sentence_start:]
+    sentence_matches = list(re.finditer(r"[.!?][\"')\]]?(?:\s|$)", sentence_window))
+    if sentence_matches:
+        cut = sentence_start + sentence_matches[-1].end()
+        trimmed = window[:cut].rstrip()
+    else:
+        whitespace_index = window.rfind(" ")
+        if whitespace_index > max(20, effective_limit // 3):
+            trimmed = window[:whitespace_index].rstrip()
+        else:
+            trimmed = window.rstrip()
+
+    if ellipsis and trimmed and trimmed != clean:
+        trimmed = trimmed.rstrip(" ,;:") + ellipsis
+    return trimmed
 
 
 def _safe_int(value: Any, *, default: int, minimum: int = 1) -> int:

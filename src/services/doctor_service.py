@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from src.providers import resolve_provider_settings, supported_provider_names
+from src.services.normalization_service import resolve_wkhtmltopdf_binary
 from src.services.project_service import ProjectPaths
 
 
@@ -58,6 +59,8 @@ class DoctorService:
         checks.append(self._check_manifest())
         checks.append(self._check_provider_config(strict=strict))
         checks.append(self._check_api_key(strict=strict))
+        checks.append(self._check_mistral_api_key(strict=strict))
+        checks.append(self._check_html_renderer(strict=strict))
         checks.append(self._check_converters())
         return DoctorReport(checks=checks)
 
@@ -204,6 +207,12 @@ class DoctorService:
         available: list[str] = []
         missing: list[str] = []
         try:
+            import mistralai  # noqa: F401
+
+            available.append("Mistral SDK")
+        except ImportError:
+            missing.append("Mistral SDK")
+        try:
             import markitdown  # noqa: F401
 
             available.append("MarkItDown")
@@ -215,6 +224,12 @@ class DoctorService:
             available.append("Docling")
         except ImportError:
             missing.append("Docling")
+        try:
+            import pdfkit  # noqa: F401
+
+            available.append("pdfkit")
+        except ImportError:
+            missing.append("pdfkit")
         if missing:
             return DoctorCheck(
                 name="converters",
@@ -228,4 +243,51 @@ class DoctorService:
             ok=True,
             detail=f"All converters available: {', '.join(available)}.",
             severity="ok",
+        )
+
+    def _check_mistral_api_key(self, *, strict: bool = False) -> DoctorCheck:
+        conversion = self.config.get("conversion") or {}
+        mistral_ocr = (
+            conversion.get("mistral_ocr") if isinstance(conversion, dict) else {}
+        )
+        env_var = ""
+        if isinstance(mistral_ocr, dict):
+            env_var = str(mistral_ocr.get("api_key_env", "")).strip()
+        env_var = env_var or "MISTRAL_API_KEY"
+        if os.environ.get(env_var):
+            return DoctorCheck(
+                name="mistral_api_key",
+                ok=True,
+                detail=f"Environment variable {env_var} is set for Mistral OCR ingest.",
+                severity="ok",
+            )
+        sev = "error" if strict else "warning"
+        return DoctorCheck(
+            name="mistral_api_key",
+            ok=False,
+            detail=(
+                f"Environment variable {env_var} is not set. Required for the default "
+                "OCR ingest routes for PDF, DOCX, PPTX, and image inputs."
+            ),
+            severity=sev,
+        )
+
+    def _check_html_renderer(self, *, strict: bool = False) -> DoctorCheck:
+        binary = resolve_wkhtmltopdf_binary(self.config)
+        if binary:
+            return DoctorCheck(
+                name="html_renderer",
+                ok=True,
+                detail=f"wkhtmltopdf available at {binary}.",
+                severity="ok",
+            )
+        sev = "error" if strict else "warning"
+        return DoctorCheck(
+            name="html_renderer",
+            ok=False,
+            detail=(
+                "wkhtmltopdf is not available. Required for the default HTML/HTM "
+                "render-to-PDF OCR route."
+            ),
+            severity=sev,
         )

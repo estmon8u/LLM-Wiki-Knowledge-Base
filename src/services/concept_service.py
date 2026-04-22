@@ -73,6 +73,19 @@ _STOPWORDS = frozenset(
         "over",
         "most",
         "just",
+        "question",
+        "questions",
+        "answer",
+        "answers",
+        "language",
+        "languages",
+        "knowledge",
+        "generation",
+        "augmented",
+        "domain",
+        "learn",
+        "learning",
+        "open",
         "paper",
         "papers",
         "approach",
@@ -81,12 +94,55 @@ _STOPWORDS = frozenset(
         "methods",
         "model",
         "models",
+        "available",
+        "abstract",
+        "introduction",
+        "section",
+        "sections",
+        "figure",
+        "figures",
+        "table",
+        "tables",
+        "result",
         "system",
         "systems",
         "results",
         "tasks",
         "task",
         "based",
+        "performance",
+        "perform",
+        "different",
+        "various",
+        "several",
+        "show",
+        "shown",
+        "compared",
+        "existing",
+        "previous",
+        "novel",
+        "first",
+        "new",
+        "high",
+        "large",
+        "train",
+        "training",
+        "set",
+        "given",
+        "one",
+        "two",
+        "three",
+        "capstone",
+        "canonical",
+        "canonic",
+    }
+)
+_GENERIC_PHRASES = frozenset(
+    {
+        "question answering",
+        "language models",
+        "open domain question answering",
+        "retrieval augmented",
     }
 )
 _PHRASE_CANDIDATES = (
@@ -98,9 +154,17 @@ _PHRASE_CANDIDATES = (
     "self reflection",
     "pre training",
     "open domain question answering",
+    "retrieval augmented",
+    "in context learning",
 )
-_MIN_SHARED_TERMS = 3
-_MIN_JACCARD = 0.16
+_MIN_SHARED_TERMS = 2
+_MIN_JACCARD = 0.18
+_MIN_SOURCE_PAGES = 3
+_PLACEHOLDER_SUMMARIES = {
+    "no summary available yet.",
+    "summary unavailable.",
+    "no content available for summarization.",
+}
 
 
 @dataclass
@@ -171,7 +235,9 @@ class ConceptService:
                 frontmatter.get("title", page_path.stem.replace("-", " ").title())
             )
             summary = str(frontmatter.get("summary", "")).strip()
-            terms = _extract_terms(f"{title}\n{summary}\n{content}")
+            if summary.casefold() in _PLACEHOLDER_SUMMARIES:
+                summary = ""
+            terms = _extract_terms(f"{title}\n{summary}")
             pages.append(
                 _SourcePage(
                     file_path=page_path,
@@ -187,16 +253,18 @@ class ConceptService:
     def _build_concept_drafts(
         self, source_pages: list[_SourcePage]
     ) -> list[_ConceptDraft]:
-        if len(source_pages) < 2:
+        if len(source_pages) < _MIN_SOURCE_PAGES:
             return []
 
         groups = _connected_components(source_pages)
         drafts: list[_ConceptDraft] = []
         for group in groups:
-            if len(group) < 2:
+            if len(group) < _MIN_SOURCE_PAGES:
                 continue
             topic_terms = _derive_topic_terms(group)
-            if len(topic_terms) < 2:
+            if not topic_terms:
+                continue
+            if len(topic_terms) < 2 and "-" not in topic_terms[0]:
                 continue
             title = _format_concept_title(topic_terms)
             summary = _format_concept_summary(group, topic_terms)
@@ -345,20 +413,22 @@ def _connected_components(
 
 
 def _derive_topic_terms(group: list[_SourcePage]) -> list[str]:
-    title_text = " ".join(
+    page_texts = [
         _normalize_phrase_text(f"{page.title} {page.summary}") for page in group
-    )
+    ]
+    title_text = " ".join(page_texts)
     phrase_terms = [
         phrase.replace(" ", "-")
-        for _, phrase in sorted(
+        for support, phrase in sorted(
             [
-                (title_text.count(phrase), phrase)
+                (sum(1 for text in page_texts if phrase in text), phrase)
                 for phrase in _PHRASE_CANDIDATES
-                if title_text.count(phrase) > 0
+                if phrase in title_text and phrase not in _GENERIC_PHRASES
             ],
             key=lambda item: (-item[0], item[1]),
-        )[:3]
-    ]
+        )
+        if support >= 2
+    ][:3]
 
     counts = Counter(term for page in group for term in page.terms)
     phrase_stems = {
@@ -370,9 +440,13 @@ def _derive_topic_terms(group: list[_SourcePage]) -> list[str]:
     freq_terms = [
         term
         for term, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
-        if count >= 2 and term not in phrase_stems
+        if count >= _MIN_SOURCE_PAGES
+        and count < len(group)
+        and term not in phrase_stems
     ][: 3 - len(phrase_terms)]
 
+    if not phrase_terms:
+        return []
     combined = phrase_terms + freq_terms
     return combined[:3]
 
@@ -406,14 +480,20 @@ def _extract_terms(text: str) -> set[str]:
     for token in _WORD_PATTERN.findall(text.lower()):
         if token in _STOPWORDS or len(token) < 3:
             continue
-        terms.add(_stem_token(token))
+        stemmed = _stem_token(token)
+        if stemmed in _STOPWORDS:
+            continue
+        terms.add(stemmed)
     return terms
 
 
 def _stem_token(token: str) -> str:
     for suffix in ("ing", "ed", "es", "al", "s"):
         if token.endswith(suffix) and len(token) > len(suffix) + 2:
-            return token[: -len(suffix)]
+            stemmed = token[: -len(suffix)]
+            if len(stemmed) >= 4:
+                return stemmed
+            return token
     return token
 
 

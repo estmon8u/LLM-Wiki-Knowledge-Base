@@ -291,6 +291,67 @@ def test_config_service_migrates_provider_overrides_into_providers_section(
     assert loaded["providers"]["openai"]["reasoning_effort"] == "low"
 
 
+def test_config_service_migrates_v3_file_to_v4_with_conversion_defaults(
+    test_project,
+) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 3\nprovider:\n  name: openai\n",
+        encoding="utf-8",
+    )
+
+    loaded = ConfigService(test_project.paths).load()
+
+    assert loaded["version"] == CURRENT_CONFIG_VERSION
+    assert loaded["conversion"]["mistral_ocr"]["model"] == "mistral-ocr-latest"
+    assert loaded["conversion"]["html"]["renderer"] == "wkhtmltopdf"
+    assert loaded["conversion"]["fallbacks"]["pdf"] == "docling"
+
+
+def test_config_service_rejects_invalid_conversion_table_format(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 4\n"
+        "conversion:\n"
+        "  mistral_ocr:\n"
+        "    model: mistral-ocr-latest\n"
+        "    api_key_env: MISTRAL_API_KEY\n"
+        "    table_format: text\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="table_format"):
+        ConfigService(test_project.paths).load()
+
+
+def test_config_service_rejects_invalid_html_renderer_settings(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 4\n"
+        "conversion:\n"
+        "  html:\n"
+        "    renderer: playwright\n"
+        "    wkhtmltopdf_path: ''\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="conversion.html.renderer"):
+        ConfigService(test_project.paths).load()
+
+
+def test_config_service_rejects_invalid_conversion_fallbacks(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 4\n"
+        "conversion:\n"
+        "  fallbacks:\n"
+        "    pdf: markitdown\n"
+        "    docx: markitdown\n"
+        "    pptx: markitdown\n"
+        "    html: markitdown\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="conversion.fallbacks.pdf"):
+        ConfigService(test_project.paths).load()
+
+
 def test_config_service_load_schema_reads_custom_schema(test_project) -> None:
     test_project.paths.schema_file.write_text("# custom\n", encoding="utf-8")
 
@@ -536,3 +597,101 @@ def test_status_snapshot_none_compile_prints_na() -> None:
         # When no compile has happened, last_compile_at is not shown
         assert "last_compile_at" not in result.output
         assert "0 total" in result.output
+
+
+def test_config_service_rejects_non_dict_conversion_block(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 4\nconversion: invalid\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="conversion.*mapping"):
+        ConfigService(test_project.paths).load()
+
+
+def test_config_service_rejects_unknown_conversion_section(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 4\nconversion:\n  extra_section:\n    key: value\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="unknown sections"):
+        ConfigService(test_project.paths).load()
+
+
+def test_config_service_rejects_non_dict_mistral_ocr(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 4\nconversion:\n  mistral_ocr: invalid\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="mistral_ocr.*mapping"):
+        ConfigService(test_project.paths).load()
+
+
+def test_config_service_rejects_unknown_mistral_ocr_keys(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 4\nconversion:\n  mistral_ocr:\n"
+        "    model: mistral-ocr-latest\n    api_key_env: MISTRAL_API_KEY\n"
+        "    table_format: markdown\n    extra: true\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="unknown keys"):
+        ConfigService(test_project.paths).load()
+
+
+def test_config_service_rejects_empty_mistral_ocr_model(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 4\nconversion:\n  mistral_ocr:\n"
+        "    model: ''\n    api_key_env: MISTRAL_API_KEY\n"
+        "    table_format: markdown\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="mistral_ocr.model"):
+        ConfigService(test_project.paths).load()
+
+
+def test_config_service_rejects_non_dict_html_block(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 4\nconversion:\n  html: invalid\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="html.*mapping"):
+        ConfigService(test_project.paths).load()
+
+
+def test_config_service_rejects_unknown_html_keys(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 4\nconversion:\n  html:\n"
+        "    renderer: wkhtmltopdf\n    extra: true\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="html.*unknown keys"):
+        ConfigService(test_project.paths).load()
+
+
+def test_config_service_rejects_empty_wkhtmltopdf_path_string(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 4\nconversion:\n  html:\n"
+        "    renderer: wkhtmltopdf\n    wkhtmltopdf_path: ' '\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="wkhtmltopdf_path"):
+        ConfigService(test_project.paths).load()
+
+
+def test_config_service_rejects_non_dict_fallbacks(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 4\nconversion:\n  fallbacks: invalid\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="fallbacks.*mapping"):
+        ConfigService(test_project.paths).load()
+
+
+def test_config_service_rejects_unknown_fallback_keys(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 4\nconversion:\n  fallbacks:\n"
+        "    pdf: docling\n    docx: markitdown\n"
+        "    pptx: markitdown\n    html: markitdown\n    extra: foo\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="fallbacks.*unknown keys"):
+        ConfigService(test_project.paths).load()

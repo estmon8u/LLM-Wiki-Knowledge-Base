@@ -43,7 +43,10 @@ is optional.
 
 Before running `kb update`, `kb ask`, or `kb review`, configure the active
 provider in `kb.config.yaml` and set the matching API key environment
-variable. See `Provider Configuration` below.
+variable. If you ingest `.pdf`, `.docx`, `.pptx`, supported images, or
+`.html` / `.htm`, also set `MISTRAL_API_KEY`. HTML inputs additionally require
+`wkhtmltopdf` on your `PATH` or configured in `kb.config.yaml`. See
+`Provider Configuration` and `Conversion Configuration` below.
 
 ## Global Options
 
@@ -108,12 +111,13 @@ Creates:
 - `vault/obsidian/` — directory for vault export
 
 Running `init` again is safe — it skips files that already exist.
-The scaffold writes `kb.config.yaml` at config version 3. Older configs are migrated in place on load so deprecated fields are removed and newer sections such as `providers` and `storage.raw_normalized_dir` are persisted automatically.
+The scaffold writes `kb.config.yaml` at config version 4. Older configs are migrated in place on load so deprecated fields are removed and newer sections such as `providers`, `conversion`, and `storage.raw_normalized_dir` are persisted automatically.
 
 ### `kb doctor`
 
 Run health checks on the project: structure, config, provider selection,
-API keys, and converters.
+provider API keys, Mistral OCR readiness, HTML renderer availability, and
+converter dependencies.
 
 ```bash
 poetry run kb doctor
@@ -315,14 +319,15 @@ poetry run kb sources show <slug>
 | --- | --- | --- |
 | Markdown | `.md`, `.markdown` | Direct (no conversion needed) |
 | Plain text | `.txt` | Direct (no conversion needed) |
-| PDF | `.pdf` | Docling |
-| HTML | `.htm`, `.html` | MarkItDown |
+| PDF | `.pdf` | Mistral OCR (Docling fallback) |
+| HTML | `.htm`, `.html` | `wkhtmltopdf` → Mistral OCR (MarkItDown fallback) |
 | CSV | `.csv` | MarkItDown |
-| Word | `.docx` | MarkItDown |
-| PowerPoint | `.pptx` | MarkItDown |
+| Word | `.docx` | Mistral OCR (MarkItDown fallback) |
+| PowerPoint | `.pptx` | Mistral OCR (MarkItDown fallback) |
 | Excel | `.xls`, `.xlsx` | MarkItDown |
 | EPUB | `.epub` | MarkItDown |
 | Jupyter Notebook | `.ipynb` | MarkItDown |
+| Images | `.png`, `.jpg`, `.jpeg`, `.avif` | Mistral OCR |
 
 All non-text formats are normalized into canonical markdown and stored in `raw/normalized/` before compilation.
 
@@ -337,7 +342,7 @@ Provider configuration lives entirely in `kb.config.yaml`. The top-level
 the built-in settings for `openai`, `anthropic`, and `gemini`:
 
 ```yaml
-version: 3
+version: 4
 provider:
   name: openai
 providers:
@@ -353,6 +358,19 @@ providers:
     model: gemini-3.1-flash-lite-preview
     api_key_env: GEMINI_API_KEY
     reasoning_effort: high
+conversion:
+  mistral_ocr:
+    model: mistral-ocr-latest
+    api_key_env: MISTRAL_API_KEY
+    table_format: markdown
+  html:
+    renderer: wkhtmltopdf
+    wkhtmltopdf_path: null
+  fallbacks:
+    pdf: docling
+    docx: markitdown
+    pptx: markitdown
+    html: markitdown
 ```
 
 To customize a provider, edit its entry under `providers`:
@@ -367,7 +385,7 @@ providers:
     thinking_budget: 2048
 ```
 
-`kb.config.yaml` is versioned. The current schema version is 3, and the CLI automatically migrates older files when it loads project configuration.
+`kb.config.yaml` is versioned. The current schema version is 4, and the CLI automatically migrates older files when it loads project configuration.
 
 You can also override the provider per-invocation without editing the config file:
 
@@ -397,6 +415,40 @@ is missing or the provider call fails, those commands fail instead of falling
 back. Provider calls retry transient failures (rate limits, timeouts, server
 errors) automatically with exponential backoff and jitter.
 
+## Conversion Configuration
+
+Document conversion settings also live in `kb.config.yaml`. The `conversion`
+section controls which converter is used for Mistral-native document types and
+how HTML is rendered before OCR:
+
+```yaml
+conversion:
+  mistral_ocr:
+    model: mistral-ocr-latest
+    api_key_env: MISTRAL_API_KEY
+    table_format: markdown
+  html:
+    renderer: wkhtmltopdf
+    wkhtmltopdf_path: null
+  fallbacks:
+    pdf: docling
+    docx: markitdown
+    pptx: markitdown
+    html: markitdown
+```
+
+Default routing is:
+
+- `.pdf`, `.docx`, `.pptx` → Mistral OCR first
+- `.png`, `.jpg`, `.jpeg`, `.avif` → Mistral OCR first
+- `.htm`, `.html` → `wkhtmltopdf` then Mistral OCR first
+- `.csv`, `.epub`, `.ipynb`, `.xls`, `.xlsx` → MarkItDown
+- `.md`, `.markdown`, `.txt` → direct passthrough
+
+If a Mistral-first conversion fails quality checks, the configured fallback
+converter is tried before the file is rejected. Image inputs currently have no
+local fallback and fail cleanly if Mistral OCR cannot process them.
+
 ## Environment Variables
 
 | Variable | Description |
@@ -404,15 +456,22 @@ errors) automatically with exponential backoff and jitter.
 | `OPENAI_API_KEY` | API key for the OpenAI provider. |
 | `ANTHROPIC_API_KEY` | API key for the Anthropic provider. |
 | `GEMINI_API_KEY` | API key for the Google Gemini provider. |
+| `MISTRAL_API_KEY` | API key for Mistral OCR document conversion. |
 | `NO_COLOR` | When set (any value), disables colored CLI output. Respected automatically by Rich. |
 
-You can override the environment variable name, model, or provider tuning in
-that same file:
+You can override provider and conversion settings in that same file:
 
 ```yaml
 provider:
   name: openai
-  api_key_env: MY_CUSTOM_KEY
+providers:
+  openai:
+    api_key_env: MY_CUSTOM_OPENAI_KEY
+conversion:
+  mistral_ocr:
+    api_key_env: MY_CUSTOM_MISTRAL_KEY
+  html:
+    wkhtmltopdf_path: C:/Program Files/wkhtmltopdf/bin/wkhtmltopdf.exe
 ```
 
 ## Project Layout
@@ -421,7 +480,7 @@ After initialization and a few ingested sources, the project directory looks lik
 
 ```text
 project-root/
-├── kb.config.yaml          # Project configuration
+├── kb.config.yaml          # Project configuration (providers + conversion)
 ├── kb.schema.md            # Compilation schema
 ├── raw/
 │   ├── _manifest.json      # Source metadata, hashes, converter info

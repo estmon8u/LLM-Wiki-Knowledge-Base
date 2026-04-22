@@ -35,7 +35,7 @@ All commands are flat top-level verbs:
 
 | Stage | Input | Output |
 | --- | --- | --- |
-| Ingest | canonical markdown/plain-text files, Docling-routed PDFs, and a bounded MarkItDown-backed born-digital subset | raw source copy, normalized artifact, and manifest metadata |
+| Ingest | canonical markdown/plain-text files, Mistral OCR-routed native documents and images, rendered HTML-to-PDF OCR, and a bounded MarkItDown subset | raw source copy, normalized artifact, and manifest metadata |
 | Compile | normalized canonical text plus manifest metadata | source pages with provider-generated summaries, wiki index, and compile log; optionally concept pages and source-page backlinks |
 | Diff | manifest metadata plus compile state | pre-compile source status preview |
 | Search | compiled wiki artifacts | ranked page matches derived from indexed chunks |
@@ -46,10 +46,10 @@ All commands are flat top-level verbs:
 
 ## Current Ingest Scope
 
-- The current implementation adds `.md`, `.markdown`, and `.txt` files directly, routes `.pdf` files through Docling, and uses MarkItDown for a bounded born-digital subset such as HTML, CSV, Office documents, notebooks, and EPUB.
+- The current implementation adds `.md`, `.markdown`, and `.txt` files directly; routes `.pdf`, `.docx`, `.pptx`, `.png`, `.jpg`, `.jpeg`, and `.avif` through Mistral OCR first; renders `.html` / `.htm` to PDF with `wkhtmltopdf` before OCR; and uses MarkItDown for the remaining bounded born-digital subset such as CSV, notebooks, EPUB, and Excel files.
 - `kb add` is the primary ingestion command; `src/commands/ingest.py` provides the shared implementation.
 - Directory inputs for `kb add` walk recursively by default, add only supported source files, and leave unsupported files untouched.
-- OCR-backed ingestion is still deferred and should arrive as a provider-backed fallback, with Mistral OCR as the current preferred OCR path for scanned or image-heavy inputs.
+- Conversion quality gates reject empty, implausibly short, or suspiciously truncated outputs before `raw/normalized/` artifacts are written. PDF, DOCX, PPTX, and HTML routes then fall back explicitly to Docling or MarkItDown based on config.
 
 ## Structural Rules
 

@@ -6,13 +6,14 @@ from pathlib import Path
 import pytest
 
 from src.models.wiki_models import LintIssue, LintReport
-from src.providers import ProviderExecutionError
 from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
 from src.services.compile_service import (
     SOURCE_PAGE_CONTRACT_VERSION,
     _abstract_paragraphs,
+    _deterministic_summary,
     _discover_concept_pages,
     _is_content_paragraph,
+    _is_weak_summary,
     _markdown_paragraphs,
     _normalize_newlines,
     _parse_frontmatter,
@@ -20,6 +21,7 @@ from src.services.compile_service import (
     _safe_int,
     _sorted_sources,
     _strip_frontmatter,
+    _truncate_with_boundary,
 )
 from src.services.update_service import UpdateOptions, UpdateService
 from src.services.lint_service import (
@@ -229,24 +231,15 @@ def test_compile_service_records_failure_and_resumes_remaining_sources(
     compile_service = test_project.services["compile"]
     compile_service.provider = _FailOnSecondSummaryProvider()
 
-    with pytest.raises(ProviderExecutionError, match="summary failure"):
-        compile_service.compile()
+    result = compile_service.compile()
 
+    assert result.compiled_count == 2
     resume_record = compile_service.compile_run_store.resume_candidate()
-    assert resume_record is not None
-    assert resume_record.completed_source_slugs == ["alpha"]
-    assert resume_record.pending_source_slugs == ["beta"]
-    assert resume_record.failed_source_slug == "beta"
+    assert resume_record is None
     assert (test_project.root / "wiki/sources/alpha.md").exists()
-    assert not (test_project.root / "wiki/sources/beta.md").exists()
-
-    compile_service.provider = _StableSummaryProvider()
-    result = compile_service.compile(resume=True)
-
-    assert result.compiled_count == 1
-    assert result.resumed_from_run_id == resume_record.run_id
-    assert (test_project.root / "wiki/sources/beta.md").exists()
-    assert compile_service.compile_run_store.resume_candidate() is None
+    beta_page = (test_project.root / "wiki/sources/beta.md").read_text(encoding="utf-8")
+    assert "## Summary" in beta_page
+    assert "Body" in beta_page
 
 
 def test_compile_service_resume_handles_post_loop_failure_with_no_pending_sources(
@@ -1379,11 +1372,13 @@ def test_compile_provider_empty_response_falls_back(test_project) -> None:
     article = (test_project.root / "wiki" / "sources" / "doc.md").read_text(
         encoding="utf-8"
     )
-    assert "No summary available yet." in article
+    assert "Some content." in article
+    assert "No summary available yet." not in article
 
 
-def test_compile_provider_error_raises_execution_error(test_project) -> None:
-    from src.providers import ProviderExecutionError
+def test_compile_provider_error_falls_back_to_deterministic_summary(
+    test_project,
+) -> None:
     from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
 
     class ErrorProvider(TextProvider):
@@ -1395,8 +1390,47 @@ def test_compile_provider_error_raises_execution_error(test_project) -> None:
     test_project.services["compile"].provider = ErrorProvider()
     _ingest_source(test_project, "notes/doc.md", "# Doc\n\nSome content.\n")
 
-    with pytest.raises(ProviderExecutionError, match="API timeout"):
-        test_project.services["compile"].compile()
+    test_project.services["compile"].compile()
+
+    article = (test_project.root / "wiki" / "sources" / "doc.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Some content." in article
+
+
+def test_compile_prompt_echo_summary_falls_back_to_deterministic_summary(
+    test_project,
+) -> None:
+    from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
+
+    class EchoProvider(TextProvider):
+        name = "echo"
+
+        def generate(self, request: ProviderRequest) -> ProviderResponse:
+            return ProviderResponse(
+                text=(
+                    "source_id: source_1\n"
+                    "raw_path: unknown\n"
+                    "content_hash: unknown\n"
+                    "summary: The document argues that dense retrieval improves QA."
+                ),
+                model_name="echo-v1",
+            )
+
+    test_project.services["compile"].provider = EchoProvider()
+    _ingest_source(
+        test_project,
+        "notes/doc.md",
+        "# Doc\n\n## Abstract\n\nSome content about retrieval.\n",
+    )
+
+    test_project.services["compile"].compile()
+
+    article = (test_project.root / "wiki" / "sources" / "doc.md").read_text(
+        encoding="utf-8"
+    )
+    assert "source_id: source_1" not in article
+    assert "Some content about retrieval." in article
 
 
 def test_compile_unavailable_provider_raises_configuration_error(
@@ -1617,3 +1651,45 @@ def test_log_entry_no_flags_when_not_force_or_resume(test_project) -> None:
     assert "update | 2 compiled, 0 skipped\n" in log_text
     assert "(force)" not in log_text
     assert "(resume)" not in log_text
+
+
+def test_truncate_with_boundary_fits_entirely() -> None:
+    text = "Short text."
+    assert _truncate_with_boundary(text, 100, add_ellipsis=True) == text
+
+
+def test_truncate_with_boundary_cuts_at_sentence() -> None:
+    text = "First sentence. Second sentence. Third sentence that is longer."
+    result = _truncate_with_boundary(text, 35, add_ellipsis=True)
+    assert result.endswith("Second sentence....")
+
+
+def test_truncate_with_boundary_cuts_at_word_when_no_sentence() -> None:
+    text = "one two three four five six seven eight nine ten eleven twelve"
+    result = _truncate_with_boundary(text, 30, add_ellipsis=True)
+    assert not result.rstrip(".").endswith("elev")
+    assert "..." in result
+
+
+def test_truncate_with_boundary_empty_input() -> None:
+    assert _truncate_with_boundary("", 100, add_ellipsis=True) == ""
+
+
+def test_is_weak_summary_detects_placeholders() -> None:
+    assert _is_weak_summary("") is True
+    assert _is_weak_summary("No summary available yet.") is True
+    assert _is_weak_summary("ok") is True
+    assert _is_weak_summary("The paper presents a novel approach.") is False
+
+
+def test_deterministic_summary_uses_abstract() -> None:
+    text = "# Paper\n\n## Abstract\n\nFirst sentence. Second sentence. Third.\n"
+    result = _deterministic_summary(text)
+    assert "First sentence." in result
+    assert "Second sentence." in result
+
+
+def test_deterministic_summary_falls_back_to_paragraphs() -> None:
+    text = "# Paper\n\nSome first paragraph. With details.\n\nSecond paragraph.\n"
+    result = _deterministic_summary(text)
+    assert "Some first paragraph" in result

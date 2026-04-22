@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from src.models.source_models import RawSourceRecord
 from src.services.ingest_service import IngestService
-from src.services.normalization_service import NormalizationService
+from src.services.normalization_service import NormalizationService, _ConvertedText
 from src.services.normalization_service import _extract_title
 from src.services.normalization_service import is_supported_source_path
 from src.services.project_service import utc_now_iso
@@ -18,6 +19,41 @@ class FakePdfConverter:
 
     def convert_local(self, source_path: Path) -> str:
         return self.markdown
+
+
+class FakeMistralConverter:
+    def __init__(
+        self,
+        *,
+        document_text: str = "",
+        document_error: Exception | None = None,
+    ) -> None:
+        self.document_text = document_text
+        self.document_error = document_error
+
+    def convert_document_bytes(
+        self,
+        document_bytes: bytes,
+        *,
+        mime_type: str,
+        document_name: str = "",
+    ) -> _ConvertedText:
+        if self.document_error is not None:
+            raise self.document_error
+        return _ConvertedText(normalized_text=self.document_text, page_count=1)
+
+    def convert_image_bytes(
+        self, image_bytes: bytes, *, mime_type: str
+    ) -> _ConvertedText:
+        return _ConvertedText(normalized_text="", page_count=1)
+
+
+class FakeHtmlRenderer:
+    def resolve_binary(self) -> str:
+        return "C:/wkhtmltopdf.exe"
+
+    def render_file(self, source_path: Path) -> bytes:
+        return b"%PDF-1.4\nfake\n"
 
 
 def test_raw_source_record_round_trip_serialization() -> None:
@@ -128,7 +164,18 @@ def test_ingest_service_converts_html_and_stores_normalized_markdown(
         "notes/example.html",
         "<html><body><h1>HTML Research Note</h1><p>Useful converted text.</p></body></html>",
     )
-    ingest_service = test_project.services["ingest"]
+    ingest_service = IngestService(
+        test_project.paths,
+        test_project.services["manifest"],
+        normalization_service=NormalizationService(
+            mistral_ocr_converter=FakeMistralConverter(
+                document_text=(
+                    "# HTML Research Note\n\nUseful converted text for ingestion.\n"
+                )
+            ),
+            html_renderer=FakeHtmlRenderer(),
+        ),
+    )
 
     result = ingest_service.ingest_path(source_path)
 
@@ -137,39 +184,46 @@ def test_ingest_service_converts_html_and_stores_normalized_markdown(
     assert result.source.slug == "html-research-note"
     assert result.source.raw_path == "raw/sources/html-research-note.html"
     assert result.source.normalized_path == "raw/normalized/html-research-note.md"
-    assert result.source.metadata["ingest_mode"] == "markitdown-convert"
-    assert result.source.metadata["converter"] == "markitdown"
-    assert result.source.metadata["normalization_route"] == "markitdown-born-digital"
+    assert result.source.metadata["ingest_mode"] == "mistral-ocr-convert"
+    assert result.source.metadata["converter"] == "mistral-ocr"
+    assert result.source.metadata["normalization_route"] == "wkhtmltopdf-mistral-ocr"
     normalized_text = (test_project.root / result.source.normalized_path).read_text(
         encoding="utf-8"
     )
     assert "HTML Research Note" in normalized_text
-    assert "Useful converted text." in normalized_text
+    assert "Useful converted text for ingestion." in normalized_text
 
 
 def test_ingest_service_routes_pdf_sources_through_docling(test_project) -> None:
     source_path = test_project.write_file("notes/example.pdf", "not-a-real-pdf")
     normalization_service = NormalizationService(
+        mistral_ocr_converter=FakeMistralConverter(
+            document_error=ValueError("ocr unavailable")
+        ),
         pdf_converter=FakePdfConverter(
             "# PDF Research Note\n\nUseful extracted text.\n"
-        )
+        ),
     )
     ingest_service = IngestService(
         test_project.paths,
         test_project.services["manifest"],
-        normalization_service,
+        normalization_service=normalization_service,
     )
 
     result = ingest_service.ingest_path(source_path)
 
     assert result.created is True
     assert result.source is not None
-    assert result.source.slug == "example"
-    assert result.source.raw_path == "raw/sources/example.pdf"
-    assert result.source.normalized_path == "raw/normalized/example.md"
+    assert result.source.slug == "pdf-research-note"
+    assert result.source.raw_path == "raw/sources/pdf-research-note.pdf"
+    assert result.source.normalized_path == "raw/normalized/pdf-research-note.md"
     assert result.source.metadata["ingest_mode"] == "docling-pdf-convert"
     assert result.source.metadata["converter"] == "docling"
-    assert result.source.metadata["normalization_route"] == "docling-pdf"
+    assert (
+        result.source.metadata["normalization_route"]
+        == "mistral-ocr-document->docling-fallback"
+    )
+    assert result.source.metadata["fallback_used"] is True
     normalized_text = (test_project.root / result.source.normalized_path).read_text(
         encoding="utf-8"
     )
