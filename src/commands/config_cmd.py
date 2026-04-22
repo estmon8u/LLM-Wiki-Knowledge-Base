@@ -5,9 +5,7 @@ import yaml
 
 from src.commands.common import console, echo_section, require_initialized
 from src.models.command_models import CommandContext, CommandSpec
-
-
-_SUPPORTED_PROVIDERS = ("openai", "anthropic", "gemini")
+from src.providers import validate_provider_name
 
 SUMMARY = "View or edit project configuration."
 
@@ -47,9 +45,7 @@ def create_command() -> click.BaseCommand:
         pass
 
     @provider_group.command(name="set", help="Set the LLM provider.")
-    @click.argument(
-        "name", type=click.Choice(list(_SUPPORTED_PROVIDERS), case_sensitive=False)
-    )
+    @click.argument("name", type=str)
     @click.option("--model", default=None, help="Override the default model.")
     @click.pass_obj
     def provider_set(
@@ -61,21 +57,30 @@ def create_command() -> click.BaseCommand:
         config_service = command_context.services.get("config")
         if config_service is None:
             raise click.ClickException("Config service unavailable.")
-        config = config_service.load()
+        try:
+            config = config_service.load()
+            validated_name = validate_provider_name(
+                name,
+                provider_catalog=config.get("providers"),
+            )
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
         provider_section = config.setdefault("provider", {})
-        old_name = provider_section.get("name", "")
-        provider_section["name"] = name
+        for stale_key in (
+            "model",
+            "tier",
+            "api_key_env",
+            "reasoning_effort",
+            "thinking_budget",
+        ):
+            provider_section.pop(stale_key, None)
+        provider_section["name"] = validated_name
 
         if model:
-            provider_section["model"] = model
-            provider_section.pop("tier", None)
-        elif old_name and old_name != name:
-            # Clear a stale model that belongs to a different provider.
-            provider_section.pop("model", None)
-            provider_section.pop("tier", None)
+            config["providers"][validated_name]["model"] = model
 
         config_service.save(config)
-        msg = f"Provider set to {name}"
+        msg = f"Provider set to {validated_name}"
         if model:
             msg += f" (model={model})"
         console.print(msg)

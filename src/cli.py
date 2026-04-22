@@ -11,6 +11,7 @@ from src.engine.command_registry import (
     list_command_names,
 )
 from src.models.command_models import CommandContext
+from src.providers import validate_provider_name
 from src.services import build_services
 from src.services.config_service import ConfigService
 from src.services.project_service import build_project_paths, discover_project_root
@@ -24,13 +25,24 @@ def build_runtime_context(
 ) -> CommandContext:
     paths = build_project_paths(project_root)
     config_service = ConfigService(paths)
-    config = config_service.load()
+    try:
+        config = config_service.load()
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
     if provider_override:
-        config.setdefault("provider", {})["name"] = provider_override
+        try:
+            config.setdefault("provider", {})["name"] = validate_provider_name(
+                provider_override,
+                provider_catalog=config.get("providers"),
+            )
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
         # Clear stale fields that belong to a different provider.
         config["provider"].pop("model", None)
         config["provider"].pop("tier", None)
         config["provider"].pop("api_key_env", None)
+        config["provider"].pop("reasoning_effort", None)
+        config["provider"].pop("thinking_budget", None)
     schema_text = config_service.load_schema()
 
     services = build_services(paths, config)
@@ -70,7 +82,7 @@ class KBGroup(click.Group):
 @click.option(
     "--provider",
     "provider_override",
-    type=click.Choice(["openai", "anthropic", "gemini"], case_sensitive=False),
+    type=str,
     default=None,
     help="Override the configured provider for this invocation.",
 )

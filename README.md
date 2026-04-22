@@ -41,9 +41,9 @@ poetry run kb ask "How does the wiki handle stale pages?"
 That's the everyday workflow: **add → update → find / ask**. Everything else
 is optional.
 
-Before running `kb update`, `kb ask`, or `kb review`, add a `provider`
-section to `kb.config.yaml` and set the matching API key environment variable.
-See `Provider Configuration` below.
+Before running `kb update`, `kb ask`, or `kb review`, configure the active
+provider in `kb.config.yaml` and set the matching API key environment
+variable. See `Provider Configuration` below.
 
 ## Global Options
 
@@ -108,11 +108,12 @@ Creates:
 - `vault/obsidian/` — directory for vault export
 
 Running `init` again is safe — it skips files that already exist.
-The scaffold writes `kb.config.yaml` at config version 2. Older version 1 configs are migrated in place on load so deprecated fields are removed and newer sections such as `provider` and `storage.raw_normalized_dir` are persisted automatically.
+The scaffold writes `kb.config.yaml` at config version 3. Older configs are migrated in place on load so deprecated fields are removed and newer sections such as `providers` and `storage.raw_normalized_dir` are persisted automatically.
 
 ### `kb doctor`
 
-Run health checks on the project: structure, config, provider, API keys, and converters.
+Run health checks on the project: structure, config, provider selection,
+API keys, and converters.
 
 ```bash
 poetry run kb doctor
@@ -277,7 +278,7 @@ Copies compiled wiki pages into `vault/obsidian/` in a format compatible with [O
 
 ### `kb config`
 
-View project configuration as YAML, or manage provider and model settings.
+View project configuration as YAML, or manage the active provider selection.
 
 ```bash
 poetry run kb config
@@ -329,16 +330,44 @@ All non-text formats are normalized into canonical markdown and stored in `raw/n
 
 `kb update`, `kb ask`, and `kb review` require a configured provider.
 If the provider is missing, those commands fail with a configuration error. If a
-configured provider call fails, they fail instead of falling back. Configure the
-provider in `kb.config.yaml`:
+configured provider call fails, they fail instead of falling back.
+
+Provider configuration lives entirely in `kb.config.yaml`. The top-level
+`provider.name` selects the active provider, and the `providers` section holds
+the built-in settings for `openai`, `anthropic`, and `gemini`:
+
+```yaml
+version: 3
+provider:
+  name: openai
+providers:
+  openai:
+    model: gpt-5.4-mini
+    api_key_env: OPENAI_API_KEY
+    reasoning_effort: high
+  anthropic:
+    model: claude-sonnet-4-6
+    api_key_env: ANTHROPIC_API_KEY
+    thinking_budget: 10000
+  gemini:
+    model: gemini-3.1-flash-lite-preview
+    api_key_env: GEMINI_API_KEY
+    reasoning_effort: high
+```
+
+To customize a provider, edit its entry under `providers`:
 
 ```yaml
 provider:
-  name: openai          # openai | anthropic | gemini
-  model: gpt-5.4-mini   # optional — defaults to a cost-effective model per provider
+  name: anthropic
+providers:
+  anthropic:
+    model: claude-opus-4-6
+    api_key_env: MY_ANTHROPIC_KEY
+    thinking_budget: 2048
 ```
 
-`kb.config.yaml` is versioned. The current schema version is 2, and the CLI automatically migrates older version 1 files when it loads project configuration.
+`kb.config.yaml` is versioned. The current schema version is 3, and the CLI automatically migrates older files when it loads project configuration.
 
 You can also override the provider per-invocation without editing the config file:
 
@@ -347,13 +376,20 @@ kb --provider anthropic ask "How does REALM differ from RAG?"
 kb --provider gemini review
 ```
 
-Set the matching API key as an environment variable:
+Set the matching API key as an environment variable. These are the defaults
+seeded into `kb.config.yaml`:
 
 | Provider | Default model | Env variable | Alternatives |
 | --- | --- | --- | --- |
 | `openai` | `gpt-5.4-mini` | `OPENAI_API_KEY` | `gpt-5.4`, `gpt-5.4-nano` |
 | `anthropic` | `claude-sonnet-4-6` | `ANTHROPIC_API_KEY` | `claude-opus-4-6`, `claude-haiku-4-5` |
 | `gemini` | `gemini-3.1-flash-lite-preview` | `GEMINI_API_KEY` | `gemini-3.1-pro-preview`, `gemini-2.5-flash` |
+
+See the official model documentation for the full list of available models, pricing, and capabilities:
+
+- **OpenAI:** [platform.openai.com/docs/models](https://platform.openai.com/docs/models)
+- **Anthropic:** [docs.anthropic.com/en/docs/about-claude/models](https://docs.anthropic.com/en/docs/about-claude/models)
+- **Google Gemini:** [ai.google.dev/gemini-api/docs/models](https://ai.google.dev/gemini-api/docs/models)
 
 If the provider is not configured, `kb update`, `kb ask`, and `kb review`
 fail with a configuration error. If the provider is configured but the API key
@@ -370,7 +406,8 @@ errors) automatically with exponential backoff and jitter.
 | `GEMINI_API_KEY` | API key for the Google Gemini provider. |
 | `NO_COLOR` | When set (any value), disables colored CLI output. Respected automatically by Rich. |
 
-You can override the environment variable name with `api_key_env`:
+You can override the environment variable name, model, or provider tuning in
+that same file:
 
 ```yaml
 provider:

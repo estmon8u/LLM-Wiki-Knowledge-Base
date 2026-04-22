@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from src.providers import _DEFAULT_API_KEY_ENVS
+from src.providers import resolve_provider_settings, supported_provider_names
 from src.services.project_service import ProjectPaths
 
 
@@ -135,7 +135,7 @@ class DoctorService:
 
     def _check_provider_config(self, *, strict: bool = False) -> DoctorCheck:
         provider_cfg = self.config.get("provider") or {}
-        name = provider_cfg.get("name", "")
+        name = str(provider_cfg.get("name", "")).strip().lower()
         if not name:
             sev = "error" if strict else "warning"
             return DoctorCheck(
@@ -144,7 +144,7 @@ class DoctorService:
                 detail="No provider configured. Required for update, ask, and review.",
                 severity=sev,
             )
-        supported = {"openai", "anthropic", "gemini"}
+        supported = set(supported_provider_names(self.config.get("providers")))
         if name not in supported:
             return DoctorCheck(
                 name="provider_config",
@@ -152,7 +152,10 @@ class DoctorService:
                 detail=f"Unknown provider '{name}'. Supported: {', '.join(sorted(supported))}.",
                 severity="error",
             )
-        model = provider_cfg.get("model", "(default)")
+        _, resolved_cfg = resolve_provider_settings(
+            self.config,
+        ) or (name, {})
+        model = resolved_cfg.get("model", "(default)")
         return DoctorCheck(
             name="provider_config",
             ok=True,
@@ -162,7 +165,7 @@ class DoctorService:
 
     def _check_api_key(self, *, strict: bool = False) -> DoctorCheck:
         provider_cfg = self.config.get("provider") or {}
-        name = provider_cfg.get("name", "")
+        name = str(provider_cfg.get("name", "")).strip().lower()
         if not name:
             sev = "error" if strict else "warning"
             return DoctorCheck(
@@ -171,7 +174,10 @@ class DoctorService:
                 detail="Cannot check API key until a provider is selected.",
                 severity=sev,
             )
-        env_var = provider_cfg.get("api_key_env", _DEFAULT_API_KEY_ENVS.get(name, ""))
+        _, resolved_cfg = resolve_provider_settings(
+            self.config,
+        ) or (name, {})
+        env_var = resolved_cfg.get("api_key_env", "")
         if not env_var:
             return DoctorCheck(
                 name="api_key",

@@ -22,7 +22,10 @@ from src.services.status_service import StatusService
 from src.storage.compile_run_store import CompileRunStore
 
 
-def build_services(paths: ProjectPaths, config: dict[str, Any]) -> dict[str, Any]:
+def build_services(
+    paths: ProjectPaths,
+    config: dict[str, Any],
+) -> dict[str, Any]:
     config_service = ConfigService(paths)
     manifest_service = ManifestService(paths)
     search_service = SearchService(paths)

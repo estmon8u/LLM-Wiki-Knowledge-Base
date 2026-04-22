@@ -9,7 +9,7 @@
 | `src/services/` | Deterministic normalization, ingest, compile, concept, diff, lint, review, search, query, export, status, config, and manifest services |
 | `src/models/` | Shared command, source, and wiki dataclasses |
 | `src/engine/` | Command registry boundary |
-| `src/providers/` | Provider abstraction layer with OpenAI, Anthropic, and Gemini implementations; shared Tenacity retry decorator for transient failures |
+| `src/providers/` | Provider abstraction layer with OpenAI, Anthropic, and Gemini implementations; shared Tenacity retry decorator for transient failures and catalog-backed provider resolution |
 | `src/storage/` | Compile-run state persistence and SQLite FTS5 chunk-index storage |
 
 ## Command To Service Mapping
@@ -57,7 +57,7 @@ All commands are flat top-level verbs:
 - The command layer owns terminal-only concerns such as section headings, list formatting, and progress display via Rich (`Console`, `Table`, `Progress`); long-running services expose callback-friendly hooks instead of writing directly to the terminal. User-supplied content is markup-escaped via `rich.markup.escape`.
 - Services should remain deterministic unless the feature explicitly requires model-backed synthesis.
 - `kb lint` checks links, fragments, headings, titles, and metadata deterministically; `kb review` prepends deterministic overlap checks to a required provider-backed single-pass review.
-- `build_services()` creates a single provider via `build_provider(config)` shared across all services.
+- `build_services()` reads `kb.config.yaml`, resolves the active provider from the embedded `providers` section, and creates a single shared provider via `build_provider(config)`.
 - `kb.schema.md` is the wiki's operational constitution. Relevant schema sections are injected into compile and query prompts via `schema_excerpt()`.
 - Raw sources remain the source of truth; compiled pages are derived artifacts.
 - Compile should prefer the normalized canonical artifact when one exists rather than reparsing the original raw source.

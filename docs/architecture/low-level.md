@@ -7,7 +7,7 @@
 | `src/cli.py` | Builds the CLI entrypoint and runtime context |
 | `src/engine/command_registry.py` | Registers the available CLI commands |
 | `src/providers/base.py` | Defines the provider abstraction: `ProviderRequest`, `ProviderResponse`, `TextProvider` |
-| `src/providers/__init__.py` | Factory `build_provider(config)` — lazy-imports the right provider by name |
+| `src/providers/__init__.py` | Factory helpers for provider validation, config resolution from `kb.config.yaml`, and `build_provider(config)` |
 | `src/providers/retry.py` | Shared Tenacity retry decorator (`provider_retry()`) for all `generate()` calls: 3 attempts, exponential backoff with jitter, transient-only retry |
 | `src/providers/openai_provider.py` | OpenAI chat-completions provider; `@provider_retry()` on `generate()` |
 | `src/providers/anthropic_provider.py` | Anthropic messages provider; `@provider_retry()` on `generate()` |
@@ -37,7 +37,7 @@
 | File | Responsibility |
 | --- | --- |
 | `src/services/project_service.py` | Project layout, initialization, and shared atomic write/copy helpers |
-| `src/services/config_service.py` | Config loading, defaults, `schema_excerpt()` helper for extracting schema sections by heading, and in-place migration of legacy `kb.config.yaml` versions |
+| `src/services/config_service.py` | Config loading, embedded provider-settings validation, schema defaults, `schema_excerpt()` helper for extracting schema sections by heading, and in-place migration of legacy `kb.config.yaml` versions |
 | `src/services/manifest_service.py` | Raw-source manifest read/write behavior |
 | `src/services/normalization_service.py` | Document-type normalization routing for direct text inputs, Docling-backed PDFs, and bounded MarkItDown-backed born-digital converters |
 | `src/services/ingest_service.py` | Raw-source copy, normalized-artifact write, duplicate detection, source registration, deterministic recursive directory ingest, and callback-friendly batch progress hooks used by `kb add` |
@@ -71,7 +71,7 @@
 
 | File | Responsibility |
 | --- | --- |
-| `pyproject.toml` | Dependency pins, including Docling and MarkItDown, plus CLI entrypoint, Black config, pytest and coverage settings |
+| `pyproject.toml` | Dependency pins, including OpenAI/Anthropic/Gemini SDKs, Docling, and MarkItDown, plus CLI entrypoint, Black config, pytest and coverage settings |
 | `.github/workflows/tests.yml` | CI for Poetry install, Black, pytest, and coverage artifact upload |
 | `tests/` | Unit, CLI, regression, and golden-file coverage for the current command/service surface |
 

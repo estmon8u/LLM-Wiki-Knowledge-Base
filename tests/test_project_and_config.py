@@ -119,6 +119,71 @@ def test_config_service_loads_defaults_and_creates_files(uninitialized_project) 
     assert config_service.ensure_files() == []
 
 
+def test_config_service_loads_custom_provider_settings(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 3\n"
+        "provider:\n"
+        "  name: gemini\n"
+        "providers:\n"
+        "  openai:\n"
+        "    model: gpt-5.4\n"
+        "    api_key_env: OPENAI_ALT\n"
+        "    reasoning_effort: medium\n"
+        "  anthropic:\n"
+        "    model: claude-opus-4-6\n"
+        "    api_key_env: ANTHROPIC_ALT\n"
+        "    thinking_budget: 2048\n"
+        "  gemini:\n"
+        "    model: gemini-2.5-flash\n"
+        "    api_key_env: GEMINI_ALT\n"
+        "    reasoning_effort: low\n",
+        encoding="utf-8",
+    )
+
+    loaded = ConfigService(test_project.paths).load()
+
+    assert loaded["provider"]["name"] == "gemini"
+    assert loaded["providers"]["openai"]["model"] == "gpt-5.4"
+    assert loaded["providers"]["openai"]["api_key_env"] == "OPENAI_ALT"
+    assert loaded["providers"]["anthropic"]["thinking_budget"] == 2048
+    assert loaded["providers"]["gemini"]["reasoning_effort"] == "low"
+
+
+def test_config_service_invalid_provider_settings_raise(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 3\n"
+        "providers:\n"
+        "  openai:\n"
+        "    model: gpt-5.4-mini\n"
+        "    api_key_env: OPENAI_API_KEY\n"
+        "    reasoning_effort: 7\n"
+        "  anthropic:\n"
+        "    model: claude-sonnet-4-6\n"
+        "    api_key_env: ANTHROPIC_API_KEY\n"
+        "    thinking_budget: 10000\n"
+        "  gemini:\n"
+        "    model: gemini-3.1-flash-lite-preview\n"
+        "    api_key_env: GEMINI_API_KEY\n"
+        "    reasoning_effort: high\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="providers.openai.reasoning_effort"):
+        ConfigService(test_project.paths).load()
+
+
+def test_config_service_rejects_provider_settings_in_active_provider_block(
+    test_project,
+) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 3\n" "provider:\n" "  name: openai\n" "  model: gpt-5.4\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="only supports 'name'"):
+        ConfigService(test_project.paths).load()
+
+
 def test_config_version_helper_uses_legacy_default_and_validates_values() -> None:
     assert _config_version({}) == 1
     assert (
@@ -152,6 +217,7 @@ def test_apply_config_migrations_upgrades_version_one_payload() -> None:
     assert "summary_paragraph_limit" not in migrated["compile"]
     assert migrated["storage"]["raw_normalized_dir"] == "raw/normalized"
     assert migrated["provider"] == {}
+    assert migrated["providers"]["openai"]["model"] == "gpt-5.4-mini"
 
 
 def test_config_service_merges_custom_config(test_project) -> None:
@@ -190,6 +256,7 @@ def test_config_service_migrates_legacy_file_and_rewrites_disk(test_project) -> 
     assert loaded["project"]["name"] == "Legacy Project"
     assert loaded["storage"]["raw_normalized_dir"] == "raw/normalized"
     assert loaded["provider"] == {}
+    assert loaded["providers"]["anthropic"]["model"] == "claude-sonnet-4-6"
     assert "summary_paragraph_limit" not in loaded["compile"]
 
     persisted = yaml.safe_load(
@@ -197,8 +264,31 @@ def test_config_service_migrates_legacy_file_and_rewrites_disk(test_project) -> 
     )
     assert persisted["version"] == CURRENT_CONFIG_VERSION
     assert persisted["provider"] == {}
+    assert persisted["providers"]["gemini"]["model"] == "gemini-3.1-flash-lite-preview"
     assert persisted["storage"]["raw_normalized_dir"] == "raw/normalized"
     assert "summary_paragraph_limit" not in persisted["compile"]
+
+
+def test_config_service_migrates_provider_overrides_into_providers_section(
+    test_project,
+) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 2\n"
+        "provider:\n"
+        "  name: openai\n"
+        "  model: gpt-5.4\n"
+        "  api_key_env: MY_OPENAI_KEY\n"
+        "  reasoning_effort: low\n",
+        encoding="utf-8",
+    )
+
+    loaded = ConfigService(test_project.paths).load()
+
+    assert loaded["version"] == CURRENT_CONFIG_VERSION
+    assert loaded["provider"] == {"name": "openai"}
+    assert loaded["providers"]["openai"]["model"] == "gpt-5.4"
+    assert loaded["providers"]["openai"]["api_key_env"] == "MY_OPENAI_KEY"
+    assert loaded["providers"]["openai"]["reasoning_effort"] == "low"
 
 
 def test_config_service_load_schema_reads_custom_schema(test_project) -> None:

@@ -4,6 +4,7 @@ import hashlib
 import os
 from typing import Any
 
+from src.providers import resolve_provider_settings
 from src.models.wiki_models import StatusSnapshot
 from src.services.manifest_service import ManifestService
 from src.services.project_service import ProjectPaths
@@ -69,18 +70,13 @@ class StatusService:
         )
 
     def _provider_summary(self) -> str:
-        provider_config = self._config.get("provider", {})
-        name = provider_config.get("name", "")
-        if not name:
-            return "not configured"
-        key_env_map = {
-            "openai": "OPENAI_API_KEY",
-            "anthropic": "ANTHROPIC_API_KEY",
-            "gemini": "GEMINI_API_KEY",
-        }
-        env_var = provider_config.get(
-            "api_key_env", key_env_map.get(name, f"{name.upper()}_API_KEY")
+        resolved = resolve_provider_settings(
+            self._config,
         )
+        if resolved is None:
+            return "not configured"
+        name, provider_config = resolved
+        env_var = provider_config.get("api_key_env", f"{name.upper()}_API_KEY")
         key_set = bool(os.environ.get(env_var))
         model = provider_config.get("model", "")
         parts = [f"{name} configured"]

@@ -674,30 +674,46 @@ def test_provider_override_flag_rejects_invalid_name() -> None:
 
 
 def test_provider_override_clears_tier_and_api_key_env() -> None:
-    """--provider clears stale tier, model, and api_key_env from the config."""
+    """--provider clears stale provider-specific override fields in memory."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
-        # Set an openai provider with a specific tier and api_key_env.
         config = yaml.safe_load(Path("kb.config.yaml").read_text(encoding="utf-8"))
-        config["provider"] = {
-            "name": "openai",
-            "model": "gpt-5.4",
-            "tier": "deep",
-            "api_key_env": "MY_OPENAI_KEY",
-        }
+        config["provider"] = {"name": "openai"}
         Path("kb.config.yaml").write_text(
             yaml.safe_dump(config, sort_keys=False), encoding="utf-8"
         )
 
-        _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        captured_provider: dict[str, str] = {}
+
+        def _capture_provider_config(runtime_config, provider_catalog=None):
+            captured_provider.clear()
+            captured_provider.update(runtime_config.get("provider", {}))
+            return _CliFakeProvider()
+
+        with patch("src.services.build_provider", side_effect=_capture_provider_config):
             result = runner.invoke(
                 main,
                 ["--provider", "anthropic", "status"],
             )
 
         assert result.exit_code == 0
+        assert captured_provider == {"name": "anthropic"}
+
+
+def test_cli_fails_clearly_for_malformed_provider_settings() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        Path("kb.config.yaml").write_text(
+            "version: 3\nproviders:\n  openai: []\n",
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(main, ["status"])
+
+        assert result.exit_code != 0
+        assert "kb.config.yaml" in result.output
 
 
 # --- Simplified CLI UX tests ---
@@ -1084,6 +1100,9 @@ def test_config_provider_set_and_clear() -> None:
         )
         assert result.exit_code == 0
         assert "model=claude-4" in result.output
+        config = yaml.safe_load(Path("kb.config.yaml").read_text(encoding="utf-8"))
+        assert config["provider"]["name"] == "anthropic"
+        assert config["providers"]["anthropic"]["model"] == "claude-4"
 
         result = runner.invoke(main, ["config", "provider", "clear"])
         assert result.exit_code == 0
@@ -1110,6 +1129,7 @@ def test_config_provider_set_switching_clears_stale() -> None:
         config = yaml.safe_load(Path("kb.config.yaml").read_text(encoding="utf-8"))
         assert config["provider"]["name"] == "anthropic"
         assert "model" not in config["provider"]
+        assert config["providers"]["openai"]["model"] == "gpt-5.4"
 
 
 def test_config_provider_set_rejects_unknown_name() -> None:

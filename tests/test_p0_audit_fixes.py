@@ -338,6 +338,36 @@ def test_doctor_configured_provider_with_model(test_project) -> None:
     assert "claude-opus-4-6" in prov_check.detail
 
 
+def test_doctor_uses_catalog_default_model_when_override_missing(test_project) -> None:
+    config = {
+        "provider": {"name": "gemini"},
+        "providers": {
+            "openai": {
+                "model": "gpt-5.4-mini",
+                "api_key_env": "OPENAI_API_KEY",
+                "reasoning_effort": "high",
+            },
+            "anthropic": {
+                "model": "claude-sonnet-4-6",
+                "api_key_env": "ANTHROPIC_API_KEY",
+                "thinking_budget": 10_000,
+            },
+            "gemini": {
+                "model": "gemini-2.5-flash",
+                "api_key_env": "GEMINI_ALT_KEY",
+                "reasoning_effort": "medium",
+            },
+        },
+    }
+    doctor = DoctorService(test_project.paths, config)
+    report = doctor.diagnose()
+    prov_check = next(c for c in report.checks if c.name == "provider_config")
+    api_check = next(c for c in report.checks if c.name == "api_key")
+    assert prov_check.ok
+    assert "gemini-2.5-flash" in prov_check.detail
+    assert "GEMINI_ALT_KEY" in api_check.detail
+
+
 def test_doctor_report_ok_property() -> None:
     from src.services.doctor_service import DoctorCheck, DoctorReport
 

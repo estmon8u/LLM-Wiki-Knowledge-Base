@@ -922,6 +922,38 @@ def test_status_provider_summary_configured(test_project) -> None:
     assert "model=gpt-4o" in snap.provider_summary
 
 
+def test_status_provider_summary_uses_catalog_defaults(test_project) -> None:
+    from src.services.status_service import StatusService
+
+    service = StatusService(
+        test_project.paths,
+        test_project.services["manifest"],
+        config={
+            "provider": {"name": "openai"},
+            "providers": {
+                "openai": {
+                    "model": "gpt-5.4-nano",
+                    "api_key_env": "OPENAI_ALT_KEY",
+                    "reasoning_effort": "low",
+                },
+                "anthropic": {
+                    "model": "claude-sonnet-4-6",
+                    "api_key_env": "ANTHROPIC_API_KEY",
+                    "thinking_budget": 10_000,
+                },
+                "gemini": {
+                    "model": "gemini-3.1-flash-lite-preview",
+                    "api_key_env": "GEMINI_API_KEY",
+                    "reasoning_effort": "high",
+                },
+            },
+        },
+    )
+    snap = service.snapshot(initialized=True)
+    assert "model=gpt-5.4-nano" in snap.provider_summary
+    assert "OPENAI_ALT_KEY NOT SET" in snap.provider_summary
+
+
 def test_status_index_status_not_built(test_project) -> None:
     snap = test_project.services["status"].snapshot(initialized=True)
     assert snap.index_status == "not built"

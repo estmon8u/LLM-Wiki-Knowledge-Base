@@ -84,6 +84,37 @@ def test_build_provider_creates_openai_provider() -> None:
     assert provider.model == "gpt-5.4-mini"
 
 
+def test_build_provider_uses_catalog_defaults_for_openai() -> None:
+    config = {
+        "provider": {"name": "openai"},
+        "providers": {
+            "openai": {
+                "model": "gpt-5.4",
+                "api_key_env": "OPENAI_ALT_KEY",
+                "reasoning_effort": "medium",
+            },
+            "anthropic": {
+                "model": "claude-sonnet-4-6",
+                "api_key_env": "ANTHROPIC_API_KEY",
+                "thinking_budget": 10_000,
+            },
+            "gemini": {
+                "model": "gemini-3.1-flash-lite-preview",
+                "api_key_env": "GEMINI_API_KEY",
+                "reasoning_effort": "high",
+            },
+        },
+    }
+
+    with patch.dict("os.environ", {"OPENAI_ALT_KEY": "test-key"}):
+        with patch("src.providers.openai_provider.OpenAI"):
+            provider = build_provider(config)
+
+    assert provider is not None
+    assert provider.model == "gpt-5.4"
+    assert provider._reasoning_effort == "medium"
+
+
 def test_build_provider_creates_openai_provider_with_custom_model() -> None:
     with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}):
         with patch("src.providers.openai_provider.OpenAI"):
@@ -101,6 +132,37 @@ def test_build_provider_creates_anthropic_provider() -> None:
     assert provider is not None
     assert provider.name == "anthropic"
     assert provider.model == "claude-sonnet-4-6"
+
+
+def test_build_provider_uses_catalog_thinking_budget_for_anthropic() -> None:
+    config = {
+        "provider": {"name": "anthropic"},
+        "providers": {
+            "openai": {
+                "model": "gpt-5.4-mini",
+                "api_key_env": "OPENAI_API_KEY",
+                "reasoning_effort": "high",
+            },
+            "anthropic": {
+                "model": "claude-sonnet-4-6",
+                "api_key_env": "ANTHROPIC_ALT_KEY",
+                "thinking_budget": 2048,
+            },
+            "gemini": {
+                "model": "gemini-3.1-flash-lite-preview",
+                "api_key_env": "GEMINI_API_KEY",
+                "reasoning_effort": "high",
+            },
+        },
+    }
+
+    with patch.dict("os.environ", {"ANTHROPIC_ALT_KEY": "test-key"}):
+        with patch("src.providers.anthropic_provider.Anthropic"):
+            provider = build_provider(config)
+
+    assert provider is not None
+    assert provider.model == "claude-sonnet-4-6"
+    assert provider._thinking_budget == 2048
 
 
 def test_build_provider_creates_anthropic_provider_with_custom_model() -> None:
@@ -139,6 +201,42 @@ def test_build_provider_respects_custom_api_key_env() -> None:
                 {"provider": {"name": "openai", "api_key_env": "MY_KEY"}}
             )
     assert provider is not None
+
+
+def test_build_provider_ignores_ambiguous_active_provider_overrides_in_v3() -> None:
+    config = {
+        "version": 3,
+        "provider": {
+            "name": "openai",
+            "model": "should-not-win",
+            "api_key_env": "WRONG_KEY",
+        },
+        "providers": {
+            "openai": {
+                "model": "gpt-5.4",
+                "api_key_env": "OPENAI_RIGHT_KEY",
+                "reasoning_effort": "medium",
+            },
+            "anthropic": {
+                "model": "claude-sonnet-4-6",
+                "api_key_env": "ANTHROPIC_API_KEY",
+                "thinking_budget": 10_000,
+            },
+            "gemini": {
+                "model": "gemini-3.1-flash-lite-preview",
+                "api_key_env": "GEMINI_API_KEY",
+                "reasoning_effort": "high",
+            },
+        },
+    }
+
+    with patch.dict("os.environ", {"OPENAI_RIGHT_KEY": "test-key"}):
+        with patch("src.providers.openai_provider.OpenAI"):
+            provider = build_provider(config)
+
+    assert provider is not None
+    assert provider.model == "gpt-5.4"
+    assert provider._reasoning_effort == "medium"
 
 
 # ---------------------------------------------------------------------------

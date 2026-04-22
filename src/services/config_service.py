@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 from copy import deepcopy
-from pathlib import Path
 from typing import Any
 
 import yaml
@@ -10,7 +9,7 @@ import yaml
 from src.services.project_service import ProjectPaths, atomic_write_text
 
 
-CURRENT_CONFIG_VERSION = 2
+CURRENT_CONFIG_VERSION = 3
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -40,6 +39,23 @@ DEFAULT_CONFIG: dict[str, Any] = {
         ],
     },
     "provider": {},
+    "providers": {
+        "openai": {
+            "model": "gpt-5.4-mini",
+            "api_key_env": "OPENAI_API_KEY",
+            "reasoning_effort": "high",
+        },
+        "anthropic": {
+            "model": "claude-sonnet-4-6",
+            "api_key_env": "ANTHROPIC_API_KEY",
+            "thinking_budget": 10_000,
+        },
+        "gemini": {
+            "model": "gemini-3.1-flash-lite-preview",
+            "api_key_env": "GEMINI_API_KEY",
+            "reasoning_effort": "high",
+        },
+    },
 }
 
 
@@ -137,7 +153,9 @@ class ConfigService:
                 yaml.safe_dump(migrated, sort_keys=False),
             )
         merged = deepcopy(DEFAULT_CONFIG)
-        return _deep_merge(merged, migrated)
+        merged = _deep_merge(merged, migrated)
+        _validate_provider_configs(merged)
+        return merged
 
     def load_schema(self) -> str:
         if not self.paths.schema_file.exists():
@@ -199,6 +217,11 @@ def _apply_config_migrations(config: dict[str, Any]) -> tuple[dict[str, Any], bo
             changed = True
             version = _config_version(migrated)
             continue
+        if version == 2:
+            migrated = _migrate_v2_to_v3(migrated)
+            changed = True
+            version = _config_version(migrated)
+            continue
         raise ValueError(f"Unsupported kb.config.yaml version: {version}")
 
     return migrated, changed
@@ -220,3 +243,93 @@ def _migrate_v1_to_v2(config: dict[str, Any]) -> dict[str, Any]:
     migrated.setdefault("provider", {})
     migrated["version"] = 2
     return migrated
+
+
+def _migrate_v2_to_v3(config: dict[str, Any]) -> dict[str, Any]:
+    migrated = deepcopy(config)
+    existing_providers = migrated.get("providers", {})
+    providers = deepcopy(DEFAULT_CONFIG["providers"])
+    if isinstance(existing_providers, dict):
+        for name, entry in existing_providers.items():
+            if isinstance(entry, dict) and isinstance(providers.get(name), dict):
+                providers[name] = _deep_merge(providers[name], entry)
+    migrated["providers"] = providers
+
+    provider_section = migrated.setdefault("provider", {})
+    if isinstance(provider_section, dict):
+        provider_section.pop("tier", None)
+        name = str(provider_section.get("name", "")).strip().lower()
+        if name in DEFAULT_CONFIG["providers"]:
+            target = providers.setdefault(
+                name,
+                deepcopy(DEFAULT_CONFIG["providers"][name]),
+            )
+            if not isinstance(target, dict):
+                target = deepcopy(DEFAULT_CONFIG["providers"][name])
+                providers[name] = target
+            for key in ("model", "api_key_env", "reasoning_effort", "thinking_budget"):
+                if key in provider_section:
+                    target[key] = provider_section.pop(key)
+
+    migrated["version"] = 3
+    return migrated
+
+
+def _validate_provider_configs(config: dict[str, Any]) -> None:
+    provider = config.get("provider", {})
+    if not isinstance(provider, dict):
+        raise ValueError("kb.config.yaml 'provider' must contain a YAML mapping.")
+
+    extra_provider_keys = sorted(set(provider) - {"name"})
+    if extra_provider_keys:
+        raise ValueError(
+            "kb.config.yaml 'provider' only supports 'name'. Move provider settings "
+            "under the top-level 'providers' section."
+        )
+
+    name = provider.get("name", "")
+    if name not in ("", None) and not isinstance(name, str):
+        raise ValueError("kb.config.yaml 'provider.name' must be a string.")
+
+    providers = config.get("providers")
+    if not isinstance(providers, dict):
+        raise ValueError("kb.config.yaml 'providers' must contain a YAML mapping.")
+
+    defaults = DEFAULT_CONFIG["providers"]
+    extra_names = sorted(set(providers) - set(defaults))
+    if extra_names:
+        raise ValueError(
+            "kb.config.yaml 'providers' contains unsupported entries: "
+            f"{', '.join(extra_names)}."
+        )
+
+    for name, expected in defaults.items():
+        entry = providers.get(name)
+        if not isinstance(entry, dict):
+            raise ValueError(
+                f"kb.config.yaml 'providers.{name}' must contain a YAML mapping."
+            )
+
+        extra_keys = sorted(set(entry) - set(expected))
+        if extra_keys:
+            raise ValueError(
+                f"kb.config.yaml 'providers.{name}' contains unknown keys: "
+                f"{', '.join(extra_keys)}."
+            )
+
+        for key, default_value in expected.items():
+            if key not in entry:
+                raise ValueError(
+                    f"kb.config.yaml 'providers.{name}' must define '{key}'."
+                )
+            value = entry[key]
+            if isinstance(default_value, int):
+                if isinstance(value, bool) or not isinstance(value, int):
+                    raise ValueError(
+                        f"kb.config.yaml 'providers.{name}.{key}' must be an integer."
+                    )
+            else:
+                if not isinstance(value, str) or not value.strip():
+                    raise ValueError(
+                        f"kb.config.yaml 'providers.{name}.{key}' must be a non-empty string."
+                    )

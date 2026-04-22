@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
 
 logger = logging.getLogger(__name__)
+
+ProviderCatalog = Mapping[str, Mapping[str, Any]]
 
 
 class ProviderError(RuntimeError):
@@ -36,21 +38,75 @@ class UnavailableProvider(TextProvider):
         self.ensure_available()
 
 
-_DEFAULT_API_KEY_ENVS = {
-    "openai": "OPENAI_API_KEY",
-    "anthropic": "ANTHROPIC_API_KEY",
-    "gemini": "GEMINI_API_KEY",
+_FALLBACK_PROVIDER_CATALOG = {
+    "openai": {
+        "model": "gpt-5.4-mini",
+        "api_key_env": "OPENAI_API_KEY",
+        "reasoning_effort": "high",
+    },
+    "anthropic": {
+        "model": "claude-sonnet-4-6",
+        "api_key_env": "ANTHROPIC_API_KEY",
+        "thinking_budget": 10_000,
+    },
+    "gemini": {
+        "model": "gemini-3.1-flash-lite-preview",
+        "api_key_env": "GEMINI_API_KEY",
+        "reasoning_effort": "high",
+    },
 }
 
-_DEFAULT_MODELS = {
-    "openai": "gpt-5.4-mini",
-    "anthropic": "claude-sonnet-4-6",
-    "gemini": "gemini-3.1-flash-lite-preview",
-}
+
+def supported_provider_names(
+    provider_catalog: ProviderCatalog | None = None,
+) -> tuple[str, ...]:
+    catalog = provider_catalog or _FALLBACK_PROVIDER_CATALOG
+    return tuple(sorted(catalog))
+
+
+def describe_supported_providers(
+    provider_catalog: ProviderCatalog | None = None,
+) -> str:
+    return ", ".join(supported_provider_names(provider_catalog))
+
+
+def validate_provider_name(
+    name: str,
+    provider_catalog: ProviderCatalog | None = None,
+) -> str:
+    normalized_name = str(name).strip().lower()
+    if normalized_name not in supported_provider_names(provider_catalog):
+        raise ValueError(
+            f"Unknown provider {name!r}. Supported providers: "
+            f"{describe_supported_providers(provider_catalog)}."
+        )
+    return normalized_name
+
+
+def resolve_provider_settings(
+    config: dict[str, Any],
+    provider_catalog: ProviderCatalog | None = None,
+) -> tuple[str, dict[str, Any]] | None:
+    provider_cfg = config.get("provider") or {}
+    name = provider_cfg.get("name", "")
+    normalized_name = str(name).strip().lower()
+    if not normalized_name:
+        return None
+
+    catalog = provider_catalog or config.get("providers") or _FALLBACK_PROVIDER_CATALOG
+    resolved = dict(catalog.get(normalized_name, {}))
+    use_legacy_overrides = int(config.get("version", 0) or 0) < 3
+    if use_legacy_overrides:
+        for key, value in provider_cfg.items():
+            if key == "name" or value in (None, ""):
+                continue
+            resolved[key] = value
+    return normalized_name, resolved
 
 
 def build_provider(
     config: dict[str, Any],
+    provider_catalog: ProviderCatalog | None = None,
 ) -> Optional[TextProvider]:
     """Build a provider from the ``provider`` section of kb config.
 
@@ -59,15 +115,15 @@ def build_provider(
     review) should check for ``None`` and raise a clear
     ``ProviderConfigurationError`` instead of silently falling back.
     """
-    provider_cfg = config.get("provider") or {}
-    name = provider_cfg.get("name", "")
-    if not name:
+    resolved = resolve_provider_settings(config, provider_catalog=provider_catalog)
+    if resolved is None:
         return None
+    name, provider_cfg = resolved
 
-    model = provider_cfg.get("model", _DEFAULT_MODELS.get(name, ""))
-    api_key_env = provider_cfg.get("api_key_env", _DEFAULT_API_KEY_ENVS.get(name, ""))
-    reasoning_effort = "high"
-    thinking_budget = 10_000 if name == "anthropic" else 0
+    model = provider_cfg.get("model", "")
+    api_key_env = provider_cfg.get("api_key_env", "")
+    reasoning_effort = provider_cfg.get("reasoning_effort", "high")
+    thinking_budget = provider_cfg.get("thinking_budget", 0)
 
     try:
         if name == "openai":
@@ -96,7 +152,7 @@ def build_provider(
             )
         message = (
             f"Unknown provider name {name!r}. Supported providers are: "
-            "openai, anthropic, gemini."
+            f"{describe_supported_providers(provider_catalog)}."
         )
         logger.warning(message)
         return UnavailableProvider(message, provider_name=name)
