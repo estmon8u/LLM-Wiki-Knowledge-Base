@@ -6,13 +6,12 @@
 | --- | --- |
 | `src/cli.py` | Builds the CLI entrypoint and runtime context |
 | `src/engine/command_registry.py` | Registers the available CLI commands |
-| `src/engine/tool_registry.py` | Holds the internal tool boundary for future agent-style actions |
 | `src/providers/base.py` | Defines the provider abstraction: `ProviderRequest`, `ProviderResponse`, `TextProvider` |
-| `src/providers/__init__.py` | Factory `build_provider(config, resolved=)` — lazy-imports the right provider by name; accepts an optional `ResolvedProviderConfig` from the model registry for tier-driven reasoning effort and thinking budget |
+| `src/providers/__init__.py` | Factory `build_provider(config)` — lazy-imports the right provider by name |
 | `src/providers/retry.py` | Shared Tenacity retry decorator (`provider_retry()`) for all `generate()` calls: 3 attempts, exponential backoff with jitter, transient-only retry |
-| `src/providers/openai_provider.py` | OpenAI chat-completions provider; reasoning effort set by tier profile; `@provider_retry()` on `generate()` |
-| `src/providers/anthropic_provider.py` | Anthropic messages provider; thinking budget set by tier profile; `@provider_retry()` on `generate()` |
-| `src/providers/gemini_provider.py` | Google Gemini provider; reasoning effort set by tier profile; `@provider_retry()` on `generate()` |
+| `src/providers/openai_provider.py` | OpenAI chat-completions provider; `@provider_retry()` on `generate()` |
+| `src/providers/anthropic_provider.py` | Anthropic messages provider; `@provider_retry()` on `generate()` |
+| `src/providers/gemini_provider.py` | Google Gemini provider; `@provider_retry()` on `generate()` |
 
 ## Current Command Files
 
@@ -24,15 +23,13 @@
 | `src/commands/ingest.py` | Shared ingest implementation for single files and directory ingest that recurses by default |
 | `src/commands/update.py` | Full update workflow: add → build wiki pages → concepts → search refresh, with progress bar; delegates to `UpdateService` |
 | `src/commands/find.py` | Search the compiled wiki |
-| `src/commands/ask.py` | Answer a question from compiled evidence; `--quality` implies model tier |
-| `src/commands/review.py` | Semantic review command; `--deep` runs extractor/skeptic/arbiter |
+| `src/commands/ask.py` | Answer a question from compiled evidence |
+| `src/commands/review.py` | Semantic review command |
 | `src/commands/lint.py` | Deterministic structural lint command |
 | `src/commands/status.py` | Status command; `--changed` for pre-update diff view |
 | `src/commands/export_cmd.py` | Vault export command; `--clean` removes stale files |
-| `src/commands/compile.py` | Standalone compile command with `--force`, `--with-concepts`, and `--resume` flags |
 | `src/commands/doctor.py` | Project health checks |
-| `src/commands/history.py` | Run history display with public command names |
-| `src/commands/config_cmd.py` | Config display, provider management (validated `click.Choice`), model tier inspection |
+| `src/commands/config_cmd.py` | Config display and provider management |
 | `src/commands/sources.py` | Source inventory management |
 
 ## Current Service Files
@@ -48,11 +45,10 @@
 | `src/services/diff_service.py` | Pre-update source diff reporting |
 | `src/services/search_service.py` | Search over compiled artifacts using a SQLite FTS5 chunk index with page-level result deduplication, best-chunk section/index preservation for downstream citations, and fallback markdown scanning if FTS5 is unavailable |
 | `src/services/query_service.py` | Provider-backed query answer assembly from maintained wiki context; schema-excerpt-enhanced prompts, parseable heading-style log entries, optional save-to-wiki for analysis pages that also refresh the search index and wiki index immediately |
-| `src/services/review_service.py` | Provider-required semantic review: deterministic topic overlap and terminology checks, single-pass provider review, adversarial extractor/skeptic/arbiter review, and review-run persistence |
+| `src/services/review_service.py` | Provider-required semantic review: deterministic topic overlap and terminology checks plus single-pass provider review |
 | `src/services/lint_service.py` | Structural validation for wiki links, markdown links, fragments, headings, titles, typed frontmatter (including `missing-type` warning for legacy source pages), empty pages, and maintenance findings |
 | `src/services/export_service.py` | Vault export generation with atomic copies into the Obsidian view |
 | `src/services/status_service.py` | Project and corpus status reporting |
-| `src/services/model_registry_service.py` | Resolves (provider, tier, model) triples into `ResolvedProviderConfig`; built-in profiles per provider/tier; task-specific default tiers; priority: runtime `--model` > runtime `--tier` > config tier > config model > task default > balanced |
 | `src/services/update_service.py` | Orchestrates the full update workflow: preflight → ingest → compile → concepts → search refresh |
 
 ## Current Model Files
@@ -61,27 +57,15 @@
 | --- | --- |
 | `src/models/command_models.py` | Command-facing dataclasses and result types |
 | `src/models/source_models.py` | Source metadata models |
-| `src/models/tool_models.py` | Tool-facing data structures |
-| `src/models/provider_models.py` | `ModelProfile` and `ResolvedProviderConfig` dataclasses for the tier registry |
-| `src/models/wiki_models.py` | Wiki-oriented dataclasses including `ReviewReport` with typed findings and optional `run_id` |
-
-## Schema Files (Pydantic)
-
-| File | Responsibility |
-| --- | --- |
-| `src/schemas/__init__.py` | Re-exports all schema types |
-| `src/schemas/claims.py` | `EvidenceItem`, `EvidenceBundle` (with deterministic `context_hash`), `Claim`, `CandidateAnswer`, `MergedAnswer` |
-| `src/schemas/review.py` | `Verdict` enum, `ReviewFinding` |
-| `src/schemas/runs.py` | `RunRecord` — full deliberation artifact with auto-generated run ID and timestamp |
+| `src/models/wiki_models.py` | Wiki-oriented dataclasses including `ReviewReport` |
 
 ## Storage Files
 
 | File | Responsibility |
 | --- | --- |
-| `src/storage/__init__.py` | Re-exports `CompileRunStore`, `RunStore`, and `SearchIndexStore` |
+| `src/storage/__init__.py` | Re-exports `CompileRunStore` and `SearchIndexStore` |
 | `src/storage/compile_run_store.py` | JSON-backed compile-run state at `graph/exports/compile_runs.json`: active run tracking, failed-run resume candidates, and compile history |
 | `src/storage/search_index_store.py` | SQLite FTS5-backed chunk index at `graph/exports/search_index.sqlite3`: tracked wiki-file inventory, chunk table, and FTS virtual table used by `SearchService`, including best-hit chunk indices for citation refs |
-| `src/storage/run_store.py` | SQLite-backed persistence at `graph/exports/run_artifacts.sqlite3`: `runs` table (full record JSON + indexed columns), `run_citations` table (normalized claim→page/section index) |
 
 ## Supporting Project Files
 

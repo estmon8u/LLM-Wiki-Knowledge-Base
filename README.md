@@ -112,7 +112,7 @@ The scaffold writes `kb.config.yaml` at config version 2. Older version 1 config
 
 ### `kb doctor`
 
-Run health checks on the project: structure, config, provider, API keys, converters, and run-artifact database.
+Run health checks on the project: structure, config, provider, API keys, and converters.
 
 ```bash
 poetry run kb doctor

@@ -17,30 +17,25 @@ The product goal is not to act like a general-purpose coding agent. The goal is 
 5. Optionally save useful query answers back into the wiki as persistent analysis pages.
 6. Lint the maintained knowledge base for broken structure or stale content (deterministic).
 7. Review the maintained knowledge base for contradictions, terminology drift, and topic overlap (semantic; requires a configured provider and combines deterministic overlap checks with provider-backed review).
-8. Optionally fix lint and review issues via `kb fix`: deterministic fixes apply directly, LLM-backed fixes show a diff for user approval.
-9. Export the wiki into an Obsidian-friendly vault.
-10. Optionally compare the maintained wiki against simpler RAG or graph-style baselines.
+8. Export the wiki into an Obsidian-friendly vault.
 
 ## Data Domains
 
 - `raw/` stores source-of-truth input files, normalized canonical artifacts, and manifest metadata.
 - `wiki/` stores generated source pages, saved analysis pages, index data, and compile logs.
 - `vault/` stores export-ready Obsidian-friendly markdown.
-- `graph/` is optional and should stay evaluation-oriented rather than becoming the primary storage layer, but it now stores both deliberation run artifacts and the SQLite FTS5 search index under `graph/exports/`.
+- `graph/` stores the SQLite FTS5 search index and compile-run state under `graph/exports/`.
 
 ## System Boundaries
 
 - Commands expose user-facing CLI behavior.
 - Services own deterministic business logic.
 - Models hold shared dataclasses and typed results.
-- Schemas define Pydantic models (`Claim`, `EvidenceBundle`, `CandidateAnswer`, `MergedAnswer`, `ReviewFinding`, `RunRecord`) shared across query, review, and concept synthesis.
-- Engine modules register commands and tools.
-- Providers abstract model-backed behavior behind a small boundary with concrete implementations for OpenAI, Anthropic, and Google Gemini; compile, query, and review now require a configured provider, while the rest of the CLI remains deterministic. A shared Tenacity retry policy (`src/providers/retry.py`) wraps all `generate()` calls with exponential backoff and jitter for transient failures (rate limits, timeouts, server errors).
-- CLI output uses Rich for styled tables, progress bars, and colored terminal output. All user-facing content is markup-escaped. The `NO_COLOR` environment variable and non-TTY detection are respected automatically. Machine-readable `--json` flags are available on `doctor`, `find`, `history`, `status`, and `sources list`.
-- A model-tier registry (`ModelRegistryService`) resolves provider + tier combinations into concrete model, reasoning-effort, and thinking-budget settings. Each task gets its own resolved provider instance (update uses `fast`, ask uses `balanced`, review uses `balanced` by default). Global `--tier` and `--model` flags override, and `--quality` on `kb ask` also implies a matching tier.
-- A bounded deliberation layer now sits between the service layer and the provider boundary for opt-in multi-sample workflows. `kb query --self-consistency N` freezes retrieved evidence, fans out parallel provider calls, normalizes sentence-level claims, and merges grounded claims deterministically. `kb review --adversarial` now builds candidate page pairs, runs extractor/skeptic/arbiter prompts, and emits typed review findings. `kb fix --propose` remains planned.
-- Run-artifact storage persists every deliberation run in SQLite (`RunStore`) at `graph/exports/run_artifacts.sqlite3`: retrieval sets, candidate outputs, review findings, merge decisions, model id, prompt version, context hash, token cost, wall time, and unresolved-disagreement flag.
-- Search storage now persists a rebuildable SQLite FTS5 chunk index at `graph/exports/search_index.sqlite3` so lexical retrieval no longer scans every markdown file on each query.
+- Engine modules register commands.
+- Providers abstract model-backed behavior behind a small boundary with concrete implementations for OpenAI, Anthropic, and Google Gemini; compile, query, and review require a configured provider, while the rest of the CLI remains deterministic. A single provider instance is shared across all services via `build_provider(config)`. A shared Tenacity retry policy (`src/providers/retry.py`) wraps all `generate()` calls with exponential backoff and jitter for transient failures (rate limits, timeouts, server errors).
+- CLI output uses Rich for styled tables, progress bars, and colored terminal output. All user-facing content is markup-escaped. The `NO_COLOR` environment variable and non-TTY detection are respected automatically. Machine-readable `--json` flags are available on `doctor`, `find`, `status`, and `sources list`.
+- Search storage persists a rebuildable SQLite FTS5 chunk index at `graph/exports/search_index.sqlite3` so lexical retrieval no longer scans every markdown file on each query.
+- `kb.schema.md` is the wiki's operational constitution. Relevant schema sections are injected into compile and query prompts via `schema_excerpt()`, so the LLM follows wiki-maintenance rules.
 - Provider-backed OCR or LLM cleanup should remain explicit fallback behavior rather than becoming part of the default deterministic normalization path.
 
 ## Reference-Project Roles
