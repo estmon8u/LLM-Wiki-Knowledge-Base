@@ -43,10 +43,14 @@ def test_stem_token_strips_common_suffixes() -> None:
 
 def test_stem_token_minimum_length_guard() -> None:
     """Stemmer must not produce stems shorter than 4 characters."""
-    assert _stem_token("canonical") == "canonical"
-    assert _stem_token("canonic") == "canonic"
+    # "real" + "al" suffix: stem would be "re" (2 chars) -> guard keeps "real"
     assert _stem_token("real") == "real"
+    # "based" + "ed" suffix: stem would be "bas" (3 chars) -> guard keeps "based"
     assert _stem_token("based") == "based"
+    # "canonical" + "al" suffix: stem is "canonic" (7 chars) -> allowed
+    assert _stem_token("canonical") == "canonic"
+    # "tales" + "es" suffix: stem would be "tal" (3 chars) -> guard keeps "tales"
+    assert _stem_token("tales") == "tales"
 
 
 def test_extract_terms_skips_stopwords_and_short_tokens() -> None:
