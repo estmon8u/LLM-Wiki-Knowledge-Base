@@ -13,8 +13,8 @@ The product goal is not to act like a general-purpose coding agent. The goal is 
 1. Initialize a project workspace.
 2. Ingest supported source documents, store the originals, and normalize them into canonical markdown or plain text in the raw layer.
 3. Compile source pages and refresh indexes into the wiki layer.
-4. Search and query the compiled wiki instead of querying raw files directly.
-5. Optionally save useful query answers back into the wiki as persistent analysis pages.
+4. Search and ask the compiled wiki instead of querying raw files directly.
+5. Optionally save useful answers back into the wiki as persistent analysis pages.
 6. Lint the maintained knowledge base for broken structure or stale content (deterministic).
 7. Review the maintained knowledge base for contradictions, terminology drift, and topic overlap (semantic; requires a configured provider and combines deterministic overlap checks with provider-backed review).
 8. Export the wiki into an Obsidian-friendly vault.
@@ -32,10 +32,10 @@ The product goal is not to act like a general-purpose coding agent. The goal is 
 - Services own deterministic business logic.
 - Models hold shared dataclasses and typed results.
 - Engine modules register commands.
-- Providers abstract model-backed behavior behind a small boundary with concrete implementations for OpenAI, Anthropic, and Google Gemini; compile, query, and review require a configured provider, while the rest of the CLI remains deterministic. Provider selection, built-in provider settings, and conversion defaults now live together in `kb.config.yaml`, and a single provider instance is shared across all services via `build_provider(config)`. A shared Tenacity retry policy (`src/providers/retry.py`) wraps all `generate()` calls with exponential backoff and jitter for transient failures (rate limits, timeouts, server errors).
+- Providers abstract model-backed behavior behind a small boundary with concrete implementations for OpenAI, Anthropic, and Google Gemini; compile, ask, and review require a configured provider, while the rest of the CLI remains deterministic. Provider selection, built-in provider settings, and conversion defaults now live together in `kb.config.yaml`, and a single provider instance is shared across all services via `build_provider(config)`. A shared Tenacity retry policy (`src/providers/retry.py`) wraps all `generate()` calls with exponential backoff and jitter for transient failures (rate limits, timeouts, server errors).
 - CLI output uses Rich for styled tables, progress bars, and colored terminal output. All user-facing content is markup-escaped. The `NO_COLOR` environment variable and non-TTY detection are respected automatically. Machine-readable `--json` flags are available on `doctor`, `find`, `status`, and `sources list`.
-- Search storage persists a rebuildable SQLite FTS5 chunk index at `graph/exports/search_index.sqlite3` so lexical retrieval no longer scans every markdown file on each query.
-- `kb.schema.md` is the wiki's operational constitution. Relevant schema sections are injected into compile and query prompts via `schema_excerpt()`, so the LLM follows wiki-maintenance rules.
+- Search storage persists a rebuildable SQLite FTS5 chunk index at `graph/exports/search_index.sqlite3` so lexical retrieval no longer scans every markdown file on each ask.
+- `kb.schema.md` is the wiki's operational constitution. Relevant schema sections are injected into compile and ask prompts via `schema_excerpt()`, so the LLM follows wiki-maintenance rules.
 - Conversion is config-driven rather than hard-coded by suffix alone. Mistral OCR is the default path for the explicitly supported native document and image formats, HTML uses a rendered-PDF OCR route, and converter quality gates prevent partial or obviously truncated artifacts from becoming canonical markdown.
 - Any post-OCR LLM cleanup or reconstruction should remain explicit fallback behavior rather than becoming part of the default ingest path.
 

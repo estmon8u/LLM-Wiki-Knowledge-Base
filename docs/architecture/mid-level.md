@@ -6,7 +6,7 @@
 | --- | --- |
 | `src/cli.py` | CLI entrypoint and application bootstrap |
 | `src/commands/` | Thin user-facing command wrappers |
-| `src/services/` | Deterministic normalization, ingest, compile, concept, diff, lint, review, search, query, export, status, config, and manifest services |
+| `src/services/` | Deterministic normalization, ingest, compile, concept, diff, lint, review, search, query (ask), export, status, config, and manifest services |
 | `src/models/` | Shared command, source, and wiki dataclasses |
 | `src/engine/` | Command registry boundary |
 | `src/providers/` | Provider abstraction layer with OpenAI, Anthropic, and Gemini implementations; shared Tenacity retry decorator for transient failures and catalog-backed provider resolution |
@@ -39,7 +39,7 @@ All commands are flat top-level verbs:
 | Compile | normalized canonical text plus manifest metadata | source pages with provider-generated summaries, wiki index, and compile log; optionally concept pages and source-page backlinks |
 | Diff | manifest metadata plus compile state | pre-compile source status preview |
 | Search | compiled wiki artifacts | ranked page matches derived from indexed chunks |
-| Query | user question plus compiled context | cited provider answer; optionally saved as an analysis page |
+| Ask | user question plus compiled context | cited provider answer; optionally saved as an analysis page |
 | Lint | compiled wiki and metadata | structural findings for links, fragments, headings, titles, typed frontmatter, empty pages, and maintenance signals |
 | Review | compiled wiki pages | semantic findings from deterministic overlap checks plus single-pass provider review |
 | Export | compiled wiki | Obsidian-friendly vault view |
@@ -58,8 +58,8 @@ All commands are flat top-level verbs:
 - Services should remain deterministic unless the feature explicitly requires model-backed synthesis.
 - `kb lint` checks links, fragments, headings, titles, and metadata deterministically; `kb review` prepends deterministic overlap checks to a required provider-backed single-pass review.
 - `build_services()` reads `kb.config.yaml`, resolves the active provider from the embedded `providers` section, and creates a single shared provider via `build_provider(config)`.
-- `kb.schema.md` is the wiki's operational constitution. Relevant schema sections are injected into compile and query prompts via `schema_excerpt()`.
+- `kb.schema.md` is the wiki's operational constitution. Relevant schema sections are injected into compile and ask prompts via `schema_excerpt()`.
 - Raw sources remain the source of truth; compiled pages are derived artifacts.
 - Compile should prefer the normalized canonical artifact when one exists rather than reparsing the original raw source.
 - Optional LLM-based cleanup or reconstruction should remain an explicit provider-mediated step instead of a silent default ingest behavior.
-- Query behavior should prefer the compiled wiki over direct raw-file prompting.
+- Ask behavior should prefer the compiled wiki over direct raw-file prompting.
