@@ -6,6 +6,9 @@ import logging
 import re
 from typing import Any, Callable, Optional
 
+from markdown_it import MarkdownIt
+import nltk
+import nltk.data
 import yaml
 
 from src.models.source_models import RawSourceRecord
@@ -20,6 +23,8 @@ from src.services.project_service import ProjectPaths, atomic_write_text, utc_no
 from src.storage.compile_run_store import CompileRunStore
 
 logger = logging.getLogger(__name__)
+
+_MD_PARSER = MarkdownIt()
 
 _SUMMARY_SYSTEM_PROMPT = (
     "You are a research assistant summarizing documents for a curated knowledge base. "
@@ -373,60 +378,55 @@ class CompileService:
 
 
 def _markdown_paragraphs(contents: str) -> list[str]:
+    """Extract content paragraphs from markdown using markdown-it-py AST."""
     normalized = _strip_frontmatter(contents)
+    tokens = _MD_PARSER.parse(normalized)
     paragraphs: list[str] = []
-    current: list[str] = []
-    in_fenced_code = False
-    in_html_comment = False
-    active_fence: str | None = None
-
-    def flush_current() -> None:
-        nonlocal current
-        if current:
-            paragraphs.append(" ".join(current).strip())
-            current = []
-
-    for line in normalized.splitlines():
-        stripped = line.strip()
-
-        if in_html_comment:
-            if "-->" in stripped:
-                in_html_comment = False
-            continue
-
-        if stripped.startswith("<!--"):
-            flush_current()
-            if "-->" not in stripped:
-                in_html_comment = True
-            continue
-
-        if stripped.startswith("```") or stripped.startswith("~~~"):
-            flush_current()
-            fence_marker = stripped[:3]
-            if not in_fenced_code:
-                in_fenced_code = True
-                active_fence = fence_marker
-            elif active_fence == fence_marker:
-                in_fenced_code = False
-                active_fence = None
-            continue
-
-        if in_fenced_code:
-            continue
-
-        if not stripped or re.fullmatch(r"[-*_]{3,}", stripped):
-            flush_current()
-            continue
-
-        if _is_heading_line(stripped):
-            flush_current()
-            continue
-
-        current.append(stripped)
-
-    flush_current()
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token.type == "paragraph_open":
+            # Next token should be the inline content
+            if index + 1 < len(tokens) and tokens[index + 1].type == "inline":
+                inline = tokens[index + 1]
+                if not _is_link_only_inline(inline):
+                    text = _inline_text(inline)
+                    if text:
+                        paragraphs.append(text)
+            index += 3  # skip paragraph_open, inline, paragraph_close
+        else:
+            index += 1
     filtered = [p for p in paragraphs if _is_content_paragraph(p)]
     return _trim_leading_boilerplate(filtered)
+
+
+def _inline_text(token: Any) -> str:
+    """Extract plain text from a markdown-it inline token."""
+    if not token.children:
+        return token.content.strip()
+    parts: list[str] = []
+    for child in token.children:
+        if child.type in ("text", "code_inline"):
+            parts.append(child.content)
+        elif child.type == "softbreak":
+            parts.append(" ")
+    return " ".join("".join(parts).split()).strip()
+
+
+def _is_link_only_inline(token: Any) -> bool:
+    """Return True if every content-bearing child is inside a link or image."""
+    if not token.children:
+        return False
+    in_link = 0
+    for child in token.children:
+        if child.type in ("link_open", "image"):
+            in_link += 1
+        elif child.type == "link_close":
+            in_link = max(0, in_link - 1)
+        elif child.type == "text":
+            if not in_link and child.content.strip():
+                return False
+    return True
 
 
 def _trim_leading_boilerplate(paragraphs: list[str]) -> list[str]:
@@ -580,16 +580,22 @@ def _normalize_newlines(contents: str) -> str:
 
 
 def _plain_text_fallback(contents: str) -> str:
+    """Extract plain text from markdown using markdown-it-py AST."""
     text = _strip_frontmatter(contents)
-    text = re.sub(r"<!--.*?-->", " ", text, flags=re.DOTALL)
-    text = re.sub(r"```.*?```", " ", text, flags=re.DOTALL)
-    text = re.sub(r"~~~.*?~~~", " ", text, flags=re.DOTALL)
-    text = re.sub(r"^\s{0,3}#{1,6}\s*", "", text, flags=re.MULTILINE)
-    text = re.sub(r"\[!\[[^\]]*\]\([^)]*\)\]\([^)]*\)", " ", text)
-    text = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", text)
-    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
-    text = re.sub(r"[*`_~>\[\](){}#+\-|:]+", " ", text)
-    return " ".join(text.split()).strip()
+    tokens = _MD_PARSER.parse(text)
+    parts: list[str] = []
+    for token in tokens:
+        if token.type == "inline" and token.children:
+            for child in token.children:
+                if child.type in ("text", "code_inline"):
+                    parts.append(child.content)
+                elif child.type == "softbreak":
+                    parts.append(" ")
+        elif token.type in ("code_block", "fence"):
+            continue
+        elif token.type == "html_block":
+            continue
+    return " ".join(" ".join(parts).split()).strip()
 
 
 def _deterministic_summary(contents: str) -> str:
@@ -614,11 +620,11 @@ def _split_sentences(text: str) -> list[str]:
     normalized = " ".join(text.split()).strip()
     if not normalized:
         return []
-    return [
-        sentence.strip()
-        for sentence in re.split(r"(?<=[.!?])\s+", normalized)
-        if sentence.strip()
-    ]
+    try:
+        return [s.strip() for s in nltk.sent_tokenize(normalized) if s.strip()]
+    except LookupError:
+        # Fallback if punkt_tab data is unavailable at runtime.
+        return [s.strip() for s in re.split(r"(?<=[.!?])\s+", normalized) if s.strip()]
 
 
 def _is_weak_summary(summary: str) -> bool:

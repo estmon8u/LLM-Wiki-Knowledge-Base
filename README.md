@@ -504,6 +504,24 @@ project-root/
 
 ## Development
 
+### Key Libraries
+
+| Library | Used For |
+| --- | --- |
+| `markdown-it-py` | AST-based markdown → plain text extraction and paragraph detection |
+| `nltk` | Snowball stemmer for concept term extraction; `sent_tokenize` for sentence splitting |
+| `rapidfuzz` | Fuzzy string similarity for terminology-variant detection in `kb review` |
+| `mistralai` | Mistral OCR document/image conversion |
+| `docling` | PDF fallback converter |
+| `markitdown` | Born-digital file conversion (CSV, EPUB, IPYNB, XLSX) and fallback |
+| `pdfkit` | HTML → PDF rendering via wkhtmltopdf |
+
+NLTK requires the `punkt_tab` tokenizer data. Install it once:
+
+```bash
+poetry run python -c "import nltk; nltk.download('punkt_tab')"
+```
+
 ### Run tests
 
 ```bash

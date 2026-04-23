@@ -206,6 +206,58 @@ def test_review_concept_only_pages_no_overlap(test_project) -> None:
     assert len(overlap_issues) == 0
 
 
+# ---------------------------------------------------------------------------
+# rapidfuzz-based terminology variant detection
+# ---------------------------------------------------------------------------
+
+
+def test_review_detects_spelling_variants_with_rapidfuzz(test_project) -> None:
+    """rapidfuzz should catch near-duplicate terms beyond hyphenation."""
+    test_project.write_file(
+        "wiki/sources/a.md",
+        "---\ntitle: A\nsummary: s\ntype: source\nsource_id: a\n"
+        "source_hash: h\nraw_path: raw/a.md\norigin: local\n"
+        "compiled_at: t\ningested_at: t\ntags: []\n---\n"
+        "optimization strategies work great\n",
+    )
+    test_project.write_file(
+        "wiki/sources/b.md",
+        "---\ntitle: B\nsummary: s\ntype: source\nsource_id: b\n"
+        "source_hash: h\nraw_path: raw/b.md\norigin: local\n"
+        "compiled_at: t\ningested_at: t\ntags: []\n---\n"
+        "optimisation strategies work great\n",
+    )
+
+    report = test_project.services["review"].review()
+    variant_issues = [i for i in report.issues if i.code == "terminology-variant"]
+    assert len(variant_issues) >= 1
+    msgs = " ".join(i.message for i in variant_issues)
+    assert "optimis" in msgs or "optimiz" in msgs
+
+
+def test_review_variant_ignores_short_terms(test_project) -> None:
+    """Terms shorter than 4 characters should not trigger variant detection."""
+    test_project.write_file(
+        "wiki/sources/a.md",
+        "---\ntitle: A\nsummary: s\ntype: source\nsource_id: a\n"
+        "source_hash: h\nraw_path: raw/a.md\norigin: local\n"
+        "compiled_at: t\ningested_at: t\ntags: []\n---\n"
+        "the cat sat\n",
+    )
+    test_project.write_file(
+        "wiki/sources/b.md",
+        "---\ntitle: B\nsummary: s\ntype: source\nsource_id: b\n"
+        "source_hash: h\nraw_path: raw/b.md\norigin: local\n"
+        "compiled_at: t\ningested_at: t\ntags: []\n---\n"
+        "the car sat\n",
+    )
+
+    report = test_project.services["review"].review()
+    variant_issues = [i for i in report.issues if i.code == "terminology-variant"]
+    # "cat" vs "car" are 3-char tokens so should be ignored
+    assert len(variant_issues) == 0
+
+
 def test_review_single_source_page_no_overlap(test_project) -> None:
     test_project.write_file(
         "wiki/sources/solo.md",

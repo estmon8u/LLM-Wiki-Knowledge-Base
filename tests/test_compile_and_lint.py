@@ -13,6 +13,7 @@ from src.services.compile_service import (
     _deterministic_summary,
     _discover_concept_pages,
     _is_content_paragraph,
+    _is_link_only_inline,
     _is_weak_summary,
     _markdown_paragraphs,
     _normalize_newlines,
@@ -20,6 +21,7 @@ from src.services.compile_service import (
     _plain_text_fallback,
     _safe_int,
     _sorted_sources,
+    _split_sentences,
     _strip_frontmatter,
     _truncate_with_boundary,
 )
@@ -1693,3 +1695,104 @@ def test_deterministic_summary_falls_back_to_paragraphs() -> None:
     text = "# Paper\n\nSome first paragraph. With details.\n\nSecond paragraph.\n"
     result = _deterministic_summary(text)
     assert "Some first paragraph" in result
+
+
+# ---------------------------------------------------------------------------
+# markdown-it-py based helpers
+# ---------------------------------------------------------------------------
+
+
+def test_plain_text_fallback_strips_markdown_via_ast() -> None:
+    md = "# Heading\n\nSome **bold** text with [a link](http://example.com).\n"
+    result = _plain_text_fallback(md)
+    assert "bold" in result
+    assert "a link" in result
+    assert "**" not in result
+    assert "http" not in result
+    assert "#" not in result
+
+
+def test_plain_text_fallback_skips_fenced_code() -> None:
+    md = "Hello.\n\n```python\ncode = True\n```\n\nWorld.\n"
+    result = _plain_text_fallback(md)
+    assert "Hello." in result
+    assert "World." in result
+    assert "code = True" not in result
+
+
+def test_plain_text_fallback_skips_html_comments() -> None:
+    md = "Before.\n\n<!-- hidden comment -->\n\nAfter.\n"
+    result = _plain_text_fallback(md)
+    assert "Before." in result
+    assert "After." in result
+    assert "hidden" not in result
+
+
+def test_plain_text_fallback_skips_images() -> None:
+    md = "Text before.\n\n![alt](image.png)\n\nText after.\n"
+    result = _plain_text_fallback(md)
+    assert "Text before." in result
+    assert "Text after." in result
+    assert "alt" not in result or "image.png" not in result
+
+
+def test_markdown_paragraphs_uses_ast() -> None:
+    md = (
+        "# Title\n\n"
+        "First real paragraph.\n\n"
+        "```python\ncode_block = 1\n```\n\n"
+        "Second paragraph.\n"
+    )
+    result = _markdown_paragraphs(md)
+    assert "First real paragraph." in result
+    assert "Second paragraph." in result
+    assert not any("code_block" in p for p in result)
+
+
+def test_markdown_paragraphs_skips_link_only() -> None:
+    md = "[Go here](http://example.com)\n\nReal content paragraph.\n"
+    result = _markdown_paragraphs(md)
+    assert "Real content paragraph." in result
+    assert not any("Go here" in p for p in result)
+
+
+def test_is_link_only_inline_detects_pure_links() -> None:
+    from markdown_it import MarkdownIt
+
+    parser = MarkdownIt()
+    tokens = parser.parse("[Link](http://example.com)")
+    inline = [t for t in tokens if t.type == "inline"][0]
+    assert _is_link_only_inline(inline)
+
+
+def test_is_link_only_inline_rejects_mixed_content() -> None:
+    from markdown_it import MarkdownIt
+
+    parser = MarkdownIt()
+    tokens = parser.parse("Some text and [Link](http://example.com).")
+    inline = [t for t in tokens if t.type == "inline"][0]
+    assert not _is_link_only_inline(inline)
+
+
+# ---------------------------------------------------------------------------
+# NLTK sentence splitting
+# ---------------------------------------------------------------------------
+
+
+def test_split_sentences_with_nltk() -> None:
+    text = "First sentence. Second sentence. Third one."
+    result = _split_sentences(text)
+    assert len(result) >= 2
+    assert result[0] == "First sentence."
+
+
+def test_split_sentences_handles_abbreviations() -> None:
+    text = "Dr. Smith found results. The test passed."
+    result = _split_sentences(text)
+    # NLTK should not split on "Dr."
+    assert any("Dr." in s for s in result)
+
+
+def test_split_sentences_empty_input() -> None:
+    assert _split_sentences("") == []
+    assert _split_sentences("   ") == []

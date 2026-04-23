@@ -12,11 +12,14 @@ import shutil
 from tempfile import TemporaryDirectory
 from typing import Any, Optional
 
+from markdown_it import MarkdownIt
 from markitdown import __version__ as markitdown_version
 from markitdown import MarkItDown, MarkItDownException
 import pdfkit
 
 from src.services.config_service import DEFAULT_CONFIG
+
+_MD_PARSER = MarkdownIt()
 
 
 SUPPORTED_MARKDOWN_SUFFIXES = {".md", ".markdown"}
@@ -820,16 +823,22 @@ def _usable_paragraphs(contents: str) -> list[str]:
 
 
 def _plain_text(contents: str) -> str:
-    text = _normalize_newlines(contents)
-    text = re.sub(r"<!--.*?-->", " ", text, flags=re.DOTALL)
-    text = re.sub(r"```.*?```", " ", text, flags=re.DOTALL)
-    text = re.sub(r"~~~.*?~~~", " ", text, flags=re.DOTALL)
-    text = re.sub(r"\[!\[[^\]]*\]\([^)]*\)\]\([^)]*\)", " ", text)
-    text = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", text)
-    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
-    text = re.sub(r"^\s{0,3}#{1,6}\s*", "", text, flags=re.MULTILINE)
-    text = re.sub(r"[*`_~>\[\](){}#+\-|:]+", " ", text)
-    return " ".join(text.split()).strip()
+    """Extract plain text from markdown using markdown-it-py AST."""
+    normalized = _normalize_newlines(contents)
+    tokens = _MD_PARSER.parse(normalized)
+    parts: list[str] = []
+    for token in tokens:
+        if token.type == "inline" and token.children:
+            for child in token.children:
+                if child.type in ("text", "code_inline"):
+                    parts.append(child.content)
+                elif child.type == "softbreak":
+                    parts.append(" ")
+        elif token.type in ("code_block", "fence"):
+            continue
+        elif token.type == "html_block":
+            continue
+    return " ".join(" ".join(parts).split()).strip()
 
 
 def _ensure_trailing_newline(contents: str) -> str:

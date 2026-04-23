@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 
+from nltk.stem import SnowballStemmer
 import yaml
 
 from src.services.project_service import (
@@ -13,6 +14,8 @@ from src.services.project_service import (
     slugify,
     utc_now_iso,
 )
+
+_SNOWBALL = SnowballStemmer("english")
 
 
 _WORD_PATTERN = re.compile(r"[a-z]+(?:-[a-z]+)*")
@@ -488,13 +491,10 @@ def _extract_terms(text: str) -> set[str]:
 
 
 def _stem_token(token: str) -> str:
-    for suffix in ("ing", "ed", "es", "al", "s"):
-        if token.endswith(suffix) and len(token) > len(suffix) + 2:
-            stemmed = token[: -len(suffix)]
-            if len(stemmed) >= 4:
-                return stemmed
-            return token
-    return token
+    stemmed = _SNOWBALL.stem(token)
+    if len(stemmed) < 3:
+        return token
+    return stemmed
 
 
 def _split_frontmatter(contents: str) -> tuple[dict[str, object], str]:

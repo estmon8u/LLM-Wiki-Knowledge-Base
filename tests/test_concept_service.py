@@ -37,20 +37,20 @@ def test_stem_token_strips_common_suffixes() -> None:
     assert _stem_token("retrieval") == "retriev"
     assert _stem_token("models") == "model"
     assert _stem_token("training") == "train"
-    assert _stem_token("used") == "used"  # too short to strip
+    assert _stem_token("used") == "use"  # Snowball stems "used" -> "use"
     assert _stem_token("few") == "few"
 
 
 def test_stem_token_minimum_length_guard() -> None:
-    """Stemmer must not produce stems shorter than 4 characters."""
-    # "real" + "al" suffix: stem would be "re" (2 chars) -> guard keeps "real"
+    """Stemmer returns stems of at least 3 characters."""
+    # Snowball stems these correctly; guard keeps stems >= 3 chars
     assert _stem_token("real") == "real"
-    # "based" + "ed" suffix: stem would be "bas" (3 chars) -> guard keeps "based"
-    assert _stem_token("based") == "based"
-    # "canonical" + "al" suffix: stem is "canonic" (7 chars) -> allowed
-    assert _stem_token("canonical") == "canonic"
-    # "tales" + "es" suffix: stem would be "tal" (3 chars) -> guard keeps "tales"
-    assert _stem_token("tales") == "tales"
+    assert _stem_token("based") == "base"
+    assert _stem_token("canonical") == "canon"
+    assert _stem_token("tales") == "tale"
+    # Very short tokens are returned unchanged
+    assert _stem_token("go") == "go"
+    assert _stem_token("ax") == "ax"
 
 
 def test_extract_terms_skips_stopwords_and_short_tokens() -> None:
@@ -652,3 +652,23 @@ def test_load_source_pages_ignores_placeholder_summaries(test_project) -> None:
     assert pages[0].summary == ""
     assert "summar" not in pages[0].terms
     assert "avail" not in pages[0].terms
+
+
+# ---------------------------------------------------------------------------
+# Snowball stemmer integration
+# ---------------------------------------------------------------------------
+
+
+def test_stem_token_uses_snowball_stemmer() -> None:
+    """Verify the NLTK Snowball stemmer provides linguistically correct stems."""
+    # Irregular forms the old hand-rolled stemmer missed
+    assert _stem_token("running") == "run"
+    assert _stem_token("better") == "better"
+    assert _stem_token("studies") == "studi"
+    assert _stem_token("happiness") == "happi"
+
+
+def test_stem_token_short_input_unchanged() -> None:
+    """Tokens producing stems shorter than 3 chars should return original."""
+    assert _stem_token("go") == "go"
+    assert _stem_token("be") == "be"

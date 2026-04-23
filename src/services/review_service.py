@@ -5,6 +5,8 @@ import re
 from itertools import combinations
 from typing import Optional
 
+from rapidfuzz import fuzz
+
 from src.models.wiki_models import ReviewIssue, ReviewReport
 from src.providers import (
     ProviderConfigurationError,
@@ -73,6 +75,7 @@ _STOPWORDS = frozenset(
 )
 
 _OVERLAP_THRESHOLD = 0.55
+_VARIANT_SIMILARITY_THRESHOLD = 85
 
 _REVIEW_SYSTEM_PROMPT = (
     "You are a knowledge-base quality reviewer. Analyze the wiki pages below "
@@ -183,21 +186,23 @@ class ReviewService:
         for path, tokens in page_tokens.items():
             per_page_terms[path] = set(tokens)
 
-        all_terms: set[str] = set()
-        for terms in per_page_terms.values():
-            all_terms.update(terms)
+        all_terms = sorted(
+            {term for terms in per_page_terms.values() for term in terms}
+        )
 
         checked: set[tuple[str, str]] = set()
-        for term in sorted(all_terms):
-            hyphenated = term.replace("-", "")
-            for other in sorted(all_terms):
-                if other == term:
-                    continue
-                pair = (min(term, other), max(term, other))
+        for i, term in enumerate(all_terms):
+            for other in all_terms[i + 1 :]:
+                pair = (term, other)
                 if pair in checked:
                     continue
-                other_flat = other.replace("-", "")
-                if hyphenated == other_flat and hyphenated != term:
+                if term == other:
+                    continue
+                # Skip very short terms or identical base forms
+                if len(term) < 4 or len(other) < 4:
+                    continue
+                score = fuzz.ratio(term, other)
+                if score >= _VARIANT_SIMILARITY_THRESHOLD and score < 100:
                     pages_with_term = [
                         p for p, ts in per_page_terms.items() if term in ts
                     ]
@@ -213,7 +218,8 @@ class ReviewService:
                                 pages=affected,
                                 message=(
                                     f'Term appears as both "{term}" and '
-                                    f'"{other}" across pages.'
+                                    f'"{other}" across pages '
+                                    f"(similarity {score}%)."
                                 ),
                             )
                         )

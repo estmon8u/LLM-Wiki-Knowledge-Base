@@ -22,6 +22,7 @@ from src.services.normalization_service import (
     WkhtmltopdfRenderer,
     _ConvertedText,
     _extract_title,
+    _plain_text,
     _validate_conversion_output,
     resolve_wkhtmltopdf_binary,
 )
@@ -696,6 +697,41 @@ def test_resolve_wkhtmltopdf_binary_returns_none_for_invalid_html_config() -> No
     config = {"conversion": {"html": "oops"}}
 
     assert resolve_wkhtmltopdf_binary(config) is None
+
+
+# ---------------------------------------------------------------------------
+# markdown-it-py based _plain_text
+# ---------------------------------------------------------------------------
+
+
+def test_plain_text_extracts_text_from_markdown() -> None:
+    md = "# Heading\n\nSome **bold** text with [a link](http://example.com).\n"
+    result = _plain_text(md)
+    assert "Heading" in result
+    assert "bold" in result
+    assert "a link" in result
+    assert "**" not in result
+    assert "http" not in result
+
+
+def test_plain_text_skips_fenced_code() -> None:
+    md = "Hello.\n\n```python\ncode = True\n```\n\nWorld.\n"
+    result = _plain_text(md)
+    assert "Hello." in result
+    assert "World." in result
+    assert "code = True" not in result
+
+
+def test_plain_text_skips_images() -> None:
+    md = "Text before.\n\n![alt text](image.png)\n\nText after.\n"
+    result = _plain_text(md)
+    assert "Text before." in result
+    assert "Text after." in result
+
+
+def test_plain_text_handles_empty_input() -> None:
+    assert _plain_text("") == ""
+    assert _plain_text("   ") == ""
 
 
 def test_mistral_ocr_converter_uses_client_for_document_and_image() -> None:
