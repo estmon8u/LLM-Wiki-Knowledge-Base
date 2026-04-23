@@ -36,7 +36,7 @@ All commands are flat top-level verbs:
 | Stage | Input | Output |
 | --- | --- | --- |
 | Ingest | canonical markdown/plain-text files, Mistral OCR-routed native documents and images, rendered HTML-to-PDF OCR, and a bounded MarkItDown subset | raw source copy, normalized artifact, and manifest metadata |
-| Compile | normalized canonical text plus manifest metadata | source pages with provider-generated summaries, wiki index, and compile log; optionally concept pages and source-page backlinks |
+| Compile | normalized canonical text plus manifest metadata | source pages with provider-generated summaries, wiki index, and compile log; provider-clustered concept pages with deterministic fallback and source-page backlinks |
 | Diff | manifest metadata plus compile state | pre-compile source status preview |
 | Search | compiled wiki artifacts | ranked page matches derived from indexed chunks |
 | Ask | user question plus compiled context | cited provider answer; optionally saved as an analysis page |
@@ -58,6 +58,7 @@ All commands are flat top-level verbs:
 - Services should remain deterministic unless the feature explicitly requires model-backed synthesis.
 - Shared parsing belongs in `src/services/markdown_document.py`: services should consume parser-backed markdown/frontmatter helpers instead of adding new ad hoc regex stacks.
 - Config validation belongs in Pydantic models inside `ConfigService`, with compatibility wrappers preserved for tests and callers.
+- Concept clustering is semantic and provider-backed when possible; keep deterministic clustering only as fallback and keep page writing/backlink maintenance deterministic.
 - `kb lint` checks links, fragments, headings, titles, and metadata deterministically; `kb review` prepends deterministic overlap checks to a required provider-backed single-pass review.
 - `build_services()` reads `kb.config.yaml`, resolves the active provider from the embedded `providers` section, and creates a single shared provider via `build_provider(config)`.
 - `kb.schema.md` is the wiki's operational constitution. Relevant schema sections are injected into compile and ask prompts via `schema_excerpt()`.

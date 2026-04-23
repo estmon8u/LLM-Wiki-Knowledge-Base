@@ -578,12 +578,15 @@ def test_normalization_service_rejects_unsupported_suffix(tmp_path: Path) -> Non
 
 
 def test_validate_conversion_output_rejects_truncated_multi_page_text() -> None:
-    truncated = ("This is a long sentence without an ending " * 40).strip()
+    """Multi-page output that is below page_count * 60 chars triggers truncation."""
+    # 10 pages but only ~180 chars of plain text — well below 10 * 60 = 600.
+    # The implausibly-short check fires first with the same gate, so match either.
+    truncated = "This is a real sentence with enough words. " * 4
 
-    with pytest.raises(ValueError, match="appears truncated"):
+    with pytest.raises(ValueError, match="implausibly short|appears truncated"):
         _validate_conversion_output(
             truncated,
-            page_count=5,
+            page_count=10,
             source_name="sample.pdf",
         )
 

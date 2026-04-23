@@ -78,6 +78,9 @@ _STOPWORDS = frozenset(
 
 _OVERLAP_THRESHOLD = 0.55
 _VARIANT_SIMILARITY_THRESHOLD = 85
+_VARIANT_MIN_TERM_LENGTH = 6
+_VARIANT_MAX_TERMS = 500
+_VARIANT_MAX_ISSUES = 25
 
 _REVIEW_SYSTEM_PROMPT = (
     "You are a knowledge-base quality reviewer. Analyze the wiki pages below "
@@ -219,9 +222,17 @@ class ReviewService:
         for path, tokens in page_tokens.items():
             per_page_terms[path] = set(tokens)
 
+        term_pages: dict[str, set[str]] = {}
+        for path, terms in per_page_terms.items():
+            for term in terms:
+                if len(term) < _VARIANT_MIN_TERM_LENGTH:
+                    continue
+                term_pages.setdefault(term, set()).add(path)
+
         all_terms = sorted(
-            {term for terms in per_page_terms.values() for term in terms}
-        )
+            term_pages,
+            key=lambda term: (-len(term_pages[term]), term),
+        )[:_VARIANT_MAX_TERMS]
 
         checked: set[tuple[str, str]] = set()
         for i, term in enumerate(all_terms):
@@ -231,17 +242,12 @@ class ReviewService:
                     continue
                 if term == other:
                     continue
-                # Skip very short terms or identical base forms
-                if len(term) < 4 or len(other) < 4:
+                if abs(len(term) - len(other)) > max(3, len(term) // 2):
                     continue
                 score = fuzz.ratio(term, other)
                 if score >= _VARIANT_SIMILARITY_THRESHOLD and score < 100:
-                    pages_with_term = [
-                        p for p, ts in per_page_terms.items() if term in ts
-                    ]
-                    pages_with_other = [
-                        p for p, ts in per_page_terms.items() if other in ts
-                    ]
+                    pages_with_term = sorted(term_pages.get(term, set()))
+                    pages_with_other = sorted(term_pages.get(other, set()))
                     if pages_with_term and pages_with_other:
                         affected = sorted(set(pages_with_term) | set(pages_with_other))
                         issues.append(
@@ -256,6 +262,8 @@ class ReviewService:
                                 ),
                             )
                         )
+                        if len(issues) >= _VARIANT_MAX_ISSUES:
+                            return issues
                     checked.add(pair)
 
         return issues

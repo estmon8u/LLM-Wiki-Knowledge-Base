@@ -43,6 +43,7 @@
 | `src/services/normalization_service.py` | Document-type normalization routing for direct text inputs, Mistral OCR-backed native documents and images, `wkhtmltopdf`-rendered HTML OCR, MarkItDown-backed born-digital converters, explicit Docling/MarkItDown fallbacks, and conversion quality gates |
 | `src/services/ingest_service.py` | Raw-source copy, normalized-artifact write, duplicate detection, source registration, deterministic recursive directory ingest, and callback-friendly batch progress hooks used by `kb add` |
 | `src/services/compile_service.py` | Derived wiki generation with provider-backed summary generation, deterministic summary fallback on weak provider output, sentence-safe excerpts, schema-excerpt-enhanced prompts, `type: source` frontmatter, analysis-page discovery for index, parseable heading-style log entries, callback-friendly compile planning/progress hooks, and persisted resume/failure tracking for interrupted compiles |
+| `src/services/concept_service.py` | Provider-first structured concept clustering with source-digest cache, deterministic NLTK/collocation fallback, concept-page generation, and backlink maintenance |
 | `src/services/diff_service.py` | Pre-update source diff reporting |
 | `src/services/search_service.py` | Search over compiled artifacts using a SQLite FTS5 chunk index with page-level result deduplication, best-chunk section/index preservation for downstream citations, and fallback markdown scanning if FTS5 is unavailable |
 | `src/services/query_service.py` | Provider-backed query answer assembly from maintained wiki context; schema-excerpt-enhanced prompts, parseable heading-style log entries, optional save-to-wiki for analysis pages that also refresh the search index and wiki index immediately |
@@ -66,7 +67,7 @@
 | --- | --- |
 | `src/storage/__init__.py` | Re-exports `CompileRunStore` and `SearchIndexStore` |
 | `src/storage/compile_run_store.py` | JSON-backed compile-run state at `graph/exports/compile_runs.json`: active run tracking, failed-run resume candidates, and compile history |
-| `src/storage/search_index_store.py` | SQLite FTS5-backed chunk index at `graph/exports/search_index.sqlite3`: tracked wiki-file inventory, chunk table, and FTS virtual table used by `SearchService`, including best-hit chunk indices for citation refs |
+| `src/storage/search_index_store.py` | SQLite FTS5-backed chunk index at `graph/exports/search_index.sqlite3`: tracked wiki-file inventory, chunk table, FTS `snippet()` output, and best-hit chunk indices for citation refs |
 
 ## Supporting Project Files
 
@@ -82,6 +83,7 @@
 - Prefer extending existing services over adding duplicate helper modules.
 - Do not add new hand-rolled Markdown/frontmatter parsers; extend `markdown_document.py` unless a service has a security-specific reason to preserve a stricter path.
 - Do not add new manual config validation loops; extend the Pydantic config models and preserve compatibility messages where needed.
+- Do not re-expand deterministic concept clustering unless it is fallback-only; semantic clustering belongs behind the provider boundary with cached structured output.
 - Treat CI and formatter config as part of the architecture because they enforce the supported workflow.
 - Keep converter-backed normalization in a dedicated service instead of mixing converter logic directly into command handlers or compile.
 - Preserve the canonical-artifact contract: only write `raw/normalized/` outputs after the selected converter passes the normalization quality gate or an explicit fallback succeeds.

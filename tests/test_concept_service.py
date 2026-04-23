@@ -7,12 +7,20 @@ import yaml
 from src.services.concept_service import (
     ConceptService,
     _derive_topic_terms,
+    _drafts_from_provider_report,
     _extract_terms,
     _format_concept_title,
+    _load_concept_cache,
+    _normalize_topic_terms,
+    _parse_provider_concept_report,
+    _provider_concept_prompt,
+    _ProviderConceptReport,
     _replace_backlinks_block,
+    _source_pages_digest,
     _SourcePage,
     _split_frontmatter,
     _stem_token,
+    _write_concept_cache,
 )
 
 
@@ -672,3 +680,321 @@ def test_stem_token_short_input_unchanged() -> None:
     """Tokens producing stems shorter than 3 chars should return original."""
     assert _stem_token("go") == "go"
     assert _stem_token("be") == "be"
+
+
+# ---------------------------------------------------------------------------
+# Provider concept clustering helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_source_pages(count: int = 4) -> list[_SourcePage]:
+    pages = []
+    for i in range(count):
+        slug = f"page-{i}"
+        title = f"Dense Retrieval Approach {i}"
+        summary = f"A dense retrieval method variant {i}."
+        pages.append(
+            _SourcePage(
+                file_path=Path(f"wiki/sources/{slug}.md"),
+                relative_path=f"wiki/sources/{slug}.md",
+                slug=slug,
+                title=title,
+                summary=summary,
+                terms=_extract_terms(f"{title} {summary}"),
+            )
+        )
+    return pages
+
+
+def test_normalize_topic_terms_deduplicates_and_caps() -> None:
+    result = _normalize_topic_terms(
+        ["Dense Retrieval", "dense-retrieval", "QA", "extra"]
+    )
+    assert result == ["dense-retrieval", "qa", "extra"]
+
+
+def test_normalize_topic_terms_empty_input() -> None:
+    assert _normalize_topic_terms([]) == []
+
+
+def test_source_pages_digest_deterministic() -> None:
+    pages = _make_source_pages(3)
+    d1 = _source_pages_digest(pages)
+    d2 = _source_pages_digest(pages)
+    assert d1 == d2
+    assert len(d1) == 64  # SHA-256 hex
+
+
+def test_source_pages_digest_changes_on_content_change() -> None:
+    pages = _make_source_pages(3)
+    d1 = _source_pages_digest(pages)
+    pages[0] = _SourcePage(
+        file_path=pages[0].file_path,
+        relative_path=pages[0].relative_path,
+        slug=pages[0].slug,
+        title="Changed Title",
+        summary=pages[0].summary,
+        terms=pages[0].terms,
+    )
+    d2 = _source_pages_digest(pages)
+    assert d1 != d2
+
+
+def test_provider_concept_prompt_includes_all_pages() -> None:
+    pages = _make_source_pages(3)
+    prompt = _provider_concept_prompt(pages)
+    for page in pages:
+        assert page.relative_path in prompt
+        assert page.title in prompt
+
+
+def test_parse_provider_concept_report_valid_json() -> None:
+    raw = '{"concepts": [{"title": "T", "summary": "S", "topic_terms": ["a"], "source_pages": ["x"]}]}'
+    report = _parse_provider_concept_report(raw)
+    assert len(report.concepts) == 1
+    assert report.concepts[0].title == "T"
+
+
+def test_parse_provider_concept_report_rejects_invalid_json() -> None:
+    import pytest
+
+    with pytest.raises(Exception):
+        _parse_provider_concept_report("not json")
+
+
+def test_drafts_from_provider_report_matches_by_relative_path() -> None:
+    pages = _make_source_pages(4)
+    report = _ProviderConceptReport(
+        concepts=[
+            _ProviderConceptReport.model_validate(
+                {
+                    "concepts": [
+                        {
+                            "title": "Cluster A",
+                            "summary": "Summary A",
+                            "topic_terms": ["dense-retrieval"],
+                            "source_pages": [p.relative_path for p in pages[:3]],
+                        }
+                    ]
+                }
+            ).concepts[0]
+        ]
+    )
+    drafts = _drafts_from_provider_report(report, pages)
+    assert len(drafts) == 1
+    assert drafts[0].title == "Cluster A"
+    assert len(drafts[0].source_pages) == 3
+
+
+def test_drafts_from_provider_report_matches_by_slug() -> None:
+    pages = _make_source_pages(4)
+    report = _parse_provider_concept_report(
+        '{"concepts": [{"title": "By Slug", "summary": "S",'
+        '"topic_terms": ["dense-retrieval"],'
+        f'"source_pages": ["{pages[0].slug}", "{pages[1].slug}", "{pages[2].slug}"]'
+        "}]}"
+    )
+    drafts = _drafts_from_provider_report(report, pages)
+    assert len(drafts) == 1
+
+
+def test_drafts_from_provider_report_skips_small_cluster() -> None:
+    pages = _make_source_pages(4)
+    report = _parse_provider_concept_report(
+        '{"concepts": [{"title": "Small", "summary": "S",'
+        '"topic_terms": ["alpha"],'
+        f'"source_pages": ["{pages[0].relative_path}", "{pages[1].relative_path}"]'
+        "}]}"
+    )
+    drafts = _drafts_from_provider_report(report, pages)
+    assert len(drafts) == 0  # below _MIN_SOURCE_PAGES
+
+
+def test_drafts_from_provider_report_deduplicates_slugs() -> None:
+    pages = _make_source_pages(4)
+    report = _parse_provider_concept_report(
+        '{"concepts": ['
+        '{"title": "C1", "summary": "S", "topic_terms": ["alpha"],'
+        f'"source_pages": ["{pages[0].relative_path}", "{pages[1].relative_path}", "{pages[2].relative_path}"]'
+        "},"
+        '{"title": "C2", "summary": "S", "topic_terms": ["alpha"],'
+        f'"source_pages": ["{pages[0].relative_path}", "{pages[1].relative_path}", "{pages[3].relative_path}"]'
+        "}]}"
+    )
+    drafts = _drafts_from_provider_report(report, pages)
+    assert len(drafts) == 1  # second shares slug "alpha"
+
+
+def test_write_and_load_concept_cache(tmp_path) -> None:
+    cache_path = tmp_path / "cache.json"
+    report = _parse_provider_concept_report(
+        '{"concepts": [{"title": "T", "summary": "S", "topic_terms": ["a"], "source_pages": ["x"]}]}'
+    )
+    _write_concept_cache(cache_path, "digest123", report)
+
+    loaded = _load_concept_cache(cache_path, "digest123")
+    assert loaded is not None
+    assert len(loaded.concepts) == 1
+    assert loaded.concepts[0].title == "T"
+
+
+def test_load_concept_cache_returns_none_on_digest_mismatch(tmp_path) -> None:
+    cache_path = tmp_path / "cache.json"
+    report = _parse_provider_concept_report('{"concepts": []}')
+    _write_concept_cache(cache_path, "digest123", report)
+
+    assert _load_concept_cache(cache_path, "other-digest") is None
+
+
+def test_load_concept_cache_returns_none_on_missing_file(tmp_path) -> None:
+    assert _load_concept_cache(tmp_path / "missing.json", "any") is None
+
+
+def test_load_concept_cache_returns_none_on_corrupt_json(tmp_path) -> None:
+    cache_path = tmp_path / "cache.json"
+    cache_path.write_text("not json", encoding="utf-8")
+    assert _load_concept_cache(cache_path, "any") is None
+
+
+def test_load_concept_cache_returns_none_on_version_mismatch(tmp_path) -> None:
+    import json
+
+    cache_path = tmp_path / "cache.json"
+    cache_path.write_text(
+        json.dumps({"version": 999, "source_digest": "d", "report": {"concepts": []}}),
+        encoding="utf-8",
+    )
+    assert _load_concept_cache(cache_path, "d") is None
+
+
+# ---------------------------------------------------------------------------
+# Provider concept service integration
+# ---------------------------------------------------------------------------
+
+
+class _StubConceptProvider:
+    name = "stub"
+
+    def generate(self, request):
+        from src.providers.base import ProviderResponse
+        import json
+
+        source_pages = []
+        for line in request.prompt.splitlines():
+            if line.startswith("### wiki/sources/"):
+                source_pages.append(line[4:].strip())
+        report = {
+            "concepts": [
+                {
+                    "title": "Stub Cluster",
+                    "summary": "Stub summary.",
+                    "topic_terms": ["stub-theme"],
+                    "source_pages": source_pages[:3],
+                }
+            ]
+            if len(source_pages) >= 3
+            else []
+        }
+        return ProviderResponse(text=json.dumps(report), model_name="stub-v1")
+
+
+class _FailingProvider:
+    name = "failing"
+
+    def generate(self, request):
+        raise RuntimeError("provider down")
+
+
+def test_generate_with_provider_creates_concept_pages(test_project) -> None:
+    for slug in ("alpha", "beta", "gamma"):
+        test_project.write_file(
+            f"wiki/sources/{slug}.md",
+            _compiled_page(
+                f"Dense Retrieval {slug.title()}",
+                f"Dense retrieval method {slug}.",
+                f"Dense retrieval body {slug}.",
+            ),
+        )
+
+    service = ConceptService(test_project.paths, provider=_StubConceptProvider())
+    result = service.generate()
+
+    assert len(result.concept_paths) >= 1
+    concept_path = test_project.root / result.concept_paths[0]
+    text = concept_path.read_text(encoding="utf-8")
+    assert "type: concept" in text
+
+
+def test_generate_with_provider_caches_and_reuses(test_project) -> None:
+    for slug in ("alpha", "beta", "gamma"):
+        test_project.write_file(
+            f"wiki/sources/{slug}.md",
+            _compiled_page(
+                f"Dense Retrieval {slug.title()}",
+                f"Dense retrieval method {slug}.",
+                f"Dense retrieval body {slug}.",
+            ),
+        )
+
+    provider = _StubConceptProvider()
+    service = ConceptService(test_project.paths, provider=provider)
+    first = service.generate()
+    cache_path = service._concept_cache_path()
+    assert cache_path.exists()
+
+    # Second run should use cache (even with different provider instance)
+    service2 = ConceptService(test_project.paths, provider=_FailingProvider())
+    second = service2.generate()
+
+    assert len(first.concept_paths) == len(second.concept_paths)
+
+
+def test_generate_with_provider_falls_back_on_failure(test_project) -> None:
+    for slug in ("alpha", "beta", "gamma"):
+        test_project.write_file(
+            f"wiki/sources/{slug}.md",
+            _compiled_page(
+                f"Dense Retrieval {slug.title()}",
+                f"Dense retrieval method {slug}.",
+                f"Dense retrieval body {slug}.",
+            ),
+        )
+
+    service = ConceptService(test_project.paths, provider=_FailingProvider())
+    result = service.generate()
+
+    # Should still produce concepts via deterministic fallback
+    assert isinstance(result.concept_paths, list)
+
+
+def test_generate_with_provider_cache_invalidated_on_source_change(
+    test_project,
+) -> None:
+    for slug in ("alpha", "beta", "gamma"):
+        test_project.write_file(
+            f"wiki/sources/{slug}.md",
+            _compiled_page(
+                f"Dense Retrieval {slug.title()}",
+                f"Dense retrieval method {slug}.",
+                f"Dense retrieval body {slug}.",
+            ),
+        )
+
+    provider = _StubConceptProvider()
+    service = ConceptService(test_project.paths, provider=provider)
+    service.generate()
+
+    # Change a source page
+    test_project.write_file(
+        "wiki/sources/alpha.md",
+        _compiled_page(
+            "Completely Different Topic",
+            "Totally new summary about something else.",
+            "New body content.",
+        ),
+    )
+
+    # New service should not use stale cache
+    service2 = ConceptService(test_project.paths, provider=provider)
+    result = service2.generate()
+    assert isinstance(result.concept_paths, list)

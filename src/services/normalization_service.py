@@ -98,7 +98,6 @@ _AFFILIATION_HINTS = (
     "college",
 )
 _CAPTION_PATTERN = re.compile(r"^(figure|fig\.?|table)\s+\d+\b", re.IGNORECASE)
-_SENTENCE_END_PATTERN = re.compile(r"[.!?][\"')\]]?$")
 _NUMBERED_SECTION_PREFIX_PATTERN = re.compile(
     r"^(?:\d+(?:\.\d+)*\.?|[ivxlcdm]+\.?)\s+",
     re.IGNORECASE,
@@ -771,31 +770,15 @@ def _validate_conversion_output(
 
 
 def _looks_truncated(contents: str, plain_text: str, *, page_count: int) -> bool:
-    if page_count <= 1 or len(plain_text) < max(400, page_count * 120):
+    """Return True only for clearly undersized multi-page conversions.
+
+    Converter status/errors and the page-count ratio are more reliable than
+    inspecting the final line for sentence punctuation. Markdown often ends in
+    tables, bullets, references, or captions that are valid but not prose.
+    """
+    if page_count <= 1:
         return False
-    lines = [
-        line.strip()
-        for line in _normalize_newlines(contents).splitlines()
-        if line.strip()
-    ]
-    if not lines:
-        return False
-    last_line = lines[-1]
-    plain_last_line = _plain_text(last_line)
-    if not plain_last_line:
-        return False
-    if (
-        last_line.startswith("#")
-        or _CAPTION_PATTERN.match(last_line)
-        or re.fullmatch(r"\[[^\]]+\]\([^)]*\)", last_line)
-        or re.fullmatch(r"\[[^\]]+\]", last_line)
-    ):
-        return False
-    if _SENTENCE_END_PATTERN.search(plain_last_line):
-        return False
-    if len(plain_last_line.split()) < 5:
-        return False
-    return plain_last_line[-1].isalnum()
+    return len(plain_text) < page_count * 60
 
 
 def _usable_paragraphs(contents: str) -> list[str]:

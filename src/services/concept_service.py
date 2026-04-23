@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+import hashlib
+import json
+import logging
 from pathlib import Path
 import re
 
@@ -12,8 +15,10 @@ from nltk.collocations import (
     TrigramCollocationFinder,
 )
 from nltk.stem import SnowballStemmer
+from pydantic import BaseModel, Field, ValidationError
 import yaml
 
+from src.providers.base import ProviderRequest, TextProvider
 from src.services.markdown_document import parse_document
 from src.services.project_service import (
     ProjectPaths,
@@ -21,6 +26,8 @@ from src.services.project_service import (
     slugify,
     utc_now_iso,
 )
+
+logger = logging.getLogger(__name__)
 
 _SNOWBALL = SnowballStemmer("english")
 _BIGRAM_MEASURES = BigramAssocMeasures()
@@ -162,11 +169,60 @@ _GENERIC_PHRASES = frozenset(
 _MIN_SHARED_TERMS = 2
 _MIN_JACCARD = 0.18
 _MIN_SOURCE_PAGES = 3
+_CONCEPT_CACHE_VERSION = 1
 _PLACEHOLDER_SUMMARIES = {
     "no summary available yet.",
     "summary unavailable.",
     "no content available for summarization.",
 }
+
+_CONCEPT_SYSTEM_PROMPT = (
+    "You cluster a small Markdown knowledge base into durable concept pages. "
+    "Return only JSON matching the provided schema. Create 0 to 5 clusters. "
+    "Each cluster must be supported by at least three listed source pages. "
+    "Use only source page paths from the prompt. Avoid broad generic topics, "
+    "method words, and clusters that are only weakly related. Use concise "
+    "human-readable titles and 1 to 3 kebab-case topic_terms."
+)
+
+_CONCEPT_RESPONSE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "concepts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "title": {"type": "string"},
+                    "summary": {"type": "string"},
+                    "topic_terms": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "source_pages": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                },
+                "required": ["title", "summary", "topic_terms", "source_pages"],
+            },
+        }
+    },
+    "required": ["concepts"],
+}
+
+
+class _ProviderConcept(BaseModel):
+    title: str = Field(min_length=1)
+    summary: str = Field(default="")
+    topic_terms: list[str] = Field(default_factory=list)
+    source_pages: list[str] = Field(default_factory=list)
+
+
+class _ProviderConceptReport(BaseModel):
+    concepts: list[_ProviderConcept] = Field(default_factory=list)
 
 
 @dataclass
@@ -196,8 +252,14 @@ class _ConceptDraft:
 
 
 class ConceptService:
-    def __init__(self, paths: ProjectPaths) -> None:
+    def __init__(
+        self,
+        paths: ProjectPaths,
+        *,
+        provider: TextProvider | None = None,
+    ) -> None:
         self.paths = paths
+        self.provider = provider
 
     def generate(self) -> ConceptGenerationResult:
         source_pages = self._load_source_pages()
@@ -258,6 +320,54 @@ class ConceptService:
         if len(source_pages) < _MIN_SOURCE_PAGES:
             return []
 
+        if self.provider is not None:
+            provider_drafts = self._provider_concept_drafts(source_pages)
+            if provider_drafts is not None:
+                return provider_drafts
+
+        return self._deterministic_concept_drafts(source_pages)
+
+    def _provider_concept_drafts(
+        self,
+        source_pages: list[_SourcePage],
+    ) -> list[_ConceptDraft] | None:
+        source_digest = _source_pages_digest(source_pages)
+        cached = _load_concept_cache(self._concept_cache_path(), source_digest)
+        if cached is not None:
+            return _drafts_from_provider_report(cached, source_pages)
+
+        prompt = _provider_concept_prompt(source_pages)
+        try:
+            response = self.provider.generate(
+                ProviderRequest(
+                    prompt=prompt,
+                    system_prompt=_CONCEPT_SYSTEM_PROMPT,
+                    max_tokens=2048,
+                    response_schema=_CONCEPT_RESPONSE_SCHEMA,
+                    response_schema_name="kb_concept_clusters",
+                )
+            )
+            report = _parse_provider_concept_report(response.text)
+            _write_concept_cache(
+                self._concept_cache_path(),
+                source_digest,
+                report,
+            )
+            return _drafts_from_provider_report(report, source_pages)
+        except Exception as exc:
+            logger.warning(
+                "Provider concept clustering failed; using deterministic fallback: %s",
+                exc,
+            )
+            return None
+
+    def _concept_cache_path(self) -> Path:
+        return self.paths.graph_exports_dir / "concept_clusters.json"
+
+    def _deterministic_concept_drafts(
+        self,
+        source_pages: list[_SourcePage],
+    ) -> list[_ConceptDraft]:
         groups = _connected_components(source_pages)
         drafts: list[_ConceptDraft] = []
         for group in groups:
@@ -412,6 +522,135 @@ def _connected_components(
             )
         components.append(component)
     return components
+
+
+def _provider_concept_prompt(source_pages: list[_SourcePage]) -> str:
+    entries: list[str] = ["## Source Pages"]
+    for page in source_pages:
+        entries.extend(
+            [
+                f"### {page.relative_path}",
+                f"Title: {page.title}",
+                f"Summary: {page.summary or '(no summary)'}",
+                "",
+            ]
+        )
+    return "\n".join(entries).strip()
+
+
+def _parse_provider_concept_report(raw: str) -> _ProviderConceptReport:
+    payload = json.loads(raw.strip())
+    return _ProviderConceptReport.model_validate(payload)
+
+
+def _drafts_from_provider_report(
+    report: _ProviderConceptReport,
+    source_pages: list[_SourcePage],
+) -> list[_ConceptDraft]:
+    pages_by_key: dict[str, _SourcePage] = {}
+    for page in source_pages:
+        pages_by_key[page.relative_path] = page
+        pages_by_key[page.slug] = page
+        pages_by_key[f"{page.slug}.md"] = page
+
+    drafts: list[_ConceptDraft] = []
+    seen_slugs: set[str] = set()
+    for concept in report.concepts:
+        group: list[_SourcePage] = []
+        seen_pages: set[str] = set()
+        for raw_page in concept.source_pages:
+            page_key = raw_page.strip()
+            page = pages_by_key.get(page_key)
+            if page is None or page.relative_path in seen_pages:
+                continue
+            seen_pages.add(page.relative_path)
+            group.append(page)
+
+        if len(group) < _MIN_SOURCE_PAGES:
+            continue
+
+        topic_terms = _normalize_topic_terms(concept.topic_terms)
+        if not topic_terms:
+            topic_terms = _derive_topic_terms(group)
+        if not topic_terms:
+            continue
+
+        title = concept.title.strip() or _format_concept_title(topic_terms)
+        summary = concept.summary.strip() or _format_concept_summary(group, topic_terms)
+        slug = slugify("-".join(topic_terms[:3]) or title)
+        if not slug or slug in seen_slugs:
+            continue
+        seen_slugs.add(slug)
+        drafts.append(
+            _ConceptDraft(
+                title=title,
+                slug=slug,
+                summary=summary,
+                topic_terms=topic_terms,
+                source_pages=sorted(group, key=lambda page: page.title.casefold()),
+            )
+        )
+
+    return drafts
+
+
+def _normalize_topic_terms(raw_terms: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw_term in raw_terms:
+        term = slugify(str(raw_term))
+        if not term or term in seen:
+            continue
+        seen.add(term)
+        normalized.append(term)
+        if len(normalized) == 3:
+            break
+    return normalized
+
+
+def _source_pages_digest(source_pages: list[_SourcePage]) -> str:
+    payload = [
+        {
+            "path": page.relative_path,
+            "title": page.title,
+            "summary": page.summary,
+            "terms": sorted(page.terms),
+        }
+        for page in sorted(source_pages, key=lambda item: item.relative_path)
+    ]
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _load_concept_cache(
+    cache_path: Path,
+    source_digest: str,
+) -> _ProviderConceptReport | None:
+    try:
+        payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if payload.get("version") != _CONCEPT_CACHE_VERSION:
+        return None
+    if payload.get("source_digest") != source_digest:
+        return None
+    try:
+        return _ProviderConceptReport.model_validate(payload.get("report"))
+    except ValidationError:
+        return None
+
+
+def _write_concept_cache(
+    cache_path: Path,
+    source_digest: str,
+    report: _ProviderConceptReport,
+) -> None:
+    payload = {
+        "version": _CONCEPT_CACHE_VERSION,
+        "source_digest": source_digest,
+        "report": report.model_dump(mode="python"),
+    }
+    atomic_write_text(cache_path, json.dumps(payload, indent=2, sort_keys=True))
 
 
 def _derive_topic_terms(group: list[_SourcePage]) -> list[str]:
