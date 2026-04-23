@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 
 from anthropic import Anthropic
@@ -42,8 +43,14 @@ class AnthropicProvider(TextProvider):
                 "type": "enabled",
                 "budget_tokens": self._thinking_budget,
             }
-        if request.system_prompt:
-            kwargs["system"] = request.system_prompt
+        system_prompt = request.system_prompt
+        if request.response_schema:
+            schema_text = json.dumps(request.response_schema, indent=2, sort_keys=True)
+            system_prompt = (
+                f"{system_prompt}\n\n" if system_prompt else ""
+            ) + f"Return only JSON matching this schema:\n{schema_text}"
+        if system_prompt:
+            kwargs["system"] = system_prompt
         message = self._client.messages.create(**kwargs)
         text = next((b.text for b in message.content if b.type == "text"), "")
         return ProviderResponse(text=text.strip(), model_name=self.model)

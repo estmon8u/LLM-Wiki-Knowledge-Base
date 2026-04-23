@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -8,6 +9,8 @@ class ProviderRequest:
     prompt: str
     system_prompt: str = ""
     max_tokens: int = 1024
+    response_schema: dict[str, Any] | None = None
+    response_schema_name: str = "response"
 
 
 @dataclass

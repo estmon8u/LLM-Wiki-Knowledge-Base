@@ -35,11 +35,21 @@ class OpenAIProvider(TextProvider):
         if request.system_prompt:
             messages.append({"role": "developer", "content": request.system_prompt})
         messages.append({"role": "user", "content": request.prompt})
-        completion = self._client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            max_completion_tokens=request.max_tokens,
-            reasoning_effort=self._reasoning_effort,
-        )
+        kwargs: dict = {
+            "model": self.model,
+            "messages": messages,
+            "max_completion_tokens": request.max_tokens,
+            "reasoning_effort": self._reasoning_effort,
+        }
+        if request.response_schema:
+            kwargs["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": request.response_schema_name,
+                    "schema": request.response_schema,
+                    "strict": True,
+                },
+            }
+        completion = self._client.chat.completions.create(**kwargs)
         text = completion.choices[0].message.content or ""
         return ProviderResponse(text=text.strip(), model_name=self.model)

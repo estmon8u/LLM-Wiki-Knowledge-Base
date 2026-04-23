@@ -6,7 +6,7 @@
 | --- | --- |
 | `src/cli.py` | Builds the CLI entrypoint and runtime context |
 | `src/engine/command_registry.py` | Registers the available CLI commands |
-| `src/providers/base.py` | Defines the provider abstraction: `ProviderRequest`, `ProviderResponse`, `TextProvider` |
+| `src/providers/base.py` | Defines the provider abstraction: `ProviderRequest` (including optional response schema hints), `ProviderResponse`, `TextProvider` |
 | `src/providers/__init__.py` | Factory helpers for provider validation, config resolution from `kb.config.yaml`, and `build_provider(config)` |
 | `src/providers/retry.py` | Shared Tenacity retry decorator (`provider_retry()`) for all `generate()` calls: 3 attempts, exponential backoff with jitter, transient-only retry |
 | `src/providers/openai_provider.py` | OpenAI chat-completions provider; `@provider_retry()` on `generate()` |
@@ -36,8 +36,9 @@
 
 | File | Responsibility |
 | --- | --- |
-| `src/services/project_service.py` | Project layout, initialization, and shared atomic write/copy helpers |
-| `src/services/config_service.py` | Config loading, embedded provider-settings validation, conversion-settings validation, schema defaults, `schema_excerpt()` helper for extracting schema sections by heading, and in-place migration of legacy `kb.config.yaml` versions |
+| `src/services/project_service.py` | Project layout, initialization, Unicode-aware slug generation, and shared atomic write/copy helpers |
+| `src/services/markdown_document.py` | Shared `markdown-it-py` / `python-frontmatter` helpers for frontmatter, plain text, headings, paragraphs, sections, links, and fenced-code-aware lint behavior |
+| `src/services/config_service.py` | Config loading, Pydantic-backed provider/conversion validation, schema defaults, `schema_excerpt()` helper for extracting schema sections by heading, and in-place migration of legacy `kb.config.yaml` versions |
 | `src/services/manifest_service.py` | Raw-source manifest read/write behavior |
 | `src/services/normalization_service.py` | Document-type normalization routing for direct text inputs, Mistral OCR-backed native documents and images, `wkhtmltopdf`-rendered HTML OCR, MarkItDown-backed born-digital converters, explicit Docling/MarkItDown fallbacks, and conversion quality gates |
 | `src/services/ingest_service.py` | Raw-source copy, normalized-artifact write, duplicate detection, source registration, deterministic recursive directory ingest, and callback-friendly batch progress hooks used by `kb add` |
@@ -45,7 +46,7 @@
 | `src/services/diff_service.py` | Pre-update source diff reporting |
 | `src/services/search_service.py` | Search over compiled artifacts using a SQLite FTS5 chunk index with page-level result deduplication, best-chunk section/index preservation for downstream citations, and fallback markdown scanning if FTS5 is unavailable |
 | `src/services/query_service.py` | Provider-backed query answer assembly from maintained wiki context; schema-excerpt-enhanced prompts, parseable heading-style log entries, optional save-to-wiki for analysis pages that also refresh the search index and wiki index immediately |
-| `src/services/review_service.py` | Provider-required semantic review: deterministic topic overlap and terminology checks plus single-pass provider review |
+| `src/services/review_service.py` | Provider-required semantic review: deterministic topic overlap and terminology checks plus schema-guided JSON provider review with legacy parser fallback |
 | `src/services/lint_service.py` | Structural validation for wiki links, markdown links, fragments, headings, titles, typed frontmatter (including `missing-type` warning for legacy source pages), empty pages, and maintenance findings |
 | `src/services/export_service.py` | Vault export generation with atomic copies into the Obsidian view |
 | `src/services/status_service.py` | Project and corpus status reporting |
@@ -71,7 +72,7 @@
 
 | File | Responsibility |
 | --- | --- |
-| `pyproject.toml` | Dependency pins, including OpenAI/Anthropic/Gemini SDKs, Mistral SDK, pdfkit, Docling, and MarkItDown, plus CLI entrypoint, Black config, pytest and coverage settings |
+| `pyproject.toml` | Dependency pins, including OpenAI/Anthropic/Gemini SDKs, Pydantic, markdown/frontmatter/NLP helpers, Mistral SDK, pdfkit, Docling, and MarkItDown, plus CLI entrypoint, Black config, pytest and coverage settings |
 | `.github/workflows/tests.yml` | CI for Poetry install, Black, pytest, and coverage artifact upload |
 | `tests/` | Unit, CLI, regression, and golden-file coverage for the current command/service surface |
 
@@ -79,6 +80,8 @@
 
 - Keep file additions aligned with the current layer split instead of mixing CLI, service, and model logic.
 - Prefer extending existing services over adding duplicate helper modules.
+- Do not add new hand-rolled Markdown/frontmatter parsers; extend `markdown_document.py` unless a service has a security-specific reason to preserve a stricter path.
+- Do not add new manual config validation loops; extend the Pydantic config models and preserve compatibility messages where needed.
 - Treat CI and formatter config as part of the architecture because they enforce the supported workflow.
 - Keep converter-backed normalization in a dedicated service instead of mixing converter logic directly into command handlers or compile.
 - Preserve the canonical-artifact contract: only write `raw/normalized/` outputs after the selected converter passes the normalization quality gate or an explicit fallback succeeds.

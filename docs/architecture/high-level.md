@@ -36,6 +36,9 @@ The product goal is not to act like a general-purpose coding agent. The goal is 
 - CLI output uses Rich for styled tables, progress bars, and colored terminal output. All user-facing content is markup-escaped. The `NO_COLOR` environment variable and non-TTY detection are respected automatically. Machine-readable `--json` flags are available on `doctor`, `find`, `status`, and `sources list`.
 - Search storage persists a rebuildable SQLite FTS5 chunk index at `graph/exports/search_index.sqlite3` so lexical retrieval no longer scans every markdown file on each ask.
 - `kb.schema.md` is the wiki's operational constitution. Relevant schema sections are injected into compile and ask prompts via `schema_excerpt()`, so the LLM follows wiki-maintenance rules.
+- Markdown and frontmatter parsing are centralized in `src/services/markdown_document.py` using `markdown-it-py` and `python-frontmatter`; services consume parser-backed helpers instead of maintaining parallel regex/state-machine implementations.
+- `kb.config.yaml` validation is Pydantic-backed while retaining user-facing validation messages for existing workflows.
+- Provider requests can carry an optional response schema. Review uses structured JSON output when supported by the provider SDK, with a legacy parser retained as fallback compatibility.
 - Conversion is config-driven rather than hard-coded by suffix alone. Mistral OCR is the default path for the explicitly supported native document and image formats, HTML uses a rendered-PDF OCR route, and converter quality gates prevent partial or obviously truncated artifacts from becoming canonical markdown.
 - Any post-OCR LLM cleanup or reconstruction should remain explicit fallback behavior rather than becoming part of the default ingest path.
 

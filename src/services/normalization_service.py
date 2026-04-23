@@ -12,14 +12,17 @@ import shutil
 from tempfile import TemporaryDirectory
 from typing import Any, Optional
 
-from markdown_it import MarkdownIt
 from markitdown import __version__ as markitdown_version
 from markitdown import MarkItDown, MarkItDownException
 import pdfkit
 
 from src.services.config_service import DEFAULT_CONFIG
-
-_MD_PARSER = MarkdownIt()
+from src.services.markdown_document import (
+    normalize_newlines as markdown_normalize_newlines,
+    paragraphs as markdown_paragraphs,
+    parse_document,
+    plain_text as markdown_plain_text,
+)
 
 
 SUPPORTED_MARKDOWN_SUFFIXES = {".md", ".markdown"}
@@ -796,49 +799,20 @@ def _looks_truncated(contents: str, plain_text: str, *, page_count: int) -> bool
 
 
 def _usable_paragraphs(contents: str) -> list[str]:
-    paragraphs: list[str] = []
-    current: list[str] = []
-    for line in _normalize_newlines(contents).splitlines():
-        stripped = line.strip()
-        if not stripped:
-            if current:
-                paragraph = " ".join(current).strip()
-                if len(_plain_text(paragraph).split()) >= 5:
-                    paragraphs.append(paragraph)
-                current = []
-            continue
-        if stripped.startswith("#"):
-            if current:
-                paragraph = " ".join(current).strip()
-                if len(_plain_text(paragraph).split()) >= 5:
-                    paragraphs.append(paragraph)
-                current = []
-            continue
-        current.append(stripped)
-    if current:
-        paragraph = " ".join(current).strip()
-        if len(_plain_text(paragraph).split()) >= 5:
-            paragraphs.append(paragraph)
-    return paragraphs
+    return [
+        paragraph
+        for paragraph in markdown_paragraphs(
+            contents,
+            content_only=False,
+            trim_leading_boilerplate=False,
+        )
+        if len(_plain_text(paragraph).split()) >= 5
+    ]
 
 
 def _plain_text(contents: str) -> str:
     """Extract plain text from markdown using markdown-it-py AST."""
-    normalized = _normalize_newlines(contents)
-    tokens = _MD_PARSER.parse(normalized)
-    parts: list[str] = []
-    for token in tokens:
-        if token.type == "inline" and token.children:
-            for child in token.children:
-                if child.type in ("text", "code_inline"):
-                    parts.append(child.content)
-                elif child.type == "softbreak":
-                    parts.append(" ")
-        elif token.type in ("code_block", "fence"):
-            continue
-        elif token.type == "html_block":
-            continue
-    return " ".join(" ".join(parts).split()).strip()
+    return " ".join(markdown_plain_text(contents).split()).strip()
 
 
 def _ensure_trailing_newline(contents: str) -> str:
@@ -850,21 +824,15 @@ def _filename_title(source_path: Path) -> str:
 
 
 def _extract_title(contents: str, source_path: Path) -> str:
+    document = parse_document(contents)
     heading_candidates: list[str] = []
     pre_heading_fallbacks: list[str] = []
     post_heading_fallbacks: list[str] = []
-    in_frontmatter = False
     saw_heading = False
-    for index, line in enumerate(_normalize_newlines(contents).splitlines()[:60]):
+    body = document.body if document.valid_frontmatter else contents
+    for line in _normalize_newlines(body).splitlines()[:60]:
         stripped = line.strip()
         if not stripped:
-            continue
-        if index == 0 and stripped == "---":
-            in_frontmatter = True
-            continue
-        if in_frontmatter:
-            if stripped == "---":
-                in_frontmatter = False
             continue
         if stripped.startswith("---"):
             continue
@@ -928,7 +896,7 @@ def _is_probable_title(candidate: str) -> bool:
 
 
 def _normalize_newlines(contents: str) -> str:
-    return contents.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
+    return markdown_normalize_newlines(contents).lstrip("\ufeff")
 
 
 PdfDocumentConverter = DoclingPdfConverter

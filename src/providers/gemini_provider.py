@@ -41,6 +41,9 @@ class GeminiProvider(TextProvider):
         }
         if request.system_prompt:
             config_kwargs["system_instruction"] = request.system_prompt
+        if request.response_schema:
+            config_kwargs["response_mime_type"] = "application/json"
+            config_kwargs["response_schema"] = request.response_schema
         response = self._client.models.generate_content(
             model=self.model,
             contents=request.prompt,

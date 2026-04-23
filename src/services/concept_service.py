@@ -5,9 +5,16 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 
+from nltk.collocations import (
+    BigramAssocMeasures,
+    BigramCollocationFinder,
+    TrigramAssocMeasures,
+    TrigramCollocationFinder,
+)
 from nltk.stem import SnowballStemmer
 import yaml
 
+from src.services.markdown_document import parse_document
 from src.services.project_service import (
     ProjectPaths,
     atomic_write_text,
@@ -16,6 +23,8 @@ from src.services.project_service import (
 )
 
 _SNOWBALL = SnowballStemmer("english")
+_BIGRAM_MEASURES = BigramAssocMeasures()
+_TRIGRAM_MEASURES = TrigramAssocMeasures()
 
 
 _WORD_PATTERN = re.compile(r"[a-z]+(?:-[a-z]+)*")
@@ -143,22 +152,12 @@ _STOPWORDS = frozenset(
 _GENERIC_PHRASES = frozenset(
     {
         "question answering",
+        "language model",
         "language models",
+        "knowledge intensive",
         "open domain question answering",
         "retrieval augmented",
     }
-)
-_PHRASE_CANDIDATES = (
-    "retrieval augmented generation",
-    "question answering",
-    "language models",
-    "dense retrieval",
-    "few shot learning",
-    "self reflection",
-    "pre training",
-    "open domain question answering",
-    "retrieval augmented",
-    "in context learning",
 )
 _MIN_SHARED_TERMS = 2
 _MIN_JACCARD = 0.18
@@ -416,22 +415,10 @@ def _connected_components(
 
 
 def _derive_topic_terms(group: list[_SourcePage]) -> list[str]:
-    page_texts = [
-        _normalize_phrase_text(f"{page.title} {page.summary}") for page in group
+    page_tokens = [
+        _candidate_phrase_tokens(f"{page.title} {page.summary}") for page in group
     ]
-    title_text = " ".join(page_texts)
-    phrase_terms = [
-        phrase.replace(" ", "-")
-        for support, phrase in sorted(
-            [
-                (sum(1 for text in page_texts if phrase in text), phrase)
-                for phrase in _PHRASE_CANDIDATES
-                if phrase in title_text and phrase not in _GENERIC_PHRASES
-            ],
-            key=lambda item: (-item[0], item[1]),
-        )
-        if support >= 2
-    ][:3]
+    phrase_terms = _collocation_topic_terms(page_tokens)
 
     counts = Counter(term for page in group for term in page.terms)
     phrase_stems = {
@@ -452,6 +439,72 @@ def _derive_topic_terms(group: list[_SourcePage]) -> list[str]:
         return []
     combined = phrase_terms + freq_terms
     return combined[:3]
+
+
+def _candidate_phrase_tokens(text: str) -> list[str]:
+    tokens: list[str] = []
+    for token in _WORD_PATTERN.findall(text.lower().replace("-", " ")):
+        if token in _STOPWORDS or len(token) < 3:
+            continue
+        if _stem_token(token) in _STOPWORDS:
+            continue
+        tokens.append(token)
+    return tokens
+
+
+def _collocation_topic_terms(page_tokens: list[list[str]]) -> list[str]:
+    support: Counter[str] = Counter()
+    all_tokens: list[str] = []
+
+    for tokens in page_tokens:
+        all_tokens.extend(tokens)
+        seen_phrases: set[str] = set()
+        for size in (2, 3):
+            for gram in zip(*(tokens[index:] for index in range(size))):
+                if len(set(gram)) != len(gram):
+                    continue
+                phrase = " ".join(gram)
+                if _is_generic_phrase(phrase):
+                    continue
+                seen_phrases.add(phrase)
+        support.update(seen_phrases)
+
+    ranked: list[tuple[int, float, str]] = []
+    if len(all_tokens) >= 2:
+        bigrams = BigramCollocationFinder.from_words(all_tokens)
+        bigrams.apply_freq_filter(2)
+        for gram, score in bigrams.score_ngrams(_BIGRAM_MEASURES.likelihood_ratio):
+            phrase = " ".join(gram)
+            if support[phrase] >= 2 and not _is_generic_phrase(phrase):
+                ranked.append((support[phrase], score, phrase))
+
+    if len(all_tokens) >= 3:
+        trigrams = TrigramCollocationFinder.from_words(all_tokens)
+        trigrams.apply_freq_filter(2)
+        for gram, score in trigrams.score_ngrams(_TRIGRAM_MEASURES.likelihood_ratio):
+            phrase = " ".join(gram)
+            if support[phrase] >= 2 and not _is_generic_phrase(phrase):
+                ranked.append((support[phrase], score, phrase))
+
+    ranked.sort(key=lambda item: (-item[0], -item[1], item[2]))
+    terms: list[str] = []
+    seen_terms: set[str] = set()
+    for _, _, phrase in ranked:
+        term = phrase.replace(" ", "-")
+        if term in seen_terms:
+            continue
+        seen_terms.add(term)
+        terms.append(term)
+        if len(terms) == 3:
+            break
+    return terms
+
+
+def _is_generic_phrase(phrase: str) -> bool:
+    normalized = " ".join(phrase.split())
+    if normalized in _GENERIC_PHRASES:
+        return True
+    return all(token in _STOPWORDS for token in normalized.split())
 
 
 def _format_concept_title(topic_terms: list[str]) -> str:
@@ -498,17 +551,10 @@ def _stem_token(token: str) -> str:
 
 
 def _split_frontmatter(contents: str) -> tuple[dict[str, object], str]:
-    if not contents.startswith("---\n"):
+    document = parse_document(contents)
+    if not document.has_frontmatter or not document.valid_frontmatter:
         return {}, contents
-    marker = contents.find("\n---\n", 4)
-    if marker == -1:
-        return {}, contents
-    try:
-        payload = yaml.safe_load(contents[4:marker]) or {}
-    except yaml.YAMLError:
-        return {}, contents
-    frontmatter = payload if isinstance(payload, dict) else {}
-    return frontmatter, contents[marker + 5 :]
+    return document.frontmatter, document.body
 
 
 def _replace_backlinks_block(contents: str, links: list[tuple[str, str]]) -> str:

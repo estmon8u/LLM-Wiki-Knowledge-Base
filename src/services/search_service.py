@@ -5,9 +5,14 @@ import logging
 from pathlib import Path
 import re
 
-import yaml
-
 from src.models.wiki_models import SearchResult
+from src.services.markdown_document import (
+    headings as markdown_headings,
+    paragraphs as markdown_paragraphs,
+    parse_frontmatter as markdown_parse_frontmatter,
+    sections as markdown_sections,
+    strip_frontmatter as markdown_strip_frontmatter,
+)
 from src.services.project_service import ProjectPaths
 from src.storage.search_index_store import (
     IndexedChunk,
@@ -231,26 +236,13 @@ class SearchService:
 
 
 def _strip_frontmatter(text: str) -> str:
-    if not text.startswith("---\n"):
-        return text
-    marker = text.find("\n---\n", 4)
-    if marker == -1:
-        return text
-    return text[marker + 5 :]
+    return markdown_strip_frontmatter(text)
 
 
 def _extract_frontmatter_type(text: str) -> str:
     """Return the ``type`` value from YAML frontmatter, or empty string."""
-    if not text.startswith("---\n"):
-        return ""
-    marker = text.find("\n---\n", 4)
-    if marker == -1:
-        return ""
-    fm_block = text[4:marker]
-    for line in fm_block.splitlines():
-        if line.startswith("type:"):
-            return line.split(":", 1)[1].strip().strip("\"'")
-    return ""
+    value = markdown_parse_frontmatter(text).get("type")
+    return value.strip().strip("\"'") if isinstance(value, str) else ""
 
 
 def _is_generated_concept_page(file_path: Path, paths: ProjectPaths) -> bool:
@@ -275,16 +267,7 @@ def _is_generated_concept_page(file_path: Path, paths: ProjectPaths) -> bool:
 
 
 def _extract_frontmatter(text: str) -> dict[str, object]:
-    if not text.startswith("---\n"):
-        return {}
-    marker = text.find("\n---\n", 4)
-    if marker == -1:
-        return {}
-    try:
-        payload = yaml.safe_load(text[4:marker]) or {}
-    except yaml.YAMLError:
-        return {}
-    return payload if isinstance(payload, dict) else {}
+    return markdown_parse_frontmatter(text)
 
 
 def _frontmatter_value(frontmatter: dict[str, object], key: str) -> str:
@@ -297,11 +280,8 @@ def _page_title(file_path: Path, text: str, frontmatter: dict[str, object]) -> s
     if frontmatter_title:
         return frontmatter_title
 
-    body = _strip_frontmatter(text)
-    for line in body.splitlines():
-        stripped = line.strip()
-        if _is_heading_line(stripped):
-            return stripped.lstrip("#").strip().rstrip("#").strip()
+    for heading in markdown_headings(text):
+        return heading.title
 
     return file_path.stem.replace("-", " ").title()
 
@@ -346,36 +326,14 @@ def _is_maintenance_page(relative_path: str) -> bool:
 
 
 def _chunk_markdown_body(text: str, title: str) -> list[_SectionChunk]:
-    body = _strip_frontmatter(text)
-    if not body.strip():
+    if not _strip_frontmatter(text).strip():
         return []
 
-    section_bodies: list[tuple[str, str]] = []
-    current_section = title
-    current_lines: list[str] = []
-
-    def flush_section() -> None:
-        nonlocal current_lines
-        content = "\n".join(current_lines).strip()
-        if content:
-            section_bodies.append((current_section, content))
-        current_lines = []
-
-    for line in body.splitlines():
-        stripped = line.strip()
-        if _is_heading_line(stripped):
-            flush_section()
-            current_section = stripped.lstrip("#").strip().rstrip("#").strip() or title
-            continue
-        current_lines.append(line)
-    flush_section()
-
     chunks: list[_SectionChunk] = []
-    for section, section_text in section_bodies or [(title, body)]:
-        paragraphs = _paragraphs(section_text)
-        if not paragraphs and section_text.strip():
-            paragraphs = [" ".join(section_text.split())]
-
+    for section in markdown_sections(text, default_title=title):
+        paragraphs = section.paragraphs
+        if not paragraphs:
+            continue
         current_parts: list[str] = []
         current_length = 0
         for paragraph in paragraphs:
@@ -385,7 +343,10 @@ def _chunk_markdown_body(text: str, title: str) -> list[_SectionChunk]:
             addition = len(normalized) + 2
             if current_parts and current_length + addition > _CHUNK_CHAR_LIMIT:
                 chunks.append(
-                    _SectionChunk(section=section, body="\n\n".join(current_parts))
+                    _SectionChunk(
+                        section=section.title or title,
+                        body="\n\n".join(current_parts),
+                    )
                 )
                 current_parts = []
                 current_length = 0
@@ -394,38 +355,25 @@ def _chunk_markdown_body(text: str, title: str) -> list[_SectionChunk]:
 
         if current_parts:
             chunks.append(
-                _SectionChunk(section=section, body="\n\n".join(current_parts))
+                _SectionChunk(
+                    section=section.title or title,
+                    body="\n\n".join(current_parts),
+                )
             )
 
     return chunks
 
 
 def _paragraphs(text: str) -> list[str]:
-    paragraphs: list[str] = []
-    current: list[str] = []
-
-    def flush() -> None:
-        nonlocal current
-        if current:
-            paragraphs.append(" ".join(current).strip())
-            current = []
-
-    for line in text.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            flush()
-            continue
-        if _is_heading_line(stripped):
-            flush()
-            continue
-        current.append(stripped)
-
-    flush()
-    return paragraphs
+    return markdown_paragraphs(
+        text,
+        content_only=False,
+        trim_leading_boilerplate=False,
+    )
 
 
 def _is_heading_line(line: str) -> bool:
-    return bool(re.match(r"^#{1,6}\s+\S", line))
+    return bool(markdown_headings(line))
 
 
 def _query_terms(query: str) -> list[str]:

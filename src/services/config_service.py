@@ -2,8 +2,17 @@ from __future__ import annotations
 
 import re
 from copy import deepcopy
-from typing import Any
+from typing import Any, Literal
 
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    StrictStr,
+    ValidationError,
+    field_validator,
+)
 import yaml
 
 from src.services.project_service import ProjectPaths, atomic_write_text
@@ -171,9 +180,7 @@ class ConfigService:
             )
         merged = deepcopy(DEFAULT_CONFIG)
         merged = _deep_merge(merged, migrated)
-        _validate_provider_configs(merged)
-        _validate_conversion_config(merged)
-        return merged
+        return _validate_config(merged)
 
     def load_schema(self) -> str:
         if not self.paths.schema_file.exists():
@@ -309,151 +316,152 @@ def _migrate_v3_to_v4(config: dict[str, Any]) -> dict[str, Any]:
     return migrated
 
 
-def _validate_provider_configs(config: dict[str, Any]) -> None:
-    provider = config.get("provider", {})
-    if not isinstance(provider, dict):
-        raise ValueError("kb.config.yaml 'provider' must contain a YAML mapping.")
+class _StrictConfigModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
-    extra_provider_keys = sorted(set(provider) - {"name"})
-    if extra_provider_keys:
-        raise ValueError(
+
+class _ProviderSelection(_StrictConfigModel):
+    name: StrictStr | None = None
+
+
+class _OpenAIProviderConfig(_StrictConfigModel):
+    model: StrictStr
+    api_key_env: StrictStr
+    reasoning_effort: StrictStr
+
+    @field_validator("model", "api_key_env", "reasoning_effort")
+    @classmethod
+    def _must_be_non_empty(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must be a non-empty string")
+        return value
+
+
+class _AnthropicProviderConfig(_StrictConfigModel):
+    model: StrictStr
+    api_key_env: StrictStr
+    thinking_budget: StrictInt = Field(ge=0)
+
+    @field_validator("model", "api_key_env")
+    @classmethod
+    def _must_be_non_empty(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must be a non-empty string")
+        return value
+
+
+class _GeminiProviderConfig(_OpenAIProviderConfig):
+    pass
+
+
+class _ProvidersConfig(_StrictConfigModel):
+    openai: _OpenAIProviderConfig
+    anthropic: _AnthropicProviderConfig
+    gemini: _GeminiProviderConfig
+
+
+class _MistralOcrConfig(_StrictConfigModel):
+    model: StrictStr
+    api_key_env: StrictStr
+    table_format: Literal["markdown", "html"]
+
+    @field_validator("model", "api_key_env")
+    @classmethod
+    def _must_be_non_empty(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must be a non-empty string")
+        return value
+
+
+class _HtmlConversionConfig(_StrictConfigModel):
+    renderer: Literal["wkhtmltopdf"]
+    wkhtmltopdf_path: StrictStr | None = None
+
+    @field_validator("wkhtmltopdf_path")
+    @classmethod
+    def _path_must_be_non_empty(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("must be null or a non-empty string")
+        return value
+
+
+class _FallbacksConfig(_StrictConfigModel):
+    pdf: Literal["docling"]
+    docx: Literal["markitdown"]
+    pptx: Literal["markitdown"]
+    html: Literal["markitdown"]
+
+
+class _ConversionConfig(_StrictConfigModel):
+    mistral_ocr: _MistralOcrConfig
+    html: _HtmlConversionConfig
+    fallbacks: _FallbacksConfig
+
+
+class _KbConfigModel(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    version: StrictInt = Field(ge=1)
+    project: dict[str, Any]
+    storage: dict[str, Any]
+    compile: dict[str, Any]
+    lint: dict[str, Any]
+    provider: _ProviderSelection = Field(default_factory=_ProviderSelection)
+    providers: _ProvidersConfig
+    conversion: _ConversionConfig
+
+
+def _validate_config(config: dict[str, Any]) -> dict[str, Any]:
+    try:
+        model = _KbConfigModel.model_validate(config)
+    except ValidationError as exc:
+        raise ValueError(_format_config_validation_error(exc)) from exc
+
+    validated = model.model_dump(mode="python")
+    if validated.get("provider", {}).get("name") is None:
+        validated["provider"] = {}
+    return validated
+
+
+def _format_config_validation_error(exc: ValidationError) -> str:
+    error = exc.errors()[0]
+    loc_parts = tuple(str(part) for part in error.get("loc", ()))
+    location = ".".join(loc_parts) or "root"
+    error_type = str(error.get("type", ""))
+
+    if loc_parts[:1] == ("provider",) and error_type == "extra_forbidden":
+        return (
             "kb.config.yaml 'provider' only supports 'name'. Move provider settings "
             "under the top-level 'providers' section."
         )
 
-    name = provider.get("name", "")
-    if name not in ("", None) and not isinstance(name, str):
-        raise ValueError("kb.config.yaml 'provider.name' must be a string.")
-
-    providers = config.get("providers")
-    if not isinstance(providers, dict):
-        raise ValueError("kb.config.yaml 'providers' must contain a YAML mapping.")
-
-    defaults = DEFAULT_CONFIG["providers"]
-    extra_names = sorted(set(providers) - set(defaults))
-    if extra_names:
-        raise ValueError(
-            "kb.config.yaml 'providers' contains unsupported entries: "
-            f"{', '.join(extra_names)}."
-        )
-
-    for name, expected in defaults.items():
-        entry = providers.get(name)
-        if not isinstance(entry, dict):
-            raise ValueError(
-                f"kb.config.yaml 'providers.{name}' must contain a YAML mapping."
+    if loc_parts == ("conversion",) and error_type == "model_type":
+        return "kb.config.yaml 'conversion' must contain a YAML mapping."
+    if loc_parts[:1] == ("conversion",) and error_type == "extra_forbidden":
+        if len(loc_parts) == 2:
+            return (
+                "kb.config.yaml 'conversion' contains unknown sections: "
+                f"{loc_parts[1]}."
             )
 
-        extra_keys = sorted(set(entry) - set(expected))
-        if extra_keys:
-            raise ValueError(
-                f"kb.config.yaml 'providers.{name}' contains unknown keys: "
-                f"{', '.join(extra_keys)}."
+    conversion_sections = {"mistral_ocr", "html", "fallbacks"}
+    if len(loc_parts) >= 2 and loc_parts[0] == "conversion":
+        section = loc_parts[1]
+        if section in conversion_sections and error_type == "model_type":
+            return f"kb.config.yaml 'conversion.{section}' must contain a YAML mapping."
+        if section in conversion_sections and error_type == "extra_forbidden":
+            return (
+                f"kb.config.yaml 'conversion.{section}' contains unknown keys: "
+                f"{loc_parts[-1]}."
             )
 
-        for key, default_value in expected.items():
-            if key not in entry:
-                raise ValueError(
-                    f"kb.config.yaml 'providers.{name}' must define '{key}'."
-                )
-            value = entry[key]
-            if isinstance(default_value, int):
-                if isinstance(value, bool) or not isinstance(value, int):
-                    raise ValueError(
-                        f"kb.config.yaml 'providers.{name}.{key}' must be an integer."
-                    )
-            else:
-                if not isinstance(value, str) or not value.strip():
-                    raise ValueError(
-                        f"kb.config.yaml 'providers.{name}.{key}' must be a non-empty string."
-                    )
+    message = error.get("msg", "is invalid")
+    return f"kb.config.yaml '{location}' {message}."
+
+
+def _validate_provider_configs(config: dict[str, Any]) -> None:
+    _validate_config(config)
 
 
 def _validate_conversion_config(config: dict[str, Any]) -> None:
-    conversion = config.get("conversion")
-    if not isinstance(conversion, dict):
-        raise ValueError("kb.config.yaml 'conversion' must contain a YAML mapping.")
-
-    extra_sections = sorted(set(conversion) - {"mistral_ocr", "html", "fallbacks"})
-    if extra_sections:
-        raise ValueError(
-            "kb.config.yaml 'conversion' contains unknown sections: "
-            f"{', '.join(extra_sections)}."
-        )
-
-    mistral_ocr = conversion.get("mistral_ocr")
-    if not isinstance(mistral_ocr, dict):
-        raise ValueError(
-            "kb.config.yaml 'conversion.mistral_ocr' must contain a YAML mapping."
-        )
-
-    expected_mistral_keys = {"model", "api_key_env", "table_format"}
-    extra_mistral_keys = sorted(set(mistral_ocr) - expected_mistral_keys)
-    if extra_mistral_keys:
-        raise ValueError(
-            "kb.config.yaml 'conversion.mistral_ocr' contains unknown keys: "
-            f"{', '.join(extra_mistral_keys)}."
-        )
-    for key in ("model", "api_key_env"):
-        value = mistral_ocr.get(key)
-        if not isinstance(value, str) or not value.strip():
-            raise ValueError(
-                f"kb.config.yaml 'conversion.mistral_ocr.{key}' must be a non-empty string."
-            )
-    table_format = mistral_ocr.get("table_format")
-    if table_format not in {"markdown", "html"}:
-        raise ValueError(
-            "kb.config.yaml 'conversion.mistral_ocr.table_format' must be "
-            "'markdown' or 'html'."
-        )
-
-    html = conversion.get("html")
-    if not isinstance(html, dict):
-        raise ValueError(
-            "kb.config.yaml 'conversion.html' must contain a YAML mapping."
-        )
-
-    expected_html_keys = {"renderer", "wkhtmltopdf_path"}
-    extra_html_keys = sorted(set(html) - expected_html_keys)
-    if extra_html_keys:
-        raise ValueError(
-            "kb.config.yaml 'conversion.html' contains unknown keys: "
-            f"{', '.join(extra_html_keys)}."
-        )
-    if html.get("renderer") != "wkhtmltopdf":
-        raise ValueError(
-            "kb.config.yaml 'conversion.html.renderer' must be 'wkhtmltopdf'."
-        )
-    wkhtmltopdf_path = html.get("wkhtmltopdf_path")
-    if wkhtmltopdf_path is not None and (
-        not isinstance(wkhtmltopdf_path, str) or not wkhtmltopdf_path.strip()
-    ):
-        raise ValueError(
-            "kb.config.yaml 'conversion.html.wkhtmltopdf_path' must be null or a "
-            "non-empty string."
-        )
-
-    fallbacks = conversion.get("fallbacks")
-    if not isinstance(fallbacks, dict):
-        raise ValueError(
-            "kb.config.yaml 'conversion.fallbacks' must contain a YAML mapping."
-        )
-    expected_fallbacks = {
-        "pdf": "docling",
-        "docx": "markitdown",
-        "pptx": "markitdown",
-        "html": "markitdown",
-    }
-    extra_fallback_keys = sorted(set(fallbacks) - set(expected_fallbacks))
-    if extra_fallback_keys:
-        raise ValueError(
-            "kb.config.yaml 'conversion.fallbacks' contains unknown keys: "
-            f"{', '.join(extra_fallback_keys)}."
-        )
-    for key, expected_value in expected_fallbacks.items():
-        value = fallbacks.get(key)
-        if value != expected_value:
-            raise ValueError(
-                f"kb.config.yaml 'conversion.fallbacks.{key}' must be "
-                f"'{expected_value}'."
-            )
+    _validate_config(config)

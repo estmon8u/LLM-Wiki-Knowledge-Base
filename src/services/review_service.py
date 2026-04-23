@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 from itertools import combinations
-from typing import Optional
+from typing import Literal, Optional
 
+from pydantic import BaseModel, Field, ValidationError
 from rapidfuzz import fuzz
 
 from src.models.wiki_models import ReviewIssue, ReviewReport
@@ -79,16 +81,47 @@ _VARIANT_SIMILARITY_THRESHOLD = 85
 
 _REVIEW_SYSTEM_PROMPT = (
     "You are a knowledge-base quality reviewer. Analyze the wiki pages below "
-    "and report issues. For each issue, output exactly one line in the format:\n"
-    "ISSUE|severity|code|pages|message\n"
-    "Where severity is one of: error, warning, suggestion.\n"
-    "code is a short kebab-case label like 'contradiction', 'stale-claim', "
-    "'terminology-drift', 'redundant-content'.\n"
-    "pages is a comma-separated list of page paths.\n"
-    "message is a concise explanation.\n"
-    "If there are no issues, output exactly: NO_ISSUES\n"
-    "Do not output anything else."
+    "and report concrete knowledge-base quality issues only: broken assumptions, "
+    "duplicate or conflicting pages, missing prerequisites, terminology drift, "
+    "stale content, and cross-page inconsistencies. Return only JSON matching "
+    "the provided schema. Use an empty issues array when no issues are found."
 )
+
+_REVIEW_RESPONSE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "issues": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "severity": {
+                        "type": "string",
+                        "enum": ["error", "warning", "suggestion"],
+                    },
+                    "code": {"type": "string"},
+                    "pages": {"type": "array", "items": {"type": "string"}},
+                    "message": {"type": "string"},
+                },
+                "required": ["severity", "code", "pages", "message"],
+            },
+        }
+    },
+    "required": ["issues"],
+}
+
+
+class _ProviderReviewIssue(BaseModel):
+    severity: Literal["error", "warning", "suggestion"] = "suggestion"
+    code: str = Field(min_length=1)
+    pages: list[str] = Field(default_factory=list)
+    message: str = Field(min_length=1)
+
+
+class _ProviderReviewReport(BaseModel):
+    issues: list[_ProviderReviewIssue] = Field(default_factory=list)
 
 
 class ReviewService:
@@ -250,6 +283,8 @@ class ReviewService:
                     prompt=prompt,
                     system_prompt=_REVIEW_SYSTEM_PROMPT,
                     max_tokens=1024,
+                    response_schema=_REVIEW_RESPONSE_SCHEMA,
+                    response_schema_name="kb_review_report",
                 )
             )
             issues = self._parse_provider_issues(response.text)
@@ -259,9 +294,31 @@ class ReviewService:
 
     @staticmethod
     def _parse_provider_issues(raw: str) -> list[ReviewIssue]:
-        """Parse structured ``ISSUE|…`` lines from provider output."""
+        """Parse provider JSON output with a legacy pipe-format fallback."""
+        stripped = raw.strip()
+        if not stripped or stripped == "NO_ISSUES":
+            return []
+
+        try:
+            payload = json.loads(stripped)
+            if isinstance(payload, list):
+                payload = {"issues": payload}
+            report = _ProviderReviewReport.model_validate(payload)
+            return [
+                ReviewIssue(
+                    severity=issue.severity,
+                    code=issue.code.strip() or "provider-issue",
+                    pages=[page.strip() for page in issue.pages if page.strip()],
+                    message=issue.message.strip(),
+                )
+                for issue in report.issues
+                if issue.message.strip()
+            ]
+        except (json.JSONDecodeError, TypeError, ValidationError):
+            pass
+
         issues: list[ReviewIssue] = []
-        for line in raw.strip().splitlines():
+        for line in stripped.splitlines():
             line = line.strip()
             if line == "NO_ISSUES" or not line.startswith("ISSUE|"):
                 continue

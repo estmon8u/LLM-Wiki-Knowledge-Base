@@ -41,7 +41,7 @@ All commands are flat top-level verbs:
 | Search | compiled wiki artifacts | ranked page matches derived from indexed chunks |
 | Ask | user question plus compiled context | cited provider answer; optionally saved as an analysis page |
 | Lint | compiled wiki and metadata | structural findings for links, fragments, headings, titles, typed frontmatter, empty pages, and maintenance signals |
-| Review | compiled wiki pages | semantic findings from deterministic overlap checks plus single-pass provider review |
+| Review | compiled wiki pages | semantic findings from deterministic overlap checks plus schema-guided single-pass provider review |
 | Export | compiled wiki | Obsidian-friendly vault view |
 
 ## Current Ingest Scope
@@ -56,6 +56,8 @@ All commands are flat top-level verbs:
 - Commands should stay thin and delegate quickly.
 - The command layer owns terminal-only concerns such as section headings, list formatting, and progress display via Rich (`Console`, `Table`, `Progress`); long-running services expose callback-friendly hooks instead of writing directly to the terminal. User-supplied content is markup-escaped via `rich.markup.escape`.
 - Services should remain deterministic unless the feature explicitly requires model-backed synthesis.
+- Shared parsing belongs in `src/services/markdown_document.py`: services should consume parser-backed markdown/frontmatter helpers instead of adding new ad hoc regex stacks.
+- Config validation belongs in Pydantic models inside `ConfigService`, with compatibility wrappers preserved for tests and callers.
 - `kb lint` checks links, fragments, headings, titles, and metadata deterministically; `kb review` prepends deterministic overlap checks to a required provider-backed single-pass review.
 - `build_services()` reads `kb.config.yaml`, resolves the active provider from the embedded `providers` section, and creates a single shared provider via `build_provider(config)`.
 - `kb.schema.md` is the wiki's operational constitution. Relevant schema sections are injected into compile and ask prompts via `schema_excerpt()`.

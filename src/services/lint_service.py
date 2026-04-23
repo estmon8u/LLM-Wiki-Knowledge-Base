@@ -14,6 +14,11 @@ from src.services.compile_service import (
     SOURCE_PAGE_CONTRACT_VERSION,
     SOURCE_PAGE_CONTRACT_VERSION_KEY,
 )
+from src.services.markdown_document import (
+    headings as markdown_headings,
+    markdown_links,
+    without_fenced_code_blocks,
+)
 from src.services.manifest_service import ManifestService
 from src.services.project_service import ProjectPaths, slugify
 
@@ -397,9 +402,18 @@ class LintService:
                     )
                 )
 
+        markdown_link_pairs: list[tuple[str, str]] = [
+            (link.target.strip(), link.text)
+            for link in markdown_links(page_state.analysis_text)
+        ]
+        seen_markdown_links = set(markdown_link_pairs)
         for match in MARKDOWN_LINK_PATTERN.finditer(page_state.analysis_text):
-            raw_target = match.group("target").strip()
-            link_text = match.group("text")
+            pair = (match.group("target").strip(), match.group("text"))
+            if pair not in seen_markdown_links:
+                markdown_link_pairs.append(pair)
+                seen_markdown_links.add(pair)
+
+        for raw_target, link_text in markdown_link_pairs:
             if not raw_target:
                 issues.append(
                     LintIssue(
@@ -498,7 +512,8 @@ def _split_frontmatter(text: str) -> Tuple[Optional[Dict[str, Any]], str]:
         return None, text
     payload = text[4:marker]
     content = text[marker + 5 :]
-    return yaml.safe_load(payload) or {}, content
+    parsed = yaml.safe_load(payload) or {}
+    return parsed if isinstance(parsed, dict) else {}, content
 
 
 def _build_page_state(file_path: Path, paths: ProjectPaths) -> _PageState:
@@ -521,16 +536,10 @@ def _build_page_state(file_path: Path, paths: ProjectPaths) -> _PageState:
 
 
 def _extract_headings(content: str) -> list[tuple[int, str]]:
-    headings: list[tuple[int, str]] = []
-    for line in _strip_fenced_code_blocks(content).splitlines():
-        match = ATX_HEADING_PATTERN.match(line)
-        if not match:
-            continue
-        title = _normalize_heading_title(match.group(2))
-        if not title:
-            continue
-        headings.append((len(match.group(1)), title))
-    return headings
+    return [
+        (heading.level, heading.title)
+        for heading in markdown_headings(_strip_fenced_code_blocks(content))
+    ]
 
 
 def _normalize_heading_title(title: str) -> str:
@@ -585,26 +594,7 @@ def _strip_excerpt_section(text: str) -> str:
 
 
 def _strip_fenced_code_blocks(text: str) -> str:
-    lines: list[str] = []
-    in_fence = False
-    fence_marker = ""
-
-    for line in text.splitlines():
-        stripped = line.lstrip()
-        if stripped.startswith("```") or stripped.startswith("~~~"):
-            marker = stripped[:3]
-            if not in_fence:
-                in_fence = True
-                fence_marker = marker
-            elif marker == fence_marker:
-                in_fence = False
-                fence_marker = ""
-            continue
-
-        if not in_fence:
-            lines.append(line)
-
-    return "\n".join(lines)
+    return without_fenced_code_blocks(text)
 
 
 def _source_page_contract_version(source: Optional[RawSourceRecord]) -> int:

@@ -1,6 +1,6 @@
 # Capstone Project Status Overview
 
-Date: 2026-04-22
+Date: 2026-04-23
 
 ## Current Position
 
@@ -27,21 +27,23 @@ In short, the core workflow works end-to-end. Current work is proving quality an
 - Deterministic lint for links, fragments, headings, frontmatter, duplicates, empties, stale pages, and maintenance signals.
 - Search over compiled wiki artifacts via SQLite FTS5 chunk index.
 - Provider-backed `kb ask` and `kb review` with explicit failure semantics.
+- Structured provider review output: `kb review` requests JSON/schema-backed findings where supported and keeps the older pipe parser only as a compatibility fallback.
 - Answer persistence with `kb ask --save` and `--save-as`; saved analysis pages are indexed immediately.
 - Obsidian vault export via `kb export`.
+- Library-backed simplification pass: shared Markdown/frontmatter parsing, Pydantic config validation, NLTK collocation-based concept topic extraction, RapidFuzz terminology variants, and Unicode-aware slugging.
 - CI and dependency baseline with enforced 97%+ coverage floor from `pyproject.toml`.
 
 ## In Progress Now
 
 - Running a fuller real-corpus evaluation pass on realistic source collections.
-- Concept-page synthesis and backlink maintenance.
+- Concept-page quality and backlink-maintenance evaluation.
 - Measuring retrieval quality and whether richer ranking is justified.
 - Capturing quality, latency, and cost signals from `ask`/`review` runs for the final deliverable.
 - Tightening workflow ergonomics for evaluator scripts and reporting.
 
 ## Next Regular Work
 
-- Complete simplification cleanups and finish Phase 9 (export/concept simplification).
+- Continue final real-corpus validation after the library-backed simplification pass.
 - Improve concept generation quality and reliability before final milestone reporting.
 - Add richer comparison/benchmark reporting if manual SQLite run inspection becomes too slow.
 - Add optional hybrid retrieval only if a clear evaluation gain is measured.

@@ -4,10 +4,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import os
 from pathlib import Path
-import re
 import shutil
 import time
 import uuid
+
+from slugify import slugify as library_slugify
 
 
 def utc_now_iso() -> str:
@@ -15,8 +16,7 @@ def utc_now_iso() -> str:
 
 
 def slugify(value: str) -> str:
-    normalized = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower())
-    normalized = normalized.strip("-")
+    normalized = library_slugify(value)
     return normalized or "untitled"
 
 

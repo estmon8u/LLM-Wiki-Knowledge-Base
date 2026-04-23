@@ -6,7 +6,6 @@ import logging
 import re
 from typing import Any, Callable, Optional
 
-from markdown_it import MarkdownIt
 import nltk
 import nltk.data
 import yaml
@@ -18,13 +17,24 @@ from src.providers import (
 )
 from src.providers.base import ProviderRequest, TextProvider
 from src.services.config_service import schema_excerpt
+from src.services.markdown_document import (
+    headings as markdown_headings,
+    inline_text as markdown_inline_text,
+    is_content_paragraph as markdown_is_content_paragraph,
+    is_link_only_inline as markdown_is_link_only_inline,
+    normalize_newlines as markdown_normalize_newlines,
+    paragraphs as markdown_paragraphs,
+    parse_frontmatter as markdown_parse_frontmatter,
+    plain_text as markdown_plain_text,
+    section_paragraphs as markdown_section_paragraphs,
+    strip_frontmatter as markdown_strip_frontmatter,
+)
 from src.services.manifest_service import ManifestService
 from src.services.project_service import ProjectPaths, atomic_write_text, utc_now_iso
 from src.storage.compile_run_store import CompileRunStore
 
 logger = logging.getLogger(__name__)
 
-_MD_PARSER = MarkdownIt()
 
 _SUMMARY_SYSTEM_PROMPT = (
     "You are a research assistant summarizing documents for a curated knowledge base. "
@@ -377,243 +387,106 @@ class CompileService:
         atomic_write_text(self.paths.wiki_log_file, current)
 
 
-def _markdown_paragraphs(contents: str) -> list[str]:
-    """Extract content paragraphs from markdown using markdown-it-py AST."""
-    normalized = _strip_frontmatter(contents)
-    tokens = _MD_PARSER.parse(normalized)
-    paragraphs: list[str] = []
-    index = 0
-    while index < len(tokens):
-        token = tokens[index]
-        if token.type == "paragraph_open":
-            # Next token should be the inline content
-            if index + 1 < len(tokens) and tokens[index + 1].type == "inline":
-                inline = tokens[index + 1]
-                if not _is_link_only_inline(inline):
-                    text = _inline_text(inline)
-                    if text:
-                        paragraphs.append(text)
-            index += 3  # skip paragraph_open, inline, paragraph_close
-        else:
-            index += 1
-    filtered = [p for p in paragraphs if _is_content_paragraph(p)]
-    return _trim_leading_boilerplate(filtered)
+def _deterministic_summary(contents: str) -> str:
+    abstract_paragraphs = _abstract_paragraphs(contents)
+    if abstract_paragraphs:
+        source_text = " ".join(abstract_paragraphs)
+    else:
+        paragraphs = _markdown_paragraphs(contents)
+        source_text = (
+            " ".join(paragraphs) if paragraphs else _plain_text_fallback(contents)
+        )
 
+    sentences = _split_sentences(source_text)
+    if sentences:
+        summary = " ".join(sentences[:3])
+    else:
+        summary = source_text
 
-def _inline_text(token: Any) -> str:
-    """Extract plain text from a markdown-it inline token."""
-    if not token.children:
-        return token.content.strip()
-    parts: list[str] = []
-    for child in token.children:
-        if child.type in ("text", "code_inline"):
-            parts.append(child.content)
-        elif child.type == "softbreak":
-            parts.append(" ")
-    return " ".join("".join(parts).split()).strip()
-
-
-def _is_link_only_inline(token: Any) -> bool:
-    """Return True if every content-bearing child is inside a link or image."""
-    if not token.children:
-        return False
-    in_link = 0
-    for child in token.children:
-        if child.type in ("link_open", "image"):
-            in_link += 1
-        elif child.type == "link_close":
-            in_link = max(0, in_link - 1)
-        elif child.type == "text":
-            if not in_link and child.content.strip():
-                return False
-    return True
-
-
-def _trim_leading_boilerplate(paragraphs: list[str]) -> list[str]:
-    if not paragraphs:
-        return []
-    toc_index = next(
-        (
-            index
-            for index, paragraph in enumerate(paragraphs[:8])
-            if paragraph.casefold().strip() == "table of contents"
-        ),
-        None,
-    )
-    if toc_index is None:
-        return paragraphs
-    trimmed = paragraphs[toc_index + 1 :]
-    return trimmed or paragraphs
-
-
-def _is_content_paragraph(paragraph: str) -> bool:
-    """Return False for image-only, link-dominated, or navigation paragraphs."""
-    # Skip very short fragments (single words, syntax diagram tokens)
-    words = paragraph.split()
-    if len(words) <= 1 and len(paragraph) < 15:
-        return False
-    # Remove linked images: [![alt](img)](url) and plain images: ![alt](url)
-    stripped = re.sub(r"\[?!\[[^\]]*\]\([^)]*\)\]?(?:\([^)]*\))?", "", paragraph)
-    # Remove markdown links: [text](url)
-    stripped = re.sub(r"\[[^\]]*\]\([^)]*\)", "", stripped)
-    # Remove residual markdown syntax and list markers
-    stripped = re.sub(r"[*\[\]()\-]+", " ", stripped)
-    cleaned = " ".join(stripped.split()).strip()
-    if not cleaned:
-        return False
-    if len(paragraph) > 30 and len(cleaned) < 15:
-        return False
-    # Paragraph is entirely fragment-only links (TOC patterns like [text](#anchor))
-    toc_stripped = re.sub(r"\[[^\]]*\]\(#[^)]*\)", "", paragraph)
-    toc_cleaned = " ".join(toc_stripped.split()).strip()
-    if not toc_cleaned:
-        return False
-    return True
+    summary = _truncate_with_boundary(summary, 700, add_ellipsis=True)
+    return summary or "No summary available yet."
 
 
 def _discover_concept_pages(paths: ProjectPaths) -> list[dict[str, str]]:
-    """Scan wiki/concepts/ for saved analysis pages."""
-    entries: list[dict[str, str]] = []
-    if not paths.wiki_concepts_dir.exists():
-        return entries
-    for cp in sorted(paths.wiki_concepts_dir.glob("*.md")):
-        try:
-            text = cp.read_text(encoding="utf-8")
-            fm = _parse_frontmatter(text)
-            entries.append(
-                {
-                    "title": fm.get("title", cp.stem.replace("-", " ").title()),
-                    "slug": cp.stem,
-                    "path": f"wiki/concepts/{cp.name}",
-                }
-            )
-        except Exception:
-            continue
-    return entries
+    return _discover_markdown_pages(paths, paths.wiki_concepts_dir)
 
 
 def _discover_analysis_pages(paths: ProjectPaths) -> list[dict[str, str]]:
-    """Scan wiki/analysis/ for saved analysis pages."""
-    entries: list[dict[str, str]] = []
-    if not paths.wiki_analysis_dir.exists():
-        return entries
-    for ap in sorted(paths.wiki_analysis_dir.glob("*.md")):
+    return _discover_markdown_pages(paths, paths.wiki_analysis_dir)
+
+
+def _discover_markdown_pages(
+    paths: ProjectPaths,
+    page_dir: Any,
+) -> list[dict[str, str]]:
+    if not page_dir.exists():
+        return []
+
+    pages: list[dict[str, str]] = []
+    for page_path in sorted(page_dir.glob("*.md")):
         try:
-            text = ap.read_text(encoding="utf-8")
-            fm = _parse_frontmatter(text)
-            entries.append(
-                {
-                    "title": fm.get("title", ap.stem.replace("-", " ").title()),
-                    "slug": ap.stem,
-                    "path": f"wiki/analysis/{ap.name}",
-                }
-            )
-        except Exception:
+            contents = page_path.read_text(encoding="utf-8")
+        except OSError:
             continue
-    return entries
+
+        frontmatter = _parse_frontmatter(contents)
+        title = str(frontmatter.get("title", "")).strip()
+        if not title:
+            for heading in markdown_headings(contents):
+                title = heading.title
+                break
+        if not title:
+            title = page_path.stem.replace("-", " ").title()
+
+        pages.append(
+            {
+                "title": title,
+                "slug": page_path.stem,
+                "path": page_path.relative_to(paths.root).as_posix(),
+            }
+        )
+
+    return pages
 
 
-def _parse_frontmatter(contents: str) -> dict:
-    normalized = _normalize_newlines(contents)
-    if not normalized.startswith("---\n"):
-        return {}
-    marker = normalized.find("\n---\n", 4)
-    if marker == -1:
-        return {}
-    try:
-        payload = yaml.safe_load(normalized[4:marker]) or {}
-    except yaml.YAMLError:
-        return {}
-    return payload if isinstance(payload, dict) else {}
+def _markdown_paragraphs(contents: str) -> list[str]:
+    return markdown_paragraphs(contents)
+
+
+def _inline_text(token: Any) -> str:
+    return markdown_inline_text(token)
+
+
+def _is_link_only_inline(token: Any) -> bool:
+    return markdown_is_link_only_inline(token)
+
+
+def _is_content_paragraph(paragraph: str) -> bool:
+    return markdown_is_content_paragraph(paragraph)
+
+
+def _parse_frontmatter(contents: str) -> dict[str, Any]:
+    return markdown_parse_frontmatter(contents)
 
 
 def _strip_frontmatter(contents: str) -> str:
-    normalized = _normalize_newlines(contents)
-    if not normalized.startswith("---\n"):
-        return normalized
-    marker = normalized.find("\n---\n", 4)
-    if marker == -1:
-        return normalized
-    return normalized[marker + 5 :]
+    return markdown_strip_frontmatter(contents)
 
 
 def _abstract_paragraphs(contents: str) -> list[str]:
-    """Extract paragraphs from the first Abstract section, if present."""
-    normalized = _strip_frontmatter(contents)
-    abstract_start: int | None = None
-    for match in re.finditer(r"(?m)^#{1,6}\s+(.+)", normalized):
-        heading_text = match.group(1).strip().rstrip("#").strip()
-        if heading_text.casefold() == "abstract":
-            abstract_start = match.end()
-            break
-    if abstract_start is None:
-        return []
-    rest = normalized[abstract_start:]
-    next_heading = re.search(r"(?m)^#{1,6}\s+", rest)
-    section = rest[: next_heading.start()] if next_heading else rest
-    paragraphs: list[str] = []
-    current: list[str] = []
-    for line in section.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            if current:
-                paragraphs.append(" ".join(current))
-                current = []
-            continue
-        if _is_heading_line(stripped):
-            if current:
-                paragraphs.append(" ".join(current))
-                current = []
-            continue
-        current.append(stripped)
-    if current:
-        paragraphs.append(" ".join(current))
-    return [p for p in paragraphs if _is_content_paragraph(p)]
+    return markdown_section_paragraphs(contents, "abstract")
 
 
 def _is_heading_line(line: str) -> bool:
-    return bool(re.match(r"^#{1,6}\s+\S", line))
+    return bool(markdown_headings(line))
 
 
 def _normalize_newlines(contents: str) -> str:
-    return contents.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
+    return markdown_normalize_newlines(contents).lstrip("\ufeff")
 
 
 def _plain_text_fallback(contents: str) -> str:
-    """Extract plain text from markdown using markdown-it-py AST."""
-    text = _strip_frontmatter(contents)
-    tokens = _MD_PARSER.parse(text)
-    parts: list[str] = []
-    for token in tokens:
-        if token.type == "inline" and token.children:
-            for child in token.children:
-                if child.type in ("text", "code_inline"):
-                    parts.append(child.content)
-                elif child.type == "softbreak":
-                    parts.append(" ")
-        elif token.type in ("code_block", "fence"):
-            continue
-        elif token.type == "html_block":
-            continue
-    return " ".join(" ".join(parts).split()).strip()
-
-
-def _deterministic_summary(contents: str) -> str:
-    summary_source = " ".join(_abstract_paragraphs(contents)).strip()
-    if not summary_source:
-        paragraphs = _markdown_paragraphs(contents)
-        summary_source = " ".join(paragraphs[:2]).strip()
-    if not summary_source:
-        summary_source = _plain_text_fallback(contents)
-    if not summary_source:
-        return "No content available for summarization."
-
-    sentences = _split_sentences(summary_source)
-    if len(sentences) >= 2:
-        return " ".join(sentences[:2]).strip()
-    if sentences:
-        return sentences[0].strip()
-    return _truncate_with_boundary(summary_source, 280, add_ellipsis=True)
+    return markdown_plain_text(contents)
 
 
 def _split_sentences(text: str) -> list[str]:

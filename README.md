@@ -263,6 +263,7 @@ Checks for:
 - **Terminology variants** — The same root term appearing in different forms across pages.
 
 This is the semantic complement to `kb lint`. Lint checks structural health deterministically; review checks content-level coherence through heuristics and a provider pass.
+Provider-backed review requests structured JSON when the selected SDK supports schema hints, with a legacy pipe-delimited parser retained only as a compatibility fallback.
 
 ### `kb export`
 
@@ -508,9 +509,12 @@ project-root/
 
 | Library | Used For |
 | --- | --- |
-| `markdown-it-py` | AST-based markdown → plain text extraction and paragraph detection |
-| `nltk` | Snowball stemmer for concept term extraction; `sent_tokenize` for sentence splitting |
+| `markdown-it-py` | Shared AST-based markdown parsing for frontmatter-stripped text, headings, paragraphs, sections, links, and fenced-code-aware lint helpers |
+| `python-frontmatter` | YAML frontmatter parsing for shared markdown document handling |
+| `pydantic` | Strict `kb.config.yaml` validation and provider-review response parsing |
+| `nltk` | Snowball stemming, sentence splitting, and collocation scoring for concept topic extraction |
 | `rapidfuzz` | Fuzzy string similarity for terminology-variant detection in `kb review` |
+| `python-slugify` | Unicode-aware slug generation for page, heading, and file identifiers |
 | `mistralai` | Mistral OCR document/image conversion |
 | `docling` | PDF fallback converter |
 | `markitdown` | Born-digital file conversion (CSV, EPUB, IPYNB, XLSX) and fallback |
