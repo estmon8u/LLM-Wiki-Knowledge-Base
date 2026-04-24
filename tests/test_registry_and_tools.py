@@ -184,7 +184,7 @@ def test_progress_report_hidden_mode_prints_preamble(capsys) -> None:
         advance()
         advance()
 
-    output = capsys.readouterr().err
+    output = capsys.readouterr().out
     assert "Compiling 2 source page(s)..." in output
 
 

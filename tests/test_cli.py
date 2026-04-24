@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+import re
 from unittest.mock import patch
 
 import yaml
@@ -27,6 +29,25 @@ class _CliFakeProvider(TextProvider):
     def generate(self, request: ProviderRequest) -> ProviderResponse:
         if request.response_schema_name == "kb_review_report":
             return ProviderResponse(text='{"issues": []}', model_name="cli-fake-v1")
+        if request.response_schema_name == "kb_query_answer":
+            match = re.search(r"^citation_ref:\s*(.+)$", request.prompt, re.MULTILINE)
+            ref = match.group(1).strip() if match else "wiki/sources/sample.md#chunk-0"
+            return ProviderResponse(
+                text=json.dumps(
+                    {
+                        "answer_markdown": "Traceability is preserved through compiled source pages.",
+                        "claims": [
+                            {
+                                "text": "Traceability is preserved through compiled source pages.",
+                                "citation_refs": [ref],
+                            }
+                        ],
+                        "citations": [{"ref": ref, "title": "Sample"}],
+                        "insufficient_evidence": False,
+                    }
+                ),
+                model_name="cli-fake-v1",
+            )
         return ProviderResponse(
             text="Traceability is preserved through compiled source pages. [Sample]",
             model_name="cli-fake-v1",
@@ -1293,3 +1314,16 @@ def test_doctor_json_failure_exits_nonzero() -> None:
         assert result.exit_code != 0
         data = json.loads(result.output)
         assert data["ok"] is False
+
+
+def test_clean_answer_display_strips_inline_citation_refs() -> None:
+    from src.commands.ask import _clean_answer_display
+
+    raw = (
+        "Traceability is preserved [wiki/sources/alpha.md#chunk-0] "
+        "through compiled pages [wiki/sources/beta.md#chunk-2]."
+    )
+    cleaned = _clean_answer_display(raw)
+    assert "wiki/sources/" not in cleaned
+    assert "chunk-" not in cleaned
+    assert "Traceability is preserved through compiled pages." in cleaned

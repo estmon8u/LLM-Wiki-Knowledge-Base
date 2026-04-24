@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 _SCHEMA_VERSION = "1"
-_CHUNKER_VERSION = "1"
+_CHUNKER_VERSION = "3"
 
 _SCHEMA_SQL = """\
 CREATE TABLE IF NOT EXISTS indexed_files (
@@ -79,7 +79,7 @@ class SearchHit:
     section: str
     chunk_index: int
     snippet: str
-    score: int
+    score: float
 
 
 class SearchIndexStore:
@@ -250,7 +250,7 @@ class SearchIndexStore:
                 section=row[3],
                 chunk_index=row[4],
                 snippet=row[5] or "",
-                score=max(1, int(round(abs(row[6]) * 1000))) if row[6] else 1,
+                score=_display_score(row[6]),
             )
             for row in rows
         ]
@@ -266,3 +266,12 @@ class SearchIndexStore:
             conn.close()
             raise SearchIndexUnavailable(str(exc)) from exc
         return conn
+
+
+def _display_score(rank: float | None) -> float:
+    if rank is None:
+        return 0.0
+    # SQLite FTS5 bm25() ranks are negative and often very small. Scale the
+    # magnitude so CLI output shows useful differences without exposing raw
+    # implementation-sized values.
+    return max(0.001, round(abs(rank) * 1_000_000, 3))

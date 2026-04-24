@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json as _json
+import sys
 from contextlib import contextmanager
 from typing import Any, Callable, Iterator, Optional, Sequence, Union
 
@@ -12,6 +13,19 @@ from rich.table import Table
 
 from src.models.command_models import CommandContext
 
+
+def _configure_output_streams() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(errors="replace")
+        except (OSError, ValueError):
+            continue
+
+
+_configure_output_streams()
 
 # Module-level consoles.  Rich auto-detects TTY and respects NO_COLOR.
 console = Console()
@@ -76,7 +90,7 @@ def progress_report(
         return
 
     if not err_console.is_terminal:
-        err_console.print(f"{label} {length} {item_label}(s)...")
+        console.print(f"{label} {length} {item_label}(s)...")
         yield lambda *_args, **_kwargs: None
         return
 

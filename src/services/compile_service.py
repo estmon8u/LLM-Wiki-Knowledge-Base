@@ -8,7 +8,7 @@ from typing import Any, Callable, Optional
 
 import nltk
 import nltk.data
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 import yaml
 
 from src.models.source_models import RawSourceRecord
@@ -17,6 +17,7 @@ from src.providers import (
     UnavailableProvider,
 )
 from src.providers.base import ProviderRequest, TextProvider
+from src.providers.structured import StructuredOutputError, parse_model_payload
 from src.services.config_service import schema_excerpt
 from src.services.markdown_document import (
     headings as markdown_headings,
@@ -31,7 +32,12 @@ from src.services.markdown_document import (
     strip_frontmatter as markdown_strip_frontmatter,
 )
 from src.services.manifest_service import ManifestService
-from src.services.project_service import ProjectPaths, atomic_write_text, utc_now_iso
+from src.services.project_service import (
+    ProjectPaths,
+    atomic_write_text,
+    unique_markdown_heading,
+    utc_now_iso,
+)
 from src.storage.compile_run_store import CompileRunStore
 
 logger = logging.getLogger(__name__)
@@ -308,6 +314,7 @@ class CompileService:
                     max_tokens=512,
                     response_schema=_SUMMARY_RESPONSE_SCHEMA,
                     response_schema_name="kb_compile_summary",
+                    reasoning_effort="low",
                 )
             )
             structured = _parse_provider_summary(response.text)
@@ -416,7 +423,7 @@ class CompileService:
         *,
         resumed: bool = False,
     ) -> None:
-        timestamp = utc_now_iso()[:10]
+        timestamp = utc_now_iso()
         current = "# Activity Log\n"
         if self.paths.wiki_log_file.exists():
             current = self.paths.wiki_log_file.read_text(encoding="utf-8")
@@ -428,10 +435,12 @@ class CompileService:
         if resumed:
             flags.append("resume")
         flag_str = f" ({', '.join(flags)})" if flags else ""
-        current += (
-            f"\n## [{timestamp}] update | "
-            f"{compiled_count} compiled, {skipped_count} skipped{flag_str}\n"
+        heading = unique_markdown_heading(
+            current,
+            f"## [{timestamp}] update | "
+            f"{compiled_count} compiled, {skipped_count} skipped{flag_str}",
         )
+        current += f"\n{heading}\n"
         atomic_write_text(self.paths.wiki_log_file, current)
 
 
@@ -456,13 +465,13 @@ def _deterministic_summary(contents: str) -> str:
 
 
 def _parse_provider_summary(raw: str) -> _SummaryResult | None:
-    stripped = raw.strip()
-    if not stripped:
-        return None
     try:
-        payload = json.loads(stripped)
-        summary = _ProviderSummary.model_validate(payload)
-    except (json.JSONDecodeError, TypeError, ValidationError):
+        summary = parse_model_payload(
+            raw,
+            _ProviderSummary,
+            label="Provider summary response",
+        )
+    except (StructuredOutputError, TypeError, ValueError):
         return None
     return _SummaryResult(
         summary=summary.summary.strip(),

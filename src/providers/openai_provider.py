@@ -39,7 +39,7 @@ class OpenAIProvider(TextProvider):
             "model": self.model,
             "messages": messages,
             "max_completion_tokens": request.max_tokens,
-            "reasoning_effort": self._reasoning_effort,
+            "reasoning_effort": request.reasoning_effort or self._reasoning_effort,
         }
         if request.response_schema:
             kwargs["response_format"] = {
@@ -51,5 +51,15 @@ class OpenAIProvider(TextProvider):
                 },
             }
         completion = self._client.chat.completions.create(**kwargs)
-        text = completion.choices[0].message.content or ""
-        return ProviderResponse(text=text.strip(), model_name=self.model)
+        choice = completion.choices[0]
+        text = choice.message.content or ""
+        usage = getattr(completion, "usage", None)
+        return ProviderResponse(
+            text=text.strip(),
+            model_name=self.model,
+            provider=self.name,
+            finish_reason=getattr(choice, "finish_reason", None),
+            input_tokens=getattr(usage, "prompt_tokens", None),
+            output_tokens=getattr(usage, "completion_tokens", None),
+            raw=completion,
+        )

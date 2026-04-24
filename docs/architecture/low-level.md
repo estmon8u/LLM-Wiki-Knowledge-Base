@@ -6,18 +6,19 @@
 | --- | --- |
 | `src/cli.py` | Builds the CLI entrypoint and runtime context |
 | `src/engine/command_registry.py` | Registers the available CLI commands |
-| `src/providers/base.py` | Defines the provider abstraction: `ProviderRequest` (including optional response schema hints), `ProviderResponse`, `TextProvider` |
+| `src/providers/base.py` | Defines the provider abstraction: `ProviderRequest` (including optional response schema hints and per-request reasoning effort), diagnostic `ProviderResponse`, and `TextProvider` |
 | `src/providers/__init__.py` | Factory helpers for provider validation, config resolution from `kb.config.yaml`, and `build_provider(config)` |
 | `src/providers/retry.py` | Shared Tenacity retry decorator (`provider_retry()`) for all `generate()` calls: 3 attempts, exponential backoff with jitter, transient-only retry |
+| `src/providers/structured.py` | Shared structured-output parser for direct JSON, fenced JSON, and common prose-prefaced JSON plus Pydantic model validation |
 | `src/providers/openai_provider.py` | OpenAI chat-completions provider; `@provider_retry()` on `generate()` |
 | `src/providers/anthropic_provider.py` | Anthropic messages provider; `@provider_retry()` on `generate()` |
-| `src/providers/gemini_provider.py` | Google Gemini provider; `@provider_retry()` on `generate()` |
+| `src/providers/gemini_provider.py` | Google Gemini provider; `@provider_retry()` on `generate()` and JSON-schema cleanup for SDK-compatible structured output |
 
 ## Current Command Files
 
 | File | Responsibility |
 | --- | --- |
-| `src/commands/common.py` | Shared Rich-based command helpers: initialization checks, `echo_section`, `echo_bullet`, `echo_kv`, `echo_status_line`, `make_table`, `progress_report`, `emit_json`; module-level `console` and `err_console` with automatic TTY and `NO_COLOR` detection |
+| `src/commands/common.py` | Shared Rich-based command helpers: initialization checks, `echo_section`, `echo_bullet`, `echo_kv`, `echo_status_line`, `make_table`, `progress_report`, `emit_json`; module-level `console` and `err_console` with automatic TTY, `NO_COLOR` detection, and replacement-mode output encoding |
 | `src/commands/init.py` | Project initialization behavior |
 | `src/commands/add.py` | Primary source-add command, delegates to `src/commands/ingest.py` for shared implementation |
 | `src/commands/ingest.py` | Shared ingest implementation for single files and directory ingest that recurses by default |
@@ -45,9 +46,9 @@
 | `src/services/compile_service.py` | Derived wiki generation with provider-backed summary generation, deterministic summary fallback on weak provider output, sentence-safe excerpts, schema-excerpt-enhanced prompts, `type: source` frontmatter, analysis-page discovery for index, parseable heading-style log entries, callback-friendly compile planning/progress hooks, and persisted resume/failure tracking for interrupted compiles |
 | `src/services/concept_service.py` | Provider-first structured concept clustering with source-digest cache, deterministic NLTK/collocation fallback, concept-page generation, and backlink maintenance |
 | `src/services/diff_service.py` | Pre-update source diff reporting |
-| `src/services/search_service.py` | Search over compiled artifacts using a SQLite FTS5 chunk index with page-level result deduplication, best-chunk section/index preservation for downstream citations, and fallback markdown scanning if FTS5 is unavailable |
-| `src/services/query_service.py` | Provider-backed query answer assembly from maintained wiki context; schema-excerpt-enhanced prompts, parseable heading-style log entries, optional save-to-wiki for analysis pages that also refresh the search index and wiki index immediately |
-| `src/services/review_service.py` | Provider-required semantic review: deterministic topic overlap and terminology checks plus schema-guided JSON provider review with legacy parser fallback |
+| `src/services/search_service.py` | Search over compiled artifacts using a SQLite FTS5 chunk index with page-level result deduplication, evidence-section chunking, metadata-section suppression, best-chunk section/index preservation for downstream citations, and fallback markdown scanning if FTS5 is unavailable |
+| `src/services/query_service.py` | Provider-backed query answer assembly from maintained source/concept context while excluding saved analysis pages from evidence; schema-excerpt-enhanced prompts, low-reasoning structured ask requests with larger output budget, parseable heading-style log entries, semantic answer/citation validation, provider-status capture, and optional save-to-wiki for non-blank analysis pages that also refresh the search index and wiki index immediately |
+| `src/services/review_service.py` | Provider-required semantic review: deterministic topic overlap and terminology checks with inflection/specificity/negating-prefix suppression plus schema-guided JSON provider review over curated excerpts that rejects malformed output and filters excerpt-boundary truncation claims |
 | `src/services/lint_service.py` | Structural validation for wiki links, markdown links, fragments, headings, titles, typed frontmatter (including `missing-type` warning for legacy source pages), empty pages, and maintenance findings |
 | `src/services/export_service.py` | Vault export generation with atomic copies into the Obsidian view |
 | `src/services/status_service.py` | Project and corpus status reporting |
@@ -67,7 +68,7 @@
 | --- | --- |
 | `src/storage/__init__.py` | Re-exports `CompileRunStore` and `SearchIndexStore` |
 | `src/storage/compile_run_store.py` | JSON-backed compile-run state at `graph/exports/compile_runs.json`: active run tracking, failed-run resume candidates, and compile history |
-| `src/storage/search_index_store.py` | SQLite FTS5-backed chunk index at `graph/exports/search_index.sqlite3`: tracked wiki-file inventory, chunk table, FTS `snippet()` output, and best-hit chunk indices for citation refs |
+| `src/storage/search_index_store.py` | SQLite FTS5-backed chunk index at `graph/exports/search_index.sqlite3`: tracked wiki-file inventory, versioned chunker metadata, chunk table, FTS `snippet()` output, and best-hit chunk indices for citation refs |
 
 ## Supporting Project Files
 
@@ -90,8 +91,8 @@
 
 ## Structured Provider Response Usage
 
-- `src/services/concept_service.py`: provider-first concept clustering returns structured clusters and caches them by source-page digest.
-- `src/services/review_service.py`: provider-backed review accepts only structured JSON findings and rejects malformed legacy pipe output.
-- `src/services/query_service.py`: `kb ask` requests structured answers with markdown, claims, citations, and an insufficient-evidence flag; saved analysis pages persist claim and citation metadata.
-- `src/services/compile_service.py`: compile summary generation requests structured summary metadata and stores key points, open questions, and title suggestions when returned.
+- `src/services/concept_service.py`: provider-first concept clustering returns structured clusters, uses medium reasoning effort, and caches them by source-page digest.
+- `src/services/review_service.py`: provider-backed review accepts only structured JSON findings, rejects malformed legacy pipe output, sends curated source/concept excerpts, and filters provider findings that only describe excerpt truncation.
+- `src/services/query_service.py`: `kb ask` requests structured answers with markdown, claims, citations, and an insufficient-evidence flag using low reasoning effort and a larger visible-output budget; provider answers must have non-empty markdown, grounded citation refs, and claims when evidence is sufficient. Saved analysis pages persist claim, citation, and provider-status metadata and refuse blank answers.
+- `src/services/compile_service.py`: compile summary generation requests structured summary metadata through the shared parser, uses low reasoning effort for summary JSON, and stores key points, open questions, and title suggestions when returned.
 - `src/services/lint_service.py`: saved analysis pages expose citation counts and insufficient-evidence state as frontmatter so citation discipline can be checked without text scraping.

@@ -518,6 +518,30 @@ def test_lint_service_reports_heading_structure_and_duplicate_titles(
     assert "duplicate-title" in codes
 
 
+def test_lint_service_allows_duplicate_analysis_titles(test_project) -> None:
+    analysis_page = (
+        "---\n"
+        "title: Repeated Question\n"
+        "summary: Saved answer.\n"
+        "type: analysis\n"
+        "question: Repeated Question\n"
+        "saved_at: '2026-04-20T12:00:00+00:00'\n"
+        "citations: []\n"
+        "insufficient_evidence: false\n"
+        "claim_count: 0\n"
+        "citation_count: 0\n"
+        "---\n\n"
+        "# Repeated Question\n\n"
+        "Saved answer body.\n"
+    )
+    test_project.write_file("wiki/analysis/first.md", analysis_page)
+    test_project.write_file("wiki/analysis/second.md", analysis_page)
+
+    report = test_project.services["lint"].lint()
+
+    assert not any(issue.code == "duplicate-title" for issue in report.issues)
+
+
 def test_lint_service_reports_invalid_frontmatter_types(test_project) -> None:
     test_project.write_file(
         "wiki/sources/bad-types.md",

@@ -266,6 +266,25 @@ def test_openai_provider_generate() -> None:
     assert result.model_name == "gpt-5.4-mini"
 
 
+def test_openai_provider_uses_request_reasoning_effort_override() -> None:
+    with patch.dict("os.environ", {"OPENAI_API_KEY": "test"}):
+        with patch("src.providers.openai_provider.OpenAI") as MockClient:
+            from src.providers.openai_provider import OpenAIProvider
+
+            provider = OpenAIProvider(reasoning_effort="high")
+            mock_completion = MagicMock()
+            mock_completion.choices = [MagicMock()]
+            mock_completion.choices[0].message.content = "response"
+            MockClient.return_value.chat.completions.create.return_value = (
+                mock_completion
+            )
+
+            provider.generate(ProviderRequest(prompt="test", reasoning_effort="low"))
+
+    call_kwargs = MockClient.return_value.chat.completions.create.call_args.kwargs
+    assert call_kwargs["reasoning_effort"] == "low"
+
+
 def test_openai_provider_generate_without_system_prompt() -> None:
     with patch.dict("os.environ", {"OPENAI_API_KEY": "test"}):
         with patch("src.providers.openai_provider.OpenAI") as MockClient:
@@ -362,6 +381,29 @@ def test_gemini_provider_generate() -> None:
     assert result.model_name == "gemini-3.1-flash-lite-preview"
 
 
+def test_gemini_response_schema_removes_additional_properties() -> None:
+    from src.providers.gemini_provider import _gemini_response_schema
+
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {"name": {"type": "string"}},
+                },
+            }
+        },
+    }
+
+    converted = _gemini_response_schema(schema)
+
+    assert "additionalProperties" not in json.dumps(converted)
+
+
 def test_gemini_provider_generate_without_system_prompt() -> None:
     with patch.dict("os.environ", {"GEMINI_API_KEY": "test"}):
         with patch("src.providers.gemini_provider.genai") as mock_genai:
@@ -397,7 +439,23 @@ def test_query_service_uses_provider_when_available(test_project) -> None:
         "wiki/sources/alpha.md",
         "---\ntitle: Alpha\n---\n# Alpha\n\nKnowledge base traceability.\n",
     )
-    provider = FakeProvider(text="The wiki tracks provenance via raw hashes.")
+    provider = FakeProvider(
+        text=json.dumps(
+            {
+                "answer_markdown": "The wiki tracks provenance via raw hashes.",
+                "claims": [
+                    {
+                        "text": "The wiki tracks provenance.",
+                        "citation_refs": ["wiki/sources/alpha.md#chunk-0"],
+                    }
+                ],
+                "citations": [
+                    {"ref": "wiki/sources/alpha.md#chunk-0", "title": "Alpha"}
+                ],
+                "insufficient_evidence": False,
+            }
+        )
+    )
     from src.services.search_service import SearchService
 
     query_service = QueryService(
@@ -631,7 +689,14 @@ def test_parse_provider_issues_no_issues() -> None:
 
 
 def test_parse_provider_issues_empty_string() -> None:
-    assert ReviewService._parse_provider_issues("") == []
+    with pytest.raises(ValueError, match="structured JSON schema"):
+        ReviewService._parse_provider_issues("")
+
+
+def test_parse_provider_issues_reads_fenced_json() -> None:
+    raw = '```json\n{"issues": []}\n```'
+
+    assert ReviewService._parse_provider_issues(raw) == []
 
 
 def test_parse_provider_issues_rejects_non_json() -> None:
@@ -653,3 +718,8 @@ def test_provider_request_max_tokens_default() -> None:
 def test_provider_request_custom_max_tokens() -> None:
     req = ProviderRequest(prompt="hi", max_tokens=512)
     assert req.max_tokens == 512
+
+
+def test_provider_request_reasoning_effort_override() -> None:
+    req = ProviderRequest(prompt="hi", reasoning_effort="low")
+    assert req.reasoning_effort == "low"

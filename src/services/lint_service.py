@@ -109,6 +109,9 @@ class LintService:
                 self.paths.wiki_concepts_dir,
                 self.paths.wiki_analysis_dir,
             }:
+                is_analysis_page = (
+                    state.file_path.parent == self.paths.wiki_analysis_dir
+                )
                 if state.frontmatter is None:
                     issues.append(
                         LintIssue(
@@ -120,12 +123,9 @@ class LintService:
                     )
                 else:
                     page_type = state.frontmatter.get("type")
-                    is_analysis_page = (
-                        state.file_path.parent == self.paths.wiki_analysis_dir
-                        or (
-                            state.file_path.parent == self.paths.wiki_concepts_dir
-                            and page_type == "analysis"
-                        )
+                    is_analysis_page = is_analysis_page or (
+                        state.file_path.parent == self.paths.wiki_concepts_dir
+                        and page_type == "analysis"
                     )
                     is_concept_page = (
                         state.file_path.parent == self.paths.wiki_concepts_dir
@@ -187,8 +187,9 @@ class LintService:
                     issues.extend(self._lint_frontmatter_types(state))
                     issues.extend(self._lint_analysis_page(state))
 
-                normalized_title = state.page_title.casefold().strip()
-                page_titles.setdefault(normalized_title, []).append(state)
+                if not is_analysis_page:
+                    normalized_title = state.page_title.casefold().strip()
+                    page_titles.setdefault(normalized_title, []).append(state)
 
             issues.extend(self._lint_heading_structure(state))
             issues.extend(self._lint_empty_page(state))

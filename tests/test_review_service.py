@@ -105,6 +105,95 @@ def test_review_service_detects_terminology_variants(test_project) -> None:
     assert "knowledge-base" in variants_text or "knowledgebase" in variants_text
 
 
+def test_review_service_suppresses_simple_inflection_variants(test_project) -> None:
+    test_project.write_file(
+        "wiki/sources/page-a.md",
+        "The retriever indexes sources questions datasets benchmarks documents.",
+    )
+    test_project.write_file(
+        "wiki/sources/page-b.md",
+        "The retrievers index source question dataset benchmark document.",
+    )
+
+    report = test_project.services["review"].review()
+
+    variant_messages = " ".join(
+        issue.message for issue in report.issues if issue.code == "terminology-variant"
+    )
+    assert "retriever" not in variant_messages
+    assert "source" not in variant_messages
+    assert "question" not in variant_messages
+    assert "dataset" not in variant_messages
+
+
+def test_review_service_suppresses_false_positive_fuzzy_variants(
+    test_project,
+) -> None:
+    test_project.write_file(
+        "wiki/sources/page-a.md",
+        "supervised accuracy billions open-domain knowledge-intensive passage-retrieval",
+    )
+    test_project.write_file(
+        "wiki/sources/page-b.md",
+        "unsupervised inaccuracy millions open-domain-qa "
+        "knowledge-intensive-tasks dense-passage-retrieval",
+    )
+
+    report = test_project.services["review"].review()
+
+    variant_messages = " ".join(
+        issue.message for issue in report.issues if issue.code == "terminology-variant"
+    )
+    assert "unsupervised" not in variant_messages
+    assert "inaccuracy" not in variant_messages
+    assert "millions" not in variant_messages
+    assert "open-domain-qa" not in variant_messages
+    assert "knowledge-intensive-tasks" not in variant_messages
+    assert "dense-passage-retrieval" not in variant_messages
+
+
+def test_review_service_suppresses_near_spellings_with_different_roots(
+    test_project,
+) -> None:
+    test_project.write_file(
+        "wiki/sources/page-a.md",
+        "contexts produce retrieval evidence",
+    )
+    test_project.write_file(
+        "wiki/sources/page-b.md",
+        "contents product retrieval evidence",
+    )
+
+    report = test_project.services["review"].review()
+
+    variant_messages = " ".join(
+        issue.message for issue in report.issues if issue.code == "terminology-variant"
+    )
+    assert "contexts" not in variant_messages
+    assert "produce" not in variant_messages
+
+
+def test_review_service_detects_hyphenation_variants(
+    test_project,
+) -> None:
+    test_project.write_file(
+        "wiki/sources/page-a.md",
+        "pretraining fine-tuning reranking",
+    )
+    test_project.write_file(
+        "wiki/sources/page-b.md",
+        "pre-training finetuning re-ranking",
+    )
+
+    report = test_project.services["review"].review()
+
+    variant_messages = " ".join(
+        issue.message for issue in report.issues if issue.code == "terminology-variant"
+    )
+    # Hyphenation variants are legitimate inconsistency suggestions
+    assert "pretraining" in variant_messages or "pre-training" in variant_messages
+
+
 def test_review_report_properties() -> None:
     from src.models.wiki_models import ReviewIssue, ReviewReport
 
@@ -219,21 +308,21 @@ def test_review_detects_spelling_variants_with_rapidfuzz(test_project) -> None:
         "---\ntitle: A\nsummary: s\ntype: source\nsource_id: a\n"
         "source_hash: h\nraw_path: raw/a.md\norigin: local\n"
         "compiled_at: t\ningested_at: t\ntags: []\n---\n"
-        "optimization strategies work great\n",
+        "retriever strategies work great\n",
     )
     test_project.write_file(
         "wiki/sources/b.md",
         "---\ntitle: B\nsummary: s\ntype: source\nsource_id: b\n"
         "source_hash: h\nraw_path: raw/b.md\norigin: local\n"
         "compiled_at: t\ningested_at: t\ntags: []\n---\n"
-        "optimisation strategies work great\n",
+        "retriver strategies work great\n",
     )
 
     report = test_project.services["review"].review()
     variant_issues = [i for i in report.issues if i.code == "terminology-variant"]
     assert len(variant_issues) >= 1
     msgs = " ".join(i.message for i in variant_issues)
-    assert "optimis" in msgs or "optimiz" in msgs
+    assert "retriever" in msgs or "retriver" in msgs
 
 
 def test_review_variant_ignores_short_terms(test_project) -> None:
@@ -332,3 +421,50 @@ def test_review_service_provider_review_raises_on_provider_failure(
 
     with pytest.raises(ProviderExecutionError, match="provider crash"):
         service._provider_review()
+
+
+def test_provider_review_filters_truncation_and_uses_curated_excerpts(
+    test_project,
+) -> None:
+    test_project.write_file(
+        "wiki/sources/alpha.md",
+        "---\ntitle: Alpha\ntype: source\n---\n\n"
+        "# Alpha\n\n"
+        "## Summary\n\nUseful summary.\n\n"
+        "## Source Details\n\n- Raw file: `raw/sources/alpha.pdf`\n\n"
+        "## Key Excerpt\n\nUseful evidence excerpt.\n",
+    )
+    provider = SequencedReviewProvider(
+        [
+            json.dumps(
+                {
+                    "issues": [
+                        {
+                            "severity": "error",
+                            "code": "TRUNCATED_CONTENT",
+                            "pages": ["wiki/sources/alpha.md"],
+                            "message": "Content appears truncated mid-sentence.",
+                        },
+                        {
+                            "severity": "warning",
+                            "code": "real-issue",
+                            "pages": ["wiki/sources/alpha.md"],
+                            "message": "A real issue remains.",
+                        },
+                    ]
+                }
+            )
+        ]
+    )
+    service = ReviewService(test_project.paths, provider=provider)
+
+    issues, mode = service._provider_review()
+
+    assert mode == "provider:fake-review-v1"
+    assert [issue.code for issue in issues] == ["real-issue"]
+    request = provider.requests[0]
+    assert request.max_tokens == 4096
+    assert request.reasoning_effort == "low"
+    assert "Useful summary" in request.prompt
+    assert "Useful evidence excerpt" in request.prompt
+    assert "Source Details" not in request.prompt

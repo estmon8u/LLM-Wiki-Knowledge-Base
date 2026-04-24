@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 import yaml
 
 from src.models.wiki_models import SearchResult
@@ -15,11 +15,13 @@ from src.providers import (
     UnavailableProvider,
 )
 from src.providers.base import ProviderRequest, TextProvider
+from src.providers.structured import StructuredOutputError, parse_model_payload
 from src.services.config_service import schema_excerpt
 from src.services.project_service import (
     ProjectPaths,
     atomic_write_text,
     slugify,
+    unique_markdown_heading,
     utc_now_iso,
 )
 from src.services.search_service import SearchService
@@ -30,8 +32,10 @@ _QUERY_SYSTEM_PROMPT = (
     "You are a research assistant for a curated markdown knowledge base. "
     "Answer the user's question using ONLY the evidence provided below. "
     "Return only JSON matching the provided schema. Cite each claim with the "
-    "exact citation_ref values from the evidence bundle. If the evidence is "
-    "insufficient, set insufficient_evidence to true and explain the gap."
+    "exact citation_ref values from the evidence bundle. Never return a claim "
+    "object with empty citation_refs; omit unsupported claims instead. If the "
+    "evidence is insufficient, set insufficient_evidence to true and explain "
+    "the gap."
 )
 
 _QUERY_RESPONSE_SCHEMA = {
@@ -112,6 +116,7 @@ class QueryAnswer:
     claims: list[QueryClaim] = field(default_factory=list)
     declared_citations: list[QueryCitation] = field(default_factory=list)
     insufficient_evidence: bool = False
+    provider_status: dict[str, object] = field(default_factory=dict)
 
 
 class QueryService:
@@ -132,7 +137,9 @@ class QueryService:
 
     def answer_question(self, question: str, *, limit: int = 3) -> QueryAnswer:
         provider = self._require_provider()
-        matches = self.search_service.search(question, limit=limit)
+        matches = self.search_service.search(
+            question, limit=limit, include_analysis=False
+        )
         if not matches:
             return QueryAnswer(
                 answer="No compiled wiki pages matched that question yet. Ingest more sources or re-run compile.",
@@ -166,23 +173,30 @@ class QueryService:
                 ProviderRequest(
                     prompt=prompt,
                     system_prompt=system_prompt,
-                    max_tokens=1024,
+                    max_tokens=4096,
                     response_schema=_QUERY_RESPONSE_SCHEMA,
                     response_schema_name="kb_query_answer",
+                    reasoning_effort="low",
                 )
             )
-            structured_answer = _parse_provider_query_answer(response.text)
-            if structured_answer is not None:
-                return _query_answer_from_structured_response(
-                    structured_answer,
-                    matches,
-                    mode=f"provider:{response.model_name}",
-                )
-            return QueryAnswer(
-                answer=response.text,
-                citations=matches,
+            try:
+                structured_answer = _parse_provider_query_answer(response.text)
+                _validate_provider_query_answer(structured_answer, matches)
+            except ValueError as exc:
+                raise ProviderExecutionError(
+                    _format_provider_response_error(response, str(exc))
+                ) from exc
+            return _query_answer_from_structured_response(
+                structured_answer,
+                matches,
                 mode=f"provider:{response.model_name}",
+                provider_status=_provider_status_from_response(
+                    response,
+                    provider=provider,
+                ),
             )
+        except ProviderExecutionError:
+            raise
         except Exception as exc:
             raise ProviderExecutionError(f"Provider query failed: {exc}") from exc
 
@@ -195,8 +209,10 @@ class QueryService:
             "## Output Rules\n\n"
             "Use only the evidence above. Keep claims concise. For every factual "
             "claim, include at least one exact citation_ref from the evidence. "
-            "Do not invent citation refs. If the evidence is insufficient, set "
-            "insufficient_evidence to true and explain what is missing.\n\n"
+            "Do not invent citation refs. Do not include claim objects that have "
+            "no citation_refs; describe unsupported gaps in answer_markdown and "
+            "set insufficient_evidence to true instead. If the evidence is "
+            "insufficient, explain what is missing.\n\n"
             f"## Question\n\n{question}"
         )
 
@@ -210,6 +226,7 @@ class QueryService:
     def save_answer(
         self, question: str, answer: QueryAnswer, *, slug: str | None = None
     ) -> str:
+        _validate_saved_answer(answer)
         if slug:
             safe_slug = slugify(slug)
         else:
@@ -218,8 +235,6 @@ class QueryService:
             safe_slug = "analysis-" + slugify(answer.answer[:40])
         timestamp = utc_now_iso()
         summary = answer.answer.replace("\n", " ").strip()[:280].rstrip()
-        if not summary:
-            summary = "Analysis page for: " + question[:250]
         frontmatter = {
             "title": question,
             "summary": summary,
@@ -231,6 +246,8 @@ class QueryService:
             "claim_count": len(answer.claims),
             "citation_count": len(answer.citations),
         }
+        if answer.provider_status:
+            frontmatter["provider_status"] = answer.provider_status
         if answer.claims:
             frontmatter["claims"] = [
                 {
@@ -276,7 +293,7 @@ class QueryService:
 
     def _append_log(self, question: str, dest: "Path") -> None:
         """Append a saved-analysis entry to wiki/log.md."""
-        timestamp = utc_now_iso()[:10]
+        timestamp = utc_now_iso()
         current = "# Activity Log\n"
         if self.paths.wiki_log_file.exists():
             current = self.paths.wiki_log_file.read_text(encoding="utf-8")
@@ -284,7 +301,11 @@ class QueryService:
             current += "\n"
         rel = dest.relative_to(self.paths.root).as_posix()
         question_summary = _log_safe_text(question)
-        current += f"\n## [{timestamp}] ask --save | {question_summary} -> {rel}\n"
+        heading = unique_markdown_heading(
+            current,
+            f"## [{timestamp}] ask --save | {question_summary} -> {rel}",
+        )
+        current += f"\n{heading}\n"
         atomic_write_text(self.paths.wiki_log_file, current)
 
     def _format_saved_citation(self, citation: SearchResult) -> str:
@@ -300,15 +321,108 @@ class QueryService:
         return f"- {claim.text} ({refs})"
 
 
-def _parse_provider_query_answer(raw: str) -> _ProviderQueryAnswer | None:
-    stripped = raw.strip()
-    if not stripped:
-        return None
+def _parse_provider_query_answer(raw: str) -> _ProviderQueryAnswer:
     try:
-        payload = json.loads(stripped)
-        return _ProviderQueryAnswer.model_validate(payload)
-    except (json.JSONDecodeError, TypeError, ValidationError):
-        return None
+        return parse_model_payload(
+            raw,
+            _ProviderQueryAnswer,
+            label="Provider query response",
+        )
+    except StructuredOutputError as exc:
+        raise ValueError(str(exc)) from exc
+
+
+def _validate_provider_query_answer(
+    structured: _ProviderQueryAnswer,
+    matches: list[SearchResult],
+) -> None:
+    answer_text = structured.answer_markdown.strip()
+    if not answer_text:
+        raise ValueError("Provider returned empty answer_markdown.")
+
+    known_refs = _known_evidence_refs(matches)
+    claim_refs: list[str] = []
+    for claim in structured.claims:
+        refs = [ref.strip() for ref in claim.citation_refs if ref.strip()]
+        if not refs:
+            raise ValueError("Provider returned a claim without citation_refs.")
+        unknown = [ref for ref in refs if ref not in known_refs]
+        if unknown:
+            raise ValueError(
+                "Provider returned citation_refs outside retrieved evidence: "
+                + ", ".join(sorted(set(unknown)))
+            )
+        claim_refs.extend(refs)
+
+    declared_refs = [citation.ref.strip() for citation in structured.citations]
+    unknown_declared = [ref for ref in declared_refs if ref and ref not in known_refs]
+    if unknown_declared:
+        raise ValueError(
+            "Provider returned citations outside retrieved evidence: "
+            + ", ".join(sorted(set(unknown_declared)))
+        )
+
+    if not structured.insufficient_evidence:
+        if not structured.claims:
+            raise ValueError(
+                "Provider returned insufficient_evidence=false but no claims."
+            )
+        if not claim_refs:
+            raise ValueError(
+                "Provider returned insufficient_evidence=false but no grounded citation_refs."
+            )
+
+
+def _known_evidence_refs(matches: list[SearchResult]) -> set[str]:
+    refs: set[str] = set()
+    for match in matches:
+        refs.add(match.citation_ref)
+        refs.add(match.path)
+    return refs
+
+
+def _validate_saved_answer(answer: QueryAnswer) -> None:
+    if answer.answer.strip():
+        return
+    raise ValueError("Refusing to save an empty analysis answer.")
+
+
+def _format_provider_response_error(response: object, message: str) -> str:
+    details = [message]
+    finish_reason = getattr(response, "finish_reason", None)
+    if finish_reason:
+        details.append(f"finish_reason={finish_reason}")
+    output_tokens = getattr(response, "output_tokens", None)
+    if output_tokens is not None:
+        details.append(f"output_tokens={output_tokens}")
+    return "Provider query failed: " + "; ".join(details)
+
+
+def _provider_status_from_response(
+    response: object,
+    *,
+    provider: TextProvider,
+) -> dict[str, object]:
+    status: dict[str, object] = {
+        "parsed": True,
+        "semantically_valid": True,
+    }
+    provider_name = getattr(response, "provider", "") or getattr(provider, "name", "")
+    if provider_name:
+        status["provider"] = provider_name
+    model_name = getattr(response, "model_name", "")
+    if model_name:
+        status["model"] = model_name
+    finish_reason = getattr(response, "finish_reason", None)
+    if finish_reason:
+        status["finish_reason"] = finish_reason
+    input_tokens = getattr(response, "input_tokens", None)
+    if input_tokens is not None:
+        status["input_tokens"] = input_tokens
+    output_tokens = getattr(response, "output_tokens", None)
+    if output_tokens is not None:
+        status["output_tokens"] = output_tokens
+    return status
 
 
 def _query_answer_from_structured_response(
@@ -316,6 +430,7 @@ def _query_answer_from_structured_response(
     matches: list[SearchResult],
     *,
     mode: str,
+    provider_status: dict[str, object],
 ) -> QueryAnswer:
     known_by_ref: dict[str, SearchResult] = {}
     for match in matches:
@@ -360,6 +475,7 @@ def _query_answer_from_structured_response(
         claims=claims,
         declared_citations=declared_citations,
         insufficient_evidence=structured.insufficient_evidence,
+        provider_status=provider_status,
     )
 
 

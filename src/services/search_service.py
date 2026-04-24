@@ -26,6 +26,14 @@ logger = logging.getLogger(__name__)
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 _CHUNK_CHAR_LIMIT = 1200
 _MAINTENANCE_PAGE_NAMES: frozenset[str] = frozenset({"wiki/index.md", "wiki/log.md"})
+_NON_EVIDENCE_SECTION_TITLES: frozenset[str] = frozenset(
+    {
+        "citations",
+        "related concept pages",
+        "source details",
+        "source pages",
+    }
+)
 _INDEXABLE_FM_KEYS: frozenset[str] = frozenset(
     {"title", "summary", "tags", "aliases", "source_title", "description", "keywords"}
 )
@@ -46,7 +54,12 @@ class SearchService:
         self._fts_available = True
 
     def search(
-        self, query: str, *, limit: int = 5, include_concepts: bool = False
+        self,
+        query: str,
+        *,
+        limit: int = 5,
+        include_concepts: bool = False,
+        include_analysis: bool = True,
     ) -> list[SearchResult]:
         terms = _query_terms(query)
         if not terms:
@@ -56,11 +69,17 @@ class SearchService:
             self.refresh()
             if self._fts_available:
                 return self._search_index(
-                    terms, limit=limit, include_concepts=include_concepts
+                    terms,
+                    limit=limit,
+                    include_concepts=include_concepts,
+                    include_analysis=include_analysis,
                 )
 
         return self._scan_markdown_files(
-            terms, limit=limit, include_concepts=include_concepts
+            terms,
+            limit=limit,
+            include_concepts=include_concepts,
+            include_analysis=include_analysis,
         )
 
     def refresh(self, *, force: bool = False) -> bool:
@@ -118,7 +137,12 @@ class SearchService:
             logger.warning("Search index file refresh skipped: %s", exc)
 
     def _search_index(
-        self, terms: list[str], *, limit: int, include_concepts: bool = False
+        self,
+        terms: list[str],
+        *,
+        limit: int,
+        include_concepts: bool = False,
+        include_analysis: bool = True,
     ) -> list[SearchResult]:
         try:
             hits = self.index_store.search(
@@ -129,7 +153,10 @@ class SearchService:
             logger.warning("SQLite FTS5 search query unavailable: %s", exc)
             self._fts_available = False
             return self._scan_markdown_files(
-                terms, limit=limit, include_concepts=include_concepts
+                terms,
+                limit=limit,
+                include_concepts=include_concepts,
+                include_analysis=include_analysis,
             )
 
         results: list[SearchResult] = []
@@ -139,8 +166,10 @@ class SearchService:
                 continue
             if not include_concepts and hit.page_type == "concept":
                 continue
+            if not include_analysis and hit.page_type == "analysis":
+                continue
             seen_paths.add(hit.page_path)
-            snippet = " ".join(hit.snippet.split())
+            snippet = _clean_search_snippet(hit.snippet)
             if not snippet:
                 snippet = hit.section or hit.title
             results.append(
@@ -159,7 +188,12 @@ class SearchService:
         return results
 
     def _scan_markdown_files(
-        self, terms: list[str], *, limit: int, include_concepts: bool = False
+        self,
+        terms: list[str],
+        *,
+        limit: int,
+        include_concepts: bool = False,
+        include_analysis: bool = True,
     ) -> list[SearchResult]:
         results: list[SearchResult] = []
         for file_path in sorted(self.paths.wiki_dir.rglob("*.md")):
@@ -171,6 +205,9 @@ class SearchService:
             ):
                 continue
             text = file_path.read_text(encoding="utf-8")
+            page_type = _extract_frontmatter_type(text)
+            if not include_analysis and page_type == "analysis":
+                continue
             normalized = text.lower()
             score = sum(normalized.count(term) for term in terms)
             if score <= 0:
@@ -219,7 +256,12 @@ class SearchService:
         metadata = _frontmatter_search_text(frontmatter)
         chunks = _chunk_markdown_body(text, title)
         if not chunks:
-            chunks = [_SectionChunk(section=title, body=metadata or title)]
+            chunks = [
+                _SectionChunk(
+                    section=title,
+                    body=_fallback_chunk_body(text, metadata=metadata, title=title),
+                )
+            ]
 
         return [
             IndexedChunk(
@@ -331,6 +373,8 @@ def _chunk_markdown_body(text: str, title: str) -> list[_SectionChunk]:
 
     chunks: list[_SectionChunk] = []
     for section in markdown_sections(text, default_title=title):
+        if section.title.strip().casefold() in _NON_EVIDENCE_SECTION_TITLES:
+            continue
         paragraphs = section.paragraphs
         if not paragraphs:
             continue
@@ -364,6 +408,13 @@ def _chunk_markdown_body(text: str, title: str) -> list[_SectionChunk]:
     return chunks
 
 
+def _fallback_chunk_body(text: str, *, metadata: str, title: str) -> str:
+    body = " ".join(_strip_frontmatter(text).split()).strip()
+    if body:
+        return body[:_CHUNK_CHAR_LIMIT]
+    return metadata or title
+
+
 def _paragraphs(text: str) -> list[str]:
     return markdown_paragraphs(
         text,
@@ -393,3 +444,13 @@ def _extract_snippet(text: str, terms: list[str]) -> str:
     end = min(len(text), first_position + 220)
     snippet = " ".join(text[start:end].split())
     return snippet or text[:220].strip()
+
+
+def _clean_search_snippet(snippet: str) -> str:
+    cleaned = " ".join(snippet.split()).strip()
+    if not cleaned or cleaned == "[]":
+        return ""
+    cleaned = re.sub(r"\[\[([^|\]]+)\|([^\]]+)\]\]", r"\2", cleaned)
+    cleaned = re.sub(r"\[\[([^\]]+)\]\]", r"\1", cleaned)
+    cleaned = re.sub(r"`([^`]+)`", r"\1", cleaned)
+    return cleaned.strip()

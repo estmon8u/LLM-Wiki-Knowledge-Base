@@ -53,4 +53,13 @@ class AnthropicProvider(TextProvider):
             kwargs["system"] = system_prompt
         message = self._client.messages.create(**kwargs)
         text = next((b.text for b in message.content if b.type == "text"), "")
-        return ProviderResponse(text=text.strip(), model_name=self.model)
+        usage = getattr(message, "usage", None)
+        return ProviderResponse(
+            text=text.strip(),
+            model_name=self.model,
+            provider=self.name,
+            finish_reason=getattr(message, "stop_reason", None),
+            input_tokens=getattr(usage, "input_tokens", None),
+            output_tokens=getattr(usage, "output_tokens", None),
+            raw=message,
+        )

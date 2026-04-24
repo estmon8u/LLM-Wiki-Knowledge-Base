@@ -168,7 +168,7 @@ poetry run kb update --resume
 | `--resume` | off | Resume the most recent failed or interrupted update run. Cannot be combined with `--force`. |
 
 When source paths are provided, the command adds them first. Always generates concept pages and refreshes the search index after building.
-Compile summaries request structured provider output (`summary`, `key_points`, `open_questions`, and `title_suggestion`) and persist the extra fields when returned. Concept clustering uses the configured provider when available, caches the structured cluster output by source-page digest, and falls back to deterministic collocation-based grouping if provider clustering fails.
+Compile summaries request structured provider output (`summary`, `key_points`, `open_questions`, and `title_suggestion`) and persist the extra fields when returned. Concept clustering uses the configured provider when available, parses direct, fenced, or prefaced JSON through the shared structured-output parser, caches valid cluster output by source-page digest, and falls back to deterministic collocation-based grouping if provider clustering fails.
 
 ### `kb find <terms>`
 
@@ -184,7 +184,7 @@ poetry run kb find --limit 10 "agent architecture"
 | `--limit` | 5 | Maximum number of results to return. |
 | `--json` | off | Output results as JSON for scripting. |
 
-Uses a SQLite FTS5 chunk index stored at `graph/exports/search_index.sqlite3`. Indexes all wiki pages (source pages, concept pages, and saved analysis pages), ranks hits with BM25-style FTS ordering, and returns page-level results using the best matching chunk snippet.
+Uses a SQLite FTS5 chunk index stored at `graph/exports/search_index.sqlite3`. Indexes all wiki pages (source pages, concept pages, and saved analysis pages), ranks hits with BM25-style FTS ordering, and returns page-level results using the best matching chunk snippet. Evidence chunks skip metadata-only sections such as `Source Details`, `Source Pages`, `Related Concept Pages`, and `Citations` so retrieval and citations point at content rather than wiki bookkeeping.
 
 ### `kb ask <question>`
 
@@ -205,9 +205,11 @@ poetry run kb ask --show-evidence "What formats are supported?"
 | `--save-as` | | Save the answer as an analysis page with a custom slug. |
 | `--show-evidence` | off | Print the retrieved evidence snippets before the answer. |
 
-Requires a configured provider. Retrieves the best-matching indexed wiki chunks as evidence, packages the top chunk snippets into a frozen evidence bundle, asks the provider for structured output (`answer_markdown`, `claims`, `citations`, and `insufficient_evidence`), and prints the answer followed by a Citations section.
+Requires a configured provider. Retrieves the best-matching indexed wiki chunks as evidence, packages the top chunk snippets into a frozen evidence bundle, asks the provider for structured output (`answer_markdown`, `claims`, `citations`, and `insufficient_evidence`), semantically validates the response, and prints the answer followed by a Citations section.
 
-Use `--save` or `--save-as` to persist the answer as a markdown analysis page in `wiki/analysis/` with YAML frontmatter (`type: analysis`), the question, a timestamp, `insufficient_evidence`, claim/citation counts, structured claims/provider citations when available, and backlinks to cited source chunks. Saved analysis pages are indexed for future searches and appear in `wiki/index.md` immediately.
+Provider-backed answers must be both parseable and useful. Empty `answer_markdown`, missing claims when `insufficient_evidence` is false, claims without citation refs, and citation refs outside the retrieved evidence set fail the command instead of being treated as a successful answer. Provider failures include response diagnostics such as finish reason and token counts when the selected SDK exposes them.
+
+Use `--save` or `--save-as` to persist the answer as a markdown analysis page in `wiki/analysis/` with YAML frontmatter (`type: analysis`), the question, a timestamp, `insufficient_evidence`, claim/citation counts, structured claims/provider citations when available, provider status diagnostics, and backlinks to cited source chunks. Blank answers are refused rather than saved. Saved analysis pages are indexed for `kb find` and appear in `wiki/index.md` immediately, but later `kb ask` runs exclude analysis pages from the evidence set so saved answers are not recursively cited as primary evidence. Repeated saves use unique `wiki/log.md` headings so lint does not treat a rerun as a duplicate-heading issue.
 
 ### `kb lint`
 
@@ -221,7 +223,7 @@ Checks for:
 
 - Broken internal links in both wiki-link and standard markdown-link form
 - Missing heading fragments for links such as `[[Page#Section]]` and `[text](page.md#section)`
-- Duplicate page titles, repeated headings, skipped heading levels, and multiple H1 headings
+- Repeated source/concept page titles, repeated headings, skipped heading levels, and multiple H1 headings. Saved analysis pages may share a question title when comparing provider runs.
 - Missing frontmatter or provenance metadata on compiled pages
 - Typed frontmatter validation: string, date (ISO format), and list fields
 - Empty compiled pages that have no body content beyond headings
@@ -264,7 +266,7 @@ Checks for:
 - **Terminology variants** — The same root term appearing in different forms across pages.
 
 This is the semantic complement to `kb lint`. Lint checks structural health deterministically; review checks content-level coherence through heuristics and a provider pass.
-Provider-backed review requests structured JSON when the selected SDK supports schema hints and rejects malformed provider review output instead of parsing legacy pipe-delimited lines.
+Provider-backed review requests structured JSON when the selected SDK supports schema hints and rejects malformed or empty provider review output instead of parsing legacy pipe-delimited lines. The provider pass reviews curated source/concept excerpts rather than maintenance metadata, and excerpt-boundary truncation claims are filtered unless they are backed by actual page content. Deterministic terminology-variant checks suppress simple inflections, specificity-only pairs, and obvious negating-prefix variants before raising drift suggestions.
 
 ### `kb export`
 
@@ -340,6 +342,18 @@ If the provider is missing, those commands fail with a configuration error.
 `kb ask` and `kb review` fail on provider execution errors; `kb update` keeps
 deterministic fallbacks for compile summaries and concept clustering after a
 provider call failure.
+
+Provider responses carry the returned text plus model/provider diagnostics such
+as finish reason and token counts when the SDK exposes them. Saved `kb ask`
+analysis pages persist those parsed/validated diagnostics under `provider_status`
+when the answer comes from a provider. Structured provider
+outputs are parsed through the shared JSON parser, which accepts direct JSON,
+fenced JSON, and common prose-prefaced JSON before schema and semantic
+validation. Services can override provider reasoning effort and output budgets
+per operation; schema-bound commands use lower reasoning settings and larger
+visible-output budgets where needed. Gemini receives a provider-compatible JSON
+schema subset with unsupported `additionalProperties` fields removed before the
+SDK call.
 
 Provider configuration lives entirely in `kb.config.yaml`. The top-level
 `provider.name` selects the active provider, and the `providers` section holds
@@ -420,6 +434,20 @@ calls retry transient failures (rate limits, timeouts, server errors)
 automatically with exponential backoff and jitter; after retries are exhausted,
 `kb ask` and `kb review` fail while `kb update` can fall back for summaries and
 concept clustering.
+
+### Windows and Corporate TLS
+
+Mistral OCR and provider SDK calls use Python's certificate trust path. On
+Windows machines behind corporate TLS inspection, Python may fail with
+`CERTIFICATE_VERIFY_FAILED` even when the browser works. Point `SSL_CERT_FILE`
+or `REQUESTS_CA_BUNDLE` at a PEM bundle trusted by Python, then rerun
+`kb doctor --strict` and retry the ingest/update command:
+
+```powershell
+$env:SSL_CERT_FILE = "D:\path\to\corporate-ca-bundle.pem"
+$env:REQUESTS_CA_BUNDLE = $env:SSL_CERT_FILE
+poetry run kb doctor --strict
+```
 
 ## Conversion Configuration
 

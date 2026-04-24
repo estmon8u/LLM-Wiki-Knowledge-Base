@@ -9,7 +9,7 @@
 | `src/services/` | Deterministic normalization, ingest, compile, concept, diff, lint, review, search, query (ask), export, status, config, and manifest services |
 | `src/models/` | Shared command, source, and wiki dataclasses |
 | `src/engine/` | Command registry boundary |
-| `src/providers/` | Provider abstraction layer with OpenAI, Anthropic, and Gemini implementations; shared Tenacity retry decorator for transient failures and catalog-backed provider resolution |
+| `src/providers/` | Provider abstraction layer with OpenAI, Anthropic, and Gemini implementations; shared structured-output parser, Tenacity retry decorator for transient failures, per-request reasoning/output controls, diagnostics on provider responses, Gemini schema adaptation, and catalog-backed provider resolution |
 | `src/storage/` | Compile-run state persistence and SQLite FTS5 chunk-index storage |
 
 ## Command To Service Mapping
@@ -38,10 +38,10 @@ All commands are flat top-level verbs:
 | Ingest | canonical markdown/plain-text files, Mistral OCR-routed native documents and images, rendered HTML-to-PDF OCR, and a bounded MarkItDown subset | raw source copy, normalized artifact, and manifest metadata |
 | Compile | normalized canonical text plus manifest metadata | source pages with provider-generated summaries, wiki index, and compile log; provider-clustered concept pages with deterministic fallback and source-page backlinks |
 | Diff | manifest metadata plus compile state | pre-compile source status preview |
-| Search | compiled wiki artifacts | ranked page matches derived from indexed chunks |
-| Ask | user question plus compiled context | cited provider answer; optionally saved as an analysis page |
+| Search | compiled wiki artifacts | ranked page matches derived from indexed evidence chunks that skip wiki bookkeeping sections |
+| Ask | user question plus source/concept context, excluding saved analysis pages | cited provider answer validated for parseability, non-empty content, and grounded citation refs; optionally saved as a non-blank analysis page |
 | Lint | compiled wiki and metadata | structural findings for links, fragments, headings, titles, typed frontmatter, empty pages, and maintenance signals |
-| Review | compiled wiki pages | semantic findings from deterministic overlap checks plus schema-guided single-pass provider review |
+| Review | compiled source/concept pages | semantic findings from deterministic overlap checks, noisy terminology-variant suppression, and schema-guided single-pass provider review over curated excerpts |
 | Export | compiled wiki | Obsidian-friendly vault view |
 
 ## Current Ingest Scope
@@ -69,6 +69,8 @@ All commands are flat top-level verbs:
 
 ## Structured Provider Output Contracts
 
-Provider-backed semantic steps now request structured responses at the service boundary instead of parsing freeform text. Concept generation returns concept clusters with title, summary, topic terms, and source pages. Review returns JSON findings with severity, code, pages, and message. `kb ask` returns answer markdown, claims, citations, and an insufficient-evidence flag. Compile summaries return summary, key points, open questions, and a title suggestion.
+Provider-backed semantic steps now request structured responses at the service boundary instead of parsing freeform text. Concept generation returns concept clusters with title, summary, topic terms, and source pages. Review returns JSON findings with severity, code, pages, and message, then filters findings that only reflect curated-excerpt boundaries. `kb ask` returns answer markdown, claims, citations, and an insufficient-evidence flag, and rejects answers that are syntactically valid but empty or ungrounded. Compile summaries return summary, key points, open questions, and a title suggestion.
+
+The provider request boundary also carries operation-specific reasoning effort and token budgets. Schema-bound operational tasks can request lower reasoning effort with enough visible-output budget for valid JSON, while Gemini receives a schema subset that removes unsupported `additionalProperties` keys before SDK submission.
 
 OCR and normalization quality review intentionally remain outside the default structured-output path. Conversion quality is still handled by deterministic converter status and lightweight quality gates unless an explicit future fallback is added.

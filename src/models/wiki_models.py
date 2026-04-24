@@ -33,7 +33,7 @@ class LintReport:
 class SearchResult:
     title: str
     path: str
-    score: int
+    score: float
     snippet: str
     section: str = ""
     chunk_index: Optional[int] = None

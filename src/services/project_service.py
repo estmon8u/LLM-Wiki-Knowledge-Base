@@ -20,6 +20,21 @@ def slugify(value: str) -> str:
     return normalized or "untitled"
 
 
+def unique_markdown_heading(existing_text: str, heading: str) -> str:
+    """Return a heading line that does not duplicate an existing markdown heading."""
+    headings = {
+        line.strip()
+        for line in existing_text.splitlines()
+        if line.lstrip().startswith("#")
+    }
+    if heading not in headings:
+        return heading
+    suffix = 2
+    while f"{heading} ({suffix})" in headings:
+        suffix += 1
+    return f"{heading} ({suffix})"
+
+
 def _atomic_temp_path(path: Path) -> Path:
     return path.parent / f".{path.name}.{uuid.uuid4().hex}.tmp"
 

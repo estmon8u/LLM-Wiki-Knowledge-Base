@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field, ValidationError
 import yaml
 
 from src.providers.base import ProviderRequest, TextProvider
+from src.providers.structured import parse_model_payload
 from src.services.markdown_document import parse_document
 from src.services.project_service import (
     ProjectPaths,
@@ -342,9 +343,10 @@ class ConceptService:
                 ProviderRequest(
                     prompt=prompt,
                     system_prompt=_CONCEPT_SYSTEM_PROMPT,
-                    max_tokens=2048,
+                    max_tokens=4096,
                     response_schema=_CONCEPT_RESPONSE_SCHEMA,
                     response_schema_name="kb_concept_clusters",
+                    reasoning_effort="medium",
                 )
             )
             report = _parse_provider_concept_report(response.text)
@@ -539,8 +541,11 @@ def _provider_concept_prompt(source_pages: list[_SourcePage]) -> str:
 
 
 def _parse_provider_concept_report(raw: str) -> _ProviderConceptReport:
-    payload = json.loads(raw.strip())
-    return _ProviderConceptReport.model_validate(payload)
+    return parse_model_payload(
+        raw,
+        _ProviderConceptReport,
+        label="Provider concept response",
+    )
 
 
 def _drafts_from_provider_report(
