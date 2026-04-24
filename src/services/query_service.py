@@ -16,6 +16,7 @@ from src.providers import (
 )
 from src.providers.base import ProviderRequest, TextProvider
 from src.providers.structured import StructuredOutputError, parse_model_payload
+from src.services.citation_cleanup import clean_citation_refs
 from src.services.config_service import schema_excerpt
 from src.services.project_service import (
     ProjectPaths,
@@ -469,7 +470,7 @@ def _query_answer_from_structured_response(
     ]
 
     return QueryAnswer(
-        answer=structured.answer_markdown.strip(),
+        answer=clean_citation_refs(structured.answer_markdown.strip()),
         citations=citations,
         mode=mode,
         claims=claims,

@@ -1316,14 +1316,29 @@ def test_doctor_json_failure_exits_nonzero() -> None:
         assert data["ok"] is False
 
 
-def test_clean_answer_display_strips_inline_citation_refs() -> None:
-    from src.commands.ask import _clean_answer_display
+def test_clean_citation_refs_strips_inline_citation_refs() -> None:
+    from src.services.citation_cleanup import clean_citation_refs
 
     raw = (
         "Traceability is preserved [wiki/sources/alpha.md#chunk-0] "
         "through compiled pages [wiki/sources/beta.md#chunk-2]."
     )
-    cleaned = _clean_answer_display(raw)
+    cleaned = clean_citation_refs(raw)
     assert "wiki/sources/" not in cleaned
     assert "chunk-" not in cleaned
     assert "Traceability is preserved through compiled pages." in cleaned
+
+    # Multi-ref brackets
+    multi = (
+        "Evidence shows [wiki/sources/a.md#chunk-0, wiki/sources/b.md#chunk-1] support."
+    )
+    assert "wiki/sources/" not in clean_citation_refs(multi)
+    assert "Evidence shows support." in clean_citation_refs(multi)
+
+    # Backticked refs
+    backtick = "Facts [`wiki/sources/a.md#chunk-0`] confirmed."
+    assert "wiki/sources/" not in clean_citation_refs(backtick)
+
+    # Parenthesized refs
+    paren = "Claims (wiki/sources/a.md#chunk-0) stand."
+    assert "wiki/sources/" not in clean_citation_refs(paren)

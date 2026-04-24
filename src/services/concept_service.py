@@ -27,6 +27,7 @@ from src.services.project_service import (
     slugify,
     utc_now_iso,
 )
+from src.services.stopwords import STOPWORDS
 
 logger = logging.getLogger(__name__)
 
@@ -42,131 +43,7 @@ _MANAGED_BLOCK_PATTERN = re.compile(
     r"\n## Related Concept Pages\n\n<!-- kb:concept-backlinks:start -->.*?<!-- kb:concept-backlinks:end -->\n*",
     re.DOTALL,
 )
-_STOPWORDS = frozenset(
-    {
-        "the",
-        "and",
-        "for",
-        "that",
-        "this",
-        "with",
-        "from",
-        "are",
-        "was",
-        "were",
-        "has",
-        "have",
-        "had",
-        "not",
-        "but",
-        "can",
-        "its",
-        "also",
-        "may",
-        "more",
-        "into",
-        "each",
-        "than",
-        "which",
-        "when",
-        "how",
-        "where",
-        "what",
-        "use",
-        "used",
-        "using",
-        "such",
-        "will",
-        "been",
-        "does",
-        "should",
-        "would",
-        "could",
-        "about",
-        "other",
-        "some",
-        "them",
-        "they",
-        "their",
-        "then",
-        "only",
-        "over",
-        "most",
-        "just",
-        "question",
-        "questions",
-        "answer",
-        "answers",
-        "language",
-        "languages",
-        "knowledge",
-        "generation",
-        "augmented",
-        "domain",
-        "learn",
-        "learning",
-        "open",
-        "paper",
-        "papers",
-        "approach",
-        "approaches",
-        "method",
-        "methods",
-        "model",
-        "models",
-        "available",
-        "abstract",
-        "introduction",
-        "section",
-        "sections",
-        "figure",
-        "figures",
-        "table",
-        "tables",
-        "result",
-        "system",
-        "systems",
-        "results",
-        "tasks",
-        "task",
-        "based",
-        "performance",
-        "perform",
-        "different",
-        "various",
-        "several",
-        "show",
-        "shown",
-        "compared",
-        "existing",
-        "previous",
-        "novel",
-        "first",
-        "new",
-        "high",
-        "large",
-        "train",
-        "training",
-        "set",
-        "given",
-        "one",
-        "two",
-        "three",
-        "capstone",
-        "canonical",
-        "canonic",
-    }
-)
-_GENERIC_PHRASES = frozenset(
-    {
-        "question answering",
-        "language model",
-        "language models",
-        "knowledge intensive",
-        "open domain question answering",
-        "retrieval augmented",
-    }
-)
+
 _MIN_SHARED_TERMS = 2
 _MIN_JACCARD = 0.18
 _MIN_SOURCE_PAGES = 3
@@ -688,9 +565,9 @@ def _derive_topic_terms(group: list[_SourcePage]) -> list[str]:
 def _candidate_phrase_tokens(text: str) -> list[str]:
     tokens: list[str] = []
     for token in _WORD_PATTERN.findall(text.lower().replace("-", " ")):
-        if token in _STOPWORDS or len(token) < 3:
+        if token in STOPWORDS or len(token) < 3:
             continue
-        if _stem_token(token) in _STOPWORDS:
+        if _stem_token(token) in STOPWORDS:
             continue
         tokens.append(token)
     return tokens
@@ -746,9 +623,7 @@ def _collocation_topic_terms(page_tokens: list[list[str]]) -> list[str]:
 
 def _is_generic_phrase(phrase: str) -> bool:
     normalized = " ".join(phrase.split())
-    if normalized in _GENERIC_PHRASES:
-        return True
-    return all(token in _STOPWORDS for token in normalized.split())
+    return all(token in STOPWORDS for token in normalized.split())
 
 
 def _format_concept_title(topic_terms: list[str]) -> str:
@@ -778,10 +653,10 @@ def _normalize_phrase_text(text: str) -> str:
 def _extract_terms(text: str) -> set[str]:
     terms: set[str] = set()
     for token in _WORD_PATTERN.findall(text.lower()):
-        if token in _STOPWORDS or len(token) < 3:
+        if token in STOPWORDS or len(token) < 3:
             continue
         stemmed = _stem_token(token)
-        if stemmed in _STOPWORDS:
+        if stemmed in STOPWORDS:
             continue
         terms.add(stemmed)
     return terms

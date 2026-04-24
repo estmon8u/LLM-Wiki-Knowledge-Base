@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from typing import Optional
 
 import click
@@ -76,7 +75,7 @@ def create_command() -> click.Command:
         echo_section("Answer")
         console.print(f"[dim]\\[mode: {answer.mode}][/dim]")
         console.print("")
-        console.print(RichMarkdown(_clean_answer_display(answer.answer)))
+        console.print(RichMarkdown(answer.answer))
 
         if answer.citations:
             console.print("")
@@ -93,13 +92,3 @@ def create_command() -> click.Command:
             console.print(f"\nSaved analysis page: {saved_path}")
 
     return command
-
-
-_INLINE_REF_PATTERN = re.compile(
-    r"\s*\[(?:wiki/[^\]]+#chunk-\d+)\]",
-)
-
-
-def _clean_answer_display(text: str) -> str:
-    """Strip raw citation_ref markers that providers sometimes embed in prose."""
-    return _INLINE_REF_PATTERN.sub("", text)

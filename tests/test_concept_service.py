@@ -74,9 +74,13 @@ def test_extract_terms_filters_stemmed_generic_tokens() -> None:
         "Question answering with language models and learning systems."
     )
 
-    assert "answer" not in terms
-    assert "languag" not in terms
-    assert "learn" not in terms
+    # NLTK stopwords filter function words, not domain content words
+    assert "with" not in terms
+    assert "and" not in terms
+    # Domain words survive general-purpose filtering
+    assert "answer" in terms
+    assert "languag" in terms
+    assert "learn" in terms
 
 
 def test_split_frontmatter_parses_yaml() -> None:
@@ -172,40 +176,32 @@ def test_derive_topic_terms_uses_frequency() -> None:
     assert len(result) <= 3
 
 
-def test_derive_topic_terms_rejects_broad_generic_themes() -> None:
+def test_derive_topic_terms_rejects_pure_stopword_themes() -> None:
+    """Pages whose shared terms are all stopwords produce no topic terms."""
     pages = [
         _SourcePage(
             file_path=None,
             relative_path="wiki/sources/a.md",
             slug="a",
-            title="Question Answering with Language Models",
-            summary="Knowledge intensive language model workflows.",
-            terms=_extract_terms(
-                "Question Answering with Language Models "
-                "Knowledge intensive language model workflows."
-            ),
+            title="The With And But For",
+            summary="The with and but for each.",
+            terms=_extract_terms("The with and but for each."),
         ),
         _SourcePage(
             file_path=None,
             relative_path="wiki/sources/b.md",
             slug="b",
-            title="Language Models for Question Answering",
-            summary="Knowledge intensive tasks for question answering.",
-            terms=_extract_terms(
-                "Language Models for Question Answering "
-                "Knowledge intensive tasks for question answering."
-            ),
+            title="But For The And With",
+            summary="But for the and with each.",
+            terms=_extract_terms("But for the and with each."),
         ),
         _SourcePage(
             file_path=None,
             relative_path="wiki/sources/c.md",
             slug="c",
-            title="Knowledge in Language Models for Question Answering",
-            summary="Question answering tasks depend on language model knowledge.",
-            terms=_extract_terms(
-                "Knowledge in Language Models for Question Answering "
-                "Question answering tasks depend on language model knowledge."
-            ),
+            title="For The With And But",
+            summary="For the with and but each.",
+            terms=_extract_terms("For the with and but each."),
         ),
     ]
 

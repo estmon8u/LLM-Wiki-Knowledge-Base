@@ -22,65 +22,13 @@ from src.services.markdown_document import (
     sections as markdown_sections,
 )
 from src.services.project_service import ProjectPaths
+from src.services.stopwords import STOPWORDS
 
 logger = logging.getLogger(__name__)
 
 
 _STEMMER = SnowballStemmer("english")
 _WORD_PATTERN = re.compile(r"[a-z]+(?:-[a-z]+)*")
-_STOPWORDS = frozenset(
-    {
-        "the",
-        "and",
-        "for",
-        "that",
-        "this",
-        "with",
-        "from",
-        "are",
-        "was",
-        "were",
-        "has",
-        "have",
-        "had",
-        "not",
-        "but",
-        "can",
-        "its",
-        "also",
-        "may",
-        "more",
-        "into",
-        "each",
-        "than",
-        "which",
-        "when",
-        "how",
-        "where",
-        "what",
-        "use",
-        "used",
-        "using",
-        "such",
-        "will",
-        "been",
-        "does",
-        "should",
-        "would",
-        "could",
-        "about",
-        "other",
-        "some",
-        "them",
-        "they",
-        "their",
-        "then",
-        "only",
-        "over",
-        "most",
-        "just",
-    }
-)
 
 _OVERLAP_THRESHOLD = 0.55
 _VARIANT_SIMILARITY_THRESHOLD = 85
@@ -196,7 +144,7 @@ class ReviewService:
             tokens = [
                 word
                 for word in _WORD_PATTERN.findall(text.lower())
-                if word not in _STOPWORDS and len(word) >= 3
+                if word not in STOPWORDS and len(word) >= 3
             ]
             page_tokens[relative] = tokens
         return page_tokens
@@ -266,6 +214,8 @@ class ReviewService:
                 if abs(len(term) - len(other)) > max(3, len(term) // 2):
                     continue
                 if _variant_stem(term) == _variant_stem(other):
+                    continue
+                if _collapse_term(term) == _collapse_term(other):
                     continue
                 if not _looks_like_terminology_variant(term, other):
                     continue

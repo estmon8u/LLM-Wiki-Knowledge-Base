@@ -99,10 +99,11 @@ def test_review_service_detects_terminology_variants(test_project) -> None:
 
     report = test_project.services["review"].review()
 
+    # knowledge-base vs knowledgebase is hyphenation-only, suppressed
     variant_issues = [i for i in report.issues if i.code == "terminology-variant"]
-    assert len(variant_issues) >= 1
-    variants_text = " ".join(i.message for i in variant_issues)
-    assert "knowledge-base" in variants_text or "knowledgebase" in variants_text
+    variant_messages = " ".join(i.message for i in variant_issues)
+    assert "knowledge-base" not in variant_messages
+    assert "knowledgebase" not in variant_messages
 
 
 def test_review_service_suppresses_simple_inflection_variants(test_project) -> None:
@@ -173,16 +174,16 @@ def test_review_service_suppresses_near_spellings_with_different_roots(
     assert "produce" not in variant_messages
 
 
-def test_review_service_detects_hyphenation_variants(
+def test_review_service_suppresses_hyphenation_only_variants(
     test_project,
 ) -> None:
     test_project.write_file(
         "wiki/sources/page-a.md",
-        "pretraining fine-tuning reranking",
+        "pretraining fine-tuning reranking pre-trained",
     )
     test_project.write_file(
         "wiki/sources/page-b.md",
-        "pre-training finetuning re-ranking",
+        "pre-training finetuning re-ranking pretrained",
     )
 
     report = test_project.services["review"].review()
@@ -190,8 +191,15 @@ def test_review_service_detects_hyphenation_variants(
     variant_messages = " ".join(
         issue.message for issue in report.issues if issue.code == "terminology-variant"
     )
-    # Hyphenation variants are legitimate inconsistency suggestions
-    assert "pretraining" in variant_messages or "pre-training" in variant_messages
+    # Hyphenation-only variants should be suppressed via collapsed stemming
+    assert "pretraining" not in variant_messages
+    assert "pre-training" not in variant_messages
+    assert "finetuning" not in variant_messages
+    assert "fine-tuning" not in variant_messages
+    assert "reranking" not in variant_messages
+    assert "re-ranking" not in variant_messages
+    assert "pre-trained" not in variant_messages
+    assert "pretrained" not in variant_messages
 
 
 def test_review_report_properties() -> None:
@@ -262,7 +270,7 @@ def test_review_overlap_below_threshold(test_project) -> None:
     assert len(overlap_issues) == 0
 
 
-def test_review_multi_agent_terminology_variant(test_project) -> None:
+def test_review_multi_agent_prefix_hyphenation_suppressed(test_project) -> None:
     test_project.write_file(
         "wiki/sources/variant-a.md",
         "The multi-agent system handles reasoning.",
@@ -275,9 +283,10 @@ def test_review_multi_agent_terminology_variant(test_project) -> None:
     report = test_project.services["review"].review()
     variant_issues = [i for i in report.issues if i.code == "terminology-variant"]
 
-    assert len(variant_issues) >= 1
-    variants_text = " ".join(i.message for i in variant_issues)
-    assert "multi-agent" in variants_text or "multiagent" in variants_text
+    # multi-agent vs multiagent is a prefix-hyphenation pair, suppressed
+    variant_messages = " ".join(i.message for i in variant_issues)
+    assert "multi-agent" not in variant_messages
+    assert "multiagent" not in variant_messages
 
 
 def test_review_concept_only_pages_no_overlap(test_project) -> None:
