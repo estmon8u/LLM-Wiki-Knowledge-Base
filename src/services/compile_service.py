@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import logging
 import re
@@ -8,6 +8,7 @@ from typing import Any, Callable, Optional
 
 import nltk
 import nltk.data
+from pydantic import BaseModel, Field, ValidationError
 import yaml
 
 from src.models.source_models import RawSourceRecord
@@ -38,11 +39,24 @@ logger = logging.getLogger(__name__)
 
 _SUMMARY_SYSTEM_PROMPT = (
     "You are a research assistant summarizing documents for a curated knowledge base. "
-    "Write a concise 2-4 sentence summary of the document below. "
+    "Return only JSON matching the provided schema. Write a concise 2-4 sentence "
+    "summary of the document below. "
     "Focus on the core thesis, methods, findings, and open questions. "
     "Do not include author names, affiliations, or publication metadata. "
     "Write in plain text without markdown formatting."
 )
+
+_SUMMARY_RESPONSE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "summary": {"type": "string"},
+        "key_points": {"type": "array", "items": {"type": "string"}},
+        "open_questions": {"type": "array", "items": {"type": "string"}},
+        "title_suggestion": {"type": "string"},
+    },
+    "required": ["summary", "key_points", "open_questions", "title_suggestion"],
+}
 
 _SUMMARY_CONTENT_LIMIT = 12000
 SOURCE_PAGE_CONTRACT_VERSION_KEY = "source_page_contract_version"
@@ -56,6 +70,21 @@ _SUMMARY_PROMPT_ECHO_PATTERN = re.compile(
     r"(?:^|\s)(source_id|raw_path|content_hash|source_hash|compiled_at|summary)\s*:",
     re.IGNORECASE,
 )
+
+
+class _ProviderSummary(BaseModel):
+    summary: str = ""
+    key_points: list[str] = Field(default_factory=list)
+    open_questions: list[str] = Field(default_factory=list)
+    title_suggestion: str = ""
+
+
+@dataclass
+class _SummaryResult:
+    summary: str
+    key_points: list[str] = field(default_factory=list)
+    open_questions: list[str] = field(default_factory=list)
+    title_suggestion: str = ""
 
 
 @dataclass
@@ -214,7 +243,8 @@ class CompileService:
     def _render_source_page(
         self, source: RawSourceRecord, contents: str, compiled_at: str
     ) -> str:
-        summary = self._extract_summary(contents)
+        summary_result = self._extract_summary_result(contents)
+        summary = summary_result.summary
         excerpt = self._extract_excerpt(contents)
         frontmatter = {
             "title": source.title,
@@ -228,17 +258,25 @@ class CompileService:
             "ingested_at": source.ingested_at,
             "tags": [],
         }
+        if summary_result.key_points:
+            frontmatter["key_points"] = summary_result.key_points
+        if summary_result.open_questions:
+            frontmatter["open_questions"] = summary_result.open_questions
+        if summary_result.title_suggestion:
+            frontmatter["title_suggestion"] = summary_result.title_suggestion
         if source.normalized_path is not None:
             frontmatter["normalized_path"] = source.normalized_path
         yaml_frontmatter = yaml.safe_dump(frontmatter, sort_keys=False).strip()
         canonical_file_line = ""
         if source.normalized_path is not None:
             canonical_file_line = f"- Canonical file: `{source.normalized_path}`\n"
+        structured_sections = _render_summary_detail_sections(summary_result)
         return (
             f"---\n{yaml_frontmatter}\n---\n\n"
             f"# {source.title}\n\n"
             "## Summary\n\n"
             f"{summary}\n\n"
+            f"{structured_sections}"
             "## Source Details\n\n"
             f"- Source ID: `{source.source_id}`\n"
             f"- Raw file: `{source.raw_path}`\n"
@@ -250,10 +288,13 @@ class CompileService:
         )
 
     def _extract_summary(self, contents: str) -> str:
+        return self._extract_summary_result(contents).summary
+
+    def _extract_summary_result(self, contents: str) -> _SummaryResult:
         provider = self._require_provider()
         truncated = _plain_text_fallback(contents)[:_SUMMARY_CONTENT_LIMIT]
         if not truncated.strip():
-            return "No content available for summarization."
+            return _SummaryResult("No content available for summarization.")
         system_prompt = _SUMMARY_SYSTEM_PROMPT
         if self.schema_text:
             excerpt = schema_excerpt(self.schema_text, ["Source Pages"])
@@ -265,18 +306,25 @@ class CompileService:
                     prompt=truncated,
                     system_prompt=system_prompt,
                     max_tokens=512,
+                    response_schema=_SUMMARY_RESPONSE_SCHEMA,
+                    response_schema_name="kb_compile_summary",
                 )
             )
+            structured = _parse_provider_summary(response.text)
+            if structured is not None:
+                if not _is_weak_summary(structured.summary):
+                    return structured
+                return _SummaryResult(_deterministic_summary(contents))
             summary = response.text.strip()
             if _is_weak_summary(summary):
-                return _deterministic_summary(contents)
-            return summary
+                return _SummaryResult(_deterministic_summary(contents))
+            return _SummaryResult(summary)
         except Exception as exc:
             logger.warning(
                 "Provider summary generation failed; using deterministic fallback: %s",
                 exc,
             )
-            return _deterministic_summary(contents)
+            return _SummaryResult(_deterministic_summary(contents))
 
     def _extract_excerpt(self, contents: str) -> str:
         abstract_paragraphs = _abstract_paragraphs(contents)
@@ -405,6 +453,62 @@ def _deterministic_summary(contents: str) -> str:
 
     summary = _truncate_with_boundary(summary, 700, add_ellipsis=True)
     return summary or "No summary available yet."
+
+
+def _parse_provider_summary(raw: str) -> _SummaryResult | None:
+    stripped = raw.strip()
+    if not stripped:
+        return None
+    try:
+        payload = json.loads(stripped)
+        summary = _ProviderSummary.model_validate(payload)
+    except (json.JSONDecodeError, TypeError, ValidationError):
+        return None
+    return _SummaryResult(
+        summary=summary.summary.strip(),
+        key_points=_clean_summary_items(summary.key_points, limit=6),
+        open_questions=_clean_summary_items(summary.open_questions, limit=6),
+        title_suggestion=summary.title_suggestion.strip(),
+    )
+
+
+def _clean_summary_items(items: list[str], *, limit: int) -> list[str]:
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        value = " ".join(str(item).split()).strip()
+        if not value or value.casefold() in seen:
+            continue
+        seen.add(value.casefold())
+        cleaned.append(value)
+        if len(cleaned) == limit:
+            break
+    return cleaned
+
+
+def _render_summary_detail_sections(summary: _SummaryResult) -> str:
+    sections: list[str] = []
+    if summary.key_points:
+        sections.extend(
+            [
+                "## Key Points",
+                "",
+                "\n".join(f"- {point}" for point in summary.key_points),
+                "",
+            ]
+        )
+    if summary.open_questions:
+        sections.extend(
+            [
+                "## Open Questions",
+                "",
+                "\n".join(f"- {question}" for question in summary.open_questions),
+                "",
+            ]
+        )
+    if not sections:
+        return ""
+    return "\n".join(sections) + "\n"
 
 
 def _discover_concept_pages(paths: ProjectPaths) -> list[dict[str, str]]:

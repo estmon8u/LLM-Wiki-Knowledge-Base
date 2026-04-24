@@ -25,6 +25,8 @@ class _CliFakeProvider(TextProvider):
     name = "cli-fake"
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        if request.response_schema_name == "kb_review_report":
+            return ProviderResponse(text='{"issues": []}', model_name="cli-fake-v1")
         return ProviderResponse(
             text="Traceability is preserved through compiled source pages. [Sample]",
             model_name="cli-fake-v1",

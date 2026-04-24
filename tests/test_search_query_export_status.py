@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import sqlite3
 import threading
@@ -275,6 +276,45 @@ def test_query_service_returns_answer_with_citations(test_project) -> None:
     assert "traceability appears here" in answer.answer.lower()
 
 
+def test_query_service_parses_structured_answer_with_claims(test_project) -> None:
+    test_project.write_file("wiki/sources/citations.md", "traceability appears here")
+    provider = SequencedProvider(
+        [
+            json.dumps(
+                {
+                    "answer_markdown": "Traceability appears here.",
+                    "claims": [
+                        {
+                            "text": "Traceability appears in the source page.",
+                            "citation_refs": ["wiki/sources/citations.md#chunk-0"],
+                        }
+                    ],
+                    "citations": [
+                        {
+                            "ref": "wiki/sources/citations.md#chunk-0",
+                            "title": "Citations",
+                        }
+                    ],
+                    "insufficient_evidence": False,
+                }
+            )
+        ]
+    )
+    query_service = QueryService(
+        test_project.paths,
+        test_project.services["search"],
+        provider=provider,
+    )
+
+    answer = query_service.answer_question("traceability")
+
+    assert answer.answer == "Traceability appears here."
+    assert answer.claims[0].citation_refs == ["wiki/sources/citations.md#chunk-0"]
+    assert answer.citations[0].citation_ref == "wiki/sources/citations.md#chunk-0"
+    assert answer.insufficient_evidence is False
+    assert provider.requests[0].response_schema_name == "kb_query_answer"
+
+
 def test_query_service_save_answer_writes_analysis_page(test_project) -> None:
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
     query_service = _provider_query_service(
@@ -294,6 +334,109 @@ def test_query_service_save_answer_writes_analysis_page(test_project) -> None:
     assert "type: analysis" in content
     assert "Citations" in content
     assert "wiki/sources/citations.md#chunk-0" in content
+
+
+def test_save_structured_answer_persists_claims_and_citations(test_project) -> None:
+    test_project.write_file("wiki/sources/citations.md", "traceability appears here")
+    provider = SequencedProvider(
+        [
+            json.dumps(
+                {
+                    "answer_markdown": "Traceability appears here.",
+                    "claims": [
+                        {
+                            "text": "Traceability is grounded in source pages.",
+                            "citation_refs": ["wiki/sources/citations.md#chunk-0"],
+                        }
+                    ],
+                    "citations": [
+                        {
+                            "ref": "wiki/sources/citations.md#chunk-0",
+                            "title": "Citations Page",
+                        }
+                    ],
+                    "insufficient_evidence": False,
+                }
+            )
+        ]
+    )
+    query_service = QueryService(
+        test_project.paths,
+        test_project.services["search"],
+        provider=provider,
+    )
+    answer = query_service.answer_question("traceability")
+
+    saved_path = query_service.save_answer("Traceability?", answer)
+
+    full_path = test_project.root / saved_path
+    content = full_path.read_text(encoding="utf-8")
+    assert "claim_count: 1" in content
+    assert "citation_count: 1" in content
+    assert "insufficient_evidence: false" in content
+    assert "Traceability is grounded in source pages." in content
+    assert "provider_citations:" in content
+    assert "Citations Page" in content
+    assert "## Claims" in content
+
+
+def test_query_freeform_fallback_when_provider_returns_non_json(
+    test_project,
+) -> None:
+    test_project.write_file("wiki/sources/citations.md", "traceability appears here")
+    provider = SequencedProvider(["Plain text answer, not JSON."])
+    query_service = QueryService(
+        test_project.paths,
+        test_project.services["search"],
+        provider=provider,
+    )
+
+    answer = query_service.answer_question("traceability")
+
+    assert answer.answer == "Plain text answer, not JSON."
+    assert answer.claims == []
+    assert answer.insufficient_evidence is False
+
+
+def test_structured_answer_drops_unknown_citation_refs(test_project) -> None:
+    test_project.write_file("wiki/sources/citations.md", "traceability appears here")
+    provider = SequencedProvider(
+        [
+            json.dumps(
+                {
+                    "answer_markdown": "Traceability appears here.",
+                    "claims": [
+                        {
+                            "text": "Claim with no valid refs.",
+                            "citation_refs": ["wiki/sources/nonexistent.md#chunk-0"],
+                        }
+                    ],
+                    "citations": [
+                        {
+                            "ref": "wiki/sources/nonexistent.md#chunk-0",
+                            "title": "Ghost",
+                        }
+                    ],
+                    "insufficient_evidence": True,
+                }
+            )
+        ]
+    )
+    query_service = QueryService(
+        test_project.paths,
+        test_project.services["search"],
+        provider=provider,
+    )
+
+    answer = query_service.answer_question("traceability")
+
+    assert answer.claims[0].citation_refs == []
+    assert answer.declared_citations == []
+    assert answer.insufficient_evidence is True
+    saved_path = query_service.save_answer("Ghost refs?", answer)
+    content = (test_project.root / saved_path).read_text(encoding="utf-8")
+    assert "No citation refs" in content
+    assert "insufficient_evidence: true" in content
 
 
 def test_save_answer_appends_to_wiki_log(test_project) -> None:
@@ -373,6 +516,38 @@ def test_save_answer_sanitizes_log_question_text(test_project) -> None:
     ]
     assert len(lines) == 1
     assert 'ask --save | "What is \\"traceability\\" and why?" ->' in lines[0]
+
+
+def test_save_answer_with_explicit_slug_and_long_question(test_project) -> None:
+    """Covers: save_answer slug kwarg, log-file no-trailing-newline, long question truncation."""
+    from src.services.query_service import QueryAnswer, _parse_provider_query_answer
+
+    # _parse_provider_query_answer returns None for empty input (L306)
+    assert _parse_provider_query_answer("") is None
+
+    answer = QueryAnswer(
+        answer="Traceability stays grounded.", citations=[], mode="test"
+    )
+
+    # Seed log file without trailing newline to cover L284
+    test_project.paths.wiki_log_file.parent.mkdir(parents=True, exist_ok=True)
+    test_project.paths.wiki_log_file.write_text(
+        "# Activity Log\n\n## Previous entry",
+        encoding="utf-8",
+    )
+
+    # Long question (>160 chars) to cover _log_safe_text truncation (L369)
+    long_question = "How does traceability " + "really " * 30 + "work?"
+    assert len(long_question) > 160
+
+    # Explicit slug= kwarg to cover L214
+    saved = test_project.services["query"].save_answer(
+        long_question, answer, slug="custom-slug"
+    )
+    assert "custom-slug.md" in saved
+
+    log = test_project.paths.wiki_log_file.read_text(encoding="utf-8")
+    assert "..." in log  # truncated long question
 
 
 def test_query_service_save_answer_uses_fallback_slug_for_empty_question(

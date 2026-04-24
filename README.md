@@ -168,7 +168,7 @@ poetry run kb update --resume
 | `--resume` | off | Resume the most recent failed or interrupted update run. Cannot be combined with `--force`. |
 
 When source paths are provided, the command adds them first. Always generates concept pages and refreshes the search index after building.
-Concept clustering uses the configured provider when available, caches the structured cluster output by source-page digest, and falls back to deterministic collocation-based grouping if provider clustering fails.
+Compile summaries request structured provider output (`summary`, `key_points`, `open_questions`, and `title_suggestion`) and persist the extra fields when returned. Concept clustering uses the configured provider when available, caches the structured cluster output by source-page digest, and falls back to deterministic collocation-based grouping if provider clustering fails.
 
 ### `kb find <terms>`
 
@@ -205,9 +205,9 @@ poetry run kb ask --show-evidence "What formats are supported?"
 | `--save-as` | | Save the answer as an analysis page with a custom slug. |
 | `--show-evidence` | off | Print the retrieved evidence snippets before the answer. |
 
-Requires a configured provider. Retrieves the best-matching indexed wiki chunks as evidence, packages the top chunk snippets into a frozen evidence bundle, sends that evidence to the configured provider, and prints the answer followed by a Citations section.
+Requires a configured provider. Retrieves the best-matching indexed wiki chunks as evidence, packages the top chunk snippets into a frozen evidence bundle, asks the provider for structured output (`answer_markdown`, `claims`, `citations`, and `insufficient_evidence`), and prints the answer followed by a Citations section.
 
-Use `--save` or `--save-as` to persist the answer as a markdown analysis page in `wiki/analysis/` with YAML frontmatter (`type: analysis`), the question, a timestamp, and backlinks to cited source chunks. Saved analysis pages are indexed for future searches and appear in `wiki/index.md` immediately.
+Use `--save` or `--save-as` to persist the answer as a markdown analysis page in `wiki/analysis/` with YAML frontmatter (`type: analysis`), the question, a timestamp, `insufficient_evidence`, claim/citation counts, structured claims/provider citations when available, and backlinks to cited source chunks. Saved analysis pages are indexed for future searches and appear in `wiki/index.md` immediately.
 
 ### `kb lint`
 
@@ -264,7 +264,7 @@ Checks for:
 - **Terminology variants** — The same root term appearing in different forms across pages.
 
 This is the semantic complement to `kb lint`. Lint checks structural health deterministically; review checks content-level coherence through heuristics and a provider pass.
-Provider-backed review requests structured JSON when the selected SDK supports schema hints, with a legacy pipe-delimited parser retained only as a compatibility fallback.
+Provider-backed review requests structured JSON when the selected SDK supports schema hints and rejects malformed provider review output instead of parsing legacy pipe-delimited lines.
 
 ### `kb export`
 
@@ -336,8 +336,10 @@ All non-text formats are normalized into canonical markdown and stored in `raw/n
 ## Provider Configuration
 
 `kb update`, `kb ask`, and `kb review` require a configured provider.
-If the provider is missing, those commands fail with a configuration error. If a
-configured provider call fails, they fail instead of falling back.
+If the provider is missing, those commands fail with a configuration error.
+`kb ask` and `kb review` fail on provider execution errors; `kb update` keeps
+deterministic fallbacks for compile summaries and concept clustering after a
+provider call failure.
 
 Provider configuration lives entirely in `kb.config.yaml`. The top-level
 `provider.name` selects the active provider, and the `providers` section holds
@@ -413,9 +415,11 @@ See the official model documentation for the full list of available models, pric
 
 If the provider is not configured, `kb update`, `kb ask`, and `kb review`
 fail with a configuration error. If the provider is configured but the API key
-is missing or the provider call fails, those commands fail instead of falling
-back. Provider calls retry transient failures (rate limits, timeouts, server
-errors) automatically with exponential backoff and jitter.
+is missing, those commands fail before provider-backed work begins. Provider
+calls retry transient failures (rate limits, timeouts, server errors)
+automatically with exponential backoff and jitter; after retries are exhausted,
+`kb ask` and `kb review` fail while `kb update` can fall back for summaries and
+concept clustering.
 
 ## Conversion Configuration
 
@@ -512,7 +516,7 @@ project-root/
 | --- | --- |
 | `markdown-it-py` | Shared AST-based markdown parsing for frontmatter-stripped text, headings, paragraphs, sections, links, and fenced-code-aware lint helpers |
 | `python-frontmatter` | YAML frontmatter parsing for shared markdown document handling |
-| `pydantic` | Strict `kb.config.yaml` validation and provider-review response parsing |
+| `pydantic` | Strict `kb.config.yaml` validation and structured provider response parsing for concepts, review, ask, and compile summaries |
 | `nltk` | Snowball stemming, sentence splitting, and deterministic fallback collocation scoring for concept topic extraction |
 | `rapidfuzz` | Fuzzy string similarity for terminology-variant detection in `kb review` |
 | `python-slugify` | Unicode-aware slug generation for page, heading, and file identifiers |

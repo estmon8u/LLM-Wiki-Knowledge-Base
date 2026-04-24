@@ -45,6 +45,8 @@ class _StubProvider(TextProvider):
     name = "stub"
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        if request.response_schema_name == "kb_review_report":
+            return ProviderResponse(text='{"issues": []}', model_name="stub-1")
         return ProviderResponse(
             text="Stub summary of the document.", model_name="stub-1"
         )

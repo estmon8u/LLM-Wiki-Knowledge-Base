@@ -87,7 +87,7 @@ def create_command() -> click.Command:
                 echo_bullet(line)
 
         should_save = save_answer or save_as_name is not None
-        if should_save and answer.citations:
+        if should_save and answer.mode != "no-matches":
             saved_path = query_service.save_answer(question, answer, slug=save_as_name)
             console.print(f"\nSaved analysis page: {saved_path}")
 

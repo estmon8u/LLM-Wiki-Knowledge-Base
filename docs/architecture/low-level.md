@@ -87,3 +87,11 @@
 - Treat CI and formatter config as part of the architecture because they enforce the supported workflow.
 - Keep converter-backed normalization in a dedicated service instead of mixing converter logic directly into command handlers or compile.
 - Preserve the canonical-artifact contract: only write `raw/normalized/` outputs after the selected converter passes the normalization quality gate or an explicit fallback succeeds.
+
+## Structured Provider Response Usage
+
+- `src/services/concept_service.py`: provider-first concept clustering returns structured clusters and caches them by source-page digest.
+- `src/services/review_service.py`: provider-backed review accepts only structured JSON findings and rejects malformed legacy pipe output.
+- `src/services/query_service.py`: `kb ask` requests structured answers with markdown, claims, citations, and an insufficient-evidence flag; saved analysis pages persist claim and citation metadata.
+- `src/services/compile_service.py`: compile summary generation requests structured summary metadata and stores key points, open questions, and title suggestions when returned.
+- `src/services/lint_service.py`: saved analysis pages expose citation counts and insufficient-evidence state as frontmatter so citation discipline can be checked without text scraping.

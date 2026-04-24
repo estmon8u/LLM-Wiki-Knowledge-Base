@@ -66,3 +66,9 @@ All commands are flat top-level verbs:
 - Compile should prefer the normalized canonical artifact when one exists rather than reparsing the original raw source.
 - Optional LLM-based cleanup or reconstruction should remain an explicit provider-mediated step instead of a silent default ingest behavior.
 - Ask behavior should prefer the compiled wiki over direct raw-file prompting.
+
+## Structured Provider Output Contracts
+
+Provider-backed semantic steps now request structured responses at the service boundary instead of parsing freeform text. Concept generation returns concept clusters with title, summary, topic terms, and source pages. Review returns JSON findings with severity, code, pages, and message. `kb ask` returns answer markdown, claims, citations, and an insufficient-evidence flag. Compile summaries return summary, key points, open questions, and a title suggestion.
+
+OCR and normalization quality review intentionally remain outside the default structured-output path. Conversion quality is still handled by deterministic converter status and lightweight quality gates unless an explicit future fallback is added.

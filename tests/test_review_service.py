@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import threading
 
 import pytest
@@ -292,25 +293,34 @@ def test_review_service_without_provider_raises_configuration_error(
         service.review()
 
 
-def test_review_service_parse_provider_issues_skips_malformed_lines() -> None:
-    raw = (
-        "ISSUE|error|contradiction|a.md, b.md|Pages disagree\n"
-        "ISSUE|too-few-parts|only-three\n"
-        "random noise\n"
-        "NO_ISSUES\n"
-        "ISSUE|badlevel|stale|c.md|Stale content\n"
-        "ISSUE|warning|term-drift|d.md|Term mismatch\n"
+def test_review_service_parse_provider_issues_reads_structured_json() -> None:
+    raw = json.dumps(
+        {
+            "issues": [
+                {
+                    "severity": "error",
+                    "code": "contradiction",
+                    "pages": ["a.md", "b.md"],
+                    "message": "Pages disagree",
+                },
+                {
+                    "severity": "warning",
+                    "code": "term-drift",
+                    "pages": ["d.md"],
+                    "message": "Term mismatch",
+                },
+            ]
+        }
     )
 
     issues = ReviewService._parse_provider_issues(raw)
 
-    assert len(issues) == 3
+    assert len(issues) == 2
     assert issues[0].severity == "error"
     assert issues[0].code == "contradiction"
     assert issues[0].pages == ["a.md", "b.md"]
-    assert issues[1].severity == "suggestion"  # badlevel → suggestion fallback
-    assert issues[2].severity == "warning"
-    assert issues[2].code == "term-drift"
+    assert issues[1].severity == "warning"
+    assert issues[1].code == "term-drift"
 
 
 def test_review_service_provider_review_raises_on_provider_failure(

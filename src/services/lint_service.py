@@ -48,10 +48,18 @@ _FIELD_TYPE_SPEC: Dict[str, str] = {
     "question": "string",
     "saved_at": "date",
     "citations": "list",
+    "insufficient_evidence": "bool",
+    "claim_count": "int",
+    "citation_count": "int",
+    "claims": "list",
+    "provider_citations": "list",
     "generated_at": "date",
     "generator": "string",
     "source_pages": "list",
     "topic_terms": "list",
+    "key_points": "list",
+    "open_questions": "list",
+    "title_suggestion": "string",
 }
 
 
@@ -99,6 +107,7 @@ class LintService:
             if state.file_path.parent in {
                 self.paths.wiki_sources_dir,
                 self.paths.wiki_concepts_dir,
+                self.paths.wiki_analysis_dir,
             }:
                 if state.frontmatter is None:
                     issues.append(
@@ -111,14 +120,33 @@ class LintService:
                     )
                 else:
                     page_type = state.frontmatter.get("type")
+                    is_analysis_page = (
+                        state.file_path.parent == self.paths.wiki_analysis_dir
+                        or (
+                            state.file_path.parent == self.paths.wiki_concepts_dir
+                            and page_type == "analysis"
+                        )
+                    )
                     is_concept_page = (
                         state.file_path.parent == self.paths.wiki_concepts_dir
-                        and page_type in {"analysis", "concept"}
+                        and page_type == "concept"
                     )
                     is_source_page = (
                         state.file_path.parent == self.paths.wiki_sources_dir
                     )
-                    if is_concept_page and page_type == "concept":
+                    if is_analysis_page:
+                        required_fields = [
+                            "title",
+                            "summary",
+                            "type",
+                            "question",
+                            "saved_at",
+                            "citations",
+                            "insufficient_evidence",
+                            "claim_count",
+                            "citation_count",
+                        ]
+                    elif is_concept_page:
                         required_fields = [
                             "title",
                             "summary",
@@ -126,8 +154,6 @@ class LintService:
                             "generated_at",
                             "source_pages",
                         ]
-                    elif is_concept_page:
-                        required_fields = ["title"]
                     else:
                         required_fields = self.config["lint"][
                             "required_frontmatter_fields"
@@ -159,6 +185,7 @@ class LintService:
                             )
                         )
                     issues.extend(self._lint_frontmatter_types(state))
+                    issues.extend(self._lint_analysis_page(state))
 
                 normalized_title = state.page_title.casefold().strip()
                 page_titles.setdefault(normalized_title, []).append(state)
@@ -283,12 +310,67 @@ class LintService:
                             ),
                         )
                     )
+            elif expected == "bool":
+                if not isinstance(value, bool):
+                    issues.append(
+                        LintIssue(
+                            severity="warning",
+                            code="invalid-field-type",
+                            path=page_state.relative_path,
+                            message=(
+                                f"Frontmatter field '{field_name}' should be a "
+                                f"bool but got {type(value).__name__}."
+                            ),
+                        )
+                    )
+            elif expected == "int":
+                if not isinstance(value, int) or isinstance(value, bool):
+                    issues.append(
+                        LintIssue(
+                            severity="warning",
+                            code="invalid-field-type",
+                            path=page_state.relative_path,
+                            message=(
+                                f"Frontmatter field '{field_name}' should be an "
+                                f"int but got {type(value).__name__}."
+                            ),
+                        )
+                    )
         return issues
+
+    def _lint_analysis_page(self, page_state: _PageState) -> list[LintIssue]:
+        if page_state.frontmatter is None:
+            return []
+        if page_state.frontmatter.get("type") != "analysis":
+            return []
+
+        citations = page_state.frontmatter.get("citations")
+        citation_count = page_state.frontmatter.get("citation_count")
+        insufficient = page_state.frontmatter.get("insufficient_evidence") is True
+        if not isinstance(citations, list):
+            citations = []
+        if not isinstance(citation_count, int) or isinstance(citation_count, bool):
+            citation_count = len(citations)
+
+        if not insufficient and citation_count == 0:
+            return [
+                LintIssue(
+                    severity="warning",
+                    code="analysis-without-citations",
+                    path=page_state.relative_path,
+                    message=(
+                        "Saved analysis page has no citations and is not marked "
+                        "as insufficient evidence."
+                    ),
+                )
+            ]
+        return []
 
     def _lint_empty_page(self, page_state: _PageState) -> list[LintIssue]:
         if page_state.file_path.parent not in {
             self.paths.wiki_sources_dir,
             self.paths.wiki_concepts_dir,
+            self.paths.wiki_analysis_dir,
         }:
             return []
         for line in page_state.content.splitlines():

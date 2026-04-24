@@ -302,7 +302,7 @@ class ReviewService:
 
     @staticmethod
     def _parse_provider_issues(raw: str) -> list[ReviewIssue]:
-        """Parse provider JSON output with a legacy pipe-format fallback."""
+        """Parse provider JSON output."""
         stripped = raw.strip()
         if not stripped or stripped == "NO_ISSUES":
             return []
@@ -322,28 +322,7 @@ class ReviewService:
                 for issue in report.issues
                 if issue.message.strip()
             ]
-        except (json.JSONDecodeError, TypeError, ValidationError):
-            pass
-
-        issues: list[ReviewIssue] = []
-        for line in stripped.splitlines():
-            line = line.strip()
-            if line == "NO_ISSUES" or not line.startswith("ISSUE|"):
-                continue
-            parts = line.split("|", 4)
-            if len(parts) < 5:
-                continue
-            _, severity, code, pages_str, message = parts
-            severity = severity.strip()
-            if severity not in ("error", "warning", "suggestion"):
-                severity = "suggestion"
-            pages = [p.strip() for p in pages_str.split(",") if p.strip()]
-            issues.append(
-                ReviewIssue(
-                    severity=severity,
-                    code=code.strip(),
-                    pages=pages,
-                    message=message.strip(),
-                )
-            )
-        return issues
+        except (json.JSONDecodeError, TypeError, ValidationError) as exc:
+            raise ValueError(
+                "Provider review response did not match the structured JSON schema."
+            ) from exc

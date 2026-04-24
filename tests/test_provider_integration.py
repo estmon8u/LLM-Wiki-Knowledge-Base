@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -476,7 +477,18 @@ def test_review_service_uses_provider_when_available(test_project) -> None:
         "Knowledge base markdown traceability.",
     )
     provider = FakeProvider(
-        text="ISSUE|warning|stale-claim|wiki/sources/alpha.md|Claim may be outdated."
+        text=json.dumps(
+            {
+                "issues": [
+                    {
+                        "severity": "warning",
+                        "code": "stale-claim",
+                        "pages": ["wiki/sources/alpha.md"],
+                        "message": "Claim may be outdated.",
+                    }
+                ]
+            }
+        )
     )
     review_service = ReviewService(test_project.paths, provider=provider)
 
@@ -511,7 +523,7 @@ def test_review_service_falls_back_on_provider_error(test_project) -> None:
 
 def test_review_service_provider_no_issues_response(test_project) -> None:
     test_project.write_file("wiki/sources/alpha.md", "Some content here.")
-    provider = FakeProvider(text="NO_ISSUES")
+    provider = FakeProvider(text=json.dumps({"issues": []}))
     review_service = ReviewService(test_project.paths, provider=provider)
 
     report = review_service.review()
@@ -528,9 +540,23 @@ def test_review_service_provider_multiple_issues(test_project) -> None:
     test_project.write_file("wiki/sources/a.md", "Page A content.")
     test_project.write_file("wiki/sources/b.md", "Page B content.")
     provider = FakeProvider(
-        text=(
-            "ISSUE|error|contradiction|wiki/sources/a.md, wiki/sources/b.md|Conflicting claims about X.\n"
-            "ISSUE|suggestion|redundant-content|wiki/sources/b.md|Repeats content from A."
+        text=json.dumps(
+            {
+                "issues": [
+                    {
+                        "severity": "error",
+                        "code": "contradiction",
+                        "pages": ["wiki/sources/a.md", "wiki/sources/b.md"],
+                        "message": "Conflicting claims about X.",
+                    },
+                    {
+                        "severity": "suggestion",
+                        "code": "redundant-content",
+                        "pages": ["wiki/sources/b.md"],
+                        "message": "Repeats content from A.",
+                    },
+                ]
+            }
         )
     )
     review_service = ReviewService(test_project.paths, provider=provider)
@@ -545,42 +571,35 @@ def test_review_service_provider_multiple_issues(test_project) -> None:
     assert len(redundant) == 1
 
 
-def test_review_service_provider_skips_malformed_lines(test_project) -> None:
+def test_review_service_provider_rejects_malformed_json(test_project) -> None:
+    test_project.write_file("wiki/sources/a.md", "Content.")
+    provider = FakeProvider(text="Some random text")
+    review_service = ReviewService(test_project.paths, provider=provider)
+
+    with pytest.raises(ProviderExecutionError, match="structured JSON schema"):
+        review_service.review()
+
+
+def test_review_service_provider_rejects_unknown_severity(test_project) -> None:
     test_project.write_file("wiki/sources/a.md", "Content.")
     provider = FakeProvider(
-        text=(
-            "ISSUE|warning|valid-code|wiki/sources/a.md|Valid issue.\n"
-            "ISSUE|too-few-parts\n"
-            "Some random text\n"
-            "ISSUE|suggestion|another|wiki/sources/a.md|Another issue."
+        text=json.dumps(
+            {
+                "issues": [
+                    {
+                        "severity": "critical",
+                        "code": "bad-severity",
+                        "pages": ["wiki/sources/a.md"],
+                        "message": "Unknown severity level.",
+                    }
+                ]
+            }
         )
     )
     review_service = ReviewService(test_project.paths, provider=provider)
 
-    report = review_service.review()
-
-    provider_codes = [
-        i.code
-        for i in report.issues
-        if i.code not in ("overlapping-topics", "terminology-variant")
-    ]
-    assert "valid-code" in provider_codes
-    assert "another" in provider_codes
-    assert len(provider_codes) == 2
-
-
-def test_review_service_provider_normalizes_unknown_severity(test_project) -> None:
-    test_project.write_file("wiki/sources/a.md", "Content.")
-    provider = FakeProvider(
-        text="ISSUE|critical|bad-severity|wiki/sources/a.md|Unknown severity level."
-    )
-    review_service = ReviewService(test_project.paths, provider=provider)
-
-    report = review_service.review()
-
-    bad_sev = [i for i in report.issues if i.code == "bad-severity"]
-    assert len(bad_sev) == 1
-    assert bad_sev[0].severity == "suggestion"
+    with pytest.raises(ProviderExecutionError, match="structured JSON schema"):
+        review_service.review()
 
 
 # ---------------------------------------------------------------------------
@@ -588,8 +607,19 @@ def test_review_service_provider_normalizes_unknown_severity(test_project) -> No
 # ---------------------------------------------------------------------------
 
 
-def test_parse_provider_issues_valid_line() -> None:
-    raw = "ISSUE|error|contradiction|a.md, b.md|Pages disagree."
+def test_parse_provider_issues_valid_json() -> None:
+    raw = json.dumps(
+        {
+            "issues": [
+                {
+                    "severity": "error",
+                    "code": "contradiction",
+                    "pages": ["a.md", "b.md"],
+                    "message": "Pages disagree.",
+                }
+            ]
+        }
+    )
     issues = ReviewService._parse_provider_issues(raw)
     assert len(issues) == 1
     assert issues[0].code == "contradiction"
@@ -604,10 +634,10 @@ def test_parse_provider_issues_empty_string() -> None:
     assert ReviewService._parse_provider_issues("") == []
 
 
-def test_parse_provider_issues_skips_non_issue_lines() -> None:
+def test_parse_provider_issues_rejects_non_json() -> None:
     raw = "Some preamble\nISSUE|warning|x|a.md|msg\nMore text"
-    issues = ReviewService._parse_provider_issues(raw)
-    assert len(issues) == 1
+    with pytest.raises(ValueError, match="structured JSON schema"):
+        ReviewService._parse_provider_issues(raw)
 
 
 # ---------------------------------------------------------------------------

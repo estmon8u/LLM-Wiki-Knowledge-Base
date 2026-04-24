@@ -1243,8 +1243,11 @@ def test_compile_raises_when_source_file_missing(test_project) -> None:
 def test_lint_concept_page_does_not_require_source_fields(test_project) -> None:
     test_project.write_file(
         "wiki/concepts/analysis.md",
-        "---\ntitle: My Analysis\ntype: analysis\nquestion: How?\n---\n\n"
-        "# My Analysis\n\nSome answer.\n",
+        "---\ntitle: My Analysis\nsummary: An analysis page.\ntype: analysis\n"
+        "question: How?\nsaved_at: '2026-04-20T12:00:00+00:00'\n"
+        "citations:\n- wiki/sources/alpha.md#chunk-0\n"
+        "insufficient_evidence: false\nclaim_count: 0\ncitation_count: 1\n"
+        "---\n\n# My Analysis\n\nSome answer.\n",
     )
 
     report = test_project.services["lint"].lint()
@@ -1355,6 +1358,41 @@ def test_compile_provider_empty_content_returns_no_content_message(
     summary = service._extract_summary("")
 
     assert summary == "No content available for summarization."
+
+
+def test_compile_provider_structured_summary_fields(test_project) -> None:
+    from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
+
+    class StructuredSummaryProvider(TextProvider):
+        name = "structured-summary"
+
+        def generate(self, request: ProviderRequest) -> ProviderResponse:
+            return ProviderResponse(
+                text=json.dumps(
+                    {
+                        "summary": "The document explains provenance traceability through compiled pages.",
+                        "key_points": ["Compiled pages preserve provenance."],
+                        "open_questions": ["How should stale pages be reviewed?"],
+                        "title_suggestion": "Traceability Overview",
+                    }
+                ),
+                model_name="structured-summary-v1",
+            )
+
+    service = test_project.services["compile"]
+    service.provider = StructuredSummaryProvider()
+
+    result = service._extract_summary_result(
+        "# Traceability\n\nCompiled pages preserve provenance."
+    )
+
+    assert (
+        result.summary
+        == "The document explains provenance traceability through compiled pages."
+    )
+    assert result.key_points == ["Compiled pages preserve provenance."]
+    assert result.open_questions == ["How should stale pages be reviewed?"]
+    assert result.title_suggestion == "Traceability Overview"
 
 
 def test_compile_provider_empty_response_falls_back(test_project) -> None:

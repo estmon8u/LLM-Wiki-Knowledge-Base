@@ -38,8 +38,9 @@ The product goal is not to act like a general-purpose coding agent. The goal is 
 - `kb.schema.md` is the wiki's operational constitution. Relevant schema sections are injected into compile and ask prompts via `schema_excerpt()`, so the LLM follows wiki-maintenance rules.
 - Markdown and frontmatter parsing are centralized in `src/services/markdown_document.py` using `markdown-it-py` and `python-frontmatter`; services consume parser-backed helpers instead of maintaining parallel regex/state-machine implementations.
 - `kb.config.yaml` validation is Pydantic-backed while retaining user-facing validation messages for existing workflows.
-- Provider requests can carry an optional response schema. Review uses structured JSON output when supported by the provider SDK, with a legacy parser retained as fallback compatibility.
+- Provider requests can carry an optional response schema. Concept generation, review findings, `kb ask` answers, and compile summaries use structured provider outputs for semantic tasks where the model response drives stored wiki state; review now rejects malformed provider JSON instead of parsing legacy pipe-delimited lines.
 - Concept clustering is provider-first during `kb update`: the provider returns structured concept clusters over source-page titles/summaries, results are cached by source-page digest, and the deterministic NLTK/collocation pipeline remains a fallback.
+- `kb ask --save` persists structured answer metadata (`insufficient_evidence`, claim count, citation count, and structured claims) so saved analysis pages can be linted without text heuristics.
 - Conversion is config-driven rather than hard-coded by suffix alone. Mistral OCR is the default path for the explicitly supported native document and image formats, HTML uses a rendered-PDF OCR route, and converter quality gates prevent partial or obviously truncated artifacts from becoming canonical markdown.
 - Any post-OCR LLM cleanup or reconstruction should remain explicit fallback behavior rather than becoming part of the default ingest path.
 
