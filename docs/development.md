@@ -50,9 +50,10 @@ poetry run python scripts/run_real_corpus_smoke.py \
     --project-root path/to/disposable-project
 ```
 
-This runs every command (`init`, `add`, `update`, `find`, `ask`, `lint`,
-`review`, `export`, etc.) against actual files and writes a consolidated log.
-It is a manual workflow, not a CI dependency.
+This runs the core end-to-end CLI path (`--help`, `init`, `status`, `add`,
+`update`, `find`, `ask`, `lint`, and `export`) against actual files and writes
+a consolidated log. Provider-required commands are recorded as skipped when no
+provider is configured. It is a manual workflow, not a CI dependency.
 
 ## Architecture overview
 
@@ -80,7 +81,6 @@ src/
   providers/                # LLM provider abstraction + implementations
   storage/                  # Persistent stores (compile runs, FTS5 search index)
   data/                     # Bundled data files (e.g. english_stopwords.txt)
-  schemas/                  # (reserved, currently empty)
 tests/
   conftest.py               # Shared fixtures: TestProject, _StubProvider
   test_*.py                 # One test file per domain
@@ -230,11 +230,13 @@ Stopwords are **not** loaded from NLTK at runtime — they are bundled in
 
 ### Test file naming
 
-One test file per service/domain:
+Tests are grouped by service/domain where possible, with separate files for
+cross-cutting infrastructure and regression coverage:
 
 | Test file | Tests for |
 | --- | --- |
 | `test_compile_and_lint.py` | CompileService and LintService |
+| `test_compile_run_store.py` | CompileRunStore resume/failure-state persistence |
 | `test_concept_service.py` | ConceptService |
 | `test_review_service.py` | ReviewService |
 | `test_search_query_export_status.py` | SearchService, QueryService, ExportService, StatusService |
@@ -243,6 +245,11 @@ One test file per service/domain:
 | `test_manifest_and_ingest.py` | ManifestService and IngestService |
 | `test_project_and_config.py` | ProjectService and ConfigService |
 | `test_provider_integration.py` | Provider abstraction, factory, catalog |
+| `test_provider_retry.py` | Shared provider retry behavior |
+| `test_provider_structured.py` | Structured provider-output parsing |
+| `test_registry_and_tools.py` | Command registry and shared CLI output helpers |
+| `test_real_corpus_smoke.py` | Real-corpus smoke-test script contract |
+| `test_p0_audit_fixes.py` | Regression coverage for audit fixes |
 | `test_golden_markdown.py` | Golden-file markdown output comparison |
 
 ### Fixtures

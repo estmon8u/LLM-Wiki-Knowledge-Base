@@ -539,18 +539,6 @@ project-root/
 ## Development
 
 See [docs/development.md](docs/development.md) for contributor setup,
-architecture, testing conventions, and codebase patterns.
-
-Quick reference:
-
-```bash
-poetry install                        # Install dependencies
-poetry run pytest tests -q            # Run tests (97% coverage required)
-poetry run black src tests            # Format code
-```
-
-NLTK requires the `punkt_tab` tokenizer data (one-time setup):
-
-```bash
-poetry run python -c "import nltk; nltk.download('punkt_tab')"
-```
+architecture, testing, formatting, branch workflow, NLTK setup, and codebase
+patterns. This README stays focused on user-facing installation, commands,
+provider configuration, conversion settings, and project layout.

@@ -38,10 +38,10 @@ All commands are flat top-level verbs:
 | Ingest | canonical markdown/plain-text files, Mistral OCR-routed native documents and images, rendered HTML-to-PDF OCR, and a bounded MarkItDown subset | raw source copy, normalized artifact, and manifest metadata |
 | Compile | normalized canonical text plus manifest metadata | source pages with provider-generated summaries, wiki index, and compile log; provider-clustered concept pages with deterministic fallback and source-page backlinks |
 | Diff | manifest metadata plus compile state | pre-compile source status preview |
-| Search | compiled wiki artifacts | ranked page matches derived from indexed evidence chunks that skip wiki bookkeeping sections |
-| Ask | user question plus source/concept context, excluding saved analysis pages | cited provider answer validated for parseability, non-empty content, and grounded citation refs; optionally saved as a non-blank analysis page |
+| Search | compiled wiki artifacts | ranked page matches from source pages, generated concept pages, and saved analysis pages, derived from indexed chunks that skip wiki bookkeeping sections |
+| Ask | user question plus source-page evidence, excluding generated concept pages and saved analysis pages | cited provider answer validated for parseability, non-empty content, and grounded citation refs; optionally saved as a non-blank analysis page |
 | Lint | compiled wiki and metadata | structural findings for links, fragments, headings, titles, typed frontmatter, empty pages, and maintenance signals |
-| Review | compiled source/concept pages | semantic findings from deterministic overlap checks, noisy terminology-variant suppression, and schema-guided single-pass provider review over curated excerpts |
+| Review | compiled source/concept pages | semantic findings from deterministic overlap checks over source pages, terminology-variant checks over reviewable source/concept pages, and schema-guided single-pass provider review over curated source-page excerpts |
 | Export | compiled wiki | Obsidian-friendly vault view |
 
 ## Current Ingest Scope
