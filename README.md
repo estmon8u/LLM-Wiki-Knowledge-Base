@@ -184,7 +184,7 @@ poetry run kb find --limit 10 "agent architecture"
 | `--limit` | 5 | Maximum number of results to return. |
 | `--json` | off | Output results as JSON for scripting. |
 
-Uses a SQLite FTS5 chunk index stored at `graph/exports/search_index.sqlite3`. Indexes all wiki pages (source pages, concept pages, and saved analysis pages), ranks hits with BM25-style FTS ordering, and returns page-level results using the best matching chunk snippet. Evidence chunks skip metadata-only sections such as `Source Details`, `Source Pages`, `Related Concept Pages`, and `Citations` so retrieval and citations point at content rather than wiki bookkeeping.
+Uses a SQLite FTS5 chunk index stored at `graph/exports/search_index.sqlite3`. `kb find` searches source pages, generated concept pages, and saved analysis pages, ranks hits with BM25-style FTS ordering, and returns page-level results using the best matching chunk snippet. Evidence chunks skip metadata-only sections such as `Source Details`, `Source Pages`, `Related Concept Pages`, and `Citations` so retrieval and citations point at content rather than wiki bookkeeping.
 
 ### `kb ask <question>`
 
@@ -205,7 +205,7 @@ poetry run kb ask --show-evidence "What formats are supported?"
 | `--save-as` | | Save the answer as an analysis page with a custom slug. |
 | `--show-evidence` | off | Print the retrieved evidence snippets before the answer. |
 
-Requires a configured provider. Retrieves the best-matching indexed wiki chunks as evidence, packages the top chunk snippets into a frozen evidence bundle, asks the provider for structured output (`answer_markdown`, `claims`, `citations`, and `insufficient_evidence`), semantically validates the response, and prints the answer followed by a Citations section.
+Requires a configured provider. Retrieves the best-matching source-page chunks as evidence, excluding saved analysis pages and generated concept pages so answers cite primary compiled sources. It packages the top chunk snippets into a frozen evidence bundle, asks the provider for structured output (`answer_markdown`, `claims`, `citations`, and `insufficient_evidence`), semantically validates the response, strips raw inline citation-ref markers from answer prose, and prints the answer followed by a Citations section.
 
 Provider-backed answers must be both parseable and useful. Empty `answer_markdown`, missing claims when `insufficient_evidence` is false, claims without citation refs, and citation refs outside the retrieved evidence set fail the command instead of being treated as a successful answer. Provider failures include response diagnostics such as finish reason and token counts when the selected SDK exposes them.
 
@@ -266,7 +266,7 @@ Checks for:
 - **Terminology variants** — The same root term appearing in different forms across pages.
 
 This is the semantic complement to `kb lint`. Lint checks structural health deterministically; review checks content-level coherence through heuristics and a provider pass.
-Provider-backed review requests structured JSON when the selected SDK supports schema hints and rejects malformed or empty provider review output instead of parsing legacy pipe-delimited lines. The provider pass reviews curated source/concept excerpts rather than maintenance metadata, and excerpt-boundary truncation claims are filtered unless they are backed by actual page content. Deterministic terminology-variant checks suppress simple inflections, specificity-only pairs, and obvious negating-prefix variants before raising drift suggestions.
+Provider-backed review requests structured JSON when the selected SDK supports schema hints and rejects malformed or empty provider review output instead of parsing legacy pipe-delimited lines. The deterministic pass can inspect reviewable source/concept pages, while the provider pass reviews curated source-page excerpts rather than maintenance metadata. Excerpt-boundary truncation claims are filtered unless they are backed by actual page content. Deterministic terminology-variant checks suppress simple inflections, specificity-only pairs, and obvious negating-prefix variants before raising drift suggestions.
 
 ### `kb export`
 
@@ -538,59 +538,19 @@ project-root/
 
 ## Development
 
-### Key Libraries
+See [docs/development.md](docs/development.md) for contributor setup,
+architecture, testing conventions, and codebase patterns.
 
-| Library | Used For |
-| --- | --- |
-| `markdown-it-py` | Shared AST-based markdown parsing for frontmatter-stripped text, headings, paragraphs, sections, links, and fenced-code-aware lint helpers |
-| `python-frontmatter` | YAML frontmatter parsing for shared markdown document handling |
-| `pydantic` | Strict `kb.config.yaml` validation and structured provider response parsing for concepts, review, ask, and compile summaries |
-| `nltk` | Snowball stemming, sentence splitting, and deterministic fallback collocation scoring for concept topic extraction |
-| `rapidfuzz` | Fuzzy string similarity for terminology-variant detection in `kb review` |
-| `python-slugify` | Unicode-aware slug generation for page, heading, and file identifiers |
-| `mistralai` | Mistral OCR document/image conversion |
-| `docling` | PDF fallback converter |
-| `markitdown` | Born-digital file conversion (CSV, EPUB, IPYNB, XLSX) and fallback |
-| `pdfkit` | HTML → PDF rendering via wkhtmltopdf |
+Quick reference:
 
-NLTK requires the `punkt_tab` tokenizer data. Install it once:
+```bash
+poetry install                        # Install dependencies
+poetry run pytest tests -q            # Run tests (97% coverage required)
+poetry run black src tests            # Format code
+```
+
+NLTK requires the `punkt_tab` tokenizer data (one-time setup):
 
 ```bash
 poetry run python -c "import nltk; nltk.download('punkt_tab')"
 ```
-
-### Run tests
-
-```bash
-poetry run pytest tests -q
-```
-
-### Format code
-
-```bash
-poetry run black src tests
-```
-
-### Coverage report
-
-```bash
-poetry run pytest tests --cov=src --cov-report=term-missing
-```
-
-Coverage must stay at or above 97%.
-
-### Real corpus smoke test
-
-To exercise the full CLI against a real source corpus in a disposable project root:
-
-```bash
-poetry run python scripts/run_real_corpus_smoke.py \
-    --raw-root path/to/raw-corpus \
-    --project-root path/to/disposable-project
-```
-
-The script runs `help`, `init`, `status`, `add`, `status --changed`, `update`, `find`, `ask`, `lint`, `review`, and `export`, writes a consolidated log file under the disposable project root, and exits nonzero if any supported-source ingest fails, lint reports errors, or another command fails unexpectedly.
-
-Unsupported files found under the raw corpus are probed separately to confirm they are rejected cleanly.
-
-This is a manual smoke-test workflow, not a GitHub Actions dependency. The tracked pytest coverage only exercises the smoke-test script against a temporary corpus created inside the test itself.
