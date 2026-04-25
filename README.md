@@ -39,7 +39,9 @@ poetry run kb ask "How does the wiki handle stale pages?"
 ```
 
 That's the everyday workflow: **add → update → find / ask**. Everything else
-is optional.
+is optional. For a slower first-run walkthrough that keeps the repository and
+knowledge-base project in separate directories, see
+[docs/start-guide.md](docs/start-guide.md).
 
 Before running `kb update`, `kb ask`, or `kb review`, configure the active
 provider in `kb.config.yaml` and set the matching API key environment
@@ -535,10 +537,3 @@ project-root/
     └── obsidian/           # Obsidian-friendly export
         └── sources/
 ```
-
-## Development
-
-See [docs/development.md](docs/development.md) for contributor setup,
-architecture, testing, formatting, branch workflow, NLTK setup, and codebase
-patterns. This README stays focused on user-facing installation, commands,
-provider configuration, conversion settings, and project layout.
