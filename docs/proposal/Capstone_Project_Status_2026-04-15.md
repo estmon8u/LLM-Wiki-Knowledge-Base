@@ -56,6 +56,7 @@ In short, the core workflow works end-to-end. Current work is proving quality an
 - Optional provider-backed cleanup/reconstruction path for OCR edge cases.
 - Concept synthesis improvements and quality gates.
 - Optional visualization/reporting and non-obligatory UI layer after core outcomes are complete.
+- Post-capstone productization: multi-subject workspace mode, installable or executable distribution with a default local workspace folder, and a GUI or app-style wrapper for easier source import, subject switching, search, ask, status, and export.
 
 ## Overall Assessment
 
