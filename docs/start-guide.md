@@ -99,8 +99,10 @@ poetry run kb --project-root $projectRoot update
 ```
 
 `kb update` compiles source pages, generates concept pages when useful,
-refreshes `wiki/index.md` and `wiki/log.md`, and rebuilds the SQLite FTS5
-search index.
+refreshes `wiki/index.md` and `wiki/log.md`, and currently rebuilds the
+temporary SQLite FTS5 search index. During the GraphRAG pivot, GraphRAG becomes
+the default retrieval path and retained FTS5 behavior should move behind
+explicit deprecated `kb legacy ...` commands.
 
 If a run is interrupted, resume it:
 
@@ -137,8 +139,11 @@ poetry run kb --project-root $projectRoot ask --save "What does the update pipel
 poetry run kb --project-root $projectRoot ask --save-as update-pipeline "What does the update pipeline do?"
 ```
 
-Saved analysis pages are searchable with `kb find`, but later `kb ask` runs do
-not cite saved answers or generated concept pages as primary evidence.
+Saved analysis pages are searchable with the current `kb find`, but later
+`kb ask` runs do not cite saved answers or generated concept pages as primary
+evidence. During the GraphRAG pivot, the normal `kb ask` path should become
+GraphRAG-first; any retained FTS-backed search or ask behavior should be
+explicit legacy behavior.
 
 ## 7. Check and export
 

@@ -4,7 +4,7 @@ A CLI-first GraphRAG research-memory system for ingesting technical documents, b
 
 The wiki is not the retrieval engine. The wiki is the human-readable artifact layer. GraphRAG is the retrieval and synthesis engine.
 
-This branch starts the GraphRAG pivot. The existing SQLite FTS5 `kb find` and source-grounded `kb ask` workflow is preserved as the lexical baseline while graph indexing, graph query modes, and graph-derived wiki artifacts are added incrementally. See [docs/graphrag-pivot.md](docs/graphrag-pivot.md) for the Phase 0 rationale and target architecture.
+This branch starts the GraphRAG pivot. GraphRAG is the target default retrieval and synthesis path. The existing SQLite FTS5 `kb find` and source-grounded `kb ask` workflow is temporary legacy behavior; if it remains after the graph path lands, it should be reachable only through explicit `kb legacy ...` commands with deprecation warnings. See [docs/graphrag-pivot.md](docs/graphrag-pivot.md) for the Phase 0 rationale and target architecture.
 
 ## Requirements
 
@@ -20,7 +20,7 @@ poetry install
 
 This creates a local `.venv` and installs all dependencies. The CLI entrypoint is registered as `kb`.
 
-## Current Baseline Quick Start
+## Current Transitional Quick Start
 
 ```bash
 # 1. Initialize a new project
@@ -32,21 +32,23 @@ poetry run kb add path/to/notes.md
 poetry run kb add path/to/slides.pptx
 poetry run kb add path/to/research-folder
 
-# 3. Update the knowledge base (generates wiki artifacts and the lexical baseline index)
+# 3. Update the knowledge base (generates wiki artifacts and the temporary legacy FTS index)
 poetry run kb update
 
-# 4. Search the lexical/wiki baseline
+# 4. Search the current legacy/wiki path
 poetry run kb find "knowledge base traceability"
 
-# 5. Ask a source-grounded baseline question with citations
+# 5. Ask through the current legacy source-grounded path
 poetry run kb ask "How does the wiki handle stale pages?"
 ```
 
-That's the current baseline workflow: **add -> update -> find / ask**. It
-keeps the original wiki retrieval path available for comparison while the
-GraphRAG layer is introduced. Later GraphRAG phases will add `kb graph sync`,
-`kb graph index`, graph query modes, and graph-derived wiki exports before
-`kb ask` becomes GraphRAG-first by default.
+That's the current transitional workflow: **add -> update -> find / ask**.
+It exists only until the GraphRAG path is implemented. Later GraphRAG phases
+will add `kb graph sync`, `kb graph index`, graph query modes, and
+graph-derived wiki exports before `kb ask` becomes GraphRAG-first by default.
+At that point, SQLite FTS5 access should move to explicit deprecated commands
+such as `kb legacy find` and `kb legacy ask`, with no silent fallback from
+GraphRAG to FTS5.
 
 For a slower first-run walkthrough that keeps the repository and knowledge-base
 project in separate directories, see [docs/start-guide.md](docs/start-guide.md).
@@ -77,7 +79,7 @@ poetry run kb --project-root /path/to/project status
 
 ### Everyday Commands
 
-These are the commands you will use most often today. The baseline happy path
+These are the commands you will use most often today. The transitional happy path
 is **init -> add -> update -> find / ask**.
 
 | Command | Description |
@@ -85,8 +87,8 @@ is **init -> add -> update -> find / ask**.
 | `init` | Create project folders, config, schema, and manifest |
 | `add` | Add and normalize source documents |
 | `update` | Build wiki pages, generate concepts, and refresh indexes |
-| `find` | Search the lexical/wiki baseline |
-| `ask` | Answer a question from source-page evidence in the baseline retrieval path |
+| `find` | Current legacy/wiki search path; target behavior moves old FTS5 to `kb legacy find` |
+| `ask` | Current source-page answer path; target default is GraphRAG-backed answering |
 | `status` | Show project state and what to do next |
 
 ### Advanced Commands
@@ -194,11 +196,11 @@ poetry run kb find --limit 10 "agent architecture"
 | `--limit` | 5 | Maximum number of results to return. |
 | `--json` | off | Output results as JSON for scripting. |
 
-Uses a SQLite FTS5 chunk index stored at `graph/exports/search_index.sqlite3`. In the GraphRAG pivot, this remains the lexical baseline rather than the final retrieval engine. `kb find` searches source pages, generated concept pages, and saved analysis pages, ranks hits with BM25-style FTS ordering, and returns page-level results using the best matching chunk snippet. Evidence chunks skip metadata-only sections such as `Source Details`, `Source Pages`, `Related Concept Pages`, and `Citations` so retrieval and citations point at content rather than wiki bookkeeping.
+Uses a SQLite FTS5 chunk index stored at `graph/exports/search_index.sqlite3`. In the GraphRAG pivot, this is temporary legacy behavior rather than the final retrieval engine. Once the graph path is implemented, FTS5 access should move behind an explicit deprecated command such as `kb legacy find`; it should not be an implicit fallback for GraphRAG. `kb find` currently searches source pages, generated concept pages, and saved analysis pages, ranks hits with BM25-style FTS ordering, and returns page-level results using the best matching chunk snippet. Evidence chunks skip metadata-only sections such as `Source Details`, `Source Pages`, `Related Concept Pages`, and `Citations` so retrieval and citations point at content rather than wiki bookkeeping.
 
 ### `kb ask <question>`
 
-Answer a question from compiled source-page evidence with provider-backed synthesis and citations. During the GraphRAG pivot, this command remains the lexical/source-page baseline until graph-backed query modes are implemented and promoted.
+Answer a question from compiled source-page evidence with provider-backed synthesis and citations. During the GraphRAG pivot, this command is transitional. The target behavior is GraphRAG-backed answering by default, with any retained FTS5-backed answer path exposed only as `kb legacy ask` and marked deprecated.
 
 ```bash
 poetry run kb ask "How does the wiki handle stale pages?"
@@ -540,7 +542,7 @@ project-root/
 ├── graph/
 │   └── exports/
 │       ├── compile_runs.json      # Resume/failure state for update runs
-│       └── search_index.sqlite3   # SQLite FTS5 lexical baseline index
+│       └── search_index.sqlite3   # Temporary legacy SQLite FTS5 index
 └── vault/
     └── obsidian/           # Obsidian-friendly export
         └── sources/
