@@ -92,6 +92,47 @@ def test_failed_command_raises_with_stderr_detail(test_project) -> None:
     assert exc_info.value.result.returncode == 2
 
 
+def test_successful_dry_run_filters_known_graphrag_logging_error(test_project) -> None:
+    logging_error = (
+        "--- Logging error ---\n"
+        "Traceback (most recent call last):\n"
+        '  File "graphrag/cli/index.py", line 119, in _run_index\n'
+        '    logger.info("Dry run complete, exiting...", True)\n'
+        "Message: 'Dry run complete, exiting...'\n"
+        "Arguments: (True,)\n"
+    )
+
+    def runner(command, *, cwd, capture_output, text):
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr=logging_error)
+
+    service = GraphRAGCommandService(test_project.paths, runner=runner)
+
+    result = service.index(
+        method="fast",
+        dry_run=True,
+        cache=True,
+        skip_validation=False,
+    )
+
+    assert result.stderr == ""
+
+
+def test_non_dry_run_keeps_stderr(test_project) -> None:
+    def runner(command, *, cwd, capture_output, text):
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="warning\n")
+
+    service = GraphRAGCommandService(test_project.paths, runner=runner)
+
+    result = service.index(
+        method="fast",
+        dry_run=False,
+        cache=True,
+        skip_validation=False,
+    )
+
+    assert result.stderr == "warning\n"
+
+
 def test_failed_command_without_output_uses_generic_message(test_project) -> None:
     def runner(command, *, cwd, capture_output, text):
         return subprocess.CompletedProcess(command, 2, stdout="", stderr="")

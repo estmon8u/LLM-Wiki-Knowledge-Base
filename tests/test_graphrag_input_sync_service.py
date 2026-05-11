@@ -115,11 +115,12 @@ def test_sync_configures_json_input_and_metadata_prepending(test_project) -> Non
     assert settings["input"] == {
         "type": "json",
         "encoding": "utf-8",
-        "file_pattern": ".*\\.json$",
+        "file_pattern": ".*\\.json\\Z",
         "id_column": "id",
         "title_column": "title",
         "text_column": "text",
     }
+    assert "$" not in settings["input"]["file_pattern"]
     assert settings["input_storage"]["base_dir"] == "input"
     assert settings["chunking"]["prepend_metadata"] == list(GRAPH_INPUT_METADATA_FIELDS)
     assert json.loads(result.output_path.read_text(encoding="utf-8")) == []

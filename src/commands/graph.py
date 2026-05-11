@@ -92,8 +92,10 @@ def create_command() -> click.Command:
                     "stderr": result.result.stderr,
                     "provider": result.provider,
                     "model": result.model,
+                    "embedding_provider": result.embedding_provider,
                     "embedding_model": result.embedding_model,
                     "api_key_env": result.api_key_env,
+                    "embedding_api_key_env": result.embedding_api_key_env,
                 }
             )
             return
@@ -105,6 +107,12 @@ def create_command() -> click.Command:
             f"{result.provider} (model={result.model}, "
             f"embedding={result.embedding_model}, key={result.api_key_env})"
         )
+        if result.embedding_api_key_env != result.api_key_env:
+            console.print(
+                "GraphRAG embedding provider: "
+                f"{result.embedding_provider} "
+                f"(key={result.embedding_api_key_env})"
+            )
 
     @graph_group.command(
         name="sync",

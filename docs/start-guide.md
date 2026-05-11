@@ -71,11 +71,11 @@ $env:MISTRAL_API_KEY = "..."
 
 GraphRAG runtime settings live in the `graph` section of `kb.config.yaml`.
 The default graph provider is OpenAI with `gpt-4.1-mini`,
-`text-embedding-3-small`, and `GRAPHRAG_API_KEY`. Set that key before running a
-real graph index or query job:
+`text-embedding-3-small`, and the centralized `OPENAI_API_KEY` provider entry.
+Set that key before running a real graph index or query job:
 
 ```powershell
-$env:GRAPHRAG_API_KEY = "..."
+$env:OPENAI_API_KEY = "..."
 ```
 
 Check the setup before adding sources:
@@ -141,8 +141,10 @@ the normalized text for GraphRAG indexing. The generated JSON file can contain
 local corpus text and stays untracked.
 
 `graph init` syncs `graph.provider`, `graph.model`,
-`graph.embedding_model`, and `graph.api_key_env` from `kb.config.yaml` into
-`graph/graphrag/settings.yaml`. Re-run it after changing graph config.
+`graph.embedding_provider`, and `graph.embedding_model` from `kb.config.yaml`
+into `graph/graphrag/settings.yaml`. Unless graph-specific API-key overrides
+are set, the API-key environment variables come from the centralized
+`providers` catalog. Re-run it after changing graph config.
 
 Check readiness before running an index job:
 
@@ -152,8 +154,8 @@ poetry run kb --project-root $projectRoot graph index --method fast --dry-run
 ```
 
 Real `kb graph index` runs call the configured GraphRAG model and embedding
-provider, so set `GRAPHRAG_API_KEY` or the local GraphRAG `.env` file before
-running a non-dry-run index.
+provider, so set the provider API key such as `OPENAI_API_KEY`, or put the same
+variable in the local GraphRAG `.env` file, before running a non-dry-run index.
 
 ## 7. Search and ask
 

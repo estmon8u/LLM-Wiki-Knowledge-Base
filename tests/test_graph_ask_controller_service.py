@@ -63,9 +63,9 @@ def _build_controller(test_project, runner) -> GraphAskControllerService:
 def test_controller_accepts_graph_env_file_credentials(
     test_project, monkeypatch
 ) -> None:
-    monkeypatch.delenv("GRAPHRAG_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     _write_ready_graph(test_project)
-    test_project.write_file("graph/graphrag/.env", "GRAPHRAG_API_KEY=local-key\n")
+    test_project.write_file("graph/graphrag/.env", "OPENAI_API_KEY=local-key\n")
 
     def runner(command, *, cwd, capture_output, text):
         return subprocess.CompletedProcess(
@@ -85,14 +85,35 @@ def test_controller_accepts_graph_env_file_credentials(
 def test_controller_reports_missing_graph_credentials(
     test_project, monkeypatch
 ) -> None:
-    monkeypatch.delenv("GRAPHRAG_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     _write_ready_graph(test_project)
     controller = _build_controller(
         test_project,
         lambda command, **kwargs: subprocess.CompletedProcess(command, 0),
     )
 
-    with pytest.raises(GraphAskControllerError, match="GRAPHRAG_API_KEY"):
+    with pytest.raises(GraphAskControllerError, match="OPENAI_API_KEY"):
+        controller.ask("What is RAG?")
+
+
+def test_controller_requires_separate_embedding_credentials(
+    test_project, monkeypatch
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    test_project.config["graph"] = {
+        "provider": "openai",
+        "model": "gpt-4.1-mini",
+        "embedding_provider": "gemini",
+        "embedding_model": "gemini-embedding-001",
+    }
+    _write_ready_graph(test_project)
+    controller = _build_controller(
+        test_project,
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0),
+    )
+
+    with pytest.raises(GraphAskControllerError, match="GEMINI_API_KEY"):
         controller.ask("What is RAG?")
 
 
@@ -100,7 +121,7 @@ def test_controller_reports_graph_readiness_before_credentials(
     test_project,
     monkeypatch,
 ) -> None:
-    monkeypatch.delenv("GRAPHRAG_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     controller = _build_controller(
         test_project,
         lambda command, **kwargs: subprocess.CompletedProcess(command, 0),
@@ -119,7 +140,7 @@ def test_controller_wraps_invalid_graph_config(test_project) -> None:
         "provider": "",
         "model": "gpt-4.1-mini",
         "embedding_model": "text-embedding-3-small",
-        "api_key_env": "GRAPHRAG_API_KEY",
+        "api_key_env": "OPENAI_API_KEY",
     }
 
     with pytest.raises(GraphAskControllerError, match="provider"):
@@ -143,8 +164,8 @@ def test_controller_claim_support_reports_stale_index(
 ) -> None:
     """When manifest is newer than graph input, claim_support should be stale-index."""
     _write_ready_graph(test_project)
-    test_project.write_file("graph/graphrag/.env", "GRAPHRAG_API_KEY=local-key\n")
-    monkeypatch.delenv("GRAPHRAG_API_KEY", raising=False)
+    test_project.write_file("graph/graphrag/.env", "OPENAI_API_KEY=local-key\n")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
     import os, time
 
@@ -166,7 +187,7 @@ def test_controller_claim_support_reports_stale_index(
 def test_controller_claim_support_reports_no_answer(test_project, monkeypatch) -> None:
     """When GraphRAG returns empty output, claim_support should be no-answer."""
     _write_ready_graph(test_project)
-    monkeypatch.setenv("GRAPHRAG_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
     def runner(command, *, cwd, capture_output, text):
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")

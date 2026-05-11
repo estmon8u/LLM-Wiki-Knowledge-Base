@@ -20,8 +20,10 @@ class GraphRAGWorkspaceInitResult:
     result: GraphRAGCommandResult
     provider: str
     model: str
+    embedding_provider: str
     embedding_model: str
     api_key_env: str
+    embedding_api_key_env: str
 
 
 class GraphRAGWorkspaceService:
@@ -60,8 +62,10 @@ class GraphRAGWorkspaceService:
             GraphRAGRuntimeConfig(
                 provider=graph_config.provider,
                 model=model_name,
+                embedding_provider=graph_config.embedding_provider,
                 embedding_model=embedding_model,
                 api_key_env=graph_config.api_key_env,
+                embedding_api_key_env=graph_config.embedding_api_key_env,
             )
         )
         return GraphRAGWorkspaceInitResult(
@@ -70,8 +74,10 @@ class GraphRAGWorkspaceService:
             result=result,
             provider=graph_config.provider,
             model=model_name,
+            embedding_provider=graph_config.embedding_provider,
             embedding_model=embedding_model,
             api_key_env=graph_config.api_key_env,
+            embedding_api_key_env=graph_config.embedding_api_key_env,
         )
 
     def sync_settings(self, graph_config: GraphRAGRuntimeConfig | None = None) -> None:
@@ -86,10 +92,10 @@ class GraphRAGWorkspaceService:
 
         embedding_models = settings.setdefault("embedding_models", {})
         embedding = embedding_models.setdefault("default_embedding_model", {})
-        embedding["model_provider"] = graph_config.provider
+        embedding["model_provider"] = graph_config.embedding_provider
         embedding["model"] = graph_config.embedding_model
         embedding["auth_method"] = "api_key"
-        embedding["api_key"] = f"${{{graph_config.api_key_env}}}"
+        embedding["api_key"] = f"${{{graph_config.embedding_api_key_env}}}"
 
         atomic_write_text(
             self.settings_path,

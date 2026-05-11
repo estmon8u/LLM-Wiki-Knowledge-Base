@@ -79,13 +79,19 @@ class GraphAskControllerService:
             raise GraphAskControllerError(str(exc)) from exc
 
     def _require_credentials(self, graph_config: GraphRAGRuntimeConfig) -> None:
-        if os.environ.get(graph_config.api_key_env):
-            return
         dot_env = self.paths.graph_dir / "graphrag" / ".env"
-        if env_file_has_key(dot_env, graph_config.api_key_env):
+        missing_envs: list[str] = []
+        for key in dict.fromkeys(
+            (graph_config.api_key_env, graph_config.embedding_api_key_env)
+        ):
+            if os.environ.get(key) or env_file_has_key(dot_env, key):
+                continue
+            missing_envs.append(key)
+        if not missing_envs:
             return
+        keys = ", ".join(missing_envs)
         raise GraphAskControllerError(
-            f"GraphRAG API key is not configured. Set {graph_config.api_key_env} "
+            f"GraphRAG API key is not configured. Set {keys} "
             "or add it to graph/graphrag/.env before running `kb ask`."
         )
 

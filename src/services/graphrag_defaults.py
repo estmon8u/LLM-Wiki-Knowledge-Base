@@ -6,7 +6,9 @@ from pathlib import Path
 
 DEFAULT_GRAPHRAG_MODEL = "gpt-4.1-mini"
 DEFAULT_GRAPHRAG_EMBEDDING_MODEL = "text-embedding-3-small"
-GRAPHRAG_API_KEY_ENV = "GRAPHRAG_API_KEY"
+DEFAULT_GRAPHRAG_PROVIDER = "openai"
+DEFAULT_GRAPHRAG_API_KEY_ENV = "OPENAI_API_KEY"
+LEGACY_GRAPHRAG_API_KEY_ENV = "GRAPHRAG_API_KEY"
 
 
 def env_file_has_key(path: Path, key: str) -> bool:

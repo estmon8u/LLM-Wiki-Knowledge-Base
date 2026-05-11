@@ -189,8 +189,10 @@ def test_graph_init_command_runs_graphrag_init(monkeypatch) -> None:
         assert payload["returncode"] == 0
         assert payload["provider"] == "openai"
         assert payload["model"] == DEFAULT_GRAPHRAG_MODEL
+        assert payload["embedding_provider"] == "openai"
         assert payload["embedding_model"] == DEFAULT_GRAPHRAG_EMBEDDING_MODEL
-        assert payload["api_key_env"] == "GRAPHRAG_API_KEY"
+        assert payload["api_key_env"] == "OPENAI_API_KEY"
+        assert payload["embedding_api_key_env"] == "OPENAI_API_KEY"
         assert calls[0][1:4] == ("-m", "graphrag", "init")
         assert calls[0][calls[0].index("--model") + 1] == DEFAULT_GRAPHRAG_MODEL
         assert (
@@ -209,7 +211,11 @@ def test_graph_init_command_runs_graphrag_init(monkeypatch) -> None:
         )
         assert (
             settings["completion_models"]["default_completion_model"]["api_key"]
-            == "${GRAPHRAG_API_KEY}"
+            == "${OPENAI_API_KEY}"
+        )
+        assert (
+            settings["embedding_models"]["default_embedding_model"]["api_key"]
+            == "${OPENAI_API_KEY}"
         )
 
 
@@ -262,6 +268,7 @@ def test_graph_init_command_uses_graph_config_and_cli_overrides(monkeypatch) -> 
         assert payload["model"] == "override-chat"
         assert payload["embedding_model"] == "override-embedding"
         assert payload["api_key_env"] == "OPENAI_GRAPH_KEY"
+        assert payload["embedding_api_key_env"] == "OPENAI_GRAPH_KEY"
         assert calls[0][calls[0].index("--model") + 1] == "override-chat"
         assert calls[0][calls[0].index("--embedding") + 1] == "override-embedding"
         settings = yaml.safe_load(Path("graph/graphrag/settings.yaml").read_text())
@@ -662,7 +669,7 @@ def test_top_level_ask_routes_auto_and_saves_graph_metadata(monkeypatch) -> None
             stderr="",
         )
 
-    monkeypatch.setenv("GRAPHRAG_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr(
         "src.services.graphrag_command_service.subprocess.run",
         fake_run,
@@ -709,7 +716,7 @@ def test_top_level_ask_explicit_method_bypasses_auto_router(monkeypatch) -> None
             command, 0, stdout="Local answer.\n", stderr=""
         )
 
-    monkeypatch.setenv("GRAPHRAG_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr(
         "src.services.graphrag_command_service.subprocess.run",
         fake_run,
@@ -735,7 +742,7 @@ def test_top_level_ask_show_evidence_and_saved_path(monkeypatch) -> None:
             command, 0, stdout="Graph answer with trace.\n", stderr=""
         )
 
-    monkeypatch.setenv("GRAPHRAG_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr(
         "src.services.graphrag_command_service.subprocess.run",
         fake_run,
@@ -768,7 +775,7 @@ def test_top_level_ask_show_evidence_and_saved_path(monkeypatch) -> None:
 
 
 def test_top_level_ask_requires_graph_credentials(monkeypatch) -> None:
-    monkeypatch.delenv("GRAPHRAG_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -777,7 +784,7 @@ def test_top_level_ask_requires_graph_credentials(monkeypatch) -> None:
         result = runner.invoke(main, ["ask", "What is RAG?"])
 
         assert result.exit_code != 0
-        assert "GRAPHRAG_API_KEY" in result.output
+        assert "OPENAI_API_KEY" in result.output
 
 
 def test_top_level_ask_does_not_call_legacy_search(monkeypatch) -> None:
@@ -789,7 +796,7 @@ def test_top_level_ask_does_not_call_legacy_search(monkeypatch) -> None:
             command, 0, stdout="Graph answer.\n", stderr=""
         )
 
-    monkeypatch.setenv("GRAPHRAG_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr(
         "src.services.search_service.SearchService.search",
         fail_legacy_search,

@@ -136,6 +136,7 @@ class GraphRAGStatusService:
                 input_exists=input_exists,
                 input_document_count=input_document_count,
                 output_present=output_present,
+                last_run=last_run,
             ),
             input_updated_at=self._file_mtime_iso(self.input_path),
             output_updated_at=self._latest_parquet_mtime_iso(),
@@ -250,6 +251,7 @@ class GraphRAGStatusService:
         input_exists: bool,
         input_document_count: int,
         output_present: bool,
+        last_run: dict[str, Any] | None,
     ) -> str:
         if not workspace_initialized:
             return "Run `kb graph init`."
@@ -258,6 +260,13 @@ class GraphRAGStatusService:
         if input_document_count == 0:
             return "Add and compile sources, then run `kb graph sync`."
         if not output_present:
+            if last_run and last_run.get("success") is False:
+                return (
+                    "Fix the last graph index error, then rerun "
+                    "`kb graph index --method fast --dry-run`."
+                )
+            if last_run and last_run.get("dry_run") is True:
+                return "Run `kb graph index --method fast` to build the graph index."
             return "Run `kb graph index --method fast --dry-run` before a full index."
         return 'Run `kb graph ask --method drift "..."` or `kb graph export-wiki`.'
 

@@ -107,7 +107,7 @@ class GraphRAGInputSyncService:
             {
                 "type": "json",
                 "encoding": "utf-8",
-                "file_pattern": ".*\\.json$",
+                "file_pattern": ".*\\.json\\Z",
                 "id_column": "id",
                 "title_column": "title",
                 "text_column": "text",

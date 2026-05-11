@@ -136,6 +136,61 @@ def test_status_counts_documents_from_dict_payload(test_project) -> None:
     )
 
 
+def test_status_after_successful_dry_run_points_to_full_index(test_project) -> None:
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "a"}]),
+    )
+    service = GraphRAGStatusService(test_project.paths)
+    service.record_index_run(
+        method="fast",
+        dry_run=True,
+        result=GraphRAGCommandResult(
+            command=("python", "-m", "graphrag", "index", "--dry-run"),
+            cwd=test_project.paths.root,
+            returncode=0,
+            stdout="",
+            stderr="",
+        ),
+    )
+
+    status = service.status()
+
+    assert status.output_present is False
+    assert status.next_action == (
+        "Run `kb graph index --method fast` to build the graph index."
+    )
+
+
+def test_status_after_failed_index_points_to_error_recovery(test_project) -> None:
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "a"}]),
+    )
+    service = GraphRAGStatusService(test_project.paths)
+    service.record_index_run(
+        method="fast",
+        dry_run=False,
+        result=GraphRAGCommandResult(
+            command=("python", "-m", "graphrag", "index"),
+            cwd=test_project.paths.root,
+            returncode=2,
+            stdout="",
+            stderr="failed",
+        ),
+    )
+
+    status = service.status()
+
+    assert status.last_index_success is False
+    assert status.next_action == (
+        "Fix the last graph index error, then rerun "
+        "`kb graph index --method fast --dry-run`."
+    )
+
+
 def test_status_handles_invalid_input_and_run_metadata(test_project) -> None:
     test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
     test_project.write_file("graph/graphrag/input/sources.json", "{not json")

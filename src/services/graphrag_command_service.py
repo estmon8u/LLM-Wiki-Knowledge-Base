@@ -149,7 +149,7 @@ class GraphRAGCommandService:
             cwd=self.paths.root,
             returncode=int(completed.returncode),
             stdout=completed.stdout or "",
-            stderr=completed.stderr or "",
+            stderr=_sanitize_stderr(command, completed.stderr or ""),
         )
 
 
@@ -159,3 +159,21 @@ def _last_non_empty_line(value: str) -> str:
         if stripped:
             return stripped
     return ""
+
+
+def _sanitize_stderr(command: tuple[str, ...], stderr: str) -> str:
+    if "--dry-run" not in command:
+        return stderr
+    if _is_known_graphrag_dry_run_logging_error(stderr):
+        return ""
+    return stderr
+
+
+def _is_known_graphrag_dry_run_logging_error(stderr: str) -> bool:
+    stripped = stderr.strip()
+    return (
+        stripped.startswith("--- Logging error ---")
+        and 'logger.info("Dry run complete, exiting...", True)' in stripped
+        and "Message: 'Dry run complete, exiting...'" in stripped
+        and "Arguments: (True,)" in stripped
+    )

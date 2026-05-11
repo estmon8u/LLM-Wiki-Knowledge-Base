@@ -17,22 +17,26 @@ from pydantic import (
 import yaml
 
 from src.services.graphrag_defaults import (
+    DEFAULT_GRAPHRAG_API_KEY_ENV,
     DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
     DEFAULT_GRAPHRAG_MODEL,
-    GRAPHRAG_API_KEY_ENV,
+    DEFAULT_GRAPHRAG_PROVIDER,
+    LEGACY_GRAPHRAG_API_KEY_ENV,
 )
 from src.services.project_service import ProjectPaths, atomic_write_text
 
 
-CURRENT_CONFIG_VERSION = 5
+CURRENT_CONFIG_VERSION = 6
 
 
 @dataclass(frozen=True)
 class GraphRAGRuntimeConfig:
     provider: str
     model: str
+    embedding_provider: str
     embedding_model: str
     api_key_env: str
+    embedding_api_key_env: str
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -63,10 +67,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "provider": {},
     "graph": {
-        "provider": "openai",
+        "provider": DEFAULT_GRAPHRAG_PROVIDER,
         "model": DEFAULT_GRAPHRAG_MODEL,
+        "embedding_provider": DEFAULT_GRAPHRAG_PROVIDER,
         "embedding_model": DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
-        "api_key_env": GRAPHRAG_API_KEY_ENV,
+        "api_key_env": None,
+        "embedding_api_key_env": None,
     },
     "providers": {
         "openai": {
@@ -277,6 +283,11 @@ def _apply_config_migrations(config: dict[str, Any]) -> tuple[dict[str, Any], bo
             changed = True
             version = _config_version(migrated)
             continue
+        if version == 5:
+            migrated = _migrate_v5_to_v6(migrated)
+            changed = True
+            version = _config_version(migrated)
+            continue
         raise ValueError(f"Unsupported kb.config.yaml version: {version}")
 
     return migrated, changed
@@ -347,8 +358,27 @@ def _migrate_v4_to_v5(config: dict[str, Any]) -> dict[str, Any]:
     graph = deepcopy(DEFAULT_CONFIG["graph"])
     if isinstance(existing_graph, dict):
         graph = _deep_merge(graph, existing_graph)
+        if "embedding_provider" not in existing_graph:
+            graph["embedding_provider"] = graph.get("provider")
     migrated["graph"] = graph
     migrated["version"] = 5
+    return migrated
+
+
+def _migrate_v5_to_v6(config: dict[str, Any]) -> dict[str, Any]:
+    migrated = deepcopy(config)
+    existing_graph = migrated.get("graph", {})
+    graph = deepcopy(DEFAULT_CONFIG["graph"])
+    if isinstance(existing_graph, dict):
+        graph = _deep_merge(graph, existing_graph)
+        if "embedding_provider" not in existing_graph:
+            graph["embedding_provider"] = graph.get("provider")
+        if graph.get("api_key_env") == LEGACY_GRAPHRAG_API_KEY_ENV:
+            graph["api_key_env"] = None
+        if graph.get("embedding_api_key_env") == LEGACY_GRAPHRAG_API_KEY_ENV:
+            graph["embedding_api_key_env"] = None
+    migrated["graph"] = graph
+    migrated["version"] = 6
     return migrated
 
 
@@ -399,14 +429,23 @@ class _ProvidersConfig(_StrictConfigModel):
 class _GraphConfig(_StrictConfigModel):
     provider: StrictStr
     model: StrictStr
+    embedding_provider: StrictStr | None = None
     embedding_model: StrictStr
-    api_key_env: StrictStr
+    api_key_env: StrictStr | None = None
+    embedding_api_key_env: StrictStr | None = None
 
-    @field_validator("provider", "model", "embedding_model", "api_key_env")
+    @field_validator("provider", "model", "embedding_model")
     @classmethod
     def _must_be_non_empty(cls, value: str) -> str:
         if not value.strip():
             raise ValueError("must be a non-empty string")
+        return value
+
+    @field_validator("embedding_provider", "api_key_env", "embedding_api_key_env")
+    @classmethod
+    def _optional_value_must_be_non_empty(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("must be null or a non-empty string")
         return value
 
 
@@ -468,12 +507,80 @@ def resolve_graph_config(config: dict[str, Any]) -> GraphRAGRuntimeConfig:
         validated = _GraphConfig.model_validate(graph).model_dump(mode="python")
     except ValidationError as exc:
         raise ValueError(_format_config_validation_error(exc)) from exc
-    return GraphRAGRuntimeConfig(
-        provider=validated["provider"].strip(),
-        model=validated["model"].strip(),
-        embedding_model=validated["embedding_model"].strip(),
-        api_key_env=validated["api_key_env"].strip(),
+    provider = validated["provider"].strip()
+    explicit_api_key_env = _optional_str(validated.get("api_key_env"))
+    api_key_env = _resolve_provider_api_key_env(
+        config,
+        provider=provider,
+        explicit_api_key_env=explicit_api_key_env,
+        field_name="api_key_env",
     )
+    embedding_provider = _optional_str(validated.get("embedding_provider")) or provider
+    explicit_embedding_api_key_env = _optional_str(
+        validated.get("embedding_api_key_env")
+    )
+    if explicit_embedding_api_key_env:
+        embedding_api_key_env = explicit_embedding_api_key_env
+    elif embedding_provider == provider and explicit_api_key_env:
+        embedding_api_key_env = api_key_env
+    else:
+        embedding_api_key_env = _resolve_provider_api_key_env(
+            config,
+            provider=embedding_provider,
+            explicit_api_key_env=None,
+            field_name="embedding_api_key_env",
+        )
+    return GraphRAGRuntimeConfig(
+        provider=provider,
+        model=validated["model"].strip(),
+        embedding_provider=embedding_provider,
+        embedding_model=validated["embedding_model"].strip(),
+        api_key_env=api_key_env,
+        embedding_api_key_env=embedding_api_key_env,
+    )
+
+
+def _optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _resolve_provider_api_key_env(
+    config: dict[str, Any],
+    *,
+    provider: str,
+    explicit_api_key_env: str | None,
+    field_name: str,
+) -> str:
+    if explicit_api_key_env:
+        return explicit_api_key_env
+    provider_api_key_env = _provider_catalog_api_key_env(config, provider)
+    if provider_api_key_env:
+        return provider_api_key_env
+    if provider == DEFAULT_GRAPHRAG_PROVIDER:
+        return DEFAULT_GRAPHRAG_API_KEY_ENV
+    raise ValueError(
+        "kb.config.yaml 'graph' must set "
+        f"'{field_name}' when provider '{provider}' is not configured under "
+        "'providers'."
+    )
+
+
+def _provider_catalog_api_key_env(
+    config: dict[str, Any],
+    provider: str,
+) -> str | None:
+    providers = config.get("providers", DEFAULT_CONFIG["providers"])
+    if not isinstance(providers, dict):
+        return None
+    provider_config = providers.get(provider.strip().lower())
+    if not isinstance(provider_config, dict):
+        return None
+    return _optional_str(provider_config.get("api_key_env"))
 
 
 def _validate_config(config: dict[str, Any]) -> dict[str, Any]:

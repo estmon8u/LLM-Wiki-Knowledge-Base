@@ -19,7 +19,7 @@ from src.services.config_service import (
 from src.services.graphrag_defaults import (
     DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
     DEFAULT_GRAPHRAG_MODEL,
-    GRAPHRAG_API_KEY_ENV,
+    DEFAULT_GRAPHRAG_PROVIDER,
 )
 from src.services.project_service import (
     ProjectService,
@@ -119,10 +119,13 @@ def test_config_service_loads_defaults_and_creates_files(uninitialized_project) 
 
     assert config_service.load() == DEFAULT_CONFIG
     graph = config_service.load()["graph"]
-    assert graph["provider"] == "openai"
+    assert graph["provider"] == DEFAULT_GRAPHRAG_PROVIDER
     assert graph["model"] == DEFAULT_GRAPHRAG_MODEL
+    assert graph["embedding_provider"] == DEFAULT_GRAPHRAG_PROVIDER
     assert graph["embedding_model"] == DEFAULT_GRAPHRAG_EMBEDDING_MODEL
-    assert graph["api_key_env"] == GRAPHRAG_API_KEY_ENV
+    assert graph["api_key_env"] is None
+    assert graph["embedding_api_key_env"] is None
+    assert resolve_graph_config(config_service.load()).api_key_env == "OPENAI_API_KEY"
     assert config_service.load_schema() == DEFAULT_SCHEMA
 
     created = config_service.ensure_files()
@@ -349,11 +352,12 @@ def test_config_service_migrates_v4_file_to_v5_with_graph_defaults(
 
 def test_config_service_loads_custom_graph_config(test_project) -> None:
     test_project.paths.config_file.write_text(
-        "version: 5\n"
+        "version: 6\n"
         "graph:\n"
         "  provider: openai\n"
         "  model: gpt-4.1\n"
-        "  embedding_model: text-embedding-3-large\n"
+        "  embedding_provider: gemini\n"
+        "  embedding_model: gemini-embedding-001\n"
         "  api_key_env: OPENAI_GRAPH_KEY\n",
         encoding="utf-8",
     )
@@ -363,13 +367,106 @@ def test_config_service_loads_custom_graph_config(test_project) -> None:
 
     assert graph_config.provider == "openai"
     assert graph_config.model == "gpt-4.1"
-    assert graph_config.embedding_model == "text-embedding-3-large"
+    assert graph_config.embedding_provider == "gemini"
+    assert graph_config.embedding_model == "gemini-embedding-001"
     assert graph_config.api_key_env == "OPENAI_GRAPH_KEY"
+    assert graph_config.embedding_api_key_env == "GEMINI_API_KEY"
+
+
+def test_graph_config_resolves_api_keys_from_provider_catalog(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 6\n"
+        "providers:\n"
+        "  openai:\n"
+        "    model: gpt-5.4\n"
+        "    api_key_env: OPENAI_ALT\n"
+        "    reasoning_effort: medium\n"
+        "  anthropic:\n"
+        "    model: claude-sonnet-4-6\n"
+        "    api_key_env: ANTHROPIC_ALT\n"
+        "    thinking_budget: 2048\n"
+        "  gemini:\n"
+        "    model: gemini-2.5-flash\n"
+        "    api_key_env: GEMINI_ALT\n"
+        "    reasoning_effort: low\n"
+        "graph:\n"
+        "  provider: openai\n"
+        "  model: gpt-4.1\n"
+        "  embedding_provider: gemini\n"
+        "  embedding_model: gemini-embedding-001\n",
+        encoding="utf-8",
+    )
+
+    graph_config = resolve_graph_config(ConfigService(test_project.paths).load())
+
+    assert graph_config.api_key_env == "OPENAI_ALT"
+    assert graph_config.embedding_api_key_env == "GEMINI_ALT"
+
+
+def test_graph_config_uses_explicit_embedding_api_key_override(test_project) -> None:
+    test_project.config["graph"] = {
+        "provider": "openai",
+        "model": "gpt-4.1-mini",
+        "embedding_provider": "gemini",
+        "embedding_model": "gemini-embedding-001",
+        "embedding_api_key_env": "GEMINI_GRAPH_KEY",
+    }
+
+    graph_config = resolve_graph_config(test_project.config)
+
+    assert graph_config.api_key_env == "OPENAI_API_KEY"
+    assert graph_config.embedding_api_key_env == "GEMINI_GRAPH_KEY"
+
+
+def test_graph_config_defaults_openai_api_key_when_catalog_missing() -> None:
+    graph_config = resolve_graph_config(
+        {
+            "graph": DEFAULT_CONFIG["graph"],
+            "providers": {},
+        }
+    )
+
+    assert graph_config.api_key_env == "OPENAI_API_KEY"
+    assert graph_config.embedding_api_key_env == "OPENAI_API_KEY"
+
+
+def test_graph_config_requires_api_key_for_unknown_provider() -> None:
+    with pytest.raises(ValueError, match="graph.*api_key_env"):
+        resolve_graph_config(
+            {
+                "graph": {
+                    "provider": "voyage",
+                    "model": "custom-chat",
+                    "embedding_model": "custom-embedding",
+                },
+                "providers": {},
+            }
+        )
+
+
+def test_config_service_migrates_legacy_graph_api_key_env(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 5\n"
+        "graph:\n"
+        "  provider: openai\n"
+        "  model: gpt-4.1\n"
+        "  embedding_model: text-embedding-3-small\n"
+        "  api_key_env: GRAPHRAG_API_KEY\n",
+        encoding="utf-8",
+    )
+
+    loaded = ConfigService(test_project.paths).load()
+    graph_config = resolve_graph_config(loaded)
+
+    assert loaded["version"] == CURRENT_CONFIG_VERSION
+    assert loaded["graph"]["api_key_env"] is None
+    assert graph_config.api_key_env == "OPENAI_API_KEY"
+    assert graph_config.embedding_api_key_env == "OPENAI_API_KEY"
 
 
 def test_config_service_rejects_invalid_graph_config(test_project) -> None:
     test_project.paths.config_file.write_text(
-        "version: 5\ngraph:\n  provider: ''\n",
+        "version: 6\ngraph:\n  provider: ''\n",
         encoding="utf-8",
     )
 
@@ -377,9 +474,19 @@ def test_config_service_rejects_invalid_graph_config(test_project) -> None:
         ConfigService(test_project.paths).load()
 
 
+def test_config_service_rejects_blank_optional_graph_config(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 6\n" "graph:\n" "  provider: openai\n" "  embedding_provider: ''\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="graph.embedding_provider"):
+        ConfigService(test_project.paths).load()
+
+
 def test_config_service_rejects_unknown_graph_keys(test_project) -> None:
     test_project.paths.config_file.write_text(
-        "version: 5\ngraph:\n  provider: openai\n  extra: nope\n",
+        "version: 6\ngraph:\n  provider: openai\n  extra: nope\n",
         encoding="utf-8",
     )
 

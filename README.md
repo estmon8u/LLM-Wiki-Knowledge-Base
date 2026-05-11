@@ -32,7 +32,7 @@ poetry run kb graph init
 poetry run kb graph init --model gpt-4.1-mini --embedding text-embedding-3-small
 ```
 
-GraphRAG runtime defaults live in the `graph` section of `kb.config.yaml`. `kb graph init` reads that config and syncs the selected provider, model, embedding model, and API-key environment variable into `graph/graphrag/settings.yaml`; `--model` and `--embedding` are per-run overrides. The default generated settings reference `GRAPHRAG_API_KEY`. Set that environment variable, or keep the ignored `.env` file local, before running graph indexing or query commands.
+GraphRAG runtime defaults live in the `graph` section of `kb.config.yaml`. `kb graph init` reads that config and syncs the selected completion provider, embedding provider, models, and resolved API-key environment variables into `graph/graphrag/settings.yaml`; `--model` and `--embedding` are per-run model overrides. By default, GraphRAG reuses the OpenAI provider entry and references `OPENAI_API_KEY`, so a separate `GRAPHRAG_API_KEY` is not required unless you explicitly set a graph-specific override.
 
 `kb graph sync` uses the existing knowledge-base corpus as the source of truth. It reads `raw/_manifest.json` plus the normalized artifacts in `raw/normalized/`, writes `graph/graphrag/input/sources.json`, and configures GraphRAG for JSON input with metadata prepended into chunks.
 
@@ -177,7 +177,7 @@ Creates:
 - `vault/obsidian/` — directory for vault export
 
 Running `init` again is safe — it skips files that already exist.
-The scaffold writes `kb.config.yaml` at config version 5. Older configs are migrated in place on load so deprecated fields are removed and newer sections such as `providers`, `conversion`, `graph`, and `storage.raw_normalized_dir` are persisted automatically.
+The scaffold writes `kb.config.yaml` at config version 6. Older configs are migrated in place on load so deprecated fields are removed and newer sections such as `providers`, `conversion`, `graph`, and `storage.raw_normalized_dir` are persisted automatically.
 
 ### `kb doctor`
 
@@ -246,7 +246,7 @@ poetry run kb graph init --model gpt-4.1-mini --embedding text-embedding-3-small
 poetry run kb graph init --json
 ```
 
-The wrapper delegates to the official GraphRAG CLI through `python -m graphrag init` and writes settings under `graph/graphrag/`. It reads `graph.provider`, `graph.model`, `graph.embedding_model`, and `graph.api_key_env` from `kb.config.yaml`, then syncs those values into `graph/graphrag/settings.yaml`. `--model` and `--embedding` override the config for one init run. The command still uses `--force` by default so project setup is reproducible and non-interactive.
+The wrapper delegates to the official GraphRAG CLI through `python -m graphrag init` and writes settings under `graph/graphrag/`. It reads `graph.provider`, `graph.model`, `graph.embedding_provider`, `graph.embedding_model`, and optional graph-specific API-key overrides from `kb.config.yaml`, then resolves API-key environment variables from the centralized `providers` catalog and syncs those values into `graph/graphrag/settings.yaml`. `--model` and `--embedding` override the config for one init run. The command still uses `--force` by default so project setup is reproducible and non-interactive.
 
 ### `kb graph sync`
 
@@ -574,7 +574,7 @@ Provider configuration lives entirely in `kb.config.yaml`. The top-level
 the built-in settings for `openai`, `anthropic`, and `gemini`:
 
 ```yaml
-version: 5
+version: 6
 provider:
   name: openai
 providers:
@@ -606,8 +606,10 @@ conversion:
 graph:
   provider: openai
   model: gpt-4.1-mini
+  embedding_provider: openai
   embedding_model: text-embedding-3-small
-  api_key_env: GRAPHRAG_API_KEY
+  api_key_env: null
+  embedding_api_key_env: null
 ```
 
 To customize a provider, edit its entry under `providers`:
@@ -622,9 +624,11 @@ providers:
     thinking_budget: 2048
 ```
 
-The `graph` section controls GraphRAG runtime setup independently from the text-provider section used by `kb update`, `kb review`, and `kb legacy ask`. Run `kb graph init` after editing it so `graph/graphrag/settings.yaml` is refreshed.
+The `graph` section controls GraphRAG runtime setup independently from the text-provider section used by `kb update`, `kb review`, and `kb legacy ask`, but it does not duplicate API keys by default. `api_key_env: null` means "resolve this from `providers.<graph.provider>.api_key_env`"; `embedding_api_key_env: null` does the same for `providers.<graph.embedding_provider>.api_key_env`. Run `kb graph init` after editing it so `graph/graphrag/settings.yaml` is refreshed.
 
-`kb.config.yaml` is versioned. The current schema version is 5, and the CLI automatically migrates older files when it loads project configuration.
+OpenAI and Google Gemini both expose embedding models that can be configured for GraphRAG. Anthropic does not currently provide its own embedding model; Anthropic's embedding guidance points users to Voyage AI instead. GraphRAG uses LiteLLM underneath and supports non-OpenAI providers, but its own docs say OpenAI GPT-4-series models remain the most thoroughly tested path.
+
+`kb.config.yaml` is versioned. The current schema version is 6, and the CLI automatically migrates older files when it loads project configuration.
 
 You can also override the provider per-invocation without editing the config file:
 
@@ -712,7 +716,6 @@ local fallback and fail cleanly if Mistral OCR cannot process them.
 | `ANTHROPIC_API_KEY` | API key for the Anthropic provider. |
 | `GEMINI_API_KEY` | API key for the Google Gemini provider. |
 | `MISTRAL_API_KEY` | API key for Mistral OCR document conversion. |
-| `GRAPHRAG_API_KEY` | API key used by the GraphRAG workspace settings. |
 | `NO_COLOR` | When set (any value), disables colored CLI output. Respected automatically by Rich. |
 
 You can override provider and conversion settings in that same file:
@@ -723,6 +726,11 @@ provider:
 providers:
   openai:
     api_key_env: MY_CUSTOM_OPENAI_KEY
+graph:
+  provider: openai
+  embedding_provider: openai
+  api_key_env: null
+  embedding_api_key_env: null
 conversion:
   mistral_ocr:
     api_key_env: MY_CUSTOM_MISTRAL_KEY
