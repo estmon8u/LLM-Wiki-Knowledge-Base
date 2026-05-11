@@ -31,7 +31,7 @@ GraphRAG is the retrieval and synthesis engine.
 - Normalized markdown or plain-text artifacts remain the stable bridge between heterogeneous inputs and downstream processing.
 - `raw/_manifest.json` remains the provenance ledger for source IDs, hashes, converter metadata, and freshness checks.
 - `kb update` remains responsible for wiki artifact maintenance and may continue refreshing the temporary FTS index while legacy commands exist.
-- `wiki/sources/`, `wiki/concepts/`, `wiki/analysis/`, `wiki/index.md`, and `wiki/log.md` remain inspectable artifacts.
+- `wiki/sources/`, legacy `wiki/concepts/`, `wiki/graph/`, `wiki/analysis/`, `wiki/index.md`, and `wiki/log.md` remain inspectable artifacts.
 - FTS5 search/ask behavior is retained only behind explicit `kb legacy find` and `kb legacy ask` commands with deprecation warnings.
 - `kb lint`, `kb review`, `kb status`, `kb doctor`, and `kb export` remain maintenance and operations surfaces.
 - Provider configuration, conversion routing, and Windows/corporate TLS setup remain part of the current project support story.
@@ -50,7 +50,8 @@ GraphRAG is the retrieval and synthesis engine.
   - `local` for specific entity, paper, or method questions,
   - `global` for whole-corpus themes,
   - `drift` for comparison questions that benefit from global context plus local refinement.
-- Wiki pages become the inspection, provenance, export, and maintenance layer over the graph workflow.
+- `kb graph export-wiki` converts GraphRAG Parquet outputs into generated markdown pages under `wiki/graph/` for documents, text units, entities, relationships, and communities.
+- Wiki pages are now the inspection, provenance, export, and maintenance layer over the graph workflow.
 
 ## 4. New architecture
 
@@ -66,6 +67,8 @@ User documents
   -> GraphRAG JSON input with provenance metadata
   -> kb graph index
   -> text units, entities, relationships, communities, community reports
+  -> kb graph export-wiki
+  -> wiki/graph pages for graph inspection and export
   -> kb graph ask / kb ask
   -> basic, local, global, and drift answers
   -> wiki artifacts for source pages, graph pages, communities, saved answers, and evaluation reports
@@ -77,7 +80,7 @@ Layer responsibilities:
 | Layer | Responsibility |
 | --- | --- |
 | `raw/` | Original files, normalized artifacts, manifest metadata, source hashes, converter provenance |
-| `wiki/` | Human-readable source pages, concept pages, analysis pages, index, activity log, later graph artifacts |
+| `wiki/` | Human-readable source pages, legacy concept pages, generated graph pages, analysis pages, index, and activity log |
 | `graph/exports/` | Existing compile-run state and optional legacy SQLite FTS5 index |
 | `graph/graphrag/` | Initialized GraphRAG workspace: tracked prompts/settings, generated JSON input, ignored `.env`, cache, logs, and output |
 | CLI commands | Thin user-facing wrappers over services |
@@ -90,6 +93,7 @@ CLI design guardrails:
 
 - `kb ask` is reserved for the later GraphRAG-aware default controller.
 - `kb graph ask` exposes explicit GraphRAG method control with `--method local|global|drift|basic`.
+- `kb graph export-wiki` exposes graph artifact export separately from indexing and querying so inspection pages can be regenerated without rerunning GraphRAG.
 - Old FTS5 behavior should not be available through a normal `--retriever lexical` option.
 - Old FTS5 behavior is exposed only through `kb legacy find` and `kb legacy ask`.
 - Legacy commands should print deprecation warnings to stderr and keep primary answer/search output on stdout.
@@ -134,4 +138,4 @@ This evaluation story directly explains the pivot: the original wiki workflow re
 - Microsoft GraphRAG query docs describe Local, Global, DRIFT, and Basic Search modes: <https://microsoft.github.io/graphrag/query/overview/>
 - Microsoft GraphRAG indexing docs describe entity, relationship, claim, community, summary, embedding, and Parquet output behavior: <https://microsoft.github.io/graphrag/index/overview/>
 - Microsoft GraphRAG CLI docs expose `init`, `index`, `query`, `prompt-tune`, and `update`: <https://microsoft.github.io/graphrag/cli/>
-- Phase 5 local workspace source of truth: `pyproject.toml` declares `graphrag`, `graph/graphrag/settings.yaml` uses `GRAPHRAG_API_KEY`, `gpt-4.1-mini`, `text-embedding-3-small`, JSON input columns, and `chunking.prepend_metadata`; `src/services/graphrag_input_sync_service.py` writes `graph/graphrag/input/sources.json` from `raw/_manifest.json` and `raw/normalized/`; `src/services/graphrag_workspace_service.py`, `src/services/graphrag_command_service.py`, and `src/services/graphrag_status_service.py` wrap GraphRAG init/index/status behavior; `src/services/graphrag_query_service.py` wraps explicit GraphRAG query modes and optional analysis-page saves; runtime `.env`, generated input, `output`, `cache`, `logs`, and `graph/runs/*.json` files are ignored.
+- Phase 6 local workspace source of truth: `pyproject.toml` declares `graphrag`, `graph/graphrag/settings.yaml` uses `GRAPHRAG_API_KEY`, `gpt-4.1-mini`, `text-embedding-3-small`, JSON input columns, and `chunking.prepend_metadata`; `src/services/graphrag_input_sync_service.py` writes `graph/graphrag/input/sources.json` from `raw/_manifest.json` and `raw/normalized/`; `src/services/graphrag_workspace_service.py`, `src/services/graphrag_command_service.py`, and `src/services/graphrag_status_service.py` wrap GraphRAG init/index/status behavior; `src/services/graphrag_query_service.py` wraps explicit GraphRAG query modes and optional analysis-page saves; `src/services/graphrag_wiki_export_service.py` exports GraphRAG output tables into generated markdown under `wiki/graph/`; runtime `.env`, generated input, `output`, `cache`, `logs`, and `graph/runs/*.json` files are ignored.

@@ -202,7 +202,7 @@ class GraphRAGStatusService:
             return "Add and compile sources, then run `kb graph sync`."
         if not output_present:
             return "Run `kb graph index --method fast --dry-run` before a full index."
-        return 'Run `kb graph ask --method drift "..."` after Phase 5 is enabled.'
+        return 'Run `kb graph ask --method drift "..."` or `kb graph export-wiki`.'
 
 
 def _tail(value: str, *, max_chars: int = 2000) -> str:

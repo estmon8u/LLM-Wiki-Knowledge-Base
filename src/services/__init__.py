@@ -15,6 +15,7 @@ from src.services.graphrag_command_service import GraphRAGCommandService
 from src.services.graphrag_input_sync_service import GraphRAGInputSyncService
 from src.services.graphrag_query_service import GraphRAGQueryService
 from src.services.graphrag_status_service import GraphRAGStatusService
+from src.services.graphrag_wiki_export_service import GraphRAGWikiExportService
 from src.services.graphrag_workspace_service import GraphRAGWorkspaceService
 from src.services.ingest_service import IngestService
 from src.services.lint_service import LintService
@@ -76,6 +77,12 @@ def build_services(
         "graphrag_query": GraphRAGQueryService(
             paths,
             graphrag_command_service,
+            graphrag_status_service,
+            search_service,
+            refresh_index=compile_service.refresh_index,
+        ),
+        "graphrag_wiki_export": GraphRAGWikiExportService(
+            paths,
             graphrag_status_service,
             search_service,
             refresh_index=compile_service.refresh_index,

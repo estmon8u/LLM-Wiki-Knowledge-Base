@@ -4,7 +4,7 @@ A CLI-first GraphRAG research-memory system for ingesting technical documents, b
 
 The wiki is not the retrieval engine. The wiki is the human-readable artifact layer. GraphRAG is the retrieval and synthesis engine.
 
-This branch is in the GraphRAG pivot. GraphRAG is the target default retrieval and synthesis path. The existing SQLite FTS5 search and source-grounded ask workflow is now explicit legacy behavior under `kb legacy find` and `kb legacy ask` with deprecation warnings. Top-level `kb find` and `kb ask` no longer route to FTS5; they are reserved for the later GraphRAG-aware controller. Phase 5 exposes explicit GraphRAG query modes through `kb graph ask --method local|global|drift|basic`, after `kb graph init`, `kb graph sync`, `kb graph index`, and `kb graph status` have prepared the local graph workspace. See [docs/graphrag-pivot.md](docs/graphrag-pivot.md) for the pivot rationale and target architecture.
+This branch is in the GraphRAG pivot. GraphRAG is the target default retrieval and synthesis path. The existing SQLite FTS5 search and source-grounded ask workflow is now explicit legacy behavior under `kb legacy find` and `kb legacy ask` with deprecation warnings. Top-level `kb find` and `kb ask` no longer route to FTS5; they are reserved for the later GraphRAG-aware controller. Phase 6 exposes explicit GraphRAG query modes through `kb graph ask --method local|global|drift|basic` and exports GraphRAG output tables back into inspectable markdown under `wiki/graph/` through `kb graph export-wiki`. See [docs/graphrag-pivot.md](docs/graphrag-pivot.md) for the pivot rationale and target architecture.
 
 ## Requirements
 
@@ -36,7 +36,7 @@ The generated settings reference `GRAPHRAG_API_KEY`. Set that environment variab
 
 `kb graph sync` uses the existing knowledge-base corpus as the source of truth. It reads `raw/_manifest.json` plus the normalized artifacts in `raw/normalized/`, writes `graph/graphrag/input/sources.json`, and configures GraphRAG for JSON input with metadata prepended into chunks.
 
-`kb graph index` wraps `python -m graphrag index` with explicit method choices (`standard`, `fast`, `standard-update`, `fast-update`) and supports `--dry-run` before a real index job. `kb graph status` checks whether settings, synced input, GraphRAG output tables, and the last recorded index run are present. `kb graph ask` then wraps `python -m graphrag query` with explicit Local, Global, DRIFT, and Basic modes and can save raw GraphRAG answers as analysis pages.
+`kb graph index` wraps `python -m graphrag index` with explicit method choices (`standard`, `fast`, `standard-update`, `fast-update`) and supports `--dry-run` before a real index job. `kb graph status` checks whether settings, synced input, GraphRAG output tables, and the last recorded index run are present. `kb graph ask` wraps `python -m graphrag query` with explicit Local, Global, DRIFT, and Basic modes and can save raw GraphRAG answers as analysis pages. `kb graph export-wiki` reads GraphRAG Parquet tables and writes human-readable documents, entities, relationships, communities, and text units under `wiki/graph/`.
 
 ## Current Transitional Quick Start
 
@@ -66,17 +66,20 @@ poetry run kb graph index --method fast --dry-run
 # 7. After a real index, ask an explicit GraphRAG mode
 poetry run kb graph ask "What are the main retrieval patterns?" --method global
 
-# 8. Search the deprecated legacy/wiki path
+# 8. Export GraphRAG artifacts into wiki/graph
+poetry run kb graph export-wiki
+
+# 9. Search the deprecated legacy/wiki path
 poetry run kb legacy find "knowledge base traceability"
 
-# 9. Ask through the deprecated legacy source-grounded path
+# 10. Ask through the deprecated legacy source-grounded path
 poetry run kb legacy ask "How does the wiki handle stale pages?"
 ```
 
 That's the current transitional workflow: **add -> update -> graph init -> graph sync -> graph status/index -> legacy find / legacy ask**.
 The legacy commands exist only for comparison and exact lexical lookup while
-later GraphRAG phases add graph-derived wiki exports and the default `kb ask`
-controller.
+later GraphRAG phases add the default `kb ask` controller and broader graph
+health checks.
 There is no silent fallback from GraphRAG to FTS5.
 
 For a slower first-run walkthrough that keeps the repository and knowledge-base
@@ -118,7 +121,7 @@ is **init -> add -> update -> legacy find / legacy ask**.
 | `update` | Build wiki pages, generate concepts, and refresh indexes |
 | `find` | Reserved GraphRAG search entry point; currently fails with guidance |
 | `ask` | Reserved GraphRAG answer entry point; currently fails with guidance |
-| `graph` | GraphRAG workspace commands for init, input sync, indexing, explicit query modes, and status |
+| `graph` | GraphRAG workspace commands for init, input sync, indexing, explicit query modes, graph wiki export, and status |
 | `legacy` | Deprecated SQLite FTS5 search and ask commands for comparison |
 | `status` | Show project state and what to do next |
 
@@ -297,6 +300,26 @@ poetry run kb graph ask "How does REALM differ from RAG?" --method drift --save
 | `--json` | off | Include the answer, raw GraphRAG output, command, `retriever`, `method`, `index_run_id`, and `input_manifest_hash` as JSON. |
 
 The command requires synced input and GraphRAG index output. Saved analysis pages use `type: analysis`, `retriever: graphrag`, `method`, `question`, `created_at`, `index_run_id`, and `input_manifest_hash` frontmatter, then store the answer, retrieval mode metadata, source trace, and raw GraphRAG CLI output. Direct citation parsing is intentionally deferred until the higher-level ask controller; the raw output is preserved so Phase 6 and later verification work can inspect it.
+
+### `kb graph export-wiki`
+
+Export GraphRAG Parquet output tables into inspectable markdown under `wiki/graph/`.
+
+```bash
+poetry run kb graph export-wiki
+poetry run kb graph export-wiki --json
+```
+
+The export reads standard GraphRAG tables such as `documents`, `text_units`, `entities`, `relationships`, `communities`, and `community_reports` from `graph/graphrag/output/`. It writes:
+
+- `wiki/graph/index.md`
+- `wiki/graph/documents/*.md`
+- `wiki/graph/entities/*.md`
+- `wiki/graph/relationships/*.md`
+- `wiki/graph/communities/*.md`
+- `wiki/graph/text-units/*.md`
+
+Generated graph pages use frontmatter types such as `graph_entity`, `graph_relationship`, `graph_community`, `graph_text_unit`, and `graph_document`. Existing `wiki/concepts/` pages are not deleted; they are now legacy LLM-wiki concept pages beside the GraphRAG-derived `wiki/graph/` layer.
 
 ### `kb find <terms>`
 
@@ -672,8 +695,15 @@ project-root/
 │   └── normalized/         # Canonical markdown/text artifacts
 ├── wiki/
 │   ├── sources/            # Generated source pages
-│   ├── concepts/           # Generated concept pages
-│   ├── analysis/           # Saved analysis pages from kb legacy ask --save
+│   ├── concepts/           # Legacy generated concept pages
+│   ├── graph/              # GraphRAG-derived markdown artifacts
+│   │   ├── index.md
+│   │   ├── documents/
+│   │   ├── entities/
+│   │   ├── relationships/
+│   │   ├── communities/
+│   │   └── text-units/
+│   ├── analysis/           # Saved analysis pages from graph/legacy ask --save
 │   ├── index.md            # Wiki index (human-readable)
 │   ├── _index.json         # Wiki index (machine-readable)
 │   └── log.md              # Update activity log

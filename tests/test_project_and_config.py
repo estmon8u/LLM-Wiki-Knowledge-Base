@@ -394,6 +394,7 @@ def test_build_services_returns_expected_keys(test_project) -> None:
         "graphrag_workspace",
         "graphrag_status",
         "graphrag_query",
+        "graphrag_wiki_export",
         "compile_run_store",
     }
 

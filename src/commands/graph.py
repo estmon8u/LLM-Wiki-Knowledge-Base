@@ -9,6 +9,7 @@ from src.services.graphrag_command_service import GraphRAGCommandError
 from src.services.graphrag_input_sync_service import GraphRAGInputSyncError
 from src.services.graphrag_query_service import GRAPH_QUERY_METHODS, GraphRAGQueryError
 from src.services.graphrag_status_service import GraphRAGStatus
+from src.services.graphrag_wiki_export_service import GraphRAGWikiExportError
 
 
 SUMMARY = "GraphRAG workspace commands."
@@ -278,6 +279,34 @@ def create_command() -> click.Command:
         console.print(RichMarkdown(answer.answer or "No answer text returned."))
         if answer.saved_path:
             console.print(f"\nSaved analysis page: {answer.saved_path}")
+
+    @graph_group.command(
+        name="export-wiki",
+        help="Export GraphRAG output tables into wiki/graph markdown pages.",
+        short_help="Export graph wiki pages.",
+    )
+    @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+    @click.pass_obj
+    def export_wiki(command_context: CommandContext, as_json: bool) -> None:
+        require_initialized(command_context)
+        export_service = command_context.services["graphrag_wiki_export"]
+
+        try:
+            result = export_service.export_wiki()
+        except GraphRAGWikiExportError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+        if as_json:
+            emit_json(result.to_dict())
+            return
+
+        console.print(
+            f"Exported {result.exported_count} GraphRAG wiki page(s) to wiki/graph"
+        )
+        if result.missing_tables:
+            console.print(
+                "Missing GraphRAG table(s): " + ", ".join(result.missing_tables)
+            )
 
     @graph_group.command(
         name="status",

@@ -158,6 +158,16 @@ whole-corpus themes; `drift` for multi-paper comparisons; and `basic` as the
 simple vector-RAG baseline. Saved graph answers go to `wiki/analysis/` with
 `retriever: graphrag` frontmatter and raw GraphRAG output preserved.
 
+Export graph artifacts into inspectable wiki pages:
+
+```powershell
+poetry run kb --project-root $projectRoot graph export-wiki
+```
+
+This creates `wiki/graph/index.md` plus generated pages for GraphRAG documents,
+entities, relationships, communities, and text units. Existing
+`wiki/concepts/` pages stay in place as legacy concept pages.
+
 Deprecated legacy search returns matching wiki pages:
 
 ```powershell
@@ -208,6 +218,7 @@ poetry run kb --project-root $projectRoot status --changed
 Export an Obsidian-compatible vault:
 
 ```powershell
+poetry run kb --project-root $projectRoot graph export-wiki
 poetry run kb --project-root $projectRoot export
 poetry run kb --project-root $projectRoot export --clean
 ```

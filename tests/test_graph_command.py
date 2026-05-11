@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 
 from click.testing import CliRunner
+import pandas as pd
 
 from src.cli import main
 
@@ -35,6 +36,46 @@ def _write_ready_graphrag_index() -> None:
     )
     Path("graph/graphrag/output").mkdir(parents=True, exist_ok=True)
     Path("graph/graphrag/output/entities.parquet").write_text("", encoding="utf-8")
+    Path("graph/runs").mkdir(parents=True, exist_ok=True)
+    Path("graph/runs/graph_index_runs.json").write_text(
+        json.dumps(
+            [
+                {
+                    "run_id": "20260511T000000Z",
+                    "created_at": "2026-05-11T00:00:00+00:00",
+                    "method": "fast",
+                    "dry_run": False,
+                    "success": True,
+                    "returncode": 0,
+                    "command": ["python", "-m", "graphrag", "index"],
+                    "stdout_tail": "indexed",
+                    "stderr_tail": "",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_valid_graph_export_table() -> None:
+    _write_graphrag_settings()
+    Path("graph/graphrag/input").mkdir(parents=True, exist_ok=True)
+    Path("graph/graphrag/input/sources.json").write_text(
+        json.dumps([{"id": "src-1", "text": "Graph source text"}]),
+        encoding="utf-8",
+    )
+    output_dir = Path("graph/graphrag/output")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        [
+            {
+                "id": "entity-1",
+                "title": "Retrieval-Augmented Generation",
+                "description": "A graph entity.",
+                "degree": 2,
+            }
+        ]
+    ).to_parquet(output_dir / "entities.parquet")
     Path("graph/runs").mkdir(parents=True, exist_ok=True)
     Path("graph/runs/graph_index_runs.json").write_text(
         json.dumps(
@@ -520,3 +561,33 @@ def test_graph_ask_command_reports_missing_index_output() -> None:
 
         assert result.exit_code != 0
         assert "GraphRAG index output not found" in result.output
+
+
+def test_graph_export_wiki_command_supports_json_output() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        _write_valid_graph_export_table()
+
+        result = runner.invoke(main, ["graph", "export-wiki", "--json"])
+
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        assert payload["exported_count"] == 2
+        assert "wiki/graph/index.md" in payload["exported_paths"]
+        assert payload["table_counts"]["entities"] == 1
+        assert "relationships" in payload["missing_tables"]
+        assert Path("wiki/graph/entities/retrieval-augmented-generation.md").exists()
+
+
+def test_graph_export_wiki_command_supports_human_output() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        _write_valid_graph_export_table()
+
+        result = runner.invoke(main, ["graph", "export-wiki"])
+
+        assert result.exit_code == 0
+        assert "Exported 2 GraphRAG wiki page(s) to wiki/graph" in result.output
+        assert "Missing GraphRAG table(s):" in result.output
