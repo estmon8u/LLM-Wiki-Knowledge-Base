@@ -43,7 +43,8 @@ GraphRAG is the retrieval and synthesis engine.
 - GraphRAG must not silently fall back to FTS5 when the graph index is missing or stale; it should fail with clear next-step guidance such as `kb graph sync` and `kb graph index`.
 - A dedicated GraphRAG workspace now lives under `graph/graphrag/`.
 - Normalized corpus artifacts are synced into GraphRAG JSON input with source metadata attached through `kb graph sync`.
-- GraphRAG indexing will create graph outputs such as text units, entities, relationships, communities, and community reports.
+- `kb graph init`, `kb graph index`, and `kb graph status` wrap the official GraphRAG CLI for reproducible workspace setup, dry-run/full indexing, output-table detection, and local index-run metadata.
+- GraphRAG indexing creates graph outputs such as text units, entities, relationships, communities, and community reports.
 - GraphRAG query modes will become first-class CLI behavior:
   - `basic` for simple vector-RAG comparison,
   - `local` for specific entity, paper, or method questions,
@@ -83,7 +84,7 @@ Layer responsibilities:
 | Services | Deterministic sync, status, export, lint, and GraphRAG orchestration |
 | Providers | Explicit model-backed compile, review, ask, and GraphRAG runtime configuration boundaries |
 
-The immediate design rule is to wrap GraphRAG rather than reimplement it. The project should preserve its strengths in ingestion, provenance, traceability, and maintenance while delegating graph indexing and graph query modes to Microsoft GraphRAG.
+The immediate design rule is to wrap GraphRAG rather than reimplement it. The project preserves its strengths in ingestion, provenance, traceability, and maintenance while delegating graph initialization and indexing to Microsoft GraphRAG. Query modes should follow the same wrapper-first pattern.
 
 CLI design guardrails:
 
@@ -93,7 +94,7 @@ CLI design guardrails:
 - Old FTS5 behavior is exposed only through `kb legacy find` and `kb legacy ask`.
 - Legacy commands should print deprecation warnings to stderr and keep primary answer/search output on stdout.
 - `--json` output should stay machine-readable and include retriever metadata such as `retriever: "legacy-fts"` and `deprecated: true`.
-- If the GraphRAG workspace or index is missing, graph commands should fail with actionable next steps instead of silently falling back to FTS5.
+- If the GraphRAG workspace, synced input, or index is missing, graph commands should fail with actionable next steps instead of silently falling back to FTS5.
 - Use one explicit `graph` command group for GraphRAG operations and one explicit `legacy` command group for retained FTS5 behavior; avoid hidden aliases and avoid scattering many new top-level verbs.
 - Command names should stay lowercase, short, and discoverable through Click help.
 
@@ -133,4 +134,4 @@ This evaluation story directly explains the pivot: the original wiki workflow re
 - Microsoft GraphRAG query docs describe Local, Global, DRIFT, and Basic Search modes: <https://microsoft.github.io/graphrag/query/overview/>
 - Microsoft GraphRAG indexing docs describe entity, relationship, claim, community, summary, embedding, and Parquet output behavior: <https://microsoft.github.io/graphrag/index/overview/>
 - Microsoft GraphRAG CLI docs expose `init`, `index`, `query`, `prompt-tune`, and `update`: <https://microsoft.github.io/graphrag/cli/>
-- Phase 3 local workspace source of truth: `pyproject.toml` declares `graphrag`, `graph/graphrag/settings.yaml` uses `GRAPHRAG_API_KEY`, `gpt-4.1-mini`, `text-embedding-3-small`, JSON input columns, and `chunking.prepend_metadata`; `src/services/graphrag_input_sync_service.py` writes `graph/graphrag/input/sources.json` from `raw/_manifest.json` and `raw/normalized/`; runtime `.env`, generated input, `output`, `cache`, and `logs` files are ignored.
+- Phase 4 local workspace source of truth: `pyproject.toml` declares `graphrag`, `graph/graphrag/settings.yaml` uses `GRAPHRAG_API_KEY`, `gpt-4.1-mini`, `text-embedding-3-small`, JSON input columns, and `chunking.prepend_metadata`; `src/services/graphrag_input_sync_service.py` writes `graph/graphrag/input/sources.json` from `raw/_manifest.json` and `raw/normalized/`; `src/services/graphrag_workspace_service.py`, `src/services/graphrag_command_service.py`, and `src/services/graphrag_status_service.py` wrap GraphRAG init/index/status behavior; runtime `.env`, generated input, `output`, `cache`, `logs`, and `graph/runs/*.json` files are ignored.

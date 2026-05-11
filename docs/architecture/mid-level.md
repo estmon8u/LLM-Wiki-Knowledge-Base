@@ -6,7 +6,7 @@
 | --- | --- |
 | `src/cli.py` | CLI entrypoint and application bootstrap |
 | `src/commands/` | Thin user-facing command wrappers |
-| `src/services/` | Deterministic normalization, ingest, compile, concept, diff, lint, review, search, query (ask), export, status, config, manifest, and GraphRAG input-sync services |
+| `src/services/` | Deterministic normalization, ingest, compile, concept, diff, lint, review, search, query (ask), export, status, config, manifest, and GraphRAG workspace/input/index/status services |
 | `src/models/` | Shared command, source, and wiki dataclasses |
 | `src/engine/` | Command registry boundary |
 | `src/providers/` | Provider abstraction layer with OpenAI, Anthropic, and Gemini implementations; shared structured-output parser, Tenacity retry decorator for transient failures, per-request reasoning/output controls, diagnostics on provider responses, Gemini schema adaptation, and catalog-backed provider resolution |
@@ -23,7 +23,10 @@ Most commands are flat top-level verbs. The GraphRAG pivot intentionally adds gr
 | `update` | `src/commands/update.py` | `src/services/compile_service.py`, `src/services/concept_service.py`, `src/services/search_service.py` |
 | `find` | `src/commands/find.py` | Reserved GraphRAG guidance wrapper until graph query support lands |
 | `ask` | `src/commands/ask.py` | Reserved GraphRAG guidance wrapper until graph query support lands |
+| `graph init` | `src/commands/graph.py` | `src/services/graphrag_workspace_service.py` and `src/services/graphrag_command_service.py` |
 | `graph sync` | `src/commands/graph.py` | `src/services/graphrag_input_sync_service.py` |
+| `graph index` | `src/commands/graph.py` | `src/services/graphrag_command_service.py` and `src/services/graphrag_status_service.py` |
+| `graph status` | `src/commands/graph.py` | `src/services/graphrag_status_service.py` |
 | `legacy find` / `legacy ask` | `src/commands/legacy.py` | `src/services/search_service.py` and `src/services/query_service.py` |
 | `lint` | `src/commands/lint.py` | `src/services/lint_service.py` |
 | `review` | `src/commands/review.py` | `src/services/review_service.py` |
@@ -42,7 +45,9 @@ Most commands are flat top-level verbs. The GraphRAG pivot intentionally adds gr
 | Diff | manifest metadata plus compile state | pre-compile source status preview |
 | Legacy search | compiled wiki artifacts | ranked page matches from source pages, generated concept pages, and saved analysis pages, derived from indexed chunks that skip wiki bookkeeping sections |
 | Legacy ask | user question plus source-page evidence, excluding generated concept pages and saved analysis pages | cited provider answer validated for parseability, non-empty content, and grounded citation refs; optionally saved as a non-blank analysis page |
+| GraphRAG init | project GraphRAG workspace path plus model defaults | official GraphRAG settings, prompts, and input scaffold under `graph/graphrag/` |
 | GraphRAG input sync | normalized artifacts plus manifest metadata | `graph/graphrag/input/sources.json` JSON records with source text and provenance metadata; JSON input and metadata-prepending settings in `graph/graphrag/settings.yaml` |
+| GraphRAG index/status | synced GraphRAG JSON input plus official GraphRAG CLI output | generated GraphRAG output tables under `graph/graphrag/output/` and ignored local run metadata under `graph/runs/graph_index_runs.json` |
 | Lint | compiled wiki and metadata | structural findings for links, fragments, headings, titles, typed frontmatter, empty pages, and maintenance signals |
 | Review | compiled source/concept pages | semantic findings from deterministic overlap checks over source pages, terminology-variant checks over reviewable source/concept pages, and schema-guided single-pass provider review over curated source-page excerpts |
 | Export | compiled wiki | Obsidian-friendly vault view |

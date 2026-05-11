@@ -11,7 +11,10 @@ from src.services.config_service import ConfigService
 from src.services.diff_service import DiffService
 from src.services.doctor_service import DoctorService
 from src.services.export_service import ExportService
+from src.services.graphrag_command_service import GraphRAGCommandService
 from src.services.graphrag_input_sync_service import GraphRAGInputSyncService
+from src.services.graphrag_status_service import GraphRAGStatusService
+from src.services.graphrag_workspace_service import GraphRAGWorkspaceService
 from src.services.ingest_service import IngestService
 from src.services.lint_service import LintService
 from src.services.manifest_service import ManifestService
@@ -33,6 +36,8 @@ def build_services(
     provider = build_provider(config)
     schema_text = config_service.load_schema()
     compile_run_store = CompileRunStore(paths.graph_exports_dir / "compile_runs.json")
+    graphrag_command_service = GraphRAGCommandService(paths)
+    graphrag_status_service = GraphRAGStatusService(paths)
     compile_service = CompileService(
         paths,
         config,
@@ -61,6 +66,12 @@ def build_services(
             schema_text=schema_text,
         ),
         "export": ExportService(paths),
+        "graphrag_command": graphrag_command_service,
+        "graphrag_workspace": GraphRAGWorkspaceService(
+            paths,
+            graphrag_command_service,
+        ),
+        "graphrag_status": graphrag_status_service,
         "graphrag_input_sync": GraphRAGInputSyncService(paths, manifest_service),
         "review": ReviewService(paths, provider=provider),
         "compile_run_store": compile_run_store,

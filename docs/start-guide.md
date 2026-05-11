@@ -12,7 +12,7 @@ Requirements:
 | --- | --- | --- |
 | Python 3.11.x | Yes | The project is pinned to Python `>=3.11,<3.12`. |
 | Poetry | Yes | Installs dependencies and runs the `kb` entrypoint. |
-| LLM API key | Yes for `update`, `legacy ask`, and `review` | OpenAI, Anthropic, or Gemini. |
+| LLM API key | Yes for `update`, `legacy ask`, `review`, and real GraphRAG index/query jobs | OpenAI, Anthropic, or Gemini. |
 | Mistral API key | Required for PDFs, Office docs, images, and HTML OCR | Markdown and plain text do not need it. |
 | wkhtmltopdf | Required only for HTML OCR | Must be on `PATH` or configured in `kb.config.yaml`. |
 
@@ -116,12 +116,13 @@ If a source changed and you want to refresh generated pages:
 poetry run kb --project-root $projectRoot update --force
 ```
 
-## 6. Sync GraphRAG input
+## 6. Initialize and sync GraphRAG
 
-After `kb update` has normalized and compiled the corpus, sync the normalized
-artifacts into the initialized GraphRAG workspace:
+After `kb update` has normalized and compiled the corpus, initialize the
+GraphRAG workspace and sync the normalized artifacts into it:
 
 ```powershell
+poetry run kb --project-root $projectRoot graph init
 poetry run kb --project-root $projectRoot graph sync
 ```
 
@@ -129,6 +130,17 @@ This writes `graph/graphrag/input/sources.json` from `raw/_manifest.json` and
 `raw/normalized/`, preserving source IDs, hashes, paths, converter metadata, and
 the normalized text for GraphRAG indexing. The generated JSON file can contain
 local corpus text and stays untracked.
+
+Check readiness before running an index job:
+
+```powershell
+poetry run kb --project-root $projectRoot graph status
+poetry run kb --project-root $projectRoot graph index --method fast --dry-run
+```
+
+Real `kb graph index` runs call the configured GraphRAG model and embedding
+provider, so set `GRAPHRAG_API_KEY` or the local GraphRAG `.env` file before
+running a non-dry-run index.
 
 ## 7. Search and ask
 
@@ -194,7 +206,9 @@ poetry run kb --project-root $projectRoot export --clean
 | Provider authentication errors | Confirm the matching API key environment variable is set in the same shell. |
 | PDF, DOCX, PPTX, image, or HTML conversion fails | Set `MISTRAL_API_KEY`; for HTML also install/configure `wkhtmltopdf`. |
 | Search returns stale results | Run `kb update` after adding or changing sources. |
+| GraphRAG workspace is missing | Run `kb graph init`. |
 | GraphRAG input is missing | Run `kb graph sync` after `kb update`. |
+| GraphRAG output is missing | Run `kb graph index --method fast --dry-run`, then a real index when provider credentials and cost are acceptable. |
 | Generated pages look stale | Run `kb status --changed`, then `kb update --force` if needed. |
 
 ## Next Steps
