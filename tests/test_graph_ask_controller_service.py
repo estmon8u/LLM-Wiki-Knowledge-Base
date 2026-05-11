@@ -8,8 +8,8 @@ import pytest
 from src.services.graph_ask_controller_service import (
     GraphAskControllerError,
     GraphAskControllerService,
-    _env_file_has_key,
 )
+from src.services.graphrag_defaults import env_file_has_key
 from src.services.graphrag_command_service import (
     GraphRAGCommandResult,
     GraphRAGCommandService,
@@ -56,6 +56,7 @@ def _build_controller(test_project, runner) -> GraphAskControllerService:
         status_service,
         router,
         query_service,
+        manifest_service=test_project.services["manifest"],
     )
 
 
@@ -78,7 +79,7 @@ def test_controller_accepts_graph_env_file_credentials(
     assert answer.retriever == "graph"
     assert answer.method == "drift"
     assert answer.planner == "heuristic"
-    assert answer.claim_support == "unverified"
+    assert answer.claim_support == "graph-grounded"
 
 
 def test_controller_reports_missing_graph_credentials(
@@ -133,5 +134,50 @@ def test_env_file_has_key_ignores_invalid_lines_and_io_errors(tmp_path) -> None:
     directory_path = tmp_path / "directory.env"
     directory_path.mkdir()
 
-    assert not _env_file_has_key(env_file, "GRAPHRAG_API_KEY")
-    assert not _env_file_has_key(directory_path, "GRAPHRAG_API_KEY")
+    assert not env_file_has_key(env_file, "GRAPHRAG_API_KEY")
+    assert not env_file_has_key(directory_path, "GRAPHRAG_API_KEY")
+
+
+def test_controller_claim_support_reports_stale_index(
+    test_project, monkeypatch
+) -> None:
+    """When manifest is newer than graph input, claim_support should be stale-index."""
+    _write_ready_graph(test_project)
+    test_project.write_file("graph/graphrag/.env", "GRAPHRAG_API_KEY=local-key\n")
+    monkeypatch.delenv("GRAPHRAG_API_KEY", raising=False)
+
+    import os, time
+
+    now = time.time()
+    input_path = test_project.paths.graph_dir / "graphrag" / "input" / "sources.json"
+    os.utime(input_path, (now - 120, now - 120))
+    manifest_path = test_project.paths.raw_manifest_file
+    os.utime(manifest_path, (now, now))
+
+    def runner(command, *, cwd, capture_output, text):
+        return subprocess.CompletedProcess(
+            command, 0, stdout="Answer.\n", stderr=""
+        )
+
+    controller = _build_controller(test_project, runner)
+    answer = controller.ask("What is RAG?")
+
+    assert answer.claim_support == "stale-index"
+
+
+def test_controller_claim_support_reports_no_answer(
+    test_project, monkeypatch
+) -> None:
+    """When GraphRAG returns empty output, claim_support should be no-answer."""
+    _write_ready_graph(test_project)
+    monkeypatch.setenv("GRAPHRAG_API_KEY", "test-key")
+
+    def runner(command, *, cwd, capture_output, text):
+        return subprocess.CompletedProcess(
+            command, 0, stdout="", stderr=""
+        )
+
+    controller = _build_controller(test_project, runner)
+    answer = controller.ask("What is RAG?")
+
+    assert answer.claim_support == "no-answer"

@@ -690,14 +690,14 @@ def test_top_level_ask_routes_auto_and_saves_graph_metadata(monkeypatch) -> None
         assert payload["method"] == "drift"
         assert payload["planner"] == "heuristic"
         assert payload["route_reason"] == "comparison keyword"
-        assert payload["claim_support"] == "unverified"
+        assert payload["claim_support"] == "graph-grounded"
         assert calls[0][calls[0].index("--method") + 1] == "drift"
         saved_path = Path(payload["saved_path"])
         assert saved_path.exists()
         saved_text = saved_path.read_text(encoding="utf-8")
         assert "retriever: graph" in saved_text
         assert "planner: heuristic" in saved_text
-        assert "claim_support: unverified" in saved_text
+        assert "claim_support: graph-grounded" in saved_text
 
 
 def test_top_level_ask_explicit_method_bypasses_auto_router(monkeypatch) -> None:
@@ -762,7 +762,7 @@ def test_top_level_ask_show_evidence_and_saved_path(monkeypatch) -> None:
         assert "Source Trace" in result.output
         assert "GraphRAG input:" in result.output
         assert "Route reason: explicit method override" in result.output
-        assert "Claim support: unverified" in result.output
+        assert "Claim support: graph-grounded" in result.output
         assert "Saved analysis page:" in result.output
         assert list(Path("wiki/analysis").glob("*graph-answer*.md"))
 
