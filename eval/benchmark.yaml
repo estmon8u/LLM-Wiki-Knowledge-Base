@@ -1,0 +1,24 @@
+version: 1
+name: graphrag-pivot-evaluation
+description: Benchmark questions for comparing deprecated SQLite FTS5 retrieval with GraphRAG query modes.
+source_project: kb-cli-realworld-pdf-20260415/project-codex-20260424-userchanges-realrun
+retrievers:
+  legacy_fts:
+    command_group: kb legacy
+    deprecated: true
+    purpose: Historical comparator and exact lexical lookup only.
+questions:
+  - id: realm_vs_rag
+    question: How does REALM differ from RAG?
+    intent: Compare related retrieval-augmented methods across source papers.
+    legacy_find_artifact: eval/legacy-fts/realm_vs_rag_find.json
+    legacy_ask_artifact: eval/legacy-fts/realm_vs_rag_ask.txt
+    status: legacy_find_captured
+  - id: fid_generation
+    question: How does FiD combine retrieval with generation?
+    intent: Check whether retrieval can surface generation-specific method details.
+    legacy_ask_artifact: eval/legacy-fts/fid_generation.txt
+    status: pending_provider_approval
+notes:
+  - Provider-backed legacy ask captures send retrieved source snippets to the configured external model and require explicit user approval before running.
+  - Later phases should add GraphRAG basic, local, global, and drift artifacts under eval/results/.

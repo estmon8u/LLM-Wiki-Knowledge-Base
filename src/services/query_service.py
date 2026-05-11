@@ -153,7 +153,7 @@ class QueryService:
     def _require_provider(self) -> TextProvider:
         if self.provider is None:
             raise ProviderConfigurationError(
-                "kb ask requires a configured provider. Add a provider section "
+                "kb legacy ask requires a configured provider. Add a provider section "
                 "to kb.config.yaml and set the matching API key environment variable."
             )
         if isinstance(self.provider, UnavailableProvider):

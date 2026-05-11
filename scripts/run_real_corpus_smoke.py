@@ -165,8 +165,20 @@ def main(argv: list[str] | None = None) -> int:
         ["--project-root", str(project_root), "update"],
         ["--project-root", str(project_root), "status", "--changed"],
         ["--project-root", str(project_root), "status"],
-        ["--project-root", str(project_root), "find", *args.search_query.split()],
-        ["--project-root", str(project_root), "ask", *args.question.split()],
+        [
+            "--project-root",
+            str(project_root),
+            "legacy",
+            "find",
+            *args.search_query.split(),
+        ],
+        [
+            "--project-root",
+            str(project_root),
+            "legacy",
+            "ask",
+            *args.question.split(),
+        ],
     ):
         result = run_cli_command(repo_root, log_path, command_args)
         if result.exit_code != 0:

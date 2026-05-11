@@ -14,15 +14,16 @@
 
 ## Command To Service Mapping
 
-All commands are flat top-level verbs:
+Most commands are flat top-level verbs. The GraphRAG pivot intentionally adds grouped surfaces for explicit deprecated legacy behavior now and planned graph behavior later:
 
 | Click Name | Command Wrapper | Main Service |
 | --- | --- | --- |
 | `init` | `src/commands/init.py` | `src/services/project_service.py` and `src/services/config_service.py` |
 | `add` | `src/commands/add.py` | `src/services/ingest_service.py`, `src/services/normalization_service.py`, and `src/services/manifest_service.py` |
 | `update` | `src/commands/update.py` | `src/services/compile_service.py`, `src/services/concept_service.py`, `src/services/search_service.py` |
-| `find` | `src/commands/find.py` | `src/services/search_service.py` |
-| `ask` | `src/commands/ask.py` | `src/services/query_service.py` |
+| `find` | `src/commands/find.py` | Reserved GraphRAG guidance wrapper until graph query support lands |
+| `ask` | `src/commands/ask.py` | Reserved GraphRAG guidance wrapper until graph query support lands |
+| `legacy find` / `legacy ask` | `src/commands/legacy.py` | `src/services/search_service.py` and `src/services/query_service.py` |
 | `lint` | `src/commands/lint.py` | `src/services/lint_service.py` |
 | `review` | `src/commands/review.py` | `src/services/review_service.py` |
 | `status` | `src/commands/status.py` | `src/services/status_service.py`, `src/services/diff_service.py` (with `--changed`) |
@@ -38,8 +39,9 @@ All commands are flat top-level verbs:
 | Ingest | canonical markdown/plain-text files, Mistral OCR-routed native documents and images, rendered HTML-to-PDF OCR, and a bounded MarkItDown subset | raw source copy, normalized artifact, and manifest metadata |
 | Compile | normalized canonical text plus manifest metadata | source pages with provider-generated summaries, wiki index, and compile log; provider-clustered concept pages with deterministic fallback and source-page backlinks |
 | Diff | manifest metadata plus compile state | pre-compile source status preview |
-| Search | compiled wiki artifacts | ranked page matches from source pages, generated concept pages, and saved analysis pages, derived from indexed chunks that skip wiki bookkeeping sections |
-| Ask | user question plus source-page evidence, excluding generated concept pages and saved analysis pages | cited provider answer validated for parseability, non-empty content, and grounded citation refs; optionally saved as a non-blank analysis page |
+| Legacy search | compiled wiki artifacts | ranked page matches from source pages, generated concept pages, and saved analysis pages, derived from indexed chunks that skip wiki bookkeeping sections |
+| Legacy ask | user question plus source-page evidence, excluding generated concept pages and saved analysis pages | cited provider answer validated for parseability, non-empty content, and grounded citation refs; optionally saved as a non-blank analysis page |
+| GraphRAG workspace | Poetry dependency plus `graphrag init` scaffold | initialized `graph/graphrag/` settings, prompts, and input directory; ignored local `.env`, cache, logs, and output |
 | Lint | compiled wiki and metadata | structural findings for links, fragments, headings, titles, typed frontmatter, empty pages, and maintenance signals |
 | Review | compiled source/concept pages | semantic findings from deterministic overlap checks over source pages, terminology-variant checks over reviewable source/concept pages, and schema-guided single-pass provider review over curated source-page excerpts |
 | Export | compiled wiki | Obsidian-friendly vault view |
@@ -56,6 +58,7 @@ All commands are flat top-level verbs:
 - Commands should stay thin and delegate quickly.
 - The command layer owns terminal-only concerns such as section headings, list formatting, and progress display via Rich (`Console`, `Table`, `Progress`); long-running services expose callback-friendly hooks instead of writing directly to the terminal. User-supplied content is markup-escaped via `rich.markup.escape`.
 - Services should remain deterministic unless the feature explicitly requires model-backed synthesis.
+- GraphRAG orchestration should wrap the official `graphrag` CLI/library instead of reimplementing graph indexing or query modes.
 - Shared parsing belongs in `src/services/markdown_document.py`: services should consume parser-backed markdown/frontmatter helpers instead of adding new ad hoc regex stacks.
 - Config validation belongs in Pydantic models inside `ConfigService`, with compatibility wrappers preserved for tests and callers.
 - Concept clustering is semantic and provider-backed when possible; keep deterministic clustering only as fallback and keep page writing/backlink maintenance deterministic.
@@ -69,7 +72,7 @@ All commands are flat top-level verbs:
 
 ## Structured Provider Output Contracts
 
-Provider-backed semantic steps now request structured responses at the service boundary instead of parsing freeform text. Concept generation returns concept clusters with title, summary, topic terms, and source pages. Review returns JSON findings with severity, code, pages, and message, then filters findings that only reflect curated-excerpt boundaries. `kb ask` returns answer markdown, claims, citations, and an insufficient-evidence flag, and rejects answers that are syntactically valid but empty or ungrounded. Compile summaries return summary, key points, open questions, and a title suggestion.
+Provider-backed semantic steps now request structured responses at the service boundary instead of parsing freeform text. Concept generation returns concept clusters with title, summary, topic terms, and source pages. Review returns JSON findings with severity, code, pages, and message, then filters findings that only reflect curated-excerpt boundaries. `kb legacy ask` returns answer markdown, claims, citations, and an insufficient-evidence flag, and rejects answers that are syntactically valid but empty or ungrounded. Compile summaries return summary, key points, open questions, and a title suggestion.
 
 The provider request boundary also carries operation-specific reasoning effort and token budgets. Schema-bound operational tasks can request lower reasoning effort with enough visible-output budget for valid JSON, while Gemini receives a schema subset that removes unsupported `additionalProperties` keys before SDK submission.
 

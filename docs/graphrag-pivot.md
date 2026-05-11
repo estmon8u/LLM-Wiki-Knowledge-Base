@@ -6,7 +6,7 @@ Date: 2026-05-11
 
 The current project already has useful research-memory infrastructure: source ingestion, normalized markdown or plain-text artifacts, manifest metadata, provenance-aware source pages, saved analysis pages, structural linting, provider-backed review, vault export, and a rebuildable SQLite FTS5 search index.
 
-The weak point is retrieval. `kb find` is centered on lexical SQLite FTS5 search, and `kb ask` retrieves source-page chunks through that search path before asking a provider to synthesize an answer. That legacy path can work for direct factual questions when the right source chunk is retrieved, but it is not enough for cross-paper comparison, whole-corpus themes, or questions that need synthesis across related methods.
+The weak point is retrieval. The deprecated `kb legacy find` path is centered on lexical SQLite FTS5 search, and `kb legacy ask` retrieves source-page chunks through that search path before asking a provider to synthesize an answer. That legacy path can work for direct factual questions when the right source chunk is retrieved, but it is not enough for cross-paper comparison, whole-corpus themes, or questions that need synthesis across related methods.
 
 GraphRAG is a better fit for that gap because it indexes raw text into a knowledge graph, detects communities, summarizes those communities, and supports query modes for entity-specific questions, whole-dataset questions, DRIFT-style mixed global/local retrieval, and basic vector-RAG comparison. The pivot keeps the maintainable wiki system, but moves retrieval and synthesis toward GraphRAG.
 
@@ -32,16 +32,16 @@ GraphRAG is the retrieval and synthesis engine.
 - `raw/_manifest.json` remains the provenance ledger for source IDs, hashes, converter metadata, and freshness checks.
 - `kb update` remains responsible for wiki artifact maintenance and may continue refreshing the temporary FTS index while legacy commands exist.
 - `wiki/sources/`, `wiki/concepts/`, `wiki/analysis/`, `wiki/index.md`, and `wiki/log.md` remain inspectable artifacts.
-- If FTS5 is retained, old search/ask behavior must move behind explicit `kb legacy find` and `kb legacy ask` commands with deprecation warnings.
+- FTS5 search/ask behavior is retained only behind explicit `kb legacy find` and `kb legacy ask` commands with deprecation warnings.
 - `kb lint`, `kb review`, `kb status`, `kb doctor`, and `kb export` remain maintenance and operations surfaces.
 - Provider configuration, conversion routing, and Windows/corporate TLS setup remain part of the current project support story.
 
 ## 3. What changes
 
 - Retrieval moves from lexical/wiki-first to GraphRAG-first.
-- SQLite FTS5 is not a peer default. It is either removed later or retained only as an explicit deprecated legacy path for comparison or exact lookup.
+- SQLite FTS5 is not a peer default. It is retained only as an explicit deprecated legacy path for comparison or exact lookup unless it is removed later.
 - GraphRAG must not silently fall back to FTS5 when the graph index is missing or stale; it should fail with clear next-step guidance such as `kb graph sync` and `kb graph index`.
-- A dedicated GraphRAG workspace will live under `graph/graphrag/`.
+- A dedicated GraphRAG workspace now lives under `graph/graphrag/`.
 - Normalized corpus artifacts will be synced into GraphRAG input with source metadata attached.
 - GraphRAG indexing will create graph outputs such as text units, entities, relationships, communities, and community reports.
 - GraphRAG query modes will become first-class CLI behavior:
@@ -78,7 +78,7 @@ Layer responsibilities:
 | `raw/` | Original files, normalized artifacts, manifest metadata, source hashes, converter provenance |
 | `wiki/` | Human-readable source pages, concept pages, analysis pages, index, activity log, later graph artifacts |
 | `graph/exports/` | Existing compile-run state and optional legacy SQLite FTS5 index |
-| `graph/graphrag/` | Planned GraphRAG workspace: input, prompts, settings, cache, output |
+| `graph/graphrag/` | Initialized GraphRAG workspace: input scaffold, tracked prompts/settings, ignored `.env`, cache, logs, and output |
 | CLI commands | Thin user-facing wrappers over services |
 | Services | Deterministic sync, status, export, lint, and GraphRAG orchestration |
 | Providers | Explicit model-backed compile, review, ask, and GraphRAG runtime configuration boundaries |
@@ -87,14 +87,14 @@ The immediate design rule is to wrap GraphRAG rather than reimplement it. The pr
 
 CLI design guardrails:
 
-- `kb ask` should become GraphRAG-backed by default after graph querying lands.
+- `kb ask` is reserved for GraphRAG-backed answering after graph querying lands.
 - `kb graph ask` should expose explicit GraphRAG method control with `--method local|global|drift|basic`.
 - Old FTS5 behavior should not be available through a normal `--retriever lexical` option.
-- If old FTS5 behavior remains, expose it only through `kb legacy find` and `kb legacy ask`.
+- Old FTS5 behavior is exposed only through `kb legacy find` and `kb legacy ask`.
 - Legacy commands should print deprecation warnings to stderr and keep primary answer/search output on stdout.
 - `--json` output should stay machine-readable and include retriever metadata such as `retriever: "legacy-fts"` and `deprecated: true`.
 - If the GraphRAG workspace or index is missing, graph commands should fail with actionable next steps instead of silently falling back to FTS5.
-- Use one explicit `graph` command group for GraphRAG operations and one explicit `legacy` command group if FTS5 is retained; avoid hidden aliases and avoid scattering many new top-level verbs.
+- Use one explicit `graph` command group for GraphRAG operations and one explicit `legacy` command group for retained FTS5 behavior; avoid hidden aliases and avoid scattering many new top-level verbs.
 - Command names should stay lowercase, short, and discoverable through Click help.
 
 ## 5. Evaluation plan
@@ -127,9 +127,10 @@ This evaluation story directly explains the pivot: the original wiki workflow re
 
 ## Source notes
 
-- Current code source of truth: `src/services/search_service.py` maintains the current SQLite FTS5 path at `graph/exports/search_index.sqlite3`, and `src/services/query_service.py` builds the transitional `kb ask` answers from source-page search results. This should move behind `kb legacy ...` after GraphRAG querying lands.
+- Current code source of truth: `src/services/search_service.py` maintains the SQLite FTS5 path at `graph/exports/search_index.sqlite3`, `src/services/query_service.py` builds legacy answers from source-page search results, and `src/commands/legacy.py` is the only CLI surface that invokes those retrieval behaviors.
 - CLI design source: the Command Line Interface Guidelines emphasize human-first design, composability through stdout/stderr/exit codes, discoverable help, visible system state, human-readable errors, deprecation warnings before breaking changes, and simple lowercase names: <https://clig.dev/>
 - Microsoft GraphRAG docs describe GraphRAG as a structured, hierarchical RAG approach that extracts a knowledge graph, builds community hierarchies, generates community summaries, and uses those structures for RAG tasks: <https://microsoft.github.io/graphrag/>
 - Microsoft GraphRAG query docs describe Local, Global, DRIFT, and Basic Search modes: <https://microsoft.github.io/graphrag/query/overview/>
 - Microsoft GraphRAG indexing docs describe entity, relationship, claim, community, summary, embedding, and Parquet output behavior: <https://microsoft.github.io/graphrag/index/overview/>
 - Microsoft GraphRAG CLI docs expose `init`, `index`, `query`, `prompt-tune`, and `update`: <https://microsoft.github.io/graphrag/cli/>
+- Phase 2 local workspace source of truth: `pyproject.toml` declares `graphrag`, `graph/graphrag/settings.yaml` uses `GRAPHRAG_API_KEY`, `gpt-4.1-mini`, and `text-embedding-3-small`, and runtime `.env` / `output` / `cache` / `logs` files are ignored.

@@ -1,0 +1,57 @@
+{
+  "retriever": "legacy-fts",
+  "deprecated": true,
+  "query": "How does REALM differ from RAG?",
+  "results": [
+    {
+      "retriever": "legacy-fts",
+      "deprecated": true,
+      "title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+      "path": "wiki/sources/retrieval-augmented-generation-for-knowledge-intensive-nlp-tasks.md",
+      "score": 3832122.785,
+      "snippet": "...The paper does not fully address how retrieval choices affect robustness, provenance quality, or error modes in generation. It remains open whether the same...",
+      "section": "Open Questions",
+      "chunk_index": 2
+    },
+    {
+      "retriever": "legacy-fts",
+      "deprecated": true,
+      "title": "Compare the retrieval strategies used by DPR, REALM, RAG, Atlas, FiD, Self-RAG, and Contriever for open-domain question answering.",
+      "path": "wiki/analysis/model-size-gemini.md",
+      "score": 2806723.867,
+      "snippet": "...DPR, REALM, RAG, Atlas, FiD, Self-RAG, and Contriever. Consequently, information regarding FiD (Fusion-in-Decoder) and Contriever is completely absent from the provided...",
+      "section": "Answer",
+      "chunk_index": 0
+    },
+    {
+      "retriever": "legacy-fts",
+      "deprecated": true,
+      "title": "Leveraging Passage Retrieval with Generative Models for Open Domain Question Answering",
+      "path": "wiki/sources/leveraging-passage-retrieval-with-generative-models-for-open-domain-question-answering.md",
+      "score": 2656651.904,
+      "snippet": "How does performance scale beyond the largest number of retrieved passages tested? How sensitive is the approach to retrieval errors or noisy passages? Does...",
+      "section": "Open Questions",
+      "chunk_index": 2
+    },
+    {
+      "retriever": "legacy-fts",
+      "deprecated": true,
+      "title": "Unsupervised Dense Information Retrieval with Contrastive Learning",
+      "path": "wiki/sources/unsupervised-dense-information-retrieval-with-contrastive-learning.md",
+      "score": 2325721.235,
+      "snippet": "...to multilingual and cross-lingual retrieval, including across different scripts. The main open question is how far unsupervised contrastive objectives can be pushed to...",
+      "section": "Open Questions",
+      "chunk_index": 2
+    },
+    {
+      "retriever": "legacy-fts",
+      "deprecated": true,
+      "title": "REALM: Retrieval-Augmented Language Model Pre-Training",
+      "path": "wiki/sources/realm-retrieval-augmented-language-model-pre-training.md",
+      "score": 2193608.387,
+      "snippet": "How can retrieval over very large corpora be made even more efficient and stable during training? How well does the retrieval-augmented pre-training...",
+      "section": "Open Questions",
+      "chunk_index": 2
+    }
+  ]
+}

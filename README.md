@@ -4,7 +4,7 @@ A CLI-first GraphRAG research-memory system for ingesting technical documents, b
 
 The wiki is not the retrieval engine. The wiki is the human-readable artifact layer. GraphRAG is the retrieval and synthesis engine.
 
-This branch starts the GraphRAG pivot. GraphRAG is the target default retrieval and synthesis path. The existing SQLite FTS5 `kb find` and source-grounded `kb ask` workflow is temporary legacy behavior; if it remains after the graph path lands, it should be reachable only through explicit `kb legacy ...` commands with deprecation warnings. See [docs/graphrag-pivot.md](docs/graphrag-pivot.md) for the Phase 0 rationale and target architecture.
+This branch is in the GraphRAG pivot. GraphRAG is the target default retrieval and synthesis path. The existing SQLite FTS5 search and source-grounded ask workflow is now explicit legacy behavior under `kb legacy find` and `kb legacy ask` with deprecation warnings. Top-level `kb find` and `kb ask` no longer route to FTS5; they are reserved for the GraphRAG path and fail with next-step guidance until graph querying lands. Phase 2 has added the Microsoft GraphRAG package and initialized the dedicated workspace at `graph/graphrag/` with tracked settings, prompts, and input scaffolding. See [docs/graphrag-pivot.md](docs/graphrag-pivot.md) for the pivot rationale and target architecture.
 
 ## Requirements
 
@@ -19,6 +19,19 @@ poetry install
 ```
 
 This creates a local `.venv` and installs all dependencies. The CLI entrypoint is registered as `kb`.
+
+## GraphRAG Workspace
+
+Microsoft GraphRAG is installed as a library/CLI dependency, not a separate paid hosted service. Running real GraphRAG indexing or query jobs can still create model and embedding costs through the configured provider.
+
+The repository now contains an initialized GraphRAG workspace under `graph/graphrag/`. The committed scaffold includes `settings.yaml`, default prompts, and `input/`; local runtime files such as `.env`, `output/`, `cache/`, and `logs/` stay ignored.
+
+```bash
+poetry run graphrag --help
+poetry run graphrag init --root graph/graphrag --model gpt-4.1-mini --embedding text-embedding-3-small --force
+```
+
+The generated settings reference `GRAPHRAG_API_KEY`. Set that environment variable, or keep the ignored `.env` file local, before running future graph indexing or query commands.
 
 ## Current Transitional Quick Start
 
@@ -35,25 +48,23 @@ poetry run kb add path/to/research-folder
 # 3. Update the knowledge base (generates wiki artifacts and the temporary legacy FTS index)
 poetry run kb update
 
-# 4. Search the current legacy/wiki path
-poetry run kb find "knowledge base traceability"
+# 4. Search the deprecated legacy/wiki path
+poetry run kb legacy find "knowledge base traceability"
 
-# 5. Ask through the current legacy source-grounded path
-poetry run kb ask "How does the wiki handle stale pages?"
+# 5. Ask through the deprecated legacy source-grounded path
+poetry run kb legacy ask "How does the wiki handle stale pages?"
 ```
 
-That's the current transitional workflow: **add -> update -> find / ask**.
-It exists only until the GraphRAG path is implemented. Later GraphRAG phases
-will add `kb graph sync`, `kb graph index`, graph query modes, and
-graph-derived wiki exports before `kb ask` becomes GraphRAG-first by default.
-At that point, SQLite FTS5 access should move to explicit deprecated commands
-such as `kb legacy find` and `kb legacy ask`, with no silent fallback from
-GraphRAG to FTS5.
+That's the current transitional workflow: **add -> update -> legacy find / legacy ask**.
+The legacy commands exist only for comparison and exact lexical lookup while
+later GraphRAG phases sync normalized inputs into the initialized workspace, add
+`kb graph index`, graph query modes, and graph-derived wiki exports. There is no
+silent fallback from GraphRAG to FTS5.
 
 For a slower first-run walkthrough that keeps the repository and knowledge-base
 project in separate directories, see [docs/start-guide.md](docs/start-guide.md).
 
-Before running `kb update`, `kb ask`, or `kb review`, configure the active
+Before running `kb update`, `kb legacy ask`, or `kb review`, configure the active
 provider in `kb.config.yaml` and set the matching API key environment
 variable. If you ingest `.pdf`, `.docx`, `.pptx`, supported images, or
 `.html` / `.htm`, also set `MISTRAL_API_KEY`. HTML inputs additionally require
@@ -80,15 +91,16 @@ poetry run kb --project-root /path/to/project status
 ### Everyday Commands
 
 These are the commands you will use most often today. The transitional happy path
-is **init -> add -> update -> find / ask**.
+is **init -> add -> update -> legacy find / legacy ask**.
 
 | Command | Description |
 | --- | --- |
 | `init` | Create project folders, config, schema, and manifest |
 | `add` | Add and normalize source documents |
 | `update` | Build wiki pages, generate concepts, and refresh indexes |
-| `find` | Current legacy/wiki search path; target behavior moves old FTS5 to `kb legacy find` |
-| `ask` | Current source-page answer path; target default is GraphRAG-backed answering |
+| `find` | Reserved GraphRAG search entry point; currently fails with guidance |
+| `ask` | Reserved GraphRAG answer entry point; currently fails with guidance |
+| `legacy` | Deprecated SQLite FTS5 search and ask commands for comparison |
 | `status` | Show project state and what to do next |
 
 ### Advanced Commands
@@ -184,11 +196,17 @@ Compile summaries request structured provider output (`summary`, `key_points`, `
 
 ### `kb find <terms>`
 
-Search the wiki for relevant pages and snippets.
+Reserved GraphRAG search entry point. Until GraphRAG query support lands, this
+command fails with guidance to use `kb legacy find` for deprecated FTS5 lookup.
+
+### `kb legacy find <terms>`
+
+Search the deprecated SQLite FTS5 wiki index for relevant pages and snippets.
 
 ```bash
-poetry run kb find "traceability citation"
-poetry run kb find --limit 10 "agent architecture"
+poetry run kb legacy find "traceability citation"
+poetry run kb legacy find --limit 10 "agent architecture"
+poetry run kb legacy find --json "REALM vs RAG"
 ```
 
 | Option | Default | Description |
@@ -196,18 +214,31 @@ poetry run kb find --limit 10 "agent architecture"
 | `--limit` | 5 | Maximum number of results to return. |
 | `--json` | off | Output results as JSON for scripting. |
 
-Uses a SQLite FTS5 chunk index stored at `graph/exports/search_index.sqlite3`. In the GraphRAG pivot, this is temporary legacy behavior rather than the final retrieval engine. Once the graph path is implemented, FTS5 access should move behind an explicit deprecated command such as `kb legacy find`; it should not be an implicit fallback for GraphRAG. `kb find` currently searches source pages, generated concept pages, and saved analysis pages, ranks hits with BM25-style FTS ordering, and returns page-level results using the best matching chunk snippet. Evidence chunks skip metadata-only sections such as `Source Details`, `Source Pages`, `Related Concept Pages`, and `Citations` so retrieval and citations point at content rather than wiki bookkeeping.
+Uses a SQLite FTS5 chunk index stored at `graph/exports/search_index.sqlite3`.
+This is temporary legacy behavior rather than the final retrieval engine.
+The command searches source pages, generated concept pages, and saved analysis
+pages, ranks hits with BM25-style FTS ordering, and returns page-level results
+using the best matching chunk snippet. JSON output includes
+`retriever: "legacy-fts"` and `deprecated: true` metadata. Evidence chunks skip
+metadata-only sections such as `Source Details`, `Source Pages`,
+`Related Concept Pages`, and `Citations` so retrieval and citations point at
+content rather than wiki bookkeeping.
 
 ### `kb ask <question>`
 
-Answer a question from compiled source-page evidence with provider-backed synthesis and citations. During the GraphRAG pivot, this command is transitional. The target behavior is GraphRAG-backed answering by default, with any retained FTS5-backed answer path exposed only as `kb legacy ask` and marked deprecated.
+Reserved GraphRAG answer entry point. Until GraphRAG query support lands, this
+command fails with guidance to use `kb legacy ask` for deprecated comparison.
+
+### `kb legacy ask <question>`
+
+Answer a question from compiled source-page evidence with provider-backed synthesis and citations through the deprecated SQLite FTS5 retrieval path.
 
 ```bash
-poetry run kb ask "How does the wiki handle stale pages?"
-poetry run kb ask --limit 5 "What normalization converters are supported?"
-poetry run kb ask --save "What does the update pipeline do?"
-poetry run kb ask --save-as freshness "How is freshness tracked?"
-poetry run kb ask --show-evidence "What formats are supported?"
+poetry run kb legacy ask "How does the wiki handle stale pages?"
+poetry run kb legacy ask --limit 5 "What normalization converters are supported?"
+poetry run kb legacy ask --save "What does the update pipeline do?"
+poetry run kb legacy ask --save-as freshness "How is freshness tracked?"
+poetry run kb legacy ask --show-evidence "What formats are supported?"
 ```
 
 | Option | Default | Description |
@@ -221,7 +252,7 @@ Requires a configured provider. Retrieves the best-matching source-page chunks a
 
 Provider-backed answers must be both parseable and useful. Empty `answer_markdown`, missing claims when `insufficient_evidence` is false, claims without citation refs, and citation refs outside the retrieved evidence set fail the command instead of being treated as a successful answer. Provider failures include response diagnostics such as finish reason and token counts when the selected SDK exposes them.
 
-Use `--save` or `--save-as` to persist the answer as a markdown analysis page in `wiki/analysis/` with YAML frontmatter (`type: analysis`), the question, a timestamp, `insufficient_evidence`, claim/citation counts, structured claims/provider citations when available, provider status diagnostics, and backlinks to cited source chunks. Blank answers are refused rather than saved. Saved analysis pages are indexed for `kb find` and appear in `wiki/index.md` immediately, but later `kb ask` runs exclude analysis pages from the evidence set so saved answers are not recursively cited as primary evidence. Repeated saves use unique `wiki/log.md` headings so lint does not treat a rerun as a duplicate-heading issue.
+Use `--save` or `--save-as` to persist the answer as a markdown analysis page in `wiki/analysis/` with YAML frontmatter (`type: analysis`), the question, a timestamp, `insufficient_evidence`, claim/citation counts, structured claims/provider citations when available, provider status diagnostics, and backlinks to cited source chunks. Blank answers are refused rather than saved. Saved analysis pages are indexed for `kb legacy find` and appear in `wiki/index.md` immediately, but later legacy ask runs exclude analysis pages from the evidence set so saved answers are not recursively cited as primary evidence. Repeated saves use unique `wiki/log.md` headings so lint does not treat a rerun as a duplicate-heading issue.
 
 ### `kb lint`
 
@@ -349,14 +380,14 @@ All non-text formats are normalized into canonical markdown and stored in `raw/n
 
 ## Provider Configuration
 
-`kb update`, `kb ask`, and `kb review` require a configured provider.
+`kb update`, `kb legacy ask`, and `kb review` require a configured provider.
 If the provider is missing, those commands fail with a configuration error.
-`kb ask` and `kb review` fail on provider execution errors; `kb update` keeps
+`kb legacy ask` and `kb review` fail on provider execution errors; `kb update` keeps
 deterministic fallbacks for compile summaries and concept clustering after a
 provider call failure.
 
 Provider responses carry the returned text plus model/provider diagnostics such
-as finish reason and token counts when the SDK exposes them. Saved `kb ask`
+as finish reason and token counts when the SDK exposes them. Saved `kb legacy ask`
 analysis pages persist those parsed/validated diagnostics under `provider_status`
 when the answer comes from a provider. Structured provider
 outputs are parsed through the shared JSON parser, which accepts direct JSON,
@@ -420,7 +451,7 @@ providers:
 You can also override the provider per-invocation without editing the config file:
 
 ```bash
-kb --provider anthropic ask "How does REALM differ from RAG?"
+kb --provider anthropic legacy ask "How does REALM differ from RAG?"
 kb --provider gemini review
 ```
 
@@ -439,12 +470,12 @@ See the official model documentation for the full list of available models, pric
 - **Anthropic:** [docs.anthropic.com/en/docs/about-claude/models](https://docs.anthropic.com/en/docs/about-claude/models)
 - **Google Gemini:** [ai.google.dev/gemini-api/docs/models](https://ai.google.dev/gemini-api/docs/models)
 
-If the provider is not configured, `kb update`, `kb ask`, and `kb review`
+If the provider is not configured, `kb update`, `kb legacy ask`, and `kb review`
 fail with a configuration error. If the provider is configured but the API key
 is missing, those commands fail before provider-backed work begins. Provider
 calls retry transient failures (rate limits, timeouts, server errors)
 automatically with exponential backoff and jitter; after retries are exhausted,
-`kb ask` and `kb review` fail while `kb update` can fall back for summaries and
+`kb legacy ask` and `kb review` fail while `kb update` can fall back for summaries and
 concept clustering.
 
 ### Windows and Corporate TLS
@@ -535,7 +566,7 @@ project-root/
 ├── wiki/
 │   ├── sources/            # Generated source pages
 │   ├── concepts/           # Generated concept pages
-│   ├── analysis/           # Saved analysis pages from kb ask --save
+│   ├── analysis/           # Saved analysis pages from kb legacy ask --save
 │   ├── index.md            # Wiki index (human-readable)
 │   ├── _index.json         # Wiki index (machine-readable)
 │   └── log.md              # Update activity log

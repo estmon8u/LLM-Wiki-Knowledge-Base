@@ -12,7 +12,7 @@ Requirements:
 | --- | --- | --- |
 | Python 3.11.x | Yes | The project is pinned to Python `>=3.11,<3.12`. |
 | Poetry | Yes | Installs dependencies and runs the `kb` entrypoint. |
-| LLM API key | Yes for `update`, `ask`, and `review` | OpenAI, Anthropic, or Gemini. |
+| LLM API key | Yes for `update`, `legacy ask`, and `review` | OpenAI, Anthropic, or Gemini. |
 | Mistral API key | Required for PDFs, Office docs, images, and HTML OCR | Markdown and plain text do not need it. |
 | wkhtmltopdf | Required only for HTML OCR | Must be on `PATH` or configured in `kb.config.yaml`. |
 
@@ -100,9 +100,9 @@ poetry run kb --project-root $projectRoot update
 
 `kb update` compiles source pages, generates concept pages when useful,
 refreshes `wiki/index.md` and `wiki/log.md`, and currently rebuilds the
-temporary SQLite FTS5 search index. During the GraphRAG pivot, GraphRAG becomes
-the default retrieval path and retained FTS5 behavior should move behind
-explicit deprecated `kb legacy ...` commands.
+temporary SQLite FTS5 search index for explicit legacy commands. During the
+GraphRAG pivot, GraphRAG is the default retrieval target and retained FTS5
+behavior is exposed only through deprecated `kb legacy ...` commands.
 
 If a run is interrupted, resume it:
 
@@ -118,32 +118,31 @@ poetry run kb --project-root $projectRoot update --force
 
 ## 6. Search and ask
 
-Search returns matching wiki pages:
+Deprecated legacy search returns matching wiki pages:
 
 ```powershell
-poetry run kb --project-root $projectRoot find "citation grounding"
-poetry run kb --project-root $projectRoot find --limit 10 "agent architecture"
+poetry run kb --project-root $projectRoot legacy find "citation grounding"
+poetry run kb --project-root $projectRoot legacy find --limit 10 "agent architecture"
 ```
 
-Ask uses source-page chunks as evidence and returns a cited answer:
+Deprecated legacy ask uses source-page chunks as evidence and returns a cited answer:
 
 ```powershell
-poetry run kb --project-root $projectRoot ask "How does the wiki handle stale pages?"
-poetry run kb --project-root $projectRoot ask --show-evidence "What formats are supported?"
+poetry run kb --project-root $projectRoot legacy ask "How does the wiki handle stale pages?"
+poetry run kb --project-root $projectRoot legacy ask --show-evidence "What formats are supported?"
 ```
 
 Save useful answers as analysis pages:
 
 ```powershell
-poetry run kb --project-root $projectRoot ask --save "What does the update pipeline do?"
-poetry run kb --project-root $projectRoot ask --save-as update-pipeline "What does the update pipeline do?"
+poetry run kb --project-root $projectRoot legacy ask --save "What does the update pipeline do?"
+poetry run kb --project-root $projectRoot legacy ask --save-as update-pipeline "What does the update pipeline do?"
 ```
 
-Saved analysis pages are searchable with the current `kb find`, but later
-`kb ask` runs do not cite saved answers or generated concept pages as primary
-evidence. During the GraphRAG pivot, the normal `kb ask` path should become
-GraphRAG-first; any retained FTS-backed search or ask behavior should be
-explicit legacy behavior.
+Saved analysis pages are searchable with `kb legacy find`, but later legacy ask
+runs do not cite saved answers or generated concept pages as primary evidence.
+Top-level `kb find` and `kb ask` are reserved for GraphRAG behavior and now fail
+with guidance until graph querying is implemented.
 
 ## 7. Check and export
 

@@ -122,6 +122,7 @@ def test_help_lists_core_commands() -> None:
         "export",
         "find",
         "init",
+        "legacy",
         "review",
         "status",
         "update",
@@ -174,19 +175,22 @@ def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
         assert lint_result.exit_code == 0
         assert "No lint issues found." in lint_result.output
 
-        search_result = runner.invoke(main, ["find", "traceability"])
+        search_result = runner.invoke(main, ["legacy", "find", "traceability"])
         assert search_result.exit_code == 0
         assert "wiki/sources/sample-research-note.md" in search_result.output
         assert Path("graph/exports/search_index.sqlite3").exists()
 
         _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            query_result = runner.invoke(main, ["ask", "traceability", "knowledge"])
+            query_result = runner.invoke(
+                main, ["legacy", "ask", "traceability", "knowledge"]
+            )
         assert query_result.exit_code == 0
         assert "Answer" in query_result.output
         assert "Citations" in query_result.output
         assert "wiki/sources/sample-research-note.md" in query_result.output
         assert "#chunk-" in query_result.output
+        assert "retriever: legacy-fts" in query_result.output
 
         export_result = runner.invoke(main, ["export"])
         assert export_result.exit_code == 0
@@ -215,23 +219,26 @@ def test_end_to_end_cli_flow_for_local_html_source() -> None:
         assert update_result.exit_code == 0
         assert "Compiled 1 source page(s)" in update_result.output
 
-        search_result = runner.invoke(main, ["find", "traceability"])
+        search_result = runner.invoke(main, ["legacy", "find", "traceability"])
         assert search_result.exit_code == 0
         assert "wiki/sources/html-research-note.md" in search_result.output
 
 
-def test_search_and_ask_show_empty_messages_when_no_results() -> None:
+def test_legacy_search_empty_and_top_level_retrieval_guides_to_legacy() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        search_result = runner.invoke(main, ["find", "missing-topic"])
+        search_result = runner.invoke(main, ["legacy", "find", "missing-topic"])
+        find_result = runner.invoke(main, ["find", "missing-topic"])
         ask_result = runner.invoke(main, ["ask", "missing-topic"])
 
         assert search_result.exit_code == 0
         assert "No wiki pages matched that query." in search_result.output
+        assert find_result.exit_code != 0
+        assert "kb legacy find" in find_result.output
         assert ask_result.exit_code != 0
-        assert "requires a configured provider" in ask_result.output
+        assert "kb legacy ask" in ask_result.output
 
 
 def test_find_and_ask_require_terms() -> None:
@@ -241,11 +248,17 @@ def test_find_and_ask_require_terms() -> None:
 
         search_result = runner.invoke(main, ["find"])
         ask_result = runner.invoke(main, ["ask"])
+        legacy_search_result = runner.invoke(main, ["legacy", "find"])
+        legacy_ask_result = runner.invoke(main, ["legacy", "ask"])
 
         assert search_result.exit_code != 0
         assert "Provide at least one search term." in search_result.output
         assert ask_result.exit_code != 0
         assert "Provide a question to answer." in ask_result.output
+        assert legacy_search_result.exit_code != 0
+        assert "Provide at least one search term." in legacy_search_result.output
+        assert legacy_ask_result.exit_code != 0
+        assert "Provide a question to answer." in legacy_ask_result.output
 
 
 def test_ingest_reports_click_error_for_unsupported_file_type() -> None:
@@ -521,7 +534,15 @@ def test_ask_save_flag_creates_analysis_page() -> None:
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             result = runner.invoke(
                 main,
-                ["ask", "--save", "How", "does", "traceability", "work?"],
+                [
+                    "legacy",
+                    "ask",
+                    "--save",
+                    "How",
+                    "does",
+                    "traceability",
+                    "work?",
+                ],
             )
 
         assert result.exit_code == 0
@@ -603,7 +624,7 @@ def test_query_piped_input_does_not_save_without_flag() -> None:
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             result = runner.invoke(
                 main,
-                ["ask", "traceability"],
+                ["legacy", "ask", "traceability"],
             )
 
         assert result.exit_code == 0
@@ -678,11 +699,11 @@ def test_provider_override_flag_switches_provider() -> None:
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             result = runner.invoke(
                 main,
-                ["--provider", "openai", "ask", "traceability"],
+                ["--provider", "openai", "legacy", "ask", "traceability"],
             )
 
         assert result.exit_code == 0
-        assert "[mode: provider:" in result.output
+        assert "mode: provider:" in result.output
 
 
 def test_provider_override_flag_rejects_invalid_name() -> None:
@@ -784,7 +805,7 @@ def test_find_command_works() -> None:
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        result = runner.invoke(main, ["find", "missing-topic"])
+        result = runner.invoke(main, ["legacy", "find", "missing-topic"])
 
         assert result.exit_code == 0
         assert "No wiki pages matched that query." in result.output
@@ -959,6 +980,7 @@ def test_ask_show_evidence_flag() -> None:
             result = runner.invoke(
                 main,
                 [
+                    "legacy",
                     "ask",
                     "--show-evidence",
                     "How",
@@ -1190,7 +1212,7 @@ def test_doctor_json_output() -> None:
 
 
 def test_find_json_output() -> None:
-    runner = CliRunner()
+    runner = CliRunner(mix_stderr=False)
     with runner.isolated_filesystem():
         Path("sample.md").write_text(
             "# Sample\n\nTraceability and citation.\n", encoding="utf-8"
@@ -1201,27 +1223,35 @@ def test_find_json_output() -> None:
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             assert runner.invoke(main, ["update"]).exit_code == 0
 
-        result = runner.invoke(main, ["find", "--json", "traceability"])
+        result = runner.invoke(main, ["legacy", "find", "--json", "traceability"])
 
         assert result.exit_code == 0
+        assert "Deprecated: SQLite FTS5 retrieval is legacy-only" in result.stderr
         data = json.loads(result.output)
-        assert isinstance(data, list)
-        assert len(data) > 0
-        assert "title" in data[0]
-        assert "path" in data[0]
-        assert "score" in data[0]
+        assert data["retriever"] == "legacy-fts"
+        assert data["deprecated"] is True
+        assert isinstance(data["results"], list)
+        assert len(data["results"]) > 0
+        assert data["results"][0]["retriever"] == "legacy-fts"
+        assert data["results"][0]["deprecated"] is True
+        assert "title" in data["results"][0]
+        assert "path" in data["results"][0]
+        assert "score" in data["results"][0]
 
 
 def test_find_json_empty_results() -> None:
-    runner = CliRunner()
+    runner = CliRunner(mix_stderr=False)
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        result = runner.invoke(main, ["find", "--json", "missing-topic"])
+        result = runner.invoke(main, ["legacy", "find", "--json", "missing-topic"])
 
         assert result.exit_code == 0
+        assert "Deprecated: SQLite FTS5 retrieval is legacy-only" in result.stderr
         data = json.loads(result.output)
-        assert data == []
+        assert data["retriever"] == "legacy-fts"
+        assert data["deprecated"] is True
+        assert data["results"] == []
 
 
 def test_status_json_output() -> None:

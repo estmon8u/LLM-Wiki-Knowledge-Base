@@ -9,7 +9,8 @@ from src.models.command_models import CommandContext, CommandSpec
 
 
 # ---------------------------------------------------------------------------
-# Primary top-level commands (the simplified public CLI)
+# Primary top-level commands.
+# GraphRAG introduces grouped command surfaces for explicit graph and legacy paths.
 # ---------------------------------------------------------------------------
 FLAT_COMMAND_MODULES = {
     "add": "src.commands.add",
@@ -19,6 +20,7 @@ FLAT_COMMAND_MODULES = {
     "export": "src.commands.export_cmd",
     "find": "src.commands.find",
     "init": "src.commands.init",
+    "legacy": "src.commands.legacy",
     "lint": "src.commands.lint",
     "review": "src.commands.review",
     "sources": "src.commands.sources",

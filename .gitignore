@@ -15,3 +15,10 @@ htmlcov/
 .github/prompts/
 .github/agents/
 .github/hooks/
+
+# GraphRAG workspace runtime artifacts
+graph/graphrag/.env
+graph/graphrag/output/
+graph/graphrag/cache/
+graph/graphrag/logs/
+graph/runs/*.log
