@@ -1,0 +1,67 @@
+from __future__ import annotations
+
+import pandas as pd
+import pytest
+
+from src.services.graphrag_status_service import GraphRAGStatusService
+from src.services.query_router_service import (
+    QueryRouterError,
+    QueryRouterService,
+    _find_table_path,
+    _read_term_columns,
+    _term_in_question,
+)
+
+
+def test_router_routes_global_drift_and_basic_without_graph_terms() -> None:
+    router = QueryRouterService()
+
+    assert (
+        router.route("What are the main themes across the corpus?").method == "global"
+    )
+    assert router.route("How does REALM differ from RAG?").method == "drift"
+    assert router.route("What is retrieval used for?").method == "basic"
+
+
+def test_router_uses_explicit_method_override() -> None:
+    router = QueryRouterService()
+
+    route = router.route("What patterns appear across the corpus?", method="local")
+
+    assert route.method == "local"
+    assert route.reason == "explicit method override"
+
+
+def test_router_rejects_unknown_method() -> None:
+    router = QueryRouterService()
+
+    with pytest.raises(QueryRouterError, match="Unsupported GraphRAG method"):
+        router.route("What is RAG?", method="lexical")
+
+
+def test_router_routes_known_entity_questions_to_local(test_project) -> None:
+    output_dir = test_project.paths.graph_dir / "graphrag" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        [
+            {"id": "entity-1", "title": "REALM"},
+            {"id": "entity-2", "title": "Dense Passage Retrieval"},
+        ]
+    ).to_parquet(output_dir / "create_final_entities.parquet")
+    router = QueryRouterService(GraphRAGStatusService(test_project.paths))
+
+    assert router.route("What is REALM?").method == "local"
+    assert router.route("Explain dense passage retrieval.").method == "local"
+
+
+def test_router_helpers_handle_missing_invalid_and_empty_terms(tmp_path) -> None:
+    missing_output = tmp_path / "missing"
+    assert _find_table_path(missing_output, "entities") is None
+
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    unmatched_table = output_dir / "unmatched.parquet"
+    unmatched_table.write_text("not parquet", encoding="utf-8")
+    assert _find_table_path(output_dir, "entities") is None
+    assert list(_read_term_columns(unmatched_table)) == []
+    assert not _term_in_question("", "what is rag?")

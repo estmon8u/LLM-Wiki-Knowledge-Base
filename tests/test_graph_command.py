@@ -6,6 +6,7 @@ import subprocess
 
 from click.testing import CliRunner
 import pandas as pd
+import yaml
 
 from src.cli import main
 from src.services.graphrag_defaults import (
@@ -186,6 +187,10 @@ def test_graph_init_command_runs_graphrag_init(monkeypatch) -> None:
         assert payload["workspace_dir"] == "graph/graphrag"
         assert payload["settings_path"] == "graph/graphrag/settings.yaml"
         assert payload["returncode"] == 0
+        assert payload["provider"] == "openai"
+        assert payload["model"] == DEFAULT_GRAPHRAG_MODEL
+        assert payload["embedding_model"] == DEFAULT_GRAPHRAG_EMBEDDING_MODEL
+        assert payload["api_key_env"] == "GRAPHRAG_API_KEY"
         assert calls[0][1:4] == ("-m", "graphrag", "init")
         assert calls[0][calls[0].index("--model") + 1] == DEFAULT_GRAPHRAG_MODEL
         assert (
@@ -193,6 +198,79 @@ def test_graph_init_command_runs_graphrag_init(monkeypatch) -> None:
             == DEFAULT_GRAPHRAG_EMBEDDING_MODEL
         )
         assert "--force" in calls[0]
+        settings = yaml.safe_load(Path("graph/graphrag/settings.yaml").read_text())
+        assert (
+            settings["completion_models"]["default_completion_model"]["model"]
+            == DEFAULT_GRAPHRAG_MODEL
+        )
+        assert (
+            settings["embedding_models"]["default_embedding_model"]["model"]
+            == DEFAULT_GRAPHRAG_EMBEDDING_MODEL
+        )
+        assert (
+            settings["completion_models"]["default_completion_model"]["api_key"]
+            == "${GRAPHRAG_API_KEY}"
+        )
+
+
+def test_graph_init_command_uses_graph_config_and_cli_overrides(monkeypatch) -> None:
+    calls = []
+
+    def fake_run(command, *, cwd, capture_output, text):
+        calls.append(command)
+        settings_path = Path(cwd) / "graph" / "graphrag" / "settings.yaml"
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
+        settings_path.write_text("input:\n  type: json\n", encoding="utf-8")
+        return subprocess.CompletedProcess(
+            command, 0, stdout="initialized\n", stderr=""
+        )
+
+    monkeypatch.setattr(
+        "src.services.graphrag_command_service.subprocess.run",
+        fake_run,
+    )
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        config = yaml.safe_load(Path("kb.config.yaml").read_text(encoding="utf-8"))
+        config["graph"] = {
+            "provider": "openai",
+            "model": "configured-chat",
+            "embedding_model": "configured-embedding",
+            "api_key_env": "OPENAI_GRAPH_KEY",
+        }
+        Path("kb.config.yaml").write_text(
+            yaml.safe_dump(config, sort_keys=False),
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(
+            main,
+            [
+                "graph",
+                "init",
+                "--model",
+                "override-chat",
+                "--embedding",
+                "override-embedding",
+                "--json",
+            ],
+        )
+
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        assert payload["model"] == "override-chat"
+        assert payload["embedding_model"] == "override-embedding"
+        assert payload["api_key_env"] == "OPENAI_GRAPH_KEY"
+        assert calls[0][calls[0].index("--model") + 1] == "override-chat"
+        assert calls[0][calls[0].index("--embedding") + 1] == "override-embedding"
+        settings = yaml.safe_load(Path("graph/graphrag/settings.yaml").read_text())
+        completion = settings["completion_models"]["default_completion_model"]
+        embedding = settings["embedding_models"]["default_embedding_model"]
+        assert completion["model"] == "override-chat"
+        assert completion["api_key"] == "${OPENAI_GRAPH_KEY}"
+        assert embedding["model"] == "override-embedding"
+        assert embedding["api_key"] == "${OPENAI_GRAPH_KEY}"
 
 
 def test_graph_init_command_supports_human_output(monkeypatch) -> None:
@@ -570,6 +648,165 @@ def test_graph_ask_command_reports_missing_index_output() -> None:
 
         assert result.exit_code != 0
         assert "GraphRAG index output not found" in result.output
+
+
+def test_top_level_ask_routes_auto_and_saves_graph_metadata(monkeypatch) -> None:
+    calls = []
+
+    def fake_run(command, *, cwd, capture_output, text):
+        calls.append(command)
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="REALM augments pretraining while RAG augments generation.\n",
+            stderr="",
+        )
+
+    monkeypatch.setenv("GRAPHRAG_API_KEY", "test-key")
+    monkeypatch.setattr(
+        "src.services.graphrag_command_service.subprocess.run",
+        fake_run,
+    )
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        _write_ready_graphrag_index()
+
+        result = runner.invoke(
+            main,
+            [
+                "ask",
+                "--method",
+                "auto",
+                "--save",
+                "--json",
+                "How does REALM differ from RAG?",
+            ],
+        )
+
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        assert payload["retriever"] == "graph"
+        assert payload["method"] == "drift"
+        assert payload["planner"] == "heuristic"
+        assert payload["route_reason"] == "comparison keyword"
+        assert payload["claim_support"] == "unverified"
+        assert calls[0][calls[0].index("--method") + 1] == "drift"
+        saved_path = Path(payload["saved_path"])
+        assert saved_path.exists()
+        saved_text = saved_path.read_text(encoding="utf-8")
+        assert "retriever: graph" in saved_text
+        assert "planner: heuristic" in saved_text
+        assert "claim_support: unverified" in saved_text
+
+
+def test_top_level_ask_explicit_method_bypasses_auto_router(monkeypatch) -> None:
+    calls = []
+
+    def fake_run(command, *, cwd, capture_output, text):
+        calls.append(command)
+        return subprocess.CompletedProcess(
+            command, 0, stdout="Local answer.\n", stderr=""
+        )
+
+    monkeypatch.setenv("GRAPHRAG_API_KEY", "test-key")
+    monkeypatch.setattr(
+        "src.services.graphrag_command_service.subprocess.run",
+        fake_run,
+    )
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        _write_ready_graphrag_index()
+
+        result = runner.invoke(
+            main,
+            ["ask", "--method", "local", "What patterns appear across the corpus?"],
+        )
+
+        assert result.exit_code == 0
+        assert "retriever: graph, method: local" in result.output
+        assert calls[0][calls[0].index("--method") + 1] == "local"
+
+
+def test_top_level_ask_show_evidence_and_saved_path(monkeypatch) -> None:
+    def fake_run(command, *, cwd, capture_output, text):
+        return subprocess.CompletedProcess(
+            command, 0, stdout="Graph answer with trace.\n", stderr=""
+        )
+
+    monkeypatch.setenv("GRAPHRAG_API_KEY", "test-key")
+    monkeypatch.setattr(
+        "src.services.graphrag_command_service.subprocess.run",
+        fake_run,
+    )
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        _write_ready_graphrag_index()
+
+        result = runner.invoke(
+            main,
+            [
+                "ask",
+                "--method",
+                "basic",
+                "--save-as",
+                "graph-answer",
+                "--show-evidence",
+                "What is RAG?",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Source Trace" in result.output
+        assert "GraphRAG input:" in result.output
+        assert "Route reason: explicit method override" in result.output
+        assert "Claim support: unverified" in result.output
+        assert "Saved analysis page:" in result.output
+        assert list(Path("wiki/analysis").glob("*graph-answer*.md"))
+
+
+def test_top_level_ask_requires_graph_credentials(monkeypatch) -> None:
+    monkeypatch.delenv("GRAPHRAG_API_KEY", raising=False)
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        _write_ready_graphrag_index()
+
+        result = runner.invoke(main, ["ask", "What is RAG?"])
+
+        assert result.exit_code != 0
+        assert "GRAPHRAG_API_KEY" in result.output
+
+
+def test_top_level_ask_does_not_call_legacy_search(monkeypatch) -> None:
+    def fail_legacy_search(*args, **kwargs):
+        raise AssertionError("legacy search should not be used by kb ask")
+
+    def fake_run(command, *, cwd, capture_output, text):
+        return subprocess.CompletedProcess(
+            command, 0, stdout="Graph answer.\n", stderr=""
+        )
+
+    monkeypatch.setenv("GRAPHRAG_API_KEY", "test-key")
+    monkeypatch.setattr(
+        "src.services.search_service.SearchService.search",
+        fail_legacy_search,
+    )
+    monkeypatch.setattr(
+        "src.services.graphrag_command_service.subprocess.run",
+        fake_run,
+    )
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        _write_ready_graphrag_index()
+
+        result = runner.invoke(main, ["ask", "--method", "basic", "What is RAG?"])
+
+        assert result.exit_code == 0
+        assert "Graph answer." in result.output
 
 
 def test_graph_export_wiki_command_supports_json_output() -> None:

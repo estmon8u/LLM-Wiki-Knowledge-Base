@@ -12,7 +12,7 @@ Requirements:
 | --- | --- | --- |
 | Python 3.11.x | Yes | The project is pinned to Python `>=3.11,<3.12`. |
 | Poetry | Yes | Installs dependencies and runs the `kb` entrypoint. |
-| LLM API key | Yes for `update`, `legacy ask`, `review`, and real GraphRAG index/query jobs | OpenAI, Anthropic, or Gemini. |
+| LLM API key | Yes for `update`, `legacy ask`, `review`, and real GraphRAG index/query jobs | OpenAI, Anthropic, Gemini, and the configured GraphRAG provider. |
 | Mistral API key | Required for PDFs, Office docs, images, and HTML OCR | Markdown and plain text do not need it. |
 | wkhtmltopdf | Required only for HTML OCR | Must be on `PATH` or configured in `kb.config.yaml`. |
 
@@ -67,6 +67,15 @@ and HTML, also set:
 
 ```powershell
 $env:MISTRAL_API_KEY = "..."
+```
+
+GraphRAG runtime settings live in the `graph` section of `kb.config.yaml`.
+The default graph provider is OpenAI with `gpt-4.1-mini`,
+`text-embedding-3-small`, and `GRAPHRAG_API_KEY`. Set that key before running a
+real graph index or query job:
+
+```powershell
+$env:GRAPHRAG_API_KEY = "..."
 ```
 
 Check the setup before adding sources:
@@ -131,6 +140,10 @@ This writes `graph/graphrag/input/sources.json` from `raw/_manifest.json` and
 the normalized text for GraphRAG indexing. The generated JSON file can contain
 local corpus text and stays untracked.
 
+`graph init` syncs `graph.provider`, `graph.model`,
+`graph.embedding_model`, and `graph.api_key_env` from `kb.config.yaml` into
+`graph/graphrag/settings.yaml`. Re-run it after changing graph config.
+
 Check readiness before running an index job:
 
 ```powershell
@@ -144,19 +157,31 @@ running a non-dry-run index.
 
 ## 7. Search and ask
 
-After a real non-dry-run `kb graph index`, ask through an explicit GraphRAG
-mode:
+After a real non-dry-run `kb graph index`, ask through the default GraphRAG
+controller:
+
+```powershell
+poetry run kb --project-root $projectRoot ask "What are the main retrieval design patterns?"
+poetry run kb --project-root $projectRoot ask --method global "What are the main retrieval design patterns?"
+poetry run kb --project-root $projectRoot ask --method drift --save "Compare RAG, REALM, FiD, Self-RAG, and GraphRAG."
+```
+
+The default `--method auto` router uses question wording and known graph terms
+to choose Basic, Local, Global, or DRIFT. It does not fall back to FTS5 if the
+graph is missing or not ready; it fails with the next GraphRAG setup command to run.
+
+Use explicit `kb graph ask` modes when debugging GraphRAG behavior directly:
 
 ```powershell
 poetry run kb --project-root $projectRoot graph ask "What are the main retrieval design patterns?" --method global
 poetry run kb --project-root $projectRoot graph ask "How does REALM differ from RAG?" --method local
-poetry run kb --project-root $projectRoot graph ask "Compare RAG, REALM, FiD, Self-RAG, and GraphRAG." --method drift --save
+poetry run kb --project-root $projectRoot graph ask "Compare RAG, REALM, FiD, Self-RAG, and GraphRAG." --method drift
 ```
 
 Use `local` for specific entity, method, or paper questions; `global` for
 whole-corpus themes; `drift` for multi-paper comparisons; and `basic` as the
 simple vector-RAG baseline. Saved graph answers go to `wiki/analysis/` with
-`retriever: graphrag` frontmatter and raw GraphRAG output preserved.
+graph metadata and raw GraphRAG output preserved.
 
 Export graph artifacts into inspectable wiki pages:
 
@@ -182,7 +207,7 @@ poetry run kb --project-root $projectRoot legacy ask "How does the wiki handle s
 poetry run kb --project-root $projectRoot legacy ask --show-evidence "What formats are supported?"
 ```
 
-Save useful answers as analysis pages:
+Save useful legacy comparison answers as analysis pages:
 
 ```powershell
 poetry run kb --project-root $projectRoot legacy ask --save "What does the update pipeline do?"
@@ -191,8 +216,7 @@ poetry run kb --project-root $projectRoot legacy ask --save-as update-pipeline "
 
 Saved analysis pages are searchable with `kb legacy find`, but later legacy ask
 runs do not cite saved answers or generated concept pages as primary evidence.
-Top-level `kb find` and `kb ask` are reserved for GraphRAG behavior and now fail
-with guidance until the default GraphRAG controllers are implemented.
+Top-level `kb find` is still reserved for future GraphRAG search behavior.
 
 ## 8. Check and export
 

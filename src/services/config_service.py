@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import re
 from copy import deepcopy
 from typing import Any, Literal
@@ -15,10 +16,23 @@ from pydantic import (
 )
 import yaml
 
+from src.services.graphrag_defaults import (
+    DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
+    DEFAULT_GRAPHRAG_MODEL,
+    GRAPHRAG_API_KEY_ENV,
+)
 from src.services.project_service import ProjectPaths, atomic_write_text
 
 
-CURRENT_CONFIG_VERSION = 4
+CURRENT_CONFIG_VERSION = 5
+
+
+@dataclass(frozen=True)
+class GraphRAGRuntimeConfig:
+    provider: str
+    model: str
+    embedding_model: str
+    api_key_env: str
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -48,6 +62,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
         ],
     },
     "provider": {},
+    "graph": {
+        "provider": "openai",
+        "model": DEFAULT_GRAPHRAG_MODEL,
+        "embedding_model": DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
+        "api_key_env": GRAPHRAG_API_KEY_ENV,
+    },
     "providers": {
         "openai": {
             "model": "gpt-5.4-mini",
@@ -252,6 +272,11 @@ def _apply_config_migrations(config: dict[str, Any]) -> tuple[dict[str, Any], bo
             changed = True
             version = _config_version(migrated)
             continue
+        if version == 4:
+            migrated = _migrate_v4_to_v5(migrated)
+            changed = True
+            version = _config_version(migrated)
+            continue
         raise ValueError(f"Unsupported kb.config.yaml version: {version}")
 
     return migrated, changed
@@ -316,6 +341,17 @@ def _migrate_v3_to_v4(config: dict[str, Any]) -> dict[str, Any]:
     return migrated
 
 
+def _migrate_v4_to_v5(config: dict[str, Any]) -> dict[str, Any]:
+    migrated = deepcopy(config)
+    existing_graph = migrated.get("graph", {})
+    graph = deepcopy(DEFAULT_CONFIG["graph"])
+    if isinstance(existing_graph, dict):
+        graph = _deep_merge(graph, existing_graph)
+    migrated["graph"] = graph
+    migrated["version"] = 5
+    return migrated
+
+
 class _StrictConfigModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -358,6 +394,20 @@ class _ProvidersConfig(_StrictConfigModel):
     openai: _OpenAIProviderConfig
     anthropic: _AnthropicProviderConfig
     gemini: _GeminiProviderConfig
+
+
+class _GraphConfig(_StrictConfigModel):
+    provider: StrictStr
+    model: StrictStr
+    embedding_model: StrictStr
+    api_key_env: StrictStr
+
+    @field_validator("provider", "model", "embedding_model", "api_key_env")
+    @classmethod
+    def _must_be_non_empty(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must be a non-empty string")
+        return value
 
 
 class _MistralOcrConfig(_StrictConfigModel):
@@ -407,8 +457,23 @@ class _KbConfigModel(BaseModel):
     compile: dict[str, Any]
     lint: dict[str, Any]
     provider: _ProviderSelection = Field(default_factory=_ProviderSelection)
+    graph: _GraphConfig
     providers: _ProvidersConfig
     conversion: _ConversionConfig
+
+
+def resolve_graph_config(config: dict[str, Any]) -> GraphRAGRuntimeConfig:
+    graph = config.get("graph", DEFAULT_CONFIG["graph"])
+    try:
+        validated = _GraphConfig.model_validate(graph).model_dump(mode="python")
+    except ValidationError as exc:
+        raise ValueError(_format_config_validation_error(exc)) from exc
+    return GraphRAGRuntimeConfig(
+        provider=validated["provider"].strip(),
+        model=validated["model"].strip(),
+        embedding_model=validated["embedding_model"].strip(),
+        api_key_env=validated["api_key_env"].strip(),
+    )
 
 
 def _validate_config(config: dict[str, Any]) -> dict[str, Any]:
@@ -434,6 +499,11 @@ def _format_config_validation_error(exc: ValidationError) -> str:
             "kb.config.yaml 'provider' only supports 'name'. Move provider settings "
             "under the top-level 'providers' section."
         )
+
+    if loc_parts == ("graph",) and error_type == "model_type":
+        return "kb.config.yaml 'graph' must contain a YAML mapping."
+    if loc_parts[:1] == ("graph",) and error_type == "extra_forbidden":
+        return f"kb.config.yaml 'graph' contains unknown keys: {loc_parts[-1]}."
 
     if loc_parts == ("conversion",) and error_type == "model_type":
         return "kb.config.yaml 'conversion' must contain a YAML mapping."

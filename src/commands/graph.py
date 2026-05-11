@@ -36,15 +36,20 @@ def create_command() -> click.Command:
     )
     @click.option(
         "--model",
-        default=DEFAULT_GRAPHRAG_MODEL,
-        show_default=True,
-        help="Chat model GraphRAG should write into settings.yaml.",
+        default=None,
+        help=(
+            "Chat model GraphRAG should write into settings.yaml. "
+            f"Defaults to kb.config.yaml graph.model ({DEFAULT_GRAPHRAG_MODEL})."
+        ),
     )
     @click.option(
         "--embedding",
-        default=DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
-        show_default=True,
-        help="Embedding model GraphRAG should write into settings.yaml.",
+        default=None,
+        help=(
+            "Embedding model GraphRAG should write into settings.yaml. "
+            "Defaults to kb.config.yaml graph.embedding_model "
+            f"({DEFAULT_GRAPHRAG_EMBEDDING_MODEL})."
+        ),
     )
     @click.option(
         "--force/--no-force",
@@ -56,8 +61,8 @@ def create_command() -> click.Command:
     @click.pass_obj
     def init(
         command_context: CommandContext,
-        model: str,
-        embedding: str,
+        model: str | None,
+        embedding: str | None,
         force: bool,
         as_json: bool,
     ) -> None:
@@ -85,12 +90,21 @@ def create_command() -> click.Command:
                     "returncode": result.result.returncode,
                     "stdout": result.result.stdout,
                     "stderr": result.result.stderr,
+                    "provider": result.provider,
+                    "model": result.model,
+                    "embedding_model": result.embedding_model,
+                    "api_key_env": result.api_key_env,
                 }
             )
             return
 
         console.print(f"Initialized GraphRAG workspace at {workspace_path.as_posix()}")
         console.print(f"Settings: {settings_path.as_posix()}")
+        console.print(
+            "GraphRAG provider: "
+            f"{result.provider} (model={result.model}, "
+            f"embedding={result.embedding_model}, key={result.api_key_env})"
+        )
 
     @graph_group.command(
         name="sync",

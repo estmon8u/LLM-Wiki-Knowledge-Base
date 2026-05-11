@@ -6,7 +6,7 @@
 | --- | --- |
 | `src/cli.py` | CLI entrypoint and application bootstrap |
 | `src/commands/` | Thin user-facing command wrappers |
-| `src/services/` | Deterministic normalization, ingest, compile, concept, diff, lint, review, search, query (ask), export, status, config, manifest, and GraphRAG workspace/input/index/status services |
+| `src/services/` | Deterministic normalization, ingest, compile, concept, diff, lint, review, search, query (legacy ask), export, status, config, manifest, GraphRAG workspace/input/index/status/query/export services, plus the default graph ask controller and router |
 | `src/models/` | Shared command, source, and wiki dataclasses |
 | `src/engine/` | Command registry boundary |
 | `src/providers/` | Provider abstraction layer with OpenAI, Anthropic, and Gemini implementations; shared structured-output parser, Tenacity retry decorator for transient failures, per-request reasoning/output controls, diagnostics on provider responses, Gemini schema adaptation, and catalog-backed provider resolution |
@@ -22,7 +22,7 @@ Most commands are flat top-level verbs. The GraphRAG pivot intentionally adds gr
 | `add` | `src/commands/add.py` | `src/services/ingest_service.py`, `src/services/normalization_service.py`, and `src/services/manifest_service.py` |
 | `update` | `src/commands/update.py` | `src/services/compile_service.py`, `src/services/concept_service.py`, `src/services/search_service.py` |
 | `find` | `src/commands/find.py` | Reserved GraphRAG guidance wrapper until graph query support lands |
-| `ask` | `src/commands/ask.py` | Reserved GraphRAG guidance wrapper until graph query support lands |
+| `ask` | `src/commands/ask.py` | `src/services/graph_ask_controller_service.py` and `src/services/query_router_service.py` |
 | `graph init` | `src/commands/graph.py` | `src/services/graphrag_workspace_service.py` and `src/services/graphrag_command_service.py` |
 | `graph sync` | `src/commands/graph.py` | `src/services/graphrag_input_sync_service.py` |
 | `graph index` | `src/commands/graph.py` | `src/services/graphrag_command_service.py` and `src/services/graphrag_status_service.py` |
@@ -47,10 +47,11 @@ Most commands are flat top-level verbs. The GraphRAG pivot intentionally adds gr
 | Diff | manifest metadata plus compile state | pre-compile source status preview |
 | Legacy search | compiled wiki artifacts | ranked page matches from source pages, generated concept pages, and saved analysis pages, derived from indexed chunks that skip wiki bookkeeping sections |
 | Legacy ask | user question plus source-page evidence, excluding generated concept pages and saved analysis pages | cited provider answer validated for parseability, non-empty content, and grounded citation refs; optionally saved as a non-blank analysis page |
-| GraphRAG init | project GraphRAG workspace path plus model defaults | official GraphRAG settings, prompts, and input scaffold under `graph/graphrag/` |
+| GraphRAG init | project GraphRAG workspace path plus `kb.config.yaml` graph defaults or CLI overrides | official GraphRAG settings, prompts, and input scaffold under `graph/graphrag/`, with provider/model/embedding/API-key values synced from config |
 | GraphRAG input sync | normalized artifacts plus manifest metadata | `graph/graphrag/input/sources.json` JSON records with source text and provenance metadata; JSON input and metadata-prepending settings in `graph/graphrag/settings.yaml` |
 | GraphRAG index/status | synced GraphRAG JSON input plus official GraphRAG CLI output | generated GraphRAG output tables under `graph/graphrag/output/` and ignored local run metadata under `graph/runs/graph_index_runs.json` |
 | GraphRAG ask | user question plus explicit query mode and graph index status | raw GraphRAG answer metadata on stdout/JSON; optional `wiki/analysis/graphrag-*.md` saved analysis page with retriever/method/index hash metadata |
+| Default graph ask | user question plus `--method auto|basic|local|global|drift` and graph readiness status | GraphRAG answer metadata with deterministic route reason and planner metadata; optional saved analysis page with retriever/method/planner/claim-support/index hash metadata |
 | GraphRAG wiki export | GraphRAG Parquet output tables | generated markdown graph pages under `wiki/graph/` for documents, text units, entities, relationships, and communities |
 | Lint | compiled wiki and metadata | structural findings for links, fragments, headings, titles, typed frontmatter, empty pages, and maintenance signals |
 | Review | compiled source/concept pages | semantic findings from deterministic overlap checks over source pages, terminology-variant checks over reviewable source/concept pages, and schema-guided single-pass provider review over curated source-page excerpts |

@@ -239,7 +239,8 @@ def test_legacy_search_empty_and_top_level_retrieval_guides_to_legacy() -> None:
         assert find_result.exit_code != 0
         assert "kb legacy find" in find_result.output
         assert ask_result.exit_code != 0
-        assert "kb legacy ask" in ask_result.output
+        assert "kb graph init" in ask_result.output
+        assert "kb legacy ask" not in ask_result.output
 
 
 def test_find_and_ask_require_terms() -> None:

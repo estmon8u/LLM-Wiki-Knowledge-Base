@@ -48,6 +48,9 @@ class GraphRAGQueryAnswer:
     response_type: str | None = None
     saved_path: str | None = None
     retriever: str = "graphrag"
+    planner: str | None = None
+    route_reason: str | None = None
+    claim_support: str | None = None
     source_trace: dict[str, str | None] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
@@ -146,20 +149,30 @@ class GraphRAGQueryService:
             "title": answer.question,
             "summary": summary,
             "type": "analysis",
-            "retriever": "graphrag",
+            "retriever": answer.retriever,
             "method": answer.method,
             "question": answer.question,
             "created_at": answer.created_at,
             "index_run_id": answer.index_run_id,
             "input_manifest_hash": answer.input_manifest_hash,
         }
+        if answer.planner:
+            frontmatter["planner"] = answer.planner
+        if answer.claim_support:
+            frontmatter["claim_support"] = answer.claim_support
         yaml_block = yaml.safe_dump(frontmatter, sort_keys=False).strip()
         retrieval_lines = [
-            f"- Retriever: GraphRAG",
+            f"- Retriever: {answer.retriever}",
             f"- GraphRAG method: {answer.method}",
             f"- Index run: {answer.index_run_id or 'unknown'}",
             f"- Input manifest hash: {answer.input_manifest_hash}",
         ]
+        if answer.planner:
+            retrieval_lines.append(f"- Planner: {answer.planner}")
+        if answer.route_reason:
+            retrieval_lines.append(f"- Route reason: {answer.route_reason}")
+        if answer.claim_support:
+            retrieval_lines.append(f"- Claim support: {answer.claim_support}")
         if answer.community_level is not None:
             retrieval_lines.append(f"- Community level: {answer.community_level}")
         if answer.dynamic_community_selection is not None:

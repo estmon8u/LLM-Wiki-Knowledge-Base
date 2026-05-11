@@ -11,6 +11,7 @@ from src.services.config_service import ConfigService
 from src.services.diff_service import DiffService
 from src.services.doctor_service import DoctorService
 from src.services.export_service import ExportService
+from src.services.graph_ask_controller_service import GraphAskControllerService
 from src.services.graphrag_command_service import GraphRAGCommandService
 from src.services.graphrag_input_sync_service import GraphRAGInputSyncService
 from src.services.graphrag_query_service import GraphRAGQueryService
@@ -21,6 +22,7 @@ from src.services.ingest_service import IngestService
 from src.services.lint_service import LintService
 from src.services.manifest_service import ManifestService
 from src.services.project_service import ProjectPaths, ProjectService
+from src.services.query_router_service import QueryRouterService
 from src.services.query_service import QueryService
 from src.services.review_service import ReviewService
 from src.services.search_service import SearchService
@@ -40,6 +42,7 @@ def build_services(
     compile_run_store = CompileRunStore(paths.graph_exports_dir / "compile_runs.json")
     graphrag_command_service = GraphRAGCommandService(paths)
     graphrag_status_service = GraphRAGStatusService(paths)
+    query_router_service = QueryRouterService(graphrag_status_service)
     compile_service = CompileService(
         paths,
         config,
@@ -47,6 +50,13 @@ def build_services(
         provider=provider,
         compile_run_store=compile_run_store,
         schema_text=schema_text,
+    )
+    graphrag_query_service = GraphRAGQueryService(
+        paths,
+        graphrag_command_service,
+        graphrag_status_service,
+        search_service,
+        refresh_index=compile_service.refresh_index,
     )
     return {
         "project": ProjectService(paths),
@@ -72,14 +82,17 @@ def build_services(
         "graphrag_workspace": GraphRAGWorkspaceService(
             paths,
             graphrag_command_service,
+            config=config,
         ),
         "graphrag_status": graphrag_status_service,
-        "graphrag_query": GraphRAGQueryService(
+        "graphrag_query": graphrag_query_service,
+        "query_router": query_router_service,
+        "graph_ask_controller": GraphAskControllerService(
             paths,
-            graphrag_command_service,
+            config,
             graphrag_status_service,
-            search_service,
-            refresh_index=compile_service.refresh_index,
+            query_router_service,
+            graphrag_query_service,
         ),
         "graphrag_wiki_export": GraphRAGWikiExportService(
             paths,

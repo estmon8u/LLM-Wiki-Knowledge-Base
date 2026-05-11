@@ -3,18 +3,18 @@ from __future__ import annotations
 from typing import Optional
 
 import click
+from rich.markdown import Markdown as RichMarkdown
 
-from src.commands.common import require_initialized
+from src.commands.common import console, emit_json, require_initialized
 from src.models.command_models import CommandContext, CommandSpec
+from src.services.graph_ask_controller_service import GraphAskControllerError
+from src.services.graphrag_query_service import GraphRAGQueryError
+from src.services.query_router_service import GRAPH_ASK_METHODS
 
 
 SUMMARY = (
-    "GraphRAG answer entry point. Legacy FTS-backed ask lives under kb legacy ask."
-)
-GRAPH_ASK_PENDING = (
-    "GraphRAG answering is the default target path, but graph querying is not wired yet. "
-    "The old SQLite FTS5-backed answer path is deprecated and only available as "
-    "'kb legacy ask ...' for comparison."
+    "Ask with the GraphRAG-aware answer controller. Legacy FTS-backed ask lives "
+    "under kb legacy ask."
 )
 
 
@@ -23,9 +23,30 @@ def build_spec(_: CommandContext = None) -> CommandSpec:
 
 
 def create_command() -> click.Command:
-    @click.command(name="ask", help=SUMMARY, short_help="GraphRAG answer placeholder.")
+    @click.command(name="ask", help=SUMMARY, short_help="Ask with GraphRAG.")
     @click.argument("question_terms", nargs=-1)
-    @click.option("--limit", default=3, type=int, help="Evidence page limit.")
+    @click.option(
+        "--method",
+        type=click.Choice(GRAPH_ASK_METHODS),
+        default="auto",
+        show_default=True,
+        help="GraphRAG method or deterministic auto-routing.",
+    )
+    @click.option(
+        "--community-level",
+        type=int,
+        help="Forward GraphRAG's community level option.",
+    )
+    @click.option(
+        "--dynamic-community-selection/--no-dynamic-selection",
+        default=None,
+        help="Forward GraphRAG dynamic community selection behavior.",
+    )
+    @click.option(
+        "--response-type",
+        help="Forward GraphRAG's response type option.",
+    )
+    @click.option("--limit", default=3, type=int, help="Deprecated; ignored.")
     @click.option(
         "--save",
         "save_answer",
@@ -44,19 +65,63 @@ def create_command() -> click.Command:
         is_flag=True,
         help="Print the retrieved evidence snippets before the answer.",
     )
+    @click.option("--verbose", is_flag=True, help="Forward GraphRAG's verbose flag.")
+    @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
     @click.pass_obj
     def command(
         command_context: CommandContext,
         question_terms: tuple[str, ...],
+        method: str,
+        community_level: int | None,
+        dynamic_community_selection: bool | None,
+        response_type: str | None,
         limit: int,
         save_answer: bool,
         save_as_name: Optional[str],
         show_evidence: bool,
+        verbose: bool,
+        as_json: bool,
     ) -> None:
         require_initialized(command_context)
         if not question_terms:
             raise click.ClickException("Provide a question to answer.")
-        _ = (limit, save_answer, save_as_name, show_evidence)
-        raise click.ClickException(GRAPH_ASK_PENDING)
+        _ = limit
+        question = " ".join(question_terms).strip()
+        controller = command_context.services["graph_ask_controller"]
+
+        try:
+            answer = controller.ask(
+                question,
+                method=method,
+                community_level=community_level,
+                dynamic_community_selection=dynamic_community_selection,
+                response_type=response_type,
+                verbose=verbose,
+                save=save_answer,
+                save_as=save_as_name,
+            )
+        except (GraphAskControllerError, GraphRAGQueryError) as exc:
+            raise click.ClickException(str(exc)) from exc
+
+        if as_json:
+            emit_json(answer.to_dict())
+            return
+
+        console.print(
+            f"[dim]\\[retriever: {answer.retriever}, method: {answer.method}, "
+            f"planner: {answer.planner or 'none'}, "
+            f"index_run_id: {answer.index_run_id or 'unknown'}][/dim]"
+        )
+        if show_evidence:
+            console.print("")
+            console.print("Source Trace")
+            console.print(f"  GraphRAG input: {answer.source_trace.get('input_path')}")
+            console.print(f"  GraphRAG output: {answer.source_trace.get('output_dir')}")
+            console.print(f"  Route reason: {answer.route_reason or 'unknown'}")
+            console.print(f"  Claim support: {answer.claim_support or 'unverified'}")
+        console.print("")
+        console.print(RichMarkdown(answer.answer or "No answer text returned."))
+        if answer.saved_path:
+            console.print(f"\nSaved analysis page: {answer.saved_path}")
 
     return command

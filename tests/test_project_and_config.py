@@ -14,6 +14,12 @@ from src.services.config_service import (
     _apply_config_migrations,
     _config_version,
     _deep_merge,
+    resolve_graph_config,
+)
+from src.services.graphrag_defaults import (
+    DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
+    DEFAULT_GRAPHRAG_MODEL,
+    GRAPHRAG_API_KEY_ENV,
 )
 from src.services.project_service import (
     ProjectService,
@@ -112,6 +118,11 @@ def test_config_service_loads_defaults_and_creates_files(uninitialized_project) 
     config_service = ConfigService(uninitialized_project.paths)
 
     assert config_service.load() == DEFAULT_CONFIG
+    graph = config_service.load()["graph"]
+    assert graph["provider"] == "openai"
+    assert graph["model"] == DEFAULT_GRAPHRAG_MODEL
+    assert graph["embedding_model"] == DEFAULT_GRAPHRAG_EMBEDDING_MODEL
+    assert graph["api_key_env"] == GRAPHRAG_API_KEY_ENV
     assert config_service.load_schema() == DEFAULT_SCHEMA
 
     created = config_service.ensure_files()
@@ -305,6 +316,75 @@ def test_config_service_migrates_v3_file_to_v4_with_conversion_defaults(
     assert loaded["conversion"]["mistral_ocr"]["model"] == "mistral-ocr-latest"
     assert loaded["conversion"]["html"]["renderer"] == "wkhtmltopdf"
     assert loaded["conversion"]["fallbacks"]["pdf"] == "docling"
+    assert loaded["graph"]["model"] == DEFAULT_GRAPHRAG_MODEL
+    assert loaded["graph"]["embedding_model"] == DEFAULT_GRAPHRAG_EMBEDDING_MODEL
+
+
+def test_config_service_migrates_v4_file_to_v5_with_graph_defaults(
+    test_project,
+) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 4\n"
+        "conversion:\n"
+        "  mistral_ocr:\n"
+        "    model: mistral-ocr-latest\n"
+        "    api_key_env: MISTRAL_API_KEY\n"
+        "    table_format: markdown\n"
+        "  html:\n"
+        "    renderer: wkhtmltopdf\n"
+        "    wkhtmltopdf_path:\n"
+        "  fallbacks:\n"
+        "    pdf: docling\n"
+        "    docx: markitdown\n"
+        "    pptx: markitdown\n"
+        "    html: markitdown\n",
+        encoding="utf-8",
+    )
+
+    loaded = ConfigService(test_project.paths).load()
+
+    assert loaded["version"] == CURRENT_CONFIG_VERSION
+    assert loaded["graph"] == DEFAULT_CONFIG["graph"]
+
+
+def test_config_service_loads_custom_graph_config(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 5\n"
+        "graph:\n"
+        "  provider: openai\n"
+        "  model: gpt-4.1\n"
+        "  embedding_model: text-embedding-3-large\n"
+        "  api_key_env: OPENAI_GRAPH_KEY\n",
+        encoding="utf-8",
+    )
+
+    loaded = ConfigService(test_project.paths).load()
+    graph_config = resolve_graph_config(loaded)
+
+    assert graph_config.provider == "openai"
+    assert graph_config.model == "gpt-4.1"
+    assert graph_config.embedding_model == "text-embedding-3-large"
+    assert graph_config.api_key_env == "OPENAI_GRAPH_KEY"
+
+
+def test_config_service_rejects_invalid_graph_config(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 5\ngraph:\n  provider: ''\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="graph.provider"):
+        ConfigService(test_project.paths).load()
+
+
+def test_config_service_rejects_unknown_graph_keys(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 5\ngraph:\n  provider: openai\n  extra: nope\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="graph.*unknown keys"):
+        ConfigService(test_project.paths).load()
 
 
 def test_config_service_rejects_invalid_conversion_table_format(test_project) -> None:
@@ -395,6 +475,8 @@ def test_build_services_returns_expected_keys(test_project) -> None:
         "graphrag_status",
         "graphrag_query",
         "graphrag_wiki_export",
+        "query_router",
+        "graph_ask_controller",
         "compile_run_store",
     }
 
