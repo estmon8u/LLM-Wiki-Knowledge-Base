@@ -1,4 +1,4 @@
-version: 1
+version: 2
 name: graphrag-pivot-evaluation
 description: Benchmark questions for comparing deprecated SQLite FTS5 retrieval with GraphRAG query modes.
 source_project: kb-cli-realworld-pdf-20260415/project-codex-20260424-userchanges-realrun
@@ -7,18 +7,141 @@ retrievers:
     command_group: kb legacy
     deprecated: true
     purpose: Historical comparator and exact lexical lookup only.
+  graphrag_basic:
+    command: kb graph ask --method basic
+    purpose: Baseline vector-style GraphRAG query mode for direct questions.
+  graphrag_local:
+    command: kb graph ask --method local
+    purpose: Entity, method, or document-specific questions.
+  graphrag_global:
+    command: kb graph ask --method global
+    purpose: Whole-corpus themes and community-summary questions.
+  graphrag_drift:
+    command: kb graph ask --method drift
+    purpose: Comparison questions that need global context plus local grounding.
+metrics:
+  retrieval:
+    - recall_at_5
+    - multi_source_coverage
+    - method_fit
+    - latency_seconds
+  answers:
+    - claim_support_rate
+    - insufficient_evidence_behavior
+    - comprehensiveness
+    - diversity
+    - latency_seconds
 questions:
   - id: realm_vs_rag
     question: How does REALM differ from RAG?
+    category: comparison
     intent: Compare related retrieval-augmented methods across source papers.
+    expected_method: drift
+    expected_sources:
+      - REALM
+      - RAG
     legacy_find_artifact: eval/legacy-fts/realm_vs_rag_find.json
     legacy_ask_artifact: eval/legacy-fts/realm_vs_rag_ask.txt
     status: legacy_find_captured
   - id: fid_generation
     question: How does FiD combine retrieval with generation?
+    category: local
     intent: Check whether retrieval can surface generation-specific method details.
+    expected_method: local
+    expected_sources:
+      - FiD
+      - Fusion-in-Decoder
     legacy_ask_artifact: eval/legacy-fts/fid_generation.txt
     status: pending_provider_approval
+  - id: dense_passage_retrieval
+    question: What role does dense passage retrieval play in retrieval-augmented generation?
+    category: local
+    intent: Verify entity-specific retrieval for a common RAG component.
+    expected_method: local
+    expected_sources:
+      - Dense Passage Retrieval
+      - DPR
+  - id: rag_fid_comparison
+    question: Compare RAG and FiD for how retrieved documents are used during generation.
+    category: comparison
+    intent: Test multi-source comparison with two related generation architectures.
+    expected_method: drift
+    expected_sources:
+      - RAG
+      - FiD
+  - id: corpus_retrieval_patterns
+    question: What are the main retrieval patterns across the corpus?
+    category: global
+    intent: Evaluate whole-corpus synthesis from community summaries.
+    expected_method: global
+    expected_sources:
+      - retrieval
+      - generation
+      - reranking
+  - id: hallucination_mitigation
+    question: What patterns does the corpus show for reducing hallucinations in retrieval-augmented systems?
+    category: global
+    intent: Evaluate cross-source theme coverage for answer faithfulness.
+    expected_method: global
+    expected_sources:
+      - hallucination
+      - retrieval
+      - grounding
+  - id: self_rag_reflection
+    question: How does Self-RAG use reflection or critique signals?
+    category: local
+    intent: Test method-specific local retrieval for a named system.
+    expected_method: local
+    expected_sources:
+      - Self-RAG
+      - reflection
+  - id: graph_query_modes
+    question: Compare local, global, DRIFT, and basic GraphRAG query modes.
+    category: comparison
+    intent: Check whether the system can explain the new GraphRAG retrieval modes.
+    expected_method: drift
+    expected_sources:
+      - local
+      - global
+      - DRIFT
+      - basic
+  - id: graph_index_freshness
+    question: What should happen when the GraphRAG input is stale relative to normalized sources?
+    category: maintenance
+    intent: Verify maintenance and freshness behavior in the graph workflow.
+    expected_method: basic
+    expected_sources:
+      - graph sync
+      - graph index
+      - stale
+  - id: graph_provider_config
+    question: Where is the GraphRAG provider and embedding model configured?
+    category: maintenance
+    intent: Confirm the graph provider settings are discoverable through project config.
+    expected_method: basic
+    expected_sources:
+      - kb.config.yaml
+      - graph
+      - embedding_model
+  - id: unsupported_claim
+    question: What does the corpus say about quantum-resistant retrieval memories?
+    category: insufficient_evidence
+    intent: Confirm weak-evidence questions produce cautious or insufficient-evidence behavior.
+    expected_method: basic
+    expected_sources: []
+    expected_behaviors:
+      - insufficient_evidence
+  - id: graph_vs_legacy
+    question: How does GraphRAG retrieval differ from the deprecated legacy FTS path?
+    category: comparison
+    intent: Evaluate the pivot narrative and demotion of lexical retrieval.
+    expected_method: drift
+    expected_sources:
+      - GraphRAG
+      - legacy
+      - FTS
 notes:
   - Provider-backed legacy ask captures send retrieved source snippets to the configured external model and require explicit user approval before running.
-  - Later phases should add GraphRAG basic, local, global, and drift artifacts under eval/results/.
+  - GraphRAG Basic, Local, Global, and DRIFT query jobs can create provider costs through the configured GraphRAG runtime provider.
+  - scripts/evaluate_graph_modes.py defaults to local-safe checks and writes skipped rows for provider-backed answer modes unless --allow-provider-calls is set.
+  - Evaluation outputs are written to eval/results/summary.md, eval/results/retrieval_metrics.csv, eval/results/answer_metrics.csv, and eval/results/artifacts/.

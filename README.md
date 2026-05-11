@@ -38,6 +38,23 @@ GraphRAG runtime defaults live in the `graph` section of `kb.config.yaml`. `kb g
 
 `kb graph index` wraps `python -m graphrag index` with explicit method choices (`standard`, `fast`, `standard-update`, `fast-update`) and supports `--dry-run` before a real index job. `kb graph status` checks whether settings, synced input, GraphRAG output tables, and the last recorded index run are present. `kb graph ask` wraps `python -m graphrag query` with explicit Local, Global, DRIFT, and Basic modes and can save raw GraphRAG answers as analysis pages. `kb graph export-wiki` reads GraphRAG Parquet tables and writes human-readable documents, entities, relationships, communities, and text units under `wiki/graph/`.
 
+## Evaluation Harness
+
+Phase 8 adds an evaluation harness for comparing the deprecated legacy FTS path against GraphRAG Basic, Local, Global, and DRIFT query modes. The benchmark lives in `eval/benchmark.yaml`; generated reports are written under `eval/results/`.
+
+```bash
+# Local-safe baseline: legacy find + auto-router fit, provider-backed rows skipped
+poetry run python scripts/evaluate_graph_modes.py
+
+# Retrieval-only CSV
+poetry run python scripts/evaluate_retrieval.py
+
+# Provider-backed answer comparison when the graph provider/API key is ready
+poetry run python scripts/evaluate_graph_modes.py --allow-provider-calls --include-legacy-ask
+```
+
+The default run does not call model providers. It records skipped rows for GraphRAG and legacy answer commands unless `--allow-provider-calls` is passed, because those jobs can incur provider costs and may include local corpus text in generated artifacts. Per-question JSON artifacts are written under `eval/results/artifacts/`, which is ignored by Git.
+
 ## Current Transitional Quick Start
 
 ```bash
@@ -82,7 +99,7 @@ poetry run kb legacy ask "How does the wiki handle stale pages?"
 
 That's the current GraphRAG-first workflow: **add -> update -> graph init -> graph sync -> graph status/index -> kb ask**.
 The legacy commands exist only for comparison and exact lexical lookup while
-later GraphRAG phases add broader graph health checks and evaluation reporting.
+later GraphRAG phases add broader graph health checks.
 There is no silent fallback from GraphRAG to FTS5.
 
 For a slower first-run walkthrough that keeps the repository and knowledge-base

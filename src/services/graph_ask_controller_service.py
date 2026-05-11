@@ -133,9 +133,7 @@ def _graph_ready_for_query(status: GraphRAGStatus) -> bool:
     )
 
 
-def _assess_claim_support(
-    answer: GraphRAGQueryAnswer, staleness: list[str]
-) -> str:
+def _assess_claim_support(answer: GraphRAGQueryAnswer, staleness: list[str]) -> str:
     """Simple claim-support assessment based on available evidence."""
     if staleness:
         return "stale-index"

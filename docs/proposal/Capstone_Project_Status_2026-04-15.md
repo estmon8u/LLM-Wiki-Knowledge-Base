@@ -1,7 +1,7 @@
 # Capstone Project Status Overview
 
 Date: 2026-04-24
-Updated: 2026-05-11 for GraphRAG pivot Phase 6
+Updated: 2026-05-11 for GraphRAG pivot Phase 8
 
 ## Current Position
 
@@ -13,10 +13,11 @@ The project has moved from scaffold+implementation into a controlled GraphRAG pi
 4. Microsoft GraphRAG is installed, and the dedicated `graph/graphrag/` workspace is initialized.
 5. `kb graph sync` writes GraphRAG JSON input from normalized artifacts and manifest metadata.
 6. `kb graph init`, `kb graph index`, and `kb graph status` expose the GraphRAG workspace lifecycle through the project CLI.
-7. `kb graph ask --method local|global|drift|basic` exposes explicit GraphRAG query modes before the default `kb ask` controller is enabled.
+7. `kb graph ask --method local|global|drift|basic` exposes explicit GraphRAG query modes.
 8. `kb graph export-wiki` exports GraphRAG output tables into generated markdown pages under `wiki/graph/`.
-9. GraphRAG is becoming the default retrieval and synthesis engine for comparison, synthesis, and corpus-level research questions.
-10. Wiki artifacts remain the inspectable provenance, maintenance, and export layer.
+9. Top-level `kb ask` is now the GraphRAG-aware default controller with deterministic auto-routing across Basic, Local, Global, and DRIFT modes.
+10. Phase 8 evaluation scripts compare deprecated FTS against GraphRAG modes with local-safe defaults and opt-in provider-backed answer runs.
+11. Wiki artifacts remain the inspectable provenance, maintenance, and export layer.
 
 In short, the core workflow works end-to-end, and the pivot keeps that work instead of discarding it. Current work is making the project GraphRAG-first while preserving the original wiki system as the artifact layer and exposing old FTS retrieval only through explicit legacy commands.
 
@@ -55,6 +56,8 @@ GraphRAG is the retrieval and synthesis engine.
 - GraphRAG workspace/index wrappers through `kb graph init`, `kb graph index --method fast --dry-run`, and `kb graph status`.
 - GraphRAG query wrapper through `kb graph ask --method local|global|drift|basic`, including `--save` for GraphRAG-backed analysis pages with retriever/method/index-hash metadata.
 - GraphRAG wiki export through `kb graph export-wiki`, which converts GraphRAG output tables into `wiki/graph/index.md`, documents, text units, entities, relationships, and communities while preserving legacy `wiki/concepts/` pages.
+- Default GraphRAG ask controller through `kb ask --method auto|basic|local|global|drift`, with readiness checks, deterministic routing, explicit provider credential validation, and graph-backed saved analysis metadata.
+- Phase 8 benchmark and runners: `eval/benchmark.yaml`, `scripts/evaluate_graph_modes.py`, `scripts/evaluate_retrieval.py`, and `scripts/evaluate_answers.py` write `eval/results/summary.md`, `retrieval_metrics.csv`, and `answer_metrics.csv`.
 - Provider-backed `kb legacy ask` and `kb review` with explicit failure semantics.
 - Structured provider review output: `kb review` requires JSON/schema-backed findings and rejects malformed legacy pipe-style output instead of treating it as a compatibility fallback.
 - Answer persistence with `kb legacy ask --save` and `--save-as`; saved analysis pages are indexed immediately.
@@ -65,14 +68,13 @@ GraphRAG is the retrieval and synthesis engine.
 
 ## In Progress Now
 
-- Captured the legacy FTS `find` output for the REALM-vs-RAG benchmark question; provider-backed legacy ask captures remain pending explicit approval because they send retrieved local snippets to the configured external model.
-- Preparing default `kb ask` routing and broader freshness/status checks over graph inputs, outputs, and generated graph wiki pages.
-- Updating evaluation to compare deprecated FTS against GraphRAG Basic, Local, Global, and DRIFT search without making FTS part of the normal UX.
+- Running Phase 8 evaluation on the frozen benchmark and deciding when to allow provider-backed GraphRAG/legacy answer captures.
+- Preparing broader freshness/status checks over graph inputs, outputs, and generated graph wiki pages.
 
 ## Next Regular Work
 
-- Wire the default `kb ask` controller to choose graph query modes.
 - Add graph freshness/status checks around synced input, GraphRAG output, and generated `wiki/graph/` pages.
+- Use Phase 8 outputs to support the Update 3 and final comparison narrative.
 
 ## Planned Later
 
@@ -86,4 +88,4 @@ GraphRAG is the retrieval and synthesis engine.
 ## Overall Assessment
 
 The current implementation is a strong baseline for the pivot:
-ingest/update/graph init/graph sync/graph index/status/graph ask/graph wiki export/legacy search/legacy ask/review/lint/export are operational and covered by tests, and the remaining effort is now routing default ask behavior and expanding graph freshness checks without losing provenance, maintainability, or the ability to compare against the original FTS path as deprecated legacy behavior.
+ingest/update/graph init/graph sync/graph index/status/graph ask/default ask/graph wiki export/legacy search/legacy ask/review/lint/export/evaluation are operational and covered by tests, and the remaining effort is now expanding graph freshness checks and producing real-corpus comparison results without losing provenance, maintainability, or the ability to compare against the original FTS path as deprecated legacy behavior.

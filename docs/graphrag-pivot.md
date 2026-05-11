@@ -116,6 +116,8 @@ The pivot demotes the old retrieval path to a legacy comparator instead of a pro
 
 Benchmark questions should include local factual questions, exact lookup questions, semantic entity questions, cross-paper comparisons, whole-corpus theme questions, and maintenance/freshness checks.
 
+Phase 8 implements this as a scriptable benchmark under `eval/benchmark.yaml` plus evaluation runners under `scripts/`. The default runner is local-safe: it records deprecated `kb legacy find --json` metrics and deterministic `kb ask` auto-router method fit, then marks provider-backed legacy ask and GraphRAG query rows as skipped unless `--allow-provider-calls` is passed. This keeps cost-bearing model work explicit while still producing repeatable CSV baselines for retrieval and routing.
+
 Minimum metrics:
 
 | Metric | Purpose |
@@ -132,6 +134,13 @@ Minimum metrics:
 
 This evaluation story directly explains the pivot: the original wiki workflow remains valuable for provenance and maintenance, while GraphRAG becomes the supported retrieval and synthesis path for comparison, synthesis, and corpus-level reasoning.
 
+Current evaluation outputs:
+
+- `scripts/evaluate_graph_modes.py` runs the full Phase 8 matrix and writes `eval/results/summary.md`, `eval/results/retrieval_metrics.csv`, and `eval/results/answer_metrics.csv`.
+- `scripts/evaluate_retrieval.py` focuses on retrieval metrics such as Recall@5, multi-source coverage, method fit, and latency.
+- `scripts/evaluate_answers.py` focuses on answer metrics such as claim-support status, insufficient-evidence behavior, comprehensiveness, diversity, and latency.
+- `eval/results/artifacts/` stores per-question JSON command captures and is ignored because artifacts can include local corpus text or provider output.
+
 ## Source notes
 
 - Current code source of truth: `src/services/search_service.py` maintains the SQLite FTS5 path at `graph/exports/search_index.sqlite3`, `src/services/query_service.py` builds legacy answers from source-page search results, and `src/commands/legacy.py` is the only CLI surface that invokes those retrieval behaviors.
@@ -141,3 +150,4 @@ This evaluation story directly explains the pivot: the original wiki workflow re
 - Microsoft GraphRAG indexing docs describe entity, relationship, claim, community, summary, embedding, and Parquet output behavior: <https://microsoft.github.io/graphrag/index/overview/>
 - Microsoft GraphRAG CLI docs expose `init`, `index`, `query`, `prompt-tune`, and `update`: <https://microsoft.github.io/graphrag/cli/>
 - Phase 7 local workspace source of truth: `pyproject.toml` declares `graphrag`; `kb.config.yaml` version 5 owns the `graph` provider/model/embedding/API-key defaults; `kb graph init` syncs that config into `graph/graphrag/settings.yaml`; `src/services/graphrag_defaults.py` centralizes fallback setup defaults; `src/services/graphrag_input_sync_service.py` writes `graph/graphrag/input/sources.json` from `raw/_manifest.json` and `raw/normalized/`; `src/services/graphrag_workspace_service.py`, `src/services/graphrag_command_service.py`, and `src/services/graphrag_status_service.py` wrap GraphRAG init/index/status behavior; `src/services/graphrag_query_service.py` wraps explicit GraphRAG query modes and optional analysis-page saves; `src/services/query_router_service.py` chooses the default `kb ask` method; `src/services/graph_ask_controller_service.py` checks readiness/credentials and drives the user-facing answer path; `src/services/graphrag_wiki_export_service.py` exports GraphRAG output tables into generated markdown under `wiki/graph/`; runtime `.env`, generated input, `output`, `cache`, `logs`, and `graph/runs/*.json` files are ignored.
+- Phase 8 local workspace source of truth: `eval/benchmark.yaml` contains the 12-question comparison benchmark; `scripts/evaluation_lib.py`, `scripts/evaluate_graph_modes.py`, `scripts/evaluate_retrieval.py`, and `scripts/evaluate_answers.py` generate retrieval and answer metrics; `eval/results/summary.md`, `eval/results/retrieval_metrics.csv`, and `eval/results/answer_metrics.csv` are the report outputs; `eval/results/artifacts/` is ignored because run captures may include source snippets or model output.

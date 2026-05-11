@@ -155,9 +155,7 @@ def test_controller_claim_support_reports_stale_index(
     os.utime(manifest_path, (now, now))
 
     def runner(command, *, cwd, capture_output, text):
-        return subprocess.CompletedProcess(
-            command, 0, stdout="Answer.\n", stderr=""
-        )
+        return subprocess.CompletedProcess(command, 0, stdout="Answer.\n", stderr="")
 
     controller = _build_controller(test_project, runner)
     answer = controller.ask("What is RAG?")
@@ -165,17 +163,13 @@ def test_controller_claim_support_reports_stale_index(
     assert answer.claim_support == "stale-index"
 
 
-def test_controller_claim_support_reports_no_answer(
-    test_project, monkeypatch
-) -> None:
+def test_controller_claim_support_reports_no_answer(test_project, monkeypatch) -> None:
     """When GraphRAG returns empty output, claim_support should be no-answer."""
     _write_ready_graph(test_project)
     monkeypatch.setenv("GRAPHRAG_API_KEY", "test-key")
 
     def runner(command, *, cwd, capture_output, text):
-        return subprocess.CompletedProcess(
-            command, 0, stdout="", stderr=""
-        )
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
     controller = _build_controller(test_project, runner)
     answer = controller.ask("What is RAG?")

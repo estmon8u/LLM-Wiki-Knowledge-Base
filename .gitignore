@@ -24,3 +24,6 @@ graph/graphrag/cache/
 graph/graphrag/logs/
 graph/runs/*.log
 graph/runs/*.json
+
+# Evaluation run artifacts can contain local corpus text or model output
+eval/results/artifacts/

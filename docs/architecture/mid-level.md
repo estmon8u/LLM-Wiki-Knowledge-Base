@@ -11,6 +11,8 @@
 | `src/engine/` | Command registry boundary |
 | `src/providers/` | Provider abstraction layer with OpenAI, Anthropic, and Gemini implementations; shared structured-output parser, Tenacity retry decorator for transient failures, per-request reasoning/output controls, diagnostics on provider responses, Gemini schema adaptation, and catalog-backed provider resolution |
 | `src/storage/` | Compile-run state persistence and SQLite FTS5 chunk-index storage |
+| `scripts/` | Operational scripts, including Phase 8 evaluation runners for retrieval and answer-mode comparison |
+| `eval/` | Benchmark definitions, legacy captures, and generated evaluation reports |
 
 ## Command To Service Mapping
 
@@ -53,6 +55,7 @@ Most commands are flat top-level verbs. The GraphRAG pivot intentionally adds gr
 | GraphRAG ask | user question plus explicit query mode and graph index status | raw GraphRAG answer metadata on stdout/JSON; optional `wiki/analysis/graphrag-*.md` saved analysis page with retriever/method/index hash metadata |
 | Default graph ask | user question plus `--method auto|basic|local|global|drift` and graph readiness status | GraphRAG answer metadata with deterministic route reason and planner metadata; optional saved analysis page with retriever/method/planner/claim-support/index hash metadata |
 | GraphRAG wiki export | GraphRAG Parquet output tables | generated markdown graph pages under `wiki/graph/` for documents, text units, entities, relationships, and communities |
+| Evaluation | benchmark questions plus an initialized KB project | `eval/results/summary.md`, `retrieval_metrics.csv`, `answer_metrics.csv`, and ignored per-question command artifacts |
 | Lint | compiled wiki and metadata | structural findings for links, fragments, headings, titles, typed frontmatter, empty pages, and maintenance signals |
 | Review | compiled source/concept pages | semantic findings from deterministic overlap checks over source pages, terminology-variant checks over reviewable source/concept pages, and schema-guided single-pass provider review over curated source-page excerpts |
 | Export | compiled wiki | Obsidian-friendly vault view |

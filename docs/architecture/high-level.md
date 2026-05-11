@@ -19,9 +19,10 @@ The product goal is not to act like a general-purpose coding agent. The goal is 
 5. Build a graph index for graph-first retrieval modes.
 6. Ask graph-grounded questions by default; access the old FTS path only through explicit `kb legacy ...` commands.
 7. Optionally save useful answers back into the wiki as persistent analysis pages.
-8. Lint the maintained knowledge base for broken structure or stale content (deterministic).
-9. Review the maintained knowledge base for contradictions, terminology drift, and topic overlap (semantic; requires a configured provider and combines deterministic overlap checks with provider-backed review).
-10. Export the wiki into an Obsidian-friendly vault.
+8. Evaluate deprecated FTS versus GraphRAG Basic, Local, Global, and DRIFT modes against the benchmark.
+9. Lint the maintained knowledge base for broken structure or stale content (deterministic).
+10. Review the maintained knowledge base for contradictions, terminology drift, and topic overlap (semantic; requires a configured provider and combines deterministic overlap checks with provider-backed review).
+11. Export the wiki into an Obsidian-friendly vault.
 
 ## Data Domains
 
@@ -40,6 +41,7 @@ The product goal is not to act like a general-purpose coding agent. The goal is 
 - CLI output uses Rich for styled tables, progress bars, and colored terminal output. All user-facing content is markup-escaped. The `NO_COLOR` environment variable and non-TTY detection are respected automatically, and stdout/stderr are configured to replace unsupported terminal characters instead of crashing on Windows code pages. Machine-readable `--json` flags are available on `doctor`, `find`, `status`, and `sources list`.
 - Search storage currently persists a rebuildable SQLite FTS5 chunk index at `graph/exports/search_index.sqlite3` so lexical retrieval no longer scans every markdown file on each query. In the GraphRAG pivot, this index is temporary legacy infrastructure, not a peer default, and it is reachable only through explicit `kb legacy find` / `kb legacy ask` commands with deprecation warnings. Top-level `kb ask` and graph commands fail with clear next-step guidance when the GraphRAG workspace or index is missing instead of silently falling back to FTS5.
 - The GraphRAG workspace is initialized under `graph/graphrag/` with tracked settings, prompts, and input scaffolding. `kb graph init` wraps official GraphRAG initialization for fresh project roots and syncs `kb.config.yaml` graph provider/model/embedding/API-key settings into `graph/graphrag/settings.yaml`; `kb graph sync` syncs normalized source artifacts and manifest metadata into `graph/graphrag/input/sources.json`; `kb graph index` delegates to the official GraphRAG index CLI; `kb graph status` reports settings, input, output tables, and last recorded index run metadata; `kb graph ask --method local|global|drift|basic` delegates explicit query modes to the official GraphRAG query CLI; top-level `kb ask --method auto|basic|local|global|drift` is the user-facing GraphRAG answer controller with deterministic mode routing; and `kb graph export-wiki` turns GraphRAG output tables into inspectable markdown under `wiki/graph/`. Local `.env`, generated input, output, cache, logs, and graph run metadata are ignored.
+- Phase 8 evaluation scripts compare the deprecated FTS path against GraphRAG Basic, Local, Global, and DRIFT modes using `eval/benchmark.yaml`. The default evaluator run is local-safe: it runs legacy find and auto-router checks, then skips provider-backed answer rows unless `--allow-provider-calls` is explicit.
 - `kb.schema.md` is the wiki's operational constitution. Relevant schema sections are injected into compile and ask prompts via `schema_excerpt()`, so the LLM follows wiki-maintenance rules.
 - Markdown and frontmatter parsing are centralized in `src/services/markdown_document.py` using `markdown-it-py` and `python-frontmatter`; services consume parser-backed helpers instead of maintaining parallel regex/state-machine implementations.
 - `kb.config.yaml` validation is Pydantic-backed while retaining user-facing validation messages for existing workflows.
