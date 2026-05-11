@@ -45,6 +45,7 @@
 | `src/services/manifest_service.py` | Raw-source manifest read/write behavior |
 | `src/services/graphrag_workspace_service.py` | Prepares the project-local `graph/graphrag/` workspace and delegates reproducible non-interactive initialization to the GraphRAG command wrapper |
 | `src/services/graphrag_command_service.py` | Thin subprocess boundary around `python -m graphrag` for `init`, `index`, and `query`, with captured stdout/stderr and structured command errors |
+| `src/services/graphrag_defaults.py` | Shared GraphRAG model, embedding, and API-key environment defaults used by command defaults and user-facing setup guidance |
 | `src/services/graphrag_status_service.py` | Reports GraphRAG workspace readiness, synced input counts, output table presence, and ignored local index-run metadata |
 | `src/services/graphrag_query_service.py` | Requires a ready graph index, runs explicit GraphRAG query modes, captures answer/raw output metadata, computes the synced-input hash, and saves optional GraphRAG analysis pages |
 | `src/services/graphrag_wiki_export_service.py` | Reads GraphRAG Parquet output tables and generates `wiki/graph/` markdown pages for documents, text units, entities, relationships, communities, and the graph index |

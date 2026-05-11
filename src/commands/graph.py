@@ -6,6 +6,10 @@ from rich.markdown import Markdown as RichMarkdown
 from src.commands.common import console, emit_json, require_initialized
 from src.models.command_models import CommandContext, CommandSpec
 from src.services.graphrag_command_service import GraphRAGCommandError
+from src.services.graphrag_defaults import (
+    DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
+    DEFAULT_GRAPHRAG_MODEL,
+)
 from src.services.graphrag_input_sync_service import GraphRAGInputSyncError
 from src.services.graphrag_query_service import GRAPH_QUERY_METHODS, GraphRAGQueryError
 from src.services.graphrag_status_service import GraphRAGStatus
@@ -13,8 +17,6 @@ from src.services.graphrag_wiki_export_service import GraphRAGWikiExportError
 
 
 SUMMARY = "GraphRAG workspace commands."
-DEFAULT_GRAPH_MODEL = "gpt-4.1-mini"
-DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 INDEX_METHODS = ("standard", "fast", "standard-update", "fast-update")
 
 
@@ -34,13 +36,13 @@ def create_command() -> click.Command:
     )
     @click.option(
         "--model",
-        default=DEFAULT_GRAPH_MODEL,
+        default=DEFAULT_GRAPHRAG_MODEL,
         show_default=True,
         help="Chat model GraphRAG should write into settings.yaml.",
     )
     @click.option(
         "--embedding",
-        default=DEFAULT_EMBEDDING_MODEL,
+        default=DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
         show_default=True,
         help="Embedding model GraphRAG should write into settings.yaml.",
     )
@@ -353,15 +355,35 @@ def _print_status(status: GraphRAGStatus, project_root) -> None:
     console.print(f"Workspace initialized: {initialized}")
     console.print(f"Workspace path: {payload['workspace_dir']}")
     console.print(f"Input: {input_state} ({status.input_document_count} document(s))")
+    if status.input_updated_at:
+        console.print(f"Last sync: {status.input_updated_at}")
     console.print(f"Index output: {output_state}")
-    console.print(f"Documents table: {_present(status.documents_present)}")
-    console.print(f"Text units table: {_present(status.text_units_present)}")
-    console.print(f"Entities table: {_present(status.entities_present)}")
-    console.print(f"Relationships table: {_present(status.relationships_present)}")
-    console.print(f"Communities table: {_present(status.communities_present)}")
+    if status.output_updated_at:
+        console.print(f"Index updated: {status.output_updated_at}")
     console.print(
-        f"Community reports table: {_present(status.community_reports_present)}"
+        f"Documents table: {_present_count(status.documents_present, status.document_count)}"
     )
+    console.print(
+        f"Text units table: {_present_count(status.text_units_present, status.text_unit_count)}"
+    )
+    console.print(
+        f"Entities table: {_present_count(status.entities_present, status.entity_count)}"
+    )
+    console.print(
+        "Relationships table: "
+        f"{_present_count(status.relationships_present, status.relationship_count)}"
+    )
+    console.print(
+        f"Communities table: {_present_count(status.communities_present, status.community_count)}"
+    )
+    console.print(
+        "Community reports table: "
+        f"{_present_count(status.community_reports_present, status.community_report_count)}"
+    )
+    wiki_state = "present" if status.wiki_export_present else "missing"
+    console.print(f"Wiki graph export: {wiki_state}")
+    if status.wiki_export_updated_at:
+        console.print(f"Wiki graph updated: {status.wiki_export_updated_at}")
     if status.last_index_run_at:
         success = "yes" if status.last_index_success else "no"
         console.print(
@@ -376,3 +398,11 @@ def _print_status(status: GraphRAGStatus, project_root) -> None:
 
 def _present(value: bool) -> str:
     return "present" if value else "missing"
+
+
+def _present_count(value: bool, count: int | None) -> str:
+    if not value:
+        return "missing"
+    if count is None:
+        return "present"
+    return f"present ({count} row(s))"

@@ -8,6 +8,10 @@ from typing import Any
 import yaml
 
 from src.models.source_models import RawSourceRecord
+from src.services.graphrag_defaults import (
+    DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
+    DEFAULT_GRAPHRAG_MODEL,
+)
 from src.services.manifest_service import ManifestService
 from src.services.project_service import ProjectPaths, atomic_write_text
 
@@ -85,7 +89,8 @@ class GraphRAGInputSyncService:
             raise GraphRAGInputSyncError(
                 f"GraphRAG settings not found at {relative}. "
                 "Run `poetry run graphrag init --root graph/graphrag "
-                "--model gpt-4.1-mini --embedding text-embedding-3-small --force` "
+                f"--model {DEFAULT_GRAPHRAG_MODEL} "
+                f"--embedding {DEFAULT_GRAPHRAG_EMBEDDING_MODEL} --force` "
                 "before `kb graph sync`."
             )
 

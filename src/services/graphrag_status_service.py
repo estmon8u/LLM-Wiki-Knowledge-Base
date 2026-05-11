@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 from typing import Any
@@ -58,6 +59,16 @@ class GraphRAGStatus:
     last_index_method: str | None
     last_index_success: bool | None
     next_action: str
+    input_updated_at: str | None = None
+    output_updated_at: str | None = None
+    wiki_export_present: bool = False
+    wiki_export_updated_at: str | None = None
+    document_count: int | None = None
+    text_unit_count: int | None = None
+    entity_count: int | None = None
+    relationship_count: int | None = None
+    community_count: int | None = None
+    community_report_count: int | None = None
 
     def to_dict(self, project_root: Path) -> dict[str, Any]:
         payload = asdict(self)
@@ -85,9 +96,14 @@ class GraphRAGStatusService:
     def status(self) -> GraphRAGStatus:
         runs = self._load_runs()
         last_run = runs[-1] if runs else None
-        tables = {
-            name: self._table_present(*patterns)
+        table_paths = {
+            name: self._table_path(*patterns)
             for name, patterns in GRAPH_OUTPUT_TABLES.items()
+        }
+        tables = {name: path is not None for name, path in table_paths.items()}
+        table_counts = {
+            name: self._table_row_count(path) if path is not None else None
+            for name, path in table_paths.items()
         }
         output_present = self.output_dir.exists() and any(
             self.output_dir.rglob("*.parquet")
@@ -95,6 +111,7 @@ class GraphRAGStatusService:
         input_document_count = self._input_document_count()
         workspace_initialized = self.settings_path.exists()
         input_exists = self.input_path.exists()
+        wiki_export_path = self.paths.wiki_dir / "graph" / "index.md"
         return GraphRAGStatus(
             workspace_dir=self.workspace_dir,
             settings_path=self.settings_path,
@@ -120,6 +137,16 @@ class GraphRAGStatusService:
                 input_document_count=input_document_count,
                 output_present=output_present,
             ),
+            input_updated_at=self._file_mtime_iso(self.input_path),
+            output_updated_at=self._latest_parquet_mtime_iso(),
+            wiki_export_present=wiki_export_path.exists(),
+            wiki_export_updated_at=self._file_mtime_iso(wiki_export_path),
+            document_count=table_counts["documents"],
+            text_unit_count=table_counts["text_units"],
+            entity_count=table_counts["entities"],
+            relationship_count=table_counts["relationships"],
+            community_count=table_counts["communities"],
+            community_report_count=table_counts["community_reports"],
         )
 
     def record_index_run(
@@ -165,15 +192,45 @@ class GraphRAGStatusService:
                     return len(value)
         return 0
 
-    def _table_present(self, *tokens: str) -> bool:
+    def _table_path(self, *tokens: str) -> Path | None:
         if not self.output_dir.exists():
-            return False
+            return None
         normalized_tokens = tuple(token.lower() for token in tokens)
         for path in self.output_dir.rglob("*.parquet"):
             stem = path.stem.lower()
             if any(stem == token or token in stem for token in normalized_tokens):
-                return True
-        return False
+                return path
+        return None
+
+    def _table_present(self, *tokens: str) -> bool:
+        return self._table_path(*tokens) is not None
+
+    @staticmethod
+    def _table_row_count(path: Path) -> int | None:
+        try:
+            import pyarrow.parquet as parquet
+
+            return int(parquet.read_metadata(path).num_rows)
+        except Exception:
+            return None
+
+    def _latest_parquet_mtime_iso(self) -> str | None:
+        if not self.output_dir.exists():
+            return None
+        newest = max(
+            (path.stat().st_mtime for path in self.output_dir.rglob("*.parquet")),
+            default=None,
+        )
+        return _timestamp_iso(newest)
+
+    @staticmethod
+    def _file_mtime_iso(path: Path) -> str | None:
+        if not path.exists():
+            return None
+        try:
+            return _timestamp_iso(path.stat().st_mtime)
+        except OSError:
+            return None
 
     def _load_runs(self) -> list[dict[str, Any]]:
         if not self.runs_file.exists():
@@ -207,3 +264,13 @@ class GraphRAGStatusService:
 
 def _tail(value: str, *, max_chars: int = 2000) -> str:
     return value[-max_chars:]
+
+
+def _timestamp_iso(timestamp: float | None) -> str | None:
+    if timestamp is None:
+        return None
+    return (
+        datetime.fromtimestamp(timestamp, tz=timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+    )

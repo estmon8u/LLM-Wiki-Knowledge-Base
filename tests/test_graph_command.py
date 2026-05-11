@@ -8,6 +8,10 @@ from click.testing import CliRunner
 import pandas as pd
 
 from src.cli import main
+from src.services.graphrag_defaults import (
+    DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
+    DEFAULT_GRAPHRAG_MODEL,
+)
 
 
 def _write_graphrag_settings() -> None:
@@ -183,6 +187,11 @@ def test_graph_init_command_runs_graphrag_init(monkeypatch) -> None:
         assert payload["settings_path"] == "graph/graphrag/settings.yaml"
         assert payload["returncode"] == 0
         assert calls[0][1:4] == ("-m", "graphrag", "init")
+        assert calls[0][calls[0].index("--model") + 1] == DEFAULT_GRAPHRAG_MODEL
+        assert (
+            calls[0][calls[0].index("--embedding") + 1]
+            == DEFAULT_GRAPHRAG_EMBEDDING_MODEL
+        )
         assert "--force" in calls[0]
 
 

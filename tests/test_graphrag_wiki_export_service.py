@@ -208,6 +208,145 @@ def test_export_wiki_reports_missing_tables_and_finds_nested_outputs(
     ).exists()
 
 
+def test_export_wiki_handles_realistic_create_final_parquet_shapes(
+    test_project,
+) -> None:
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "doc-1", "text": "REALM retrieves evidence."}]),
+    )
+    output_dir = test_project.paths.graph_dir / "graphrag" / "output" / "artifacts"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        [
+            {
+                "id": "doc-1",
+                "human_readable_id": "1",
+                "title": "REALM Paper",
+                "raw_content": "REALM augments language model pre-training.",
+            }
+        ]
+    ).to_parquet(output_dir / "create_final_documents.parquet")
+    pd.DataFrame(
+        [
+            {
+                "id": "tu-1",
+                "human_readable_id": "1",
+                "chunk": "REALM retrieves passages before prediction.",
+                "document_ids": ["doc-1"],
+                "entity_ids": ["entity-1"],
+            }
+        ]
+    ).to_parquet(output_dir / "create_final_text_units.parquet")
+    pd.DataFrame(
+        [
+            {
+                "id": "entity-1",
+                "human_readable_id": "1",
+                "title": "REALM",
+                "type": "method",
+                "description": "REALM retrieves evidence for language modeling.",
+                "text_unit_ids": ["tu-1"],
+                "degree": 2,
+            }
+        ]
+    ).to_parquet(output_dir / "create_final_entities.parquet")
+    pd.DataFrame(
+        [
+            {
+                "id": "rel-1",
+                "human_readable_id": "1",
+                "source": "REALM",
+                "target": "Retrieval-Augmented Generation",
+                "description": "uses retrieval to ground model behavior",
+                "weight": 1.5,
+                "text_unit_ids": ["tu-1"],
+            }
+        ]
+    ).to_parquet(output_dir / "create_final_relationships.parquet")
+    pd.DataFrame(
+        [
+            {
+                "id": "community-0",
+                "community": 0,
+                "level": 1,
+                "title": "Retrieval Methods",
+                "entity_ids": ["entity-1"],
+                "text_unit_ids": ["tu-1"],
+            }
+        ]
+    ).to_parquet(output_dir / "create_final_communities.parquet")
+    pd.DataFrame(
+        [
+            {
+                "id": "report-0",
+                "community": 0,
+                "level": 1,
+                "title": "Retrieval Methods",
+                "summary": "Retrieval systems ground generation with evidence.",
+                "full_content": "Detailed community report.",
+                "findings": [
+                    {
+                        "summary": "REALM retrieves passages before prediction.",
+                        "explanation": "The report links retrieval to model behavior.",
+                    }
+                ],
+            }
+        ]
+    ).to_parquet(output_dir / "create_final_community_reports.parquet")
+    GraphRAGStatusService(test_project.paths).record_index_run(
+        method="fast",
+        dry_run=False,
+        result=GraphRAGCommandResult(
+            command=("python", "-m", "graphrag", "index"),
+            cwd=test_project.paths.root,
+            returncode=0,
+            stdout="indexed",
+            stderr="",
+        ),
+    )
+    service = _build_service(test_project)
+
+    result = service.export_wiki()
+
+    assert result.missing_tables == []
+    assert result.exported_count == 6
+    assert result.table_counts == {
+        "documents": 1,
+        "text_units": 1,
+        "entities": 1,
+        "relationships": 1,
+        "communities": 1,
+        "community_reports": 1,
+    }
+    assert "REALM augments language model pre-training." in (
+        test_project.paths.wiki_dir / "graph" / "documents" / "realm-paper.md"
+    ).read_text(encoding="utf-8")
+    assert "REALM retrieves passages before prediction." in (
+        test_project.paths.wiki_dir / "graph" / "text-units" / "text-unit-tu-1.md"
+    ).read_text(encoding="utf-8")
+    assert "uses retrieval to ground model behavior" in (
+        test_project.paths.wiki_dir
+        / "graph"
+        / "relationships"
+        / "realm-retrieval-augmented-generation.md"
+    ).read_text(encoding="utf-8")
+    community_page = (
+        test_project.paths.wiki_dir
+        / "graph"
+        / "communities"
+        / "community-0-retrieval-methods.md"
+    )
+    assert (
+        "Retrieval systems ground generation with evidence."
+        in community_page.read_text(encoding="utf-8")
+    )
+    assert "REALM retrieves passages before prediction." in community_page.read_text(
+        encoding="utf-8"
+    )
+
+
 def test_graph_wiki_export_helpers_handle_sparse_values() -> None:
     class ArrayLike:
         def tolist(self):

@@ -6,6 +6,10 @@ import pytest
 import yaml
 
 from src.models.source_models import RawSourceRecord
+from src.services.graphrag_defaults import (
+    DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
+    DEFAULT_GRAPHRAG_MODEL,
+)
 from src.services.graphrag_input_sync_service import (
     GRAPH_INPUT_METADATA_FIELDS,
     GraphRAGInputSyncError,
@@ -177,9 +181,13 @@ def test_sync_reports_missing_graphrag_settings(test_project) -> None:
         test_project.services["manifest"],
     )
 
-    with pytest.raises(GraphRAGInputSyncError, match="GraphRAG settings not found"):
+    with pytest.raises(
+        GraphRAGInputSyncError, match="GraphRAG settings not found"
+    ) as exc_info:
         service.sync()
 
+    assert f"--model {DEFAULT_GRAPHRAG_MODEL}" in str(exc_info.value)
+    assert f"--embedding {DEFAULT_GRAPHRAG_EMBEDDING_MODEL}" in str(exc_info.value)
     assert not service.input_file.exists()
 
 

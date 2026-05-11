@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pandas as pd
+
 from src.services.graphrag_command_service import GraphRAGCommandResult
 from src.services.graphrag_status_service import GraphRAGStatus
 from src.services.graphrag_status_service import GraphRAGStatusService
@@ -55,6 +57,56 @@ def test_status_reports_workspace_input_outputs_and_last_run(test_project) -> No
     payload = status.to_dict(test_project.paths.root)
     assert payload["workspace_dir"] == "graph/graphrag"
     assert payload["input_path"] == "graph/graphrag/input/sources.json"
+
+
+def test_status_counts_realistic_nested_graphrag_parquet_tables(
+    test_project,
+) -> None:
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "doc-1", "text": "GraphRAG source text."}]),
+    )
+    output_dir = test_project.paths.graph_dir / "graphrag" / "output" / "artifacts"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    table_rows = {
+        "create_final_documents.parquet": [{"id": "doc-1", "title": "RAG Paper"}],
+        "create_final_text_units.parquet": [{"id": "tu-1", "text": "A chunk."}],
+        "create_final_entities.parquet": [{"id": "ent-1", "title": "RAG"}],
+        "create_final_relationships.parquet": [
+            {"id": "rel-1", "source": "RAG", "target": "REALM"}
+        ],
+        "create_final_communities.parquet": [{"id": "0", "community": 0}],
+        "create_final_community_reports.parquet": [
+            {"id": "report-0", "community": 0, "summary": "Community report."}
+        ],
+    }
+    for filename, rows in table_rows.items():
+        pd.DataFrame(rows).to_parquet(output_dir / filename)
+    test_project.write_file("wiki/graph/index.md", "# GraphRAG Index\n")
+
+    status = GraphRAGStatusService(test_project.paths).status()
+
+    assert status.output_present is True
+    assert status.documents_present is True
+    assert status.text_units_present is True
+    assert status.entities_present is True
+    assert status.relationships_present is True
+    assert status.communities_present is True
+    assert status.community_reports_present is True
+    assert status.document_count == 1
+    assert status.text_unit_count == 1
+    assert status.entity_count == 1
+    assert status.relationship_count == 1
+    assert status.community_count == 1
+    assert status.community_report_count == 1
+    assert status.input_updated_at is not None
+    assert status.output_updated_at is not None
+    assert status.wiki_export_present is True
+    assert status.wiki_export_updated_at is not None
+    payload = status.to_dict(test_project.paths.root)
+    assert payload["output_dir"] == "graph/graphrag/output"
+    assert payload["entity_count"] == 1
 
 
 def test_status_reports_next_actions_for_missing_workspace(test_project) -> None:
