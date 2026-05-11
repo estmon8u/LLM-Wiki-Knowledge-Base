@@ -1,17 +1,36 @@
 # Capstone Project Status Overview
 
 Date: 2026-04-24
+Updated: 2026-05-11 for GraphRAG pivot Phase 0
 
 ## Current Position
 
-The project has moved from scaffold+implementation into the final validation phase.
+The project has moved from scaffold+implementation into a controlled GraphRAG pivot.
 
-1. Proposal, architecture, and command surface are complete.
+1. Proposal, architecture, and the original command surface are complete.
 2. Simplification and deterministic baseline are complete.
-3. Real-corpus evaluation, concept quality, and retrieval tuning are the current active focus.
-4. Comparative evaluation and final polish are in progress.
+3. The SQLite FTS5/wiki retrieval path is preserved as the lexical baseline.
+4. GraphRAG is becoming the retrieval and synthesis engine for comparison, synthesis, and corpus-level research questions.
+5. Wiki artifacts remain the inspectable provenance, maintenance, and export layer.
 
-In short, the core workflow works end-to-end. Current work is proving quality and producing capstone results on realistic corpus slices.
+In short, the core workflow works end-to-end, and the pivot keeps that work instead of discarding it. Current work is reframing the project as GraphRAG-first while preserving the original wiki system as the artifact and baseline layer.
+
+## GraphRAG Pivot Framing
+
+New project framing:
+
+```text
+CLI-first GraphRAG research-memory system for ingesting technical documents,
+building a graph-based retrieval index, answering local/global research questions,
+and exporting inspectable wiki artifacts with provenance and citations.
+```
+
+Key sentence for updates and presentation:
+
+```text
+The wiki is not the retrieval engine. The wiki is the human-readable artifact layer.
+GraphRAG is the retrieval and synthesis engine.
+```
 
 ## Implemented
 
@@ -25,7 +44,7 @@ In short, the core workflow works end-to-end. Current work is proving quality an
   - MarkItDown for bounded born-digital subset with quality-gated fallbacks.
 - Update pipeline that builds source pages, updates the wiki index, generates concepts, refreshes FTS5 chunk index, and writes compile-run state for resumable runs.
 - Deterministic lint for links, fragments, headings, frontmatter, duplicates, empties, stale pages, and maintenance signals.
-- Search over compiled wiki artifacts via SQLite FTS5 chunk index.
+- Search over compiled wiki artifacts via SQLite FTS5 chunk index, now preserved as the lexical baseline for GraphRAG comparison.
 - Provider-backed `kb ask` and `kb review` with explicit failure semantics.
 - Structured provider review output: `kb review` requires JSON/schema-backed findings and rejects malformed legacy pipe-style output instead of treating it as a compatibility fallback.
 - Answer persistence with `kb ask --save` and `--save-as`; saved analysis pages are indexed immediately.
@@ -36,18 +55,17 @@ In short, the core workflow works end-to-end. Current work is proving quality an
 
 ## In Progress Now
 
-- Running a fuller real-corpus evaluation pass on realistic source collections.
-- Concept-page quality and backlink-maintenance evaluation, including provider-first clustering, deterministic fallback behavior, and noisy-theme suppression from the bundled stopword list.
-- Measuring retrieval quality and whether richer ranking is justified.
-- Capturing quality, latency, and cost signals from `ask`/`review` runs for the final deliverable.
-- Tightening workflow ergonomics for evaluator scripts and reporting.
+- Completing the Phase 0 GraphRAG pivot documentation and shared language.
+- Preserving the current FTS/wiki retrieval path as the evaluation baseline.
+- Preparing the GraphRAG workspace, input sync, indexing, query modes, and graph-derived wiki artifact plan.
+- Updating evaluation to compare lexical FTS against GraphRAG Basic, Local, Global, and DRIFT search.
 
 ## Next Regular Work
 
-- Continue final real-corpus validation after the library-backed simplification pass.
-- Improve concept generation quality and reliability before final milestone reporting.
-- Add richer comparison/benchmark reporting if manual SQLite run inspection becomes too slow.
-- Add optional hybrid retrieval only if a clear evaluation gain is measured.
+- Capture baseline FTS outputs for the questions that exposed retrieval gaps.
+- Add the GraphRAG dependency and workspace structure.
+- Sync normalized corpus artifacts into GraphRAG JSON input while preserving manifest metadata.
+- Wrap GraphRAG init/index/status/query behavior in the CLI incrementally.
 
 ## Planned Later
 
@@ -60,5 +78,5 @@ In short, the core workflow works end-to-end. Current work is proving quality an
 
 ## Overall Assessment
 
-The current implementation is in solid shape for final capstone execution:
-ingest/update/search/ask/review/lint/export are operational and covered by tests, and the remaining effort is now primarily evidence quality and comparative evaluation rather than core infrastructure.
+The current implementation is a strong baseline for the pivot:
+ingest/update/search/ask/review/lint/export are operational and covered by tests, and the remaining effort is now introducing GraphRAG without losing provenance, maintainability, or the ability to compare against the original lexical/wiki retrieval path.

@@ -1,6 +1,10 @@
-# Capstone KB
+# GraphWiki KB
 
-A CLI-first tool for building and maintaining a citation-grounded markdown knowledge base from heterogeneous technical documents.
+A CLI-first GraphRAG research-memory system for ingesting technical documents, building a graph-based retrieval index, answering local/global research questions, and exporting inspectable wiki artifacts with provenance and citations.
+
+The wiki is not the retrieval engine. The wiki is the human-readable artifact layer. GraphRAG is the retrieval and synthesis engine.
+
+This branch starts the GraphRAG pivot. The existing SQLite FTS5 `kb find` and source-grounded `kb ask` workflow is preserved as the lexical baseline while graph indexing, graph query modes, and graph-derived wiki artifacts are added incrementally. See [docs/graphrag-pivot.md](docs/graphrag-pivot.md) for the Phase 0 rationale and target architecture.
 
 ## Requirements
 
@@ -16,7 +20,7 @@ poetry install
 
 This creates a local `.venv` and installs all dependencies. The CLI entrypoint is registered as `kb`.
 
-## Quick Start
+## Current Baseline Quick Start
 
 ```bash
 # 1. Initialize a new project
@@ -28,20 +32,24 @@ poetry run kb add path/to/notes.md
 poetry run kb add path/to/slides.pptx
 poetry run kb add path/to/research-folder
 
-# 3. Update the knowledge base (generates pages, concepts, and search indexes)
+# 3. Update the knowledge base (generates wiki artifacts and the lexical baseline index)
 poetry run kb update
 
-# 4. Search the wiki
+# 4. Search the lexical/wiki baseline
 poetry run kb find "knowledge base traceability"
 
-# 5. Ask a question with citations
+# 5. Ask a source-grounded baseline question with citations
 poetry run kb ask "How does the wiki handle stale pages?"
 ```
 
-That's the everyday workflow: **add → update → find / ask**. Everything else
-is optional. For a slower first-run walkthrough that keeps the repository and
-knowledge-base project in separate directories, see
-[docs/start-guide.md](docs/start-guide.md).
+That's the current baseline workflow: **add -> update -> find / ask**. It
+keeps the original wiki retrieval path available for comparison while the
+GraphRAG layer is introduced. Later GraphRAG phases will add `kb graph sync`,
+`kb graph index`, graph query modes, and graph-derived wiki exports before
+`kb ask` becomes GraphRAG-first by default.
+
+For a slower first-run walkthrough that keeps the repository and knowledge-base
+project in separate directories, see [docs/start-guide.md](docs/start-guide.md).
 
 Before running `kb update`, `kb ask`, or `kb review`, configure the active
 provider in `kb.config.yaml` and set the matching API key environment
@@ -69,16 +77,16 @@ poetry run kb --project-root /path/to/project status
 
 ### Everyday Commands
 
-These are the commands you will use most often. The happy path is
-**init → add → update → find / ask**.
+These are the commands you will use most often today. The baseline happy path
+is **init -> add -> update -> find / ask**.
 
 | Command | Description |
 | --- | --- |
 | `init` | Create project folders, config, schema, and manifest |
 | `add` | Add and normalize source documents |
 | `update` | Build wiki pages, generate concepts, and refresh indexes |
-| `find` | Search the wiki |
-| `ask` | Answer a question from compiled evidence |
+| `find` | Search the lexical/wiki baseline |
+| `ask` | Answer a question from source-page evidence in the baseline retrieval path |
 | `status` | Show project state and what to do next |
 
 ### Advanced Commands
@@ -186,11 +194,11 @@ poetry run kb find --limit 10 "agent architecture"
 | `--limit` | 5 | Maximum number of results to return. |
 | `--json` | off | Output results as JSON for scripting. |
 
-Uses a SQLite FTS5 chunk index stored at `graph/exports/search_index.sqlite3`. `kb find` searches source pages, generated concept pages, and saved analysis pages, ranks hits with BM25-style FTS ordering, and returns page-level results using the best matching chunk snippet. Evidence chunks skip metadata-only sections such as `Source Details`, `Source Pages`, `Related Concept Pages`, and `Citations` so retrieval and citations point at content rather than wiki bookkeeping.
+Uses a SQLite FTS5 chunk index stored at `graph/exports/search_index.sqlite3`. In the GraphRAG pivot, this remains the lexical baseline rather than the final retrieval engine. `kb find` searches source pages, generated concept pages, and saved analysis pages, ranks hits with BM25-style FTS ordering, and returns page-level results using the best matching chunk snippet. Evidence chunks skip metadata-only sections such as `Source Details`, `Source Pages`, `Related Concept Pages`, and `Citations` so retrieval and citations point at content rather than wiki bookkeeping.
 
 ### `kb ask <question>`
 
-Answer a question from compiled wiki evidence with provider-backed synthesis and citations.
+Answer a question from compiled source-page evidence with provider-backed synthesis and citations. During the GraphRAG pivot, this command remains the lexical/source-page baseline until graph-backed query modes are implemented and promoted.
 
 ```bash
 poetry run kb ask "How does the wiki handle stale pages?"
@@ -532,7 +540,7 @@ project-root/
 ├── graph/
 │   └── exports/
 │       ├── compile_runs.json      # Resume/failure state for update runs
-│       └── search_index.sqlite3   # SQLite FTS5 chunk index
+│       └── search_index.sqlite3   # SQLite FTS5 lexical baseline index
 └── vault/
     └── obsidian/           # Obsidian-friendly export
         └── sources/

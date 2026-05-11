@@ -1,6 +1,7 @@
-# Title: CLI for Building and Maintaining a Citation-Grounded Markdown Knowledge Base from Heterogeneous Technical Documents
+# Title: GraphWiki KB: A CLI GraphRAG System with Inspectable Wiki Artifacts
 
 Date: 04/18/2026
+Updated: 05/11/2026 for GraphRAG pivot Phase 0
 
 Team Member:
 
@@ -8,6 +9,25 @@ Team Member:
 - <EMONTEL1@depaul.edu>
 
 Project Type: Individual project
+
+## May 2026 GraphRAG Pivot Note
+
+The project is now being reframed as a controlled GraphRAG pivot rather than a rewrite. The original CLI wiki system remains valuable for ingestion, provenance, maintenance, export, and baseline lexical retrieval. The new center of the project is:
+
+```text
+CLI-first GraphRAG research-memory system for ingesting technical documents,
+building a graph-based retrieval index, answering local/global research questions,
+and exporting inspectable wiki artifacts with provenance and citations.
+```
+
+The presentation language should be:
+
+```text
+The wiki is not the retrieval engine. The wiki is the human-readable artifact layer.
+GraphRAG is the retrieval and synthesis engine.
+```
+
+This adjustment preserves the Karpathy-style wiki idea as the artifact and maintenance layer while moving retrieval and synthesis to GraphRAG. The existing SQLite FTS5/wiki retrieval path will be preserved as the lexical baseline and compared against GraphRAG Basic, Local, Global, and DRIFT search.
 
 The MVP is intentionally narrow in domain even though it is broader in input format. It targets a curated technical corpus about AI agents, coding agents, LLM tooling, and related knowledge-base system design. The system is intended to accept heterogeneous document types, but each source is first converted into a canonical markdown or plain-text representation before it enters the compile and ask pipeline. For the MVP, evaluation will focus on text-heavy technical documents rather than source-code repositories or arbitrary structured datasets, because those require different parsing, compilation, and evaluation rules. The corpus itself will grow over time as the project progresses. At the proposal stage, the goal is not to commit to a final fixed list of documents, but to define the domain, supported input profile, normalization boundaries, and minimum evaluation target clearly enough that the project scope stays controlled while data collection continues.
 
