@@ -25,13 +25,27 @@ embedding_models:
 ### Document processing settings ###
 
 input:
-  type: text # [csv, text, json, jsonl]
+  type: json # [csv, text, json, jsonl]
+  encoding: utf-8
+  file_pattern: ".*\\.json$"
+  id_column: id
+  title_column: title
+  text_column: text
 
 chunking:
   type: tokens
   size: 1200
   overlap: 100
   encoding_model: o200k_base
+  prepend_metadata:
+    - source_id
+    - slug
+    - source_hash
+    - raw_path
+    - normalized_path
+    - converter
+    - normalization_route
+    - ingested_at
 
 ### Storage settings ###
 ## If blob storage is specified in the following four sections,

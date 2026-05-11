@@ -11,6 +11,7 @@ from src.services.config_service import ConfigService
 from src.services.diff_service import DiffService
 from src.services.doctor_service import DoctorService
 from src.services.export_service import ExportService
+from src.services.graphrag_input_sync_service import GraphRAGInputSyncService
 from src.services.ingest_service import IngestService
 from src.services.lint_service import LintService
 from src.services.manifest_service import ManifestService
@@ -60,6 +61,7 @@ def build_services(
             schema_text=schema_text,
         ),
         "export": ExportService(paths),
+        "graphrag_input_sync": GraphRAGInputSyncService(paths, manifest_service),
         "review": ReviewService(paths, provider=provider),
         "compile_run_store": compile_run_store,
     }

@@ -1,7 +1,7 @@
 # Capstone Project Status Overview
 
 Date: 2026-04-24
-Updated: 2026-05-11 for GraphRAG pivot Phase 2
+Updated: 2026-05-11 for GraphRAG pivot Phase 3
 
 ## Current Position
 
@@ -11,8 +11,9 @@ The project has moved from scaffold+implementation into a controlled GraphRAG pi
 2. Simplification and deterministic baseline are complete.
 3. The SQLite FTS5/wiki retrieval path has been demoted to explicit deprecated legacy behavior.
 4. Microsoft GraphRAG is installed, and the dedicated `graph/graphrag/` workspace is initialized.
-5. GraphRAG is becoming the default retrieval and synthesis engine for comparison, synthesis, and corpus-level research questions.
-6. Wiki artifacts remain the inspectable provenance, maintenance, and export layer.
+5. `kb graph sync` now writes GraphRAG JSON input from normalized artifacts and manifest metadata.
+6. GraphRAG is becoming the default retrieval and synthesis engine for comparison, synthesis, and corpus-level research questions.
+7. Wiki artifacts remain the inspectable provenance, maintenance, and export layer.
 
 In short, the core workflow works end-to-end, and the pivot keeps that work instead of discarding it. Current work is making the project GraphRAG-first while preserving the original wiki system as the artifact layer and exposing old FTS retrieval only through explicit legacy commands.
 
@@ -35,7 +36,7 @@ GraphRAG is the retrieval and synthesis engine.
 
 ## Implemented
 
-- CLI foundation with the current shipped commands: `init`, `add`, `update`, `find`, `ask`, `legacy`, `lint`, `review`, `status`, `export`, `doctor`, `config`, and `sources`.
+- CLI foundation with the current shipped commands: `init`, `add`, `update`, `find`, `ask`, `graph`, `legacy`, `lint`, `review`, `status`, `export`, `doctor`, `config`, and `sources`.
 - Project layout, config loading, schema loading, and manifest tracking.
 - Add pipeline that stores raw sources as source of truth and writes canonical normalized artifacts.
 - Conversion routing:
@@ -46,7 +47,8 @@ GraphRAG is the retrieval and synthesis engine.
 - Update pipeline that builds source pages, updates the wiki index, generates concepts, refreshes FTS5 chunk index, and writes compile-run state for resumable runs.
 - Deterministic lint for links, fragments, headings, frontmatter, duplicates, empties, stale pages, and maintenance signals.
 - Deprecated search over compiled wiki artifacts via SQLite FTS5 chunk index through `kb legacy find`, now treated as temporary legacy infrastructure rather than the future default.
-- Microsoft GraphRAG dependency and initialized workspace under `graph/graphrag/`, with tracked settings/prompts/input scaffolding and ignored local `.env`, output, cache, and logs.
+- Microsoft GraphRAG dependency and initialized workspace under `graph/graphrag/`, with tracked settings/prompts/input scaffolding and ignored local `.env`, generated input, output, cache, and logs.
+- GraphRAG input sync through `kb graph sync`, which writes `graph/graphrag/input/sources.json` from `raw/_manifest.json` and `raw/normalized/` while configuring JSON input and metadata prepending in `settings.yaml`.
 - Provider-backed `kb legacy ask` and `kb review` with explicit failure semantics.
 - Structured provider review output: `kb review` requires JSON/schema-backed findings and rejects malformed legacy pipe-style output instead of treating it as a compatibility fallback.
 - Answer persistence with `kb legacy ask --save` and `--save-as`; saved analysis pages are indexed immediately.
@@ -57,15 +59,15 @@ GraphRAG is the retrieval and synthesis engine.
 
 ## In Progress Now
 
-- Preparing Phase 3 normalized-input sync from `raw/normalized/` and `raw/_manifest.json` into `graph/graphrag/input/`.
+- Phase 3 normalized-input sync from `raw/normalized/` and `raw/_manifest.json` into `graph/graphrag/input/sources.json` is implemented and covered by focused tests.
 - Captured the legacy FTS `find` output for the REALM-vs-RAG benchmark question; provider-backed legacy ask captures remain pending explicit approval because they send retrieved local snippets to the configured external model.
 - Preparing GraphRAG indexing, query modes, graph-derived wiki artifacts, and freshness/status checks.
 - Updating evaluation to compare deprecated FTS against GraphRAG Basic, Local, Global, and DRIFT search without making FTS part of the normal UX.
 
 ## Next Regular Work
 
-- Sync normalized corpus artifacts into GraphRAG JSON input while preserving manifest metadata.
-- Wrap GraphRAG init/index/status/query behavior in the CLI incrementally.
+- Wrap GraphRAG index/status/query behavior in the CLI incrementally.
+- Add graph freshness/status checks around synced input and later GraphRAG output.
 
 ## Planned Later
 
@@ -79,4 +81,4 @@ GraphRAG is the retrieval and synthesis engine.
 ## Overall Assessment
 
 The current implementation is a strong baseline for the pivot:
-ingest/update/legacy search/legacy ask/review/lint/export are operational and covered by tests, and the remaining effort is now introducing GraphRAG without losing provenance, maintainability, or the ability to compare against the original FTS path as deprecated legacy behavior.
+ingest/update/graph sync/legacy search/legacy ask/review/lint/export are operational and covered by tests, and the remaining effort is now indexing/querying with GraphRAG without losing provenance, maintainability, or the ability to compare against the original FTS path as deprecated legacy behavior.

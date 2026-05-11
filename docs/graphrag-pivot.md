@@ -42,7 +42,7 @@ GraphRAG is the retrieval and synthesis engine.
 - SQLite FTS5 is not a peer default. It is retained only as an explicit deprecated legacy path for comparison or exact lookup unless it is removed later.
 - GraphRAG must not silently fall back to FTS5 when the graph index is missing or stale; it should fail with clear next-step guidance such as `kb graph sync` and `kb graph index`.
 - A dedicated GraphRAG workspace now lives under `graph/graphrag/`.
-- Normalized corpus artifacts will be synced into GraphRAG input with source metadata attached.
+- Normalized corpus artifacts are synced into GraphRAG JSON input with source metadata attached through `kb graph sync`.
 - GraphRAG indexing will create graph outputs such as text units, entities, relationships, communities, and community reports.
 - GraphRAG query modes will become first-class CLI behavior:
   - `basic` for simple vector-RAG comparison,
@@ -78,7 +78,7 @@ Layer responsibilities:
 | `raw/` | Original files, normalized artifacts, manifest metadata, source hashes, converter provenance |
 | `wiki/` | Human-readable source pages, concept pages, analysis pages, index, activity log, later graph artifacts |
 | `graph/exports/` | Existing compile-run state and optional legacy SQLite FTS5 index |
-| `graph/graphrag/` | Initialized GraphRAG workspace: input scaffold, tracked prompts/settings, ignored `.env`, cache, logs, and output |
+| `graph/graphrag/` | Initialized GraphRAG workspace: tracked prompts/settings, generated JSON input, ignored `.env`, cache, logs, and output |
 | CLI commands | Thin user-facing wrappers over services |
 | Services | Deterministic sync, status, export, lint, and GraphRAG orchestration |
 | Providers | Explicit model-backed compile, review, ask, and GraphRAG runtime configuration boundaries |
@@ -133,4 +133,4 @@ This evaluation story directly explains the pivot: the original wiki workflow re
 - Microsoft GraphRAG query docs describe Local, Global, DRIFT, and Basic Search modes: <https://microsoft.github.io/graphrag/query/overview/>
 - Microsoft GraphRAG indexing docs describe entity, relationship, claim, community, summary, embedding, and Parquet output behavior: <https://microsoft.github.io/graphrag/index/overview/>
 - Microsoft GraphRAG CLI docs expose `init`, `index`, `query`, `prompt-tune`, and `update`: <https://microsoft.github.io/graphrag/cli/>
-- Phase 2 local workspace source of truth: `pyproject.toml` declares `graphrag`, `graph/graphrag/settings.yaml` uses `GRAPHRAG_API_KEY`, `gpt-4.1-mini`, and `text-embedding-3-small`, and runtime `.env` / `output` / `cache` / `logs` files are ignored.
+- Phase 3 local workspace source of truth: `pyproject.toml` declares `graphrag`, `graph/graphrag/settings.yaml` uses `GRAPHRAG_API_KEY`, `gpt-4.1-mini`, `text-embedding-3-small`, JSON input columns, and `chunking.prepend_metadata`; `src/services/graphrag_input_sync_service.py` writes `graph/graphrag/input/sources.json` from `raw/_manifest.json` and `raw/normalized/`; runtime `.env`, generated input, `output`, `cache`, and `logs` files are ignored.

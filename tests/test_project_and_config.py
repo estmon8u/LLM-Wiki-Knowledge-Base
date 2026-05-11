@@ -378,6 +378,7 @@ def test_build_services_returns_expected_keys(test_project) -> None:
         "project",
         "config",
         "manifest",
+        "graphrag_input_sync",
         "ingest",
         "compile",
         "concepts",

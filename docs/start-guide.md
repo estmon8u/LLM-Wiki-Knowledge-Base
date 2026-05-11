@@ -41,7 +41,7 @@ This creates the project files and directories:
 | `kb.schema.md` | Project-specific compilation guidance. |
 | `raw/` | Original and normalized source files. |
 | `wiki/` | Generated source, concept, analysis, index, and log pages. |
-| `graph/` | Search index and resume state. |
+| `graph/` | Legacy search state plus the GraphRAG workspace. |
 | `vault/` | Obsidian export output. |
 
 The rest of this guide assumes you stay in the repo checkout and pass
@@ -116,7 +116,21 @@ If a source changed and you want to refresh generated pages:
 poetry run kb --project-root $projectRoot update --force
 ```
 
-## 6. Search and ask
+## 6. Sync GraphRAG input
+
+After `kb update` has normalized and compiled the corpus, sync the normalized
+artifacts into the initialized GraphRAG workspace:
+
+```powershell
+poetry run kb --project-root $projectRoot graph sync
+```
+
+This writes `graph/graphrag/input/sources.json` from `raw/_manifest.json` and
+`raw/normalized/`, preserving source IDs, hashes, paths, converter metadata, and
+the normalized text for GraphRAG indexing. The generated JSON file can contain
+local corpus text and stays untracked.
+
+## 7. Search and ask
 
 Deprecated legacy search returns matching wiki pages:
 
@@ -144,7 +158,7 @@ runs do not cite saved answers or generated concept pages as primary evidence.
 Top-level `kb find` and `kb ask` are reserved for GraphRAG behavior and now fail
 with guidance until graph querying is implemented.
 
-## 7. Check and export
+## 8. Check and export
 
 Run structural checks:
 
@@ -180,6 +194,7 @@ poetry run kb --project-root $projectRoot export --clean
 | Provider authentication errors | Confirm the matching API key environment variable is set in the same shell. |
 | PDF, DOCX, PPTX, image, or HTML conversion fails | Set `MISTRAL_API_KEY`; for HTML also install/configure `wkhtmltopdf`. |
 | Search returns stale results | Run `kb update` after adding or changing sources. |
+| GraphRAG input is missing | Run `kb graph sync` after `kb update`. |
 | Generated pages look stale | Run `kb status --changed`, then `kb update --force` if needed. |
 
 ## Next Steps

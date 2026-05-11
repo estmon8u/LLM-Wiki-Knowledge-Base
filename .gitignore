@@ -18,6 +18,7 @@ htmlcov/
 
 # GraphRAG workspace runtime artifacts
 graph/graphrag/.env
+graph/graphrag/input/sources.json
 graph/graphrag/output/
 graph/graphrag/cache/
 graph/graphrag/logs/

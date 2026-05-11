@@ -52,6 +52,7 @@ def test_command_registry_resolves_aliases_and_lists_names() -> None:
     assert "update" in list_command_names()
     assert "ask" in list_command_names()
     assert "find" in list_command_names()
+    assert "graph" in list_command_names()
     assert "legacy" in list_command_names()
     assert "status" in list_command_names()
     assert "review" in list_command_names()
@@ -74,6 +75,7 @@ def test_command_registry_returns_click_commands_and_specs(test_project) -> None
     assert "update" in spec_names
     assert "ask" in spec_names
     assert "find" in spec_names
+    assert "graph" in spec_names
     assert "legacy" in spec_names
     assert "status" in spec_names
     assert "review" in spec_names
@@ -90,6 +92,7 @@ def test_command_registry_returns_click_commands_and_specs(test_project) -> None
         "doctor",
         "export",
         "find",
+        "graph",
         "init",
         "legacy",
         "lint",

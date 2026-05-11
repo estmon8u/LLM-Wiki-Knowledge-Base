@@ -4,7 +4,7 @@ A CLI-first GraphRAG research-memory system for ingesting technical documents, b
 
 The wiki is not the retrieval engine. The wiki is the human-readable artifact layer. GraphRAG is the retrieval and synthesis engine.
 
-This branch is in the GraphRAG pivot. GraphRAG is the target default retrieval and synthesis path. The existing SQLite FTS5 search and source-grounded ask workflow is now explicit legacy behavior under `kb legacy find` and `kb legacy ask` with deprecation warnings. Top-level `kb find` and `kb ask` no longer route to FTS5; they are reserved for the GraphRAG path and fail with next-step guidance until graph querying lands. Phase 2 has added the Microsoft GraphRAG package and initialized the dedicated workspace at `graph/graphrag/` with tracked settings, prompts, and input scaffolding. See [docs/graphrag-pivot.md](docs/graphrag-pivot.md) for the pivot rationale and target architecture.
+This branch is in the GraphRAG pivot. GraphRAG is the target default retrieval and synthesis path. The existing SQLite FTS5 search and source-grounded ask workflow is now explicit legacy behavior under `kb legacy find` and `kb legacy ask` with deprecation warnings. Top-level `kb find` and `kb ask` no longer route to FTS5; they are reserved for the GraphRAG path and fail with next-step guidance until graph querying lands. Phase 3 adds the normalized-corpus bridge: `kb graph sync` writes GraphRAG JSON input from `raw/normalized/` plus `raw/_manifest.json`, preserving source provenance for later indexing. See [docs/graphrag-pivot.md](docs/graphrag-pivot.md) for the pivot rationale and target architecture.
 
 ## Requirements
 
@@ -24,7 +24,7 @@ This creates a local `.venv` and installs all dependencies. The CLI entrypoint i
 
 Microsoft GraphRAG is installed as a library/CLI dependency, not a separate paid hosted service. Running real GraphRAG indexing or query jobs can still create model and embedding costs through the configured provider.
 
-The repository now contains an initialized GraphRAG workspace under `graph/graphrag/`. The committed scaffold includes `settings.yaml`, default prompts, and `input/`; local runtime files such as `.env`, `output/`, `cache/`, and `logs/` stay ignored.
+The repository now contains an initialized GraphRAG workspace under `graph/graphrag/`. The committed scaffold includes `settings.yaml`, default prompts, and `input/`; local runtime files such as `.env`, generated `input/sources.json`, `output/`, `cache/`, and `logs/` stay ignored.
 
 ```bash
 poetry run graphrag --help
@@ -32,6 +32,8 @@ poetry run graphrag init --root graph/graphrag --model gpt-4.1-mini --embedding 
 ```
 
 The generated settings reference `GRAPHRAG_API_KEY`. Set that environment variable, or keep the ignored `.env` file local, before running future graph indexing or query commands.
+
+`kb graph sync` uses the existing knowledge-base corpus as the source of truth. It reads `raw/_manifest.json` plus the normalized artifacts in `raw/normalized/`, writes `graph/graphrag/input/sources.json`, and configures GraphRAG for JSON input with metadata prepended into chunks.
 
 ## Current Transitional Quick Start
 
@@ -48,18 +50,20 @@ poetry run kb add path/to/research-folder
 # 3. Update the knowledge base (generates wiki artifacts and the temporary legacy FTS index)
 poetry run kb update
 
-# 4. Search the deprecated legacy/wiki path
+# 4. Sync normalized artifacts into GraphRAG input
+poetry run kb graph sync
+
+# 5. Search the deprecated legacy/wiki path
 poetry run kb legacy find "knowledge base traceability"
 
-# 5. Ask through the deprecated legacy source-grounded path
+# 6. Ask through the deprecated legacy source-grounded path
 poetry run kb legacy ask "How does the wiki handle stale pages?"
 ```
 
-That's the current transitional workflow: **add -> update -> legacy find / legacy ask**.
+That's the current transitional workflow: **add -> update -> graph sync -> legacy find / legacy ask**.
 The legacy commands exist only for comparison and exact lexical lookup while
-later GraphRAG phases sync normalized inputs into the initialized workspace, add
-`kb graph index`, graph query modes, and graph-derived wiki exports. There is no
-silent fallback from GraphRAG to FTS5.
+later GraphRAG phases add `kb graph index`, graph query modes, and graph-derived
+wiki exports. There is no silent fallback from GraphRAG to FTS5.
 
 For a slower first-run walkthrough that keeps the repository and knowledge-base
 project in separate directories, see [docs/start-guide.md](docs/start-guide.md).
@@ -100,6 +104,7 @@ is **init -> add -> update -> legacy find / legacy ask**.
 | `update` | Build wiki pages, generate concepts, and refresh indexes |
 | `find` | Reserved GraphRAG search entry point; currently fails with guidance |
 | `ask` | Reserved GraphRAG answer entry point; currently fails with guidance |
+| `graph` | GraphRAG workspace commands; currently syncs normalized sources into JSON input |
 | `legacy` | Deprecated SQLite FTS5 search and ask commands for comparison |
 | `status` | Show project state and what to do next |
 
@@ -193,6 +198,23 @@ poetry run kb update --resume
 
 When source paths are provided, the command adds them first. Always generates concept pages and refreshes the search index after building.
 Compile summaries request structured provider output (`summary`, `key_points`, `open_questions`, and `title_suggestion`) and persist the extra fields when returned. Concept clustering uses the configured provider when available, parses direct, fenced, or prefaced JSON through the shared structured-output parser, caches valid cluster output by source-page digest, and falls back to deterministic collocation-based grouping if provider clustering fails.
+
+### `kb graph sync`
+
+Sync normalized source artifacts into the initialized GraphRAG workspace.
+
+```bash
+poetry run kb graph sync
+poetry run kb graph sync --json
+```
+
+The command reads `raw/_manifest.json` and each source's `raw/normalized/`
+artifact, then writes `graph/graphrag/input/sources.json` as JSON records with
+`id`, `title`, `text`, and provenance fields such as `source_id`, `slug`,
+`source_hash`, `raw_path`, `normalized_path`, `converter`, and
+`normalization_route`. It also configures `graph/graphrag/settings.yaml` for
+GraphRAG JSON input and metadata prepending through `chunking.prepend_metadata`.
+Generated `sources.json` can contain local corpus text and is ignored by Git.
 
 ### `kb find <terms>`
 
@@ -534,6 +556,7 @@ local fallback and fail cleanly if Mistral OCR cannot process them.
 | `ANTHROPIC_API_KEY` | API key for the Anthropic provider. |
 | `GEMINI_API_KEY` | API key for the Google Gemini provider. |
 | `MISTRAL_API_KEY` | API key for Mistral OCR document conversion. |
+| `GRAPHRAG_API_KEY` | API key used by the GraphRAG workspace settings. |
 | `NO_COLOR` | When set (any value), disables colored CLI output. Respected automatically by Rich. |
 
 You can override provider and conversion settings in that same file:
@@ -571,9 +594,14 @@ project-root/
 │   ├── _index.json         # Wiki index (machine-readable)
 │   └── log.md              # Update activity log
 ├── graph/
-│   └── exports/
-│       ├── compile_runs.json      # Resume/failure state for update runs
-│       └── search_index.sqlite3   # Temporary legacy SQLite FTS5 index
+│   ├── exports/
+│   │   ├── compile_runs.json      # Resume/failure state for update runs
+│   │   └── search_index.sqlite3   # Temporary legacy SQLite FTS5 index
+│   └── graphrag/
+│       ├── settings.yaml          # GraphRAG JSON input configuration
+│       ├── prompts/               # GraphRAG prompt templates
+│       └── input/
+│           └── sources.json       # Generated by kb graph sync, ignored by Git
 └── vault/
     └── obsidian/           # Obsidian-friendly export
         └── sources/

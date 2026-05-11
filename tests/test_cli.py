@@ -121,6 +121,7 @@ def test_help_lists_core_commands() -> None:
         "doctor",
         "export",
         "find",
+        "graph",
         "init",
         "legacy",
         "review",
