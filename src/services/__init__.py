@@ -13,6 +13,7 @@ from src.services.doctor_service import DoctorService
 from src.services.export_service import ExportService
 from src.services.graphrag_command_service import GraphRAGCommandService
 from src.services.graphrag_input_sync_service import GraphRAGInputSyncService
+from src.services.graphrag_query_service import GraphRAGQueryService
 from src.services.graphrag_status_service import GraphRAGStatusService
 from src.services.graphrag_workspace_service import GraphRAGWorkspaceService
 from src.services.ingest_service import IngestService
@@ -72,6 +73,13 @@ def build_services(
             graphrag_command_service,
         ),
         "graphrag_status": graphrag_status_service,
+        "graphrag_query": GraphRAGQueryService(
+            paths,
+            graphrag_command_service,
+            graphrag_status_service,
+            search_service,
+            refresh_index=compile_service.refresh_index,
+        ),
         "graphrag_input_sync": GraphRAGInputSyncService(paths, manifest_service),
         "review": ReviewService(paths, provider=provider),
         "compile_run_store": compile_run_store,

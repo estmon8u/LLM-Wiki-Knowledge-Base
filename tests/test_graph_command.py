@@ -26,6 +26,36 @@ def _write_graphrag_settings() -> None:
     )
 
 
+def _write_ready_graphrag_index() -> None:
+    _write_graphrag_settings()
+    Path("graph/graphrag/input").mkdir(parents=True, exist_ok=True)
+    Path("graph/graphrag/input/sources.json").write_text(
+        json.dumps([{"id": "src-1", "text": "Graph source text"}]),
+        encoding="utf-8",
+    )
+    Path("graph/graphrag/output").mkdir(parents=True, exist_ok=True)
+    Path("graph/graphrag/output/entities.parquet").write_text("", encoding="utf-8")
+    Path("graph/runs").mkdir(parents=True, exist_ok=True)
+    Path("graph/runs/graph_index_runs.json").write_text(
+        json.dumps(
+            [
+                {
+                    "run_id": "20260511T000000Z",
+                    "created_at": "2026-05-11T00:00:00+00:00",
+                    "method": "fast",
+                    "dry_run": False,
+                    "success": True,
+                    "returncode": 0,
+                    "command": ["python", "-m", "graphrag", "index"],
+                    "stdout_tail": "indexed",
+                    "stderr_tail": "",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_graph_sync_command_writes_sources_json() -> None:
     runner = CliRunner()
     with runner.isolated_filesystem():
@@ -347,3 +377,146 @@ def test_graph_status_command_supports_human_output(monkeypatch) -> None:
         assert "Input: present (1 document(s))" in result.output
         assert "Last index run:" in result.output
         assert "success: yes" in result.output
+
+
+def test_graph_ask_command_supports_json_output(monkeypatch) -> None:
+    calls = []
+
+    def fake_run(command, *, cwd, capture_output, text):
+        calls.append(command)
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="GraphRAG says REALM augments pretraining.\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(
+        "src.services.graphrag_command_service.subprocess.run",
+        fake_run,
+    )
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        _write_ready_graphrag_index()
+
+        result = runner.invoke(
+            main,
+            [
+                "graph",
+                "ask",
+                "How does REALM differ from RAG?",
+                "--method",
+                "local",
+                "--community-level",
+                "1",
+                "--no-dynamic-selection",
+                "--response-type",
+                "Single Sentence",
+                "--json",
+            ],
+        )
+
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        assert payload["retriever"] == "graphrag"
+        assert payload["method"] == "local"
+        assert payload["answer"] == "GraphRAG says REALM augments pretraining."
+        assert payload["index_run_id"] == "20260511T000000Z"
+        assert payload["input_manifest_hash"]
+        assert calls[0][1:4] == ("-m", "graphrag", "query")
+        assert calls[0][-1] == "How does REALM differ from RAG?"
+
+
+def test_graph_ask_command_supports_human_output(monkeypatch) -> None:
+    def fake_run(command, *, cwd, capture_output, text):
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="GraphRAG answer body.\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(
+        "src.services.graphrag_command_service.subprocess.run",
+        fake_run,
+    )
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        _write_ready_graphrag_index()
+
+        result = runner.invoke(
+            main,
+            ["graph", "ask", "What is RAG?", "--method", "basic"],
+        )
+
+        assert result.exit_code == 0
+        assert "retriever: graphrag, method: basic" in result.output
+        assert "GraphRAG answer body." in result.output
+
+
+def test_graph_ask_command_saves_analysis_page(monkeypatch) -> None:
+    def fake_run(command, *, cwd, capture_output, text):
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="GraphRAG saved answer.\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(
+        "src.services.graphrag_command_service.subprocess.run",
+        fake_run,
+    )
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        _write_ready_graphrag_index()
+
+        result = runner.invoke(
+            main,
+            [
+                "graph",
+                "ask",
+                "What is dense passage retrieval used for?",
+                "--method",
+                "drift",
+                "--save",
+            ],
+        )
+
+        assert result.exit_code == 0
+        saved_path = Path(
+            "wiki/analysis/graphrag-what-is-dense-passage-retrieval-used-for.md"
+        )
+        assert saved_path.exists()
+        text = saved_path.read_text(encoding="utf-8")
+        assert "retriever: graphrag" in text
+        assert "method: drift" in text
+        assert "## Raw GraphRAG Output" in text
+        assert (
+            "Saved analysis page: "
+            "wiki/analysis/graphrag-what-is-dense-passage-retrieval-used-for.md"
+            in result.output
+        )
+
+
+def test_graph_ask_command_reports_missing_index_output() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        _write_graphrag_settings()
+        Path("graph/graphrag/input").mkdir(parents=True, exist_ok=True)
+        Path("graph/graphrag/input/sources.json").write_text(
+            json.dumps([{"id": "src-1"}]),
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(
+            main,
+            ["graph", "ask", "What is RAG?", "--method", "basic"],
+        )
+
+        assert result.exit_code != 0
+        assert "GraphRAG index output not found" in result.output

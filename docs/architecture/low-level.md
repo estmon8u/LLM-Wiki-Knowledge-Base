@@ -25,7 +25,7 @@
 | `src/commands/update.py` | Full update workflow: add → build wiki pages → concepts → search refresh, with progress bar; delegates to `UpdateService` |
 | `src/commands/find.py` | Reserved GraphRAG search entry point; currently fails with next-step guidance instead of routing to FTS5 |
 | `src/commands/ask.py` | Reserved GraphRAG answer entry point; currently fails with next-step guidance instead of routing to FTS5 |
-| `src/commands/graph.py` | GraphRAG command group; exposes workspace initialization, normalized-corpus input sync, official GraphRAG indexing, and graph status checks |
+| `src/commands/graph.py` | GraphRAG command group; exposes workspace initialization, normalized-corpus input sync, official GraphRAG indexing, explicit graph query modes, and graph status checks |
 | `src/commands/legacy.py` | Deprecated SQLite FTS5 search and ask command group that invokes the legacy search/query services |
 | `src/commands/review.py` | Semantic review command |
 | `src/commands/lint.py` | Deterministic structural lint command |
@@ -44,8 +44,9 @@
 | `src/services/config_service.py` | Config loading, Pydantic-backed provider/conversion validation, schema defaults, `schema_excerpt()` helper for extracting schema sections by heading, and in-place migration of legacy `kb.config.yaml` versions |
 | `src/services/manifest_service.py` | Raw-source manifest read/write behavior |
 | `src/services/graphrag_workspace_service.py` | Prepares the project-local `graph/graphrag/` workspace and delegates reproducible non-interactive initialization to the GraphRAG command wrapper |
-| `src/services/graphrag_command_service.py` | Thin subprocess boundary around `python -m graphrag` for `init` and `index`, with captured stdout/stderr and structured command errors |
+| `src/services/graphrag_command_service.py` | Thin subprocess boundary around `python -m graphrag` for `init`, `index`, and `query`, with captured stdout/stderr and structured command errors |
 | `src/services/graphrag_status_service.py` | Reports GraphRAG workspace readiness, synced input counts, output table presence, and ignored local index-run metadata |
+| `src/services/graphrag_query_service.py` | Requires a ready graph index, runs explicit GraphRAG query modes, captures answer/raw output metadata, computes the synced-input hash, and saves optional GraphRAG analysis pages |
 | `src/services/graphrag_input_sync_service.py` | Syncs manifest-backed normalized artifacts into `graph/graphrag/input/sources.json`, validates the GraphRAG workspace settings file, configures JSON input columns, and lists provenance metadata fields for chunk prepending |
 | `src/services/normalization_service.py` | Document-type normalization routing for direct text inputs, Mistral OCR-backed native documents and images, `wkhtmltopdf`-rendered HTML OCR, MarkItDown-backed born-digital converters, explicit Docling/MarkItDown fallbacks, and conversion quality gates |
 | `src/services/ingest_service.py` | Raw-source copy, normalized-artifact write, duplicate detection, source registration, deterministic recursive directory ingest, and callback-friendly batch progress hooks used by `kb add` |

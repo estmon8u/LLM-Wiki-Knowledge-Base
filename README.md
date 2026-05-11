@@ -4,7 +4,7 @@ A CLI-first GraphRAG research-memory system for ingesting technical documents, b
 
 The wiki is not the retrieval engine. The wiki is the human-readable artifact layer. GraphRAG is the retrieval and synthesis engine.
 
-This branch is in the GraphRAG pivot. GraphRAG is the target default retrieval and synthesis path. The existing SQLite FTS5 search and source-grounded ask workflow is now explicit legacy behavior under `kb legacy find` and `kb legacy ask` with deprecation warnings. Top-level `kb find` and `kb ask` no longer route to FTS5; they are reserved for the GraphRAG path and fail with next-step guidance until graph querying lands. Phase 4 wraps the local GraphRAG workspace lifecycle: `kb graph init` initializes settings, `kb graph sync` writes JSON input from `raw/normalized/` plus `raw/_manifest.json`, `kb graph index` delegates to the official GraphRAG index CLI, and `kb graph status` reports workspace/input/output readiness. See [docs/graphrag-pivot.md](docs/graphrag-pivot.md) for the pivot rationale and target architecture.
+This branch is in the GraphRAG pivot. GraphRAG is the target default retrieval and synthesis path. The existing SQLite FTS5 search and source-grounded ask workflow is now explicit legacy behavior under `kb legacy find` and `kb legacy ask` with deprecation warnings. Top-level `kb find` and `kb ask` no longer route to FTS5; they are reserved for the later GraphRAG-aware controller. Phase 5 exposes explicit GraphRAG query modes through `kb graph ask --method local|global|drift|basic`, after `kb graph init`, `kb graph sync`, `kb graph index`, and `kb graph status` have prepared the local graph workspace. See [docs/graphrag-pivot.md](docs/graphrag-pivot.md) for the pivot rationale and target architecture.
 
 ## Requirements
 
@@ -36,7 +36,7 @@ The generated settings reference `GRAPHRAG_API_KEY`. Set that environment variab
 
 `kb graph sync` uses the existing knowledge-base corpus as the source of truth. It reads `raw/_manifest.json` plus the normalized artifacts in `raw/normalized/`, writes `graph/graphrag/input/sources.json`, and configures GraphRAG for JSON input with metadata prepended into chunks.
 
-`kb graph index` wraps `python -m graphrag index` with explicit method choices (`standard`, `fast`, `standard-update`, `fast-update`) and supports `--dry-run` before a real index job. `kb graph status` checks whether settings, synced input, GraphRAG output tables, and the last recorded index run are present.
+`kb graph index` wraps `python -m graphrag index` with explicit method choices (`standard`, `fast`, `standard-update`, `fast-update`) and supports `--dry-run` before a real index job. `kb graph status` checks whether settings, synced input, GraphRAG output tables, and the last recorded index run are present. `kb graph ask` then wraps `python -m graphrag query` with explicit Local, Global, DRIFT, and Basic modes and can save raw GraphRAG answers as analysis pages.
 
 ## Current Transitional Quick Start
 
@@ -59,20 +59,24 @@ poetry run kb graph init
 # 5. Sync normalized artifacts into GraphRAG input
 poetry run kb graph sync
 
-# 6. Check graph readiness before running a paid model-backed index
+# 6. Check graph readiness before running a provider-backed index
 poetry run kb graph status
 poetry run kb graph index --method fast --dry-run
 
-# 7. Search the deprecated legacy/wiki path
+# 7. After a real index, ask an explicit GraphRAG mode
+poetry run kb graph ask "What are the main retrieval patterns?" --method global
+
+# 8. Search the deprecated legacy/wiki path
 poetry run kb legacy find "knowledge base traceability"
 
-# 8. Ask through the deprecated legacy source-grounded path
+# 9. Ask through the deprecated legacy source-grounded path
 poetry run kb legacy ask "How does the wiki handle stale pages?"
 ```
 
 That's the current transitional workflow: **add -> update -> graph init -> graph sync -> graph status/index -> legacy find / legacy ask**.
 The legacy commands exist only for comparison and exact lexical lookup while
-later GraphRAG phases add graph query modes and graph-derived wiki exports.
+later GraphRAG phases add graph-derived wiki exports and the default `kb ask`
+controller.
 There is no silent fallback from GraphRAG to FTS5.
 
 For a slower first-run walkthrough that keeps the repository and knowledge-base
@@ -114,7 +118,7 @@ is **init -> add -> update -> legacy find / legacy ask**.
 | `update` | Build wiki pages, generate concepts, and refresh indexes |
 | `find` | Reserved GraphRAG search entry point; currently fails with guidance |
 | `ask` | Reserved GraphRAG answer entry point; currently fails with guidance |
-| `graph` | GraphRAG workspace commands for init, input sync, indexing, and status |
+| `graph` | GraphRAG workspace commands for init, input sync, indexing, explicit query modes, and status |
 | `legacy` | Deprecated SQLite FTS5 search and ask commands for comparison |
 | `status` | Show project state and what to do next |
 
@@ -270,10 +274,35 @@ poetry run kb graph status --json
 
 Status checks whether the workspace is initialized, synced input exists, input records are present, GraphRAG output Parquet tables are present for documents, text units, entities, relationships, communities, and community reports, and whether a previous `kb graph index` run was recorded.
 
+### `kb graph ask <question>`
+
+Ask a question through an explicit GraphRAG query mode.
+
+```bash
+poetry run kb graph ask "How does REALM differ from RAG?" --method local
+poetry run kb graph ask "What are the main retrieval design patterns?" --method global
+poetry run kb graph ask "Compare RAG, REALM, FiD, Self-RAG, and GraphRAG." --method drift
+poetry run kb graph ask "What is dense passage retrieval used for?" --method basic
+poetry run kb graph ask "How does REALM differ from RAG?" --method drift --save
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--method` | required | GraphRAG query method: `local`, `global`, `drift`, or `basic`. |
+| `--community-level` | | Forward GraphRAG's community-level option. |
+| `--dynamic-community-selection` / `--no-dynamic-selection` | GraphRAG default | Forward GraphRAG dynamic community selection behavior. |
+| `--response-type` | GraphRAG default | Forward GraphRAG's response type option. |
+| `--save` | off | Save the answer as a GraphRAG-backed analysis page under `wiki/analysis/`. |
+| `--save-as` | | Save with a custom analysis slug. Implies `--save`. |
+| `--json` | off | Include the answer, raw GraphRAG output, command, `retriever`, `method`, `index_run_id`, and `input_manifest_hash` as JSON. |
+
+The command requires synced input and GraphRAG index output. Saved analysis pages use `type: analysis`, `retriever: graphrag`, `method`, `question`, `created_at`, `index_run_id`, and `input_manifest_hash` frontmatter, then store the answer, retrieval mode metadata, source trace, and raw GraphRAG CLI output. Direct citation parsing is intentionally deferred until the higher-level ask controller; the raw output is preserved so Phase 6 and later verification work can inspect it.
+
 ### `kb find <terms>`
 
-Reserved GraphRAG search entry point. Until GraphRAG query support lands, this
-command fails with guidance to use `kb legacy find` for deprecated FTS5 lookup.
+Reserved GraphRAG search entry point. Until a default GraphRAG search controller
+lands, this command fails with guidance to use `kb legacy find` for deprecated
+FTS5 lookup.
 
 ### `kb legacy find <terms>`
 
@@ -302,8 +331,9 @@ content rather than wiki bookkeeping.
 
 ### `kb ask <question>`
 
-Reserved GraphRAG answer entry point. Until GraphRAG query support lands, this
-command fails with guidance to use `kb legacy ask` for deprecated comparison.
+Reserved GraphRAG answer entry point. Until the GraphRAG-aware default ask
+controller lands, this command fails with guidance to use explicit
+`kb graph ask --method ...` or `kb legacy ask` for deprecated comparison.
 
 ### `kb legacy ask <question>`
 

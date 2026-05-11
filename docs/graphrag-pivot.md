@@ -45,7 +45,7 @@ GraphRAG is the retrieval and synthesis engine.
 - Normalized corpus artifacts are synced into GraphRAG JSON input with source metadata attached through `kb graph sync`.
 - `kb graph init`, `kb graph index`, and `kb graph status` wrap the official GraphRAG CLI for reproducible workspace setup, dry-run/full indexing, output-table detection, and local index-run metadata.
 - GraphRAG indexing creates graph outputs such as text units, entities, relationships, communities, and community reports.
-- GraphRAG query modes will become first-class CLI behavior:
+- GraphRAG query modes are now first-class explicit CLI behavior under `kb graph ask`:
   - `basic` for simple vector-RAG comparison,
   - `local` for specific entity, paper, or method questions,
   - `global` for whole-corpus themes,
@@ -88,8 +88,8 @@ The immediate design rule is to wrap GraphRAG rather than reimplement it. The pr
 
 CLI design guardrails:
 
-- `kb ask` is reserved for GraphRAG-backed answering after graph querying lands.
-- `kb graph ask` should expose explicit GraphRAG method control with `--method local|global|drift|basic`.
+- `kb ask` is reserved for the later GraphRAG-aware default controller.
+- `kb graph ask` exposes explicit GraphRAG method control with `--method local|global|drift|basic`.
 - Old FTS5 behavior should not be available through a normal `--retriever lexical` option.
 - Old FTS5 behavior is exposed only through `kb legacy find` and `kb legacy ask`.
 - Legacy commands should print deprecation warnings to stderr and keep primary answer/search output on stdout.
@@ -134,4 +134,4 @@ This evaluation story directly explains the pivot: the original wiki workflow re
 - Microsoft GraphRAG query docs describe Local, Global, DRIFT, and Basic Search modes: <https://microsoft.github.io/graphrag/query/overview/>
 - Microsoft GraphRAG indexing docs describe entity, relationship, claim, community, summary, embedding, and Parquet output behavior: <https://microsoft.github.io/graphrag/index/overview/>
 - Microsoft GraphRAG CLI docs expose `init`, `index`, `query`, `prompt-tune`, and `update`: <https://microsoft.github.io/graphrag/cli/>
-- Phase 4 local workspace source of truth: `pyproject.toml` declares `graphrag`, `graph/graphrag/settings.yaml` uses `GRAPHRAG_API_KEY`, `gpt-4.1-mini`, `text-embedding-3-small`, JSON input columns, and `chunking.prepend_metadata`; `src/services/graphrag_input_sync_service.py` writes `graph/graphrag/input/sources.json` from `raw/_manifest.json` and `raw/normalized/`; `src/services/graphrag_workspace_service.py`, `src/services/graphrag_command_service.py`, and `src/services/graphrag_status_service.py` wrap GraphRAG init/index/status behavior; runtime `.env`, generated input, `output`, `cache`, `logs`, and `graph/runs/*.json` files are ignored.
+- Phase 5 local workspace source of truth: `pyproject.toml` declares `graphrag`, `graph/graphrag/settings.yaml` uses `GRAPHRAG_API_KEY`, `gpt-4.1-mini`, `text-embedding-3-small`, JSON input columns, and `chunking.prepend_metadata`; `src/services/graphrag_input_sync_service.py` writes `graph/graphrag/input/sources.json` from `raw/_manifest.json` and `raw/normalized/`; `src/services/graphrag_workspace_service.py`, `src/services/graphrag_command_service.py`, and `src/services/graphrag_status_service.py` wrap GraphRAG init/index/status behavior; `src/services/graphrag_query_service.py` wraps explicit GraphRAG query modes and optional analysis-page saves; runtime `.env`, generated input, `output`, `cache`, `logs`, and `graph/runs/*.json` files are ignored.

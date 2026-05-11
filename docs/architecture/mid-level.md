@@ -26,6 +26,7 @@ Most commands are flat top-level verbs. The GraphRAG pivot intentionally adds gr
 | `graph init` | `src/commands/graph.py` | `src/services/graphrag_workspace_service.py` and `src/services/graphrag_command_service.py` |
 | `graph sync` | `src/commands/graph.py` | `src/services/graphrag_input_sync_service.py` |
 | `graph index` | `src/commands/graph.py` | `src/services/graphrag_command_service.py` and `src/services/graphrag_status_service.py` |
+| `graph ask` | `src/commands/graph.py` | `src/services/graphrag_query_service.py` |
 | `graph status` | `src/commands/graph.py` | `src/services/graphrag_status_service.py` |
 | `legacy find` / `legacy ask` | `src/commands/legacy.py` | `src/services/search_service.py` and `src/services/query_service.py` |
 | `lint` | `src/commands/lint.py` | `src/services/lint_service.py` |
@@ -48,6 +49,7 @@ Most commands are flat top-level verbs. The GraphRAG pivot intentionally adds gr
 | GraphRAG init | project GraphRAG workspace path plus model defaults | official GraphRAG settings, prompts, and input scaffold under `graph/graphrag/` |
 | GraphRAG input sync | normalized artifacts plus manifest metadata | `graph/graphrag/input/sources.json` JSON records with source text and provenance metadata; JSON input and metadata-prepending settings in `graph/graphrag/settings.yaml` |
 | GraphRAG index/status | synced GraphRAG JSON input plus official GraphRAG CLI output | generated GraphRAG output tables under `graph/graphrag/output/` and ignored local run metadata under `graph/runs/graph_index_runs.json` |
+| GraphRAG ask | user question plus explicit query mode and graph index status | raw GraphRAG answer metadata on stdout/JSON; optional `wiki/analysis/graphrag-*.md` saved analysis page with retriever/method/index hash metadata |
 | Lint | compiled wiki and metadata | structural findings for links, fragments, headings, titles, typed frontmatter, empty pages, and maintenance signals |
 | Review | compiled source/concept pages | semantic findings from deterministic overlap checks over source pages, terminology-variant checks over reviewable source/concept pages, and schema-guided single-pass provider review over curated source-page excerpts |
 | Export | compiled wiki | Obsidian-friendly vault view |

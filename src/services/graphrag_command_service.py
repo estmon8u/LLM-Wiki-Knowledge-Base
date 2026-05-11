@@ -84,6 +84,36 @@ class GraphRAGCommandService:
             args.append("--verbose")
         return self._run(args)
 
+    def query(
+        self,
+        question: str,
+        *,
+        method: str,
+        community_level: int | None = None,
+        dynamic_community_selection: bool | None = None,
+        response_type: str | None = None,
+        verbose: bool = False,
+    ) -> GraphRAGCommandResult:
+        args = [
+            "query",
+            "--root",
+            str(self.workspace_dir),
+            "--method",
+            method,
+        ]
+        if community_level is not None:
+            args.extend(["--community-level", str(community_level)])
+        if dynamic_community_selection is True:
+            args.append("--dynamic-community-selection")
+        elif dynamic_community_selection is False:
+            args.append("--no-dynamic-selection")
+        if response_type:
+            args.extend(["--response-type", response_type])
+        if verbose:
+            args.append("--verbose")
+        args.append(question)
+        return self._run(args)
+
     def _run(self, args: Sequence[str]) -> GraphRAGCommandResult:
         command = (sys.executable, "-m", "graphrag", *args)
         try:

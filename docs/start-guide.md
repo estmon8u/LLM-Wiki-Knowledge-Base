@@ -144,6 +144,20 @@ running a non-dry-run index.
 
 ## 7. Search and ask
 
+After a real non-dry-run `kb graph index`, ask through an explicit GraphRAG
+mode:
+
+```powershell
+poetry run kb --project-root $projectRoot graph ask "What are the main retrieval design patterns?" --method global
+poetry run kb --project-root $projectRoot graph ask "How does REALM differ from RAG?" --method local
+poetry run kb --project-root $projectRoot graph ask "Compare RAG, REALM, FiD, Self-RAG, and GraphRAG." --method drift --save
+```
+
+Use `local` for specific entity, method, or paper questions; `global` for
+whole-corpus themes; `drift` for multi-paper comparisons; and `basic` as the
+simple vector-RAG baseline. Saved graph answers go to `wiki/analysis/` with
+`retriever: graphrag` frontmatter and raw GraphRAG output preserved.
+
 Deprecated legacy search returns matching wiki pages:
 
 ```powershell
@@ -168,7 +182,7 @@ poetry run kb --project-root $projectRoot legacy ask --save-as update-pipeline "
 Saved analysis pages are searchable with `kb legacy find`, but later legacy ask
 runs do not cite saved answers or generated concept pages as primary evidence.
 Top-level `kb find` and `kb ask` are reserved for GraphRAG behavior and now fail
-with guidance until graph querying is implemented.
+with guidance until the default GraphRAG controllers are implemented.
 
 ## 8. Check and export
 

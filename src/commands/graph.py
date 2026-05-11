@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import click
+from rich.markdown import Markdown as RichMarkdown
 
 from src.commands.common import console, emit_json, require_initialized
 from src.models.command_models import CommandContext, CommandSpec
 from src.services.graphrag_command_service import GraphRAGCommandError
 from src.services.graphrag_input_sync_service import GraphRAGInputSyncError
+from src.services.graphrag_query_service import GRAPH_QUERY_METHODS, GraphRAGQueryError
 from src.services.graphrag_status_service import GraphRAGStatus
 
 
@@ -203,6 +205,79 @@ def create_command() -> click.Command:
         mode = "dry run" if dry_run else "index"
         console.print(f"GraphRAG {mode} completed with method {method}.")
         console.print(f"Run ID: {run.run_id}")
+
+    @graph_group.command(
+        name="ask",
+        help="Ask a question through an explicit GraphRAG query mode.",
+        short_help="Ask with GraphRAG.",
+    )
+    @click.argument("question")
+    @click.option(
+        "--method",
+        type=click.Choice(GRAPH_QUERY_METHODS),
+        required=True,
+        help="GraphRAG query method.",
+    )
+    @click.option(
+        "--community-level",
+        type=int,
+        help="Forward GraphRAG's community level option.",
+    )
+    @click.option(
+        "--dynamic-community-selection/--no-dynamic-selection",
+        default=None,
+        help="Forward GraphRAG dynamic community selection behavior.",
+    )
+    @click.option(
+        "--response-type",
+        help="Forward GraphRAG's response type option.",
+    )
+    @click.option("--verbose", is_flag=True, help="Forward GraphRAG's verbose flag.")
+    @click.option("--save", is_flag=True, help="Save the answer as an analysis page.")
+    @click.option("--save-as", help="Save the answer using a custom analysis slug.")
+    @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+    @click.pass_obj
+    def ask(
+        command_context: CommandContext,
+        question: str,
+        method: str,
+        community_level: int | None,
+        dynamic_community_selection: bool | None,
+        response_type: str | None,
+        verbose: bool,
+        save: bool,
+        save_as: str | None,
+        as_json: bool,
+    ) -> None:
+        require_initialized(command_context)
+        query_service = command_context.services["graphrag_query"]
+
+        try:
+            answer = query_service.ask(
+                question,
+                method=method,
+                community_level=community_level,
+                dynamic_community_selection=dynamic_community_selection,
+                response_type=response_type,
+                verbose=verbose,
+            )
+            if save or save_as:
+                query_service.save_answer(answer, slug=save_as)
+        except GraphRAGQueryError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+        if as_json:
+            emit_json(answer.to_dict())
+            return
+
+        console.print(
+            f"[dim]\\[retriever: graphrag, method: {answer.method}, "
+            f"index_run_id: {answer.index_run_id or 'unknown'}][/dim]"
+        )
+        console.print("")
+        console.print(RichMarkdown(answer.answer or "No answer text returned."))
+        if answer.saved_path:
+            console.print(f"\nSaved analysis page: {answer.saved_path}")
 
     @graph_group.command(
         name="status",
