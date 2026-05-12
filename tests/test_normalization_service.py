@@ -10,6 +10,7 @@ import src.services.normalization_service as normalization_service_module
 from src.services.normalization_service import (
     HTML_FALLBACK_ROUTE,
     HTML_RENDERED_OCR_ROUTE,
+    HTML_XHTML2PDF_OCR_ROUTE,
     MARKITDOWN_ROUTE,
     MISTRAL_DOCUMENT_ROUTE,
     MISTRAL_IMAGE_ROUTE,
@@ -882,6 +883,7 @@ def test_normalization_service_newline_only_file(tmp_path: Path) -> None:
 
 def test_normalization_service_html_falls_back_when_wkhtmltopdf_missing(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """HTML input with broken renderer should fall back to MarkItDown."""
     source_path = tmp_path / "report.html"
@@ -893,6 +895,12 @@ def test_normalization_service_html_falls_back_when_wkhtmltopdf_missing(
 
         def render_file(self, source_path: Path) -> bytes:
             raise ValueError("wkhtmltopdf not found")
+
+    # Ensure xhtml2pdf fallback is also skipped so we reach MarkItDown fallback.
+    monkeypatch.setattr(
+        "src.services.normalization_service.Xhtml2pdfRenderer.available",
+        staticmethod(lambda: False),
+    )
 
     markitdown = FakeMarkItDownConverter(
         "# Report\n\nBody text from MarkItDown is good.\n",
@@ -932,3 +940,45 @@ def test_mistral_ocr_converter_retries_transient_errors() -> None:
     )
     assert call_count == 3
     assert "Recovered" in result.normalized_text
+
+
+class FakeFailingHtmlRenderer:
+    """Renderer whose render_file always fails (simulates missing wkhtmltopdf)."""
+
+    def resolve_binary(self) -> str:
+        return "C:/missing-wkhtmltopdf.exe"
+
+    def render_file(self, source_path: Path) -> bytes:
+        raise ValueError(f"wkhtmltopdf could not render {source_path.name}")
+
+
+def test_html_falls_back_to_xhtml2pdf_when_wkhtmltopdf_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_path = tmp_path / "sample.html"
+    source_path.write_text(
+        "<html><body><h1>Via xhtml2pdf</h1></body></html>", encoding="utf-8"
+    )
+    mistral = FakeMistralConverter(
+        document_text="# Via xhtml2pdf\n\nRendered through xhtml2pdf fallback.\n"
+    )
+
+    # Patch Xhtml2pdfRenderer.available to return True and render_file to succeed
+    monkeypatch.setattr(
+        "src.services.normalization_service.Xhtml2pdfRenderer.available",
+        staticmethod(lambda: True),
+    )
+    monkeypatch.setattr(
+        "src.services.normalization_service.Xhtml2pdfRenderer.render_file",
+        lambda self, path: b"%PDF-1.4\nxhtml2pdf-fake\n",
+    )
+
+    result = NormalizationService(
+        mistral_ocr_converter=mistral,
+        html_renderer=FakeFailingHtmlRenderer(),
+    ).normalize_path(source_path)
+
+    assert result.title == "Via xhtml2pdf"
+    assert result.metadata["html_renderer"] == "xhtml2pdf"
+    assert result.metadata["normalization_route"] == HTML_XHTML2PDF_OCR_ROUTE
+    assert "wkhtmltopdf_path" not in result.metadata

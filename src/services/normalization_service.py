@@ -56,6 +56,7 @@ PLAIN_TEXT_PASSTHROUGH_ROUTE = "plain-text-passthrough"
 MISTRAL_DOCUMENT_ROUTE = "mistral-ocr-document"
 MISTRAL_IMAGE_ROUTE = "mistral-ocr-image"
 HTML_RENDERED_OCR_ROUTE = "wkhtmltopdf-mistral-ocr"
+HTML_XHTML2PDF_OCR_ROUTE = "xhtml2pdf-mistral-ocr"
 DOCX_PPTX_FALLBACK_ROUTE = "mistral-ocr-document->markitdown-fallback"
 HTML_FALLBACK_ROUTE = "wkhtmltopdf-mistral-ocr->markitdown-fallback"
 PDF_FALLBACK_ROUTE = "mistral-ocr-document->docling-fallback"
@@ -312,6 +313,9 @@ class WkhtmltopdfRenderer:
                     "encoding": "UTF-8",
                     "enable-local-file-access": None,
                     "quiet": None,
+                    "no-stop-slow-scripts": None,
+                    "disable-javascript": None,
+                    "no-images": None,
                 },
                 configuration=configuration,
                 verbose=False,
@@ -328,6 +332,44 @@ class WkhtmltopdfRenderer:
                 f"wkhtmltopdf produced no PDF bytes for {source_path.name}."
             )
         return bytes(pdf_bytes)
+
+
+class Xhtml2pdfRenderer:
+    """HTML→PDF renderer using xhtml2pdf (pure-Python, no external binary)."""
+
+    @staticmethod
+    def available() -> bool:
+        try:
+            import xhtml2pdf  # noqa: F401
+
+            return True
+        except ImportError:
+            return False
+
+    def render_file(self, source_path: Path) -> bytes:
+        try:
+            from xhtml2pdf import pisa
+        except ImportError as exc:
+            raise ValueError(
+                "xhtml2pdf is not installed. Install it with: pip install xhtml2pdf"
+            ) from exc
+
+        import io
+
+        html_text = source_path.read_text(encoding="utf-8", errors="replace")
+        pdf_buffer = io.BytesIO()
+        try:
+            status = pisa.CreatePDF(html_text, dest=pdf_buffer, encoding="utf-8")
+        except Exception as error:
+            raise ValueError(
+                f"xhtml2pdf could not render {source_path.name}: {error}"
+            ) from error
+        if status.err:
+            raise ValueError(f"xhtml2pdf reported errors rendering {source_path.name}.")
+        pdf_bytes = pdf_buffer.getvalue()
+        if not pdf_bytes:
+            raise ValueError(f"xhtml2pdf produced no PDF bytes for {source_path.name}.")
+        return pdf_bytes
 
 
 class NormalizationService:
@@ -528,26 +570,50 @@ class NormalizationService:
     def _candidate_from_html_mistral(self, source_path: Path) -> _ConvertedText:
         mistral_config = self._mistral_config()
         renderer = self._html_renderer_instance()
-        rendered_pdf = renderer.render_file(source_path)
+        rendered_pdf: bytes | None = None
+        html_renderer_name = "wkhtmltopdf"
+        route = HTML_RENDERED_OCR_ROUTE
+
+        # Try wkhtmltopdf first (silently).
+        try:
+            rendered_pdf = renderer.render_file(source_path)
+        except (ValueError, Exception) as wk_err:
+            logger.debug("wkhtmltopdf failed for %s: %s", source_path.name, wk_err)
+
+        # Fall back to xhtml2pdf silently.
+        if rendered_pdf is None and Xhtml2pdfRenderer.available():
+            try:
+                rendered_pdf = Xhtml2pdfRenderer().render_file(source_path)
+                html_renderer_name = "xhtml2pdf"
+                route = HTML_XHTML2PDF_OCR_ROUTE
+            except (ValueError, Exception) as xh_err:
+                logger.debug("xhtml2pdf failed for %s: %s", source_path.name, xh_err)
+
+        if rendered_pdf is None:
+            raise ValueError(
+                f"No HTML renderer could produce a PDF for {source_path.name}. "
+                "Ensure wkhtmltopdf or xhtml2pdf is available."
+            )
+
         converted = self._mistral_ocr_converter_instance().convert_document_bytes(
             rendered_pdf,
             mime_type="application/pdf",
             document_name=f"{source_path.stem}.pdf",
         )
         converted = _coerce_converted_text(converted)
-        converted.metadata.update(
-            {
-                "converter": "mistral-ocr",
-                "converter_version": package_version("mistralai"),
-                "ingest_mode": MISTRAL_OCR_CONVERSION_INGEST_MODE,
-                "canonical_text_format": ".md",
-                "normalization_route": HTML_RENDERED_OCR_ROUTE,
-                "ocr_model": mistral_config["model"],
-                "table_format": mistral_config["table_format"],
-                "html_renderer": "wkhtmltopdf",
-                "wkhtmltopdf_path": renderer.resolve_binary(),
-            }
-        )
+        renderer_meta: dict[str, Any] = {
+            "converter": "mistral-ocr",
+            "converter_version": package_version("mistralai"),
+            "ingest_mode": MISTRAL_OCR_CONVERSION_INGEST_MODE,
+            "canonical_text_format": ".md",
+            "normalization_route": route,
+            "ocr_model": mistral_config["model"],
+            "table_format": mistral_config["table_format"],
+            "html_renderer": html_renderer_name,
+        }
+        if html_renderer_name == "wkhtmltopdf":
+            renderer_meta["wkhtmltopdf_path"] = renderer.resolve_binary()
+        converted.metadata.update(renderer_meta)
         return converted
 
     def _candidate_from_docling_pdf(self, source_path: Path) -> _ConvertedText:

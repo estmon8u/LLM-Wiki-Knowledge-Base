@@ -213,6 +213,7 @@ class DoctorService:
     def _check_converters(self) -> DoctorCheck:
         available: list[str] = []
         missing: list[str] = []
+        optional_available: list[str] = []
         try:
             import mistralai  # noqa: F401
 
@@ -237,18 +238,27 @@ class DoctorService:
             available.append("pdfkit")
         except ImportError:
             missing.append("pdfkit")
+        try:
+            import xhtml2pdf  # noqa: F401
+
+            optional_available.append("xhtml2pdf")
+        except ImportError:
+            pass  # xhtml2pdf is optional; absence is not a problem
+        all_names = available + optional_available
         if missing:
+            detail = f"Available: {', '.join(all_names) or 'none'}. "
+            detail += f"Missing: {', '.join(missing)}."
             return DoctorCheck(
                 name="converters",
                 ok=False,
-                detail=f"Available: {', '.join(available) or 'none'}. "
-                f"Missing: {', '.join(missing)}.",
+                detail=detail,
                 severity="warning",
             )
+        detail = f"All converters available: {', '.join(all_names)}."
         return DoctorCheck(
             name="converters",
             ok=True,
-            detail=f"All converters available: {', '.join(available)}.",
+            detail=detail,
             severity="ok",
         )
 
@@ -281,11 +291,19 @@ class DoctorService:
 
     def _check_html_renderer(self, *, strict: bool = False) -> DoctorCheck:
         binary = resolve_wkhtmltopdf_binary(self.config)
+        from src.services.normalization_service import Xhtml2pdfRenderer
+
+        xhtml2pdf_ok = Xhtml2pdfRenderer.available()
+        parts: list[str] = []
         if binary:
+            parts.append(f"wkhtmltopdf available at {binary}")
+        if xhtml2pdf_ok:
+            parts.append("xhtml2pdf available")
+        if parts:
             return DoctorCheck(
                 name="html_renderer",
                 ok=True,
-                detail=f"wkhtmltopdf available at {binary}.",
+                detail="; ".join(parts) + ".",
                 severity="ok",
             )
         sev = "error" if strict else "warning"
@@ -293,8 +311,8 @@ class DoctorService:
             name="html_renderer",
             ok=False,
             detail=(
-                "wkhtmltopdf is not available. Required for the default HTML/HTM "
-                "render-to-PDF OCR route."
+                "Neither wkhtmltopdf nor xhtml2pdf is available. At least one is "
+                "required for the HTML/HTM render-to-PDF OCR route."
             ),
             severity=sev,
         )
