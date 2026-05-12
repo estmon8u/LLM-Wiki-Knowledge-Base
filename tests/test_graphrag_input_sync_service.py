@@ -74,6 +74,9 @@ def test_sync_writes_json_records_and_preserves_provenance(test_project) -> None
     assert result.source_count == 1
     assert result.output_path == test_project.root / "graph/graphrag/input/sources.json"
     records = json.loads(result.output_path.read_text(encoding="utf-8"))
+    assert len(records) == 1
+    manifest_hash = records[0].pop("manifest_hash")
+    assert isinstance(manifest_hash, str)
     assert records == [
         {
             "compiled_at": None,

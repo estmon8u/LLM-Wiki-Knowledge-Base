@@ -32,6 +32,7 @@ class GraphRAGIndexRun:
     stdout_tail: str
     stderr_tail: str
     input_digest: str | None = None
+    input_hash: str | None = None
     config_digest: str | None = None
     input_source_count: int | None = None
     source_hashes: dict[str, str] | None = None
@@ -65,6 +66,7 @@ class GraphRAGStatus:
     last_index_success: bool | None
     next_action: str
     last_index_input_digest: str | None = None
+    last_index_input_hash: str | None = None
     last_index_config_digest: str | None = None
     last_index_input_source_count: int | None = None
     last_index_output_state: str | None = None
@@ -148,6 +150,7 @@ class GraphRAGStatusService:
                 last_run=last_run,
             ),
             last_index_input_digest=last_run.get("input_digest") if last_run else None,
+            last_index_input_hash=last_run.get("input_hash") if last_run else None,
             last_index_config_digest=last_run.get("config_digest")
             if last_run
             else None,
@@ -191,6 +194,7 @@ class GraphRAGStatusService:
             stdout_tail=_tail(result.stdout),
             stderr_tail=_tail(result.stderr),
             input_digest=input_digest,
+            input_hash=input_digest,
             config_digest=config_digest,
             input_source_count=input_source_count,
             source_hashes=source_hashes,
@@ -287,21 +291,18 @@ class GraphRAGStatusService:
         last_run: dict[str, Any] | None,
     ) -> str:
         if not workspace_initialized:
-            return "Run `kb graph init`."
+            return "Run `kb init`."
         if not input_exists:
-            return "Run `kb graph sync`."
+            return "Run `kb update`."
         if input_document_count == 0:
-            return "Add and compile sources, then run `kb graph sync`."
+            return "Add and compile sources, then run `kb update`."
         if not output_present:
             if last_run and last_run.get("success") is False:
-                return (
-                    "Fix the last graph index error, then rerun "
-                    "`kb graph sync --dry-run`."
-                )
+                return "Fix the last graph index error, then rerun `kb update`."
             if last_run and last_run.get("dry_run") is True:
-                return "Run `kb graph sync` to build the graph index."
-            return "Run `kb graph sync --dry-run` before a full index."
-        return 'Run `kb graph ask --method drift "..."` or `kb graph export-wiki`.'
+                return "Run `kb update` to build the graph index."
+            return "Run `kb update` to sync and build the graph index."
+        return 'Run `kb ask --method drift "..."` or `kb export`.'
 
 
 def _tail(value: str, *, max_chars: int = 2000) -> str:

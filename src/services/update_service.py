@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+import os
 from pathlib import Path
 from typing import Any, Callable, Iterator, Optional
 
-from src.providers import ProviderError
+from src.services.config_service import resolve_graph_config
 from src.services.compile_service import CompileResult, CompileService
 from src.services.concept_service import ConceptGenerationResult, ConceptService
+from src.services.graphrag_defaults import env_file_has_key
+from src.services.graphrag_sync_service import GraphRAGSyncResult
+from src.services.graphrag_wiki_export_service import GraphRAGWikiExportResult
 from src.services.ingest_service import IngestResult, IngestService
 from src.services.search_service import SearchService
 
@@ -17,6 +21,7 @@ class UpdateOptions:
     source_paths: tuple[Path, ...] = ()
     force: bool = False
     resume: bool = False
+    no_graph: bool = False
 
 
 @dataclass
@@ -33,10 +38,22 @@ class UpdateResult:
     compile_result: Optional[CompileResult] = None
     concept_result: Optional[ConceptGenerationResult] = None
     search_refreshed: bool = False
+    graph_result: Optional["GraphUpdateResult"] = None
 
     @property
     def ok(self) -> bool:
         return self.compile_result is not None
+
+
+@dataclass
+class GraphUpdateResult:
+    skipped: bool = False
+    skip_reason: str = ""
+    initialized: bool = False
+    preflight_result: Optional[GraphRAGSyncResult] = None
+    sync_result: Optional[GraphRAGSyncResult] = None
+    export_result: Optional[GraphRAGWikiExportResult] = None
+    warning: str = ""
 
 
 class UpdateService:
@@ -48,12 +65,18 @@ class UpdateService:
         concept_service: ConceptService,
         search_service: SearchService,
         config: dict[str, Any],
+        graphrag_workspace_service: Any | None = None,
+        graphrag_sync_service: Any | None = None,
+        graphrag_wiki_export_service: Any | None = None,
     ) -> None:
         self._ingest = ingest_service
         self._compile = compile_service
         self._concepts = concept_service
         self._search = search_service
         self._config = config
+        self._graphrag_workspace = graphrag_workspace_service
+        self._graphrag_sync = graphrag_sync_service
+        self._graphrag_wiki_export = graphrag_wiki_export_service
 
     def preflight(self) -> None:
         """Raise if provider is missing or broken."""
@@ -117,6 +140,8 @@ class UpdateService:
         self._search.refresh(force=True)
         result.search_refreshed = True
 
+        result.graph_result = self._run_graph_sync(options)
+
         return result
 
     # ------------------------------------------------------------------
@@ -147,6 +172,87 @@ class UpdateService:
                 if file_result.created
                 else f"Already present: {source_path.name}",
             )
+
+    def _run_graph_sync(self, options: UpdateOptions) -> GraphUpdateResult:
+        if options.no_graph:
+            return GraphUpdateResult(skipped=True, skip_reason="--no-graph requested.")
+        if not (
+            self._graphrag_workspace
+            and self._graphrag_sync
+            and self._graphrag_wiki_export
+        ):
+            return GraphUpdateResult(
+                skipped=True, skip_reason="Graph services unavailable."
+            )
+        if not isinstance(self._config.get("graph"), dict):
+            return GraphUpdateResult(
+                skipped=True, skip_reason="Graph config not configured."
+            )
+
+        result = GraphUpdateResult()
+        if not self._graphrag_workspace.is_initialized():
+            self._graphrag_workspace.ensure_workspace()
+            result.initialized = True
+
+        try:
+            preflight = self._graphrag_sync.sync(
+                method="auto",
+                force=options.force,
+                dry_run=True,
+                preview_only=True,
+            )
+        except Exception as exc:
+            return GraphUpdateResult(
+                skipped=True,
+                warning=f"Graph preflight failed: {exc}",
+            )
+        result.preflight_result = preflight
+
+        decision = preflight.decision
+        if decision.action != "index" or decision.method is None:
+            result.skipped = True
+            result.skip_reason = decision.reason
+            return result
+
+        try:
+            missing_keys = self._missing_graph_credentials()
+        except ValueError as exc:
+            result.skipped = True
+            result.warning = (
+                f"Graph index skipped because graph config is invalid: {exc}"
+            )
+            return result
+        if missing_keys:
+            result.skipped = True
+            result.warning = (
+                "Graph index skipped because provider credentials are missing: "
+                + ", ".join(missing_keys)
+            )
+            return result
+
+        try:
+            result.sync_result = self._graphrag_sync.sync(
+                method=decision.method,
+                force=options.force,
+                dry_run=False,
+                run_index=True,
+            )
+            result.export_result = self._graphrag_wiki_export.export_wiki()
+        except Exception as exc:
+            result.warning = f"Graph index/export failed: {exc}"
+        return result
+
+    def _missing_graph_credentials(self) -> list[str]:
+        graph_config = resolve_graph_config(self._config)
+        dot_env = self._graphrag_sync.workspace_dir / ".env"
+        missing: list[str] = []
+        for key in dict.fromkeys(
+            (graph_config.api_key_env, graph_config.embedding_api_key_env)
+        ):
+            if os.environ.get(key) or env_file_has_key(dot_env, key):
+                continue
+            missing.append(key)
+        return missing
 
 
 class UpdatePreflightError(Exception):

@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import os
+import importlib.util
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from src.providers import resolve_provider_settings, supported_provider_names
+from src.services.config_service import resolve_graph_config
+from src.services.graphrag_defaults import env_file_has_key
+from src.services.graphrag_status_service import GraphRAGStatusService
 from src.services.normalization_service import resolve_wkhtmltopdf_binary
 from src.services.project_service import ProjectPaths
 
@@ -46,10 +50,12 @@ class DoctorService:
         paths: ProjectPaths,
         config: dict[str, Any],
         provider: Optional[Any] = None,
+        graphrag_status_service: GraphRAGStatusService | None = None,
     ) -> None:
         self.paths = paths
         self.config = config
         self.provider = provider
+        self.graphrag_status_service = graphrag_status_service
 
     def diagnose(self, *, strict: bool = False) -> DoctorReport:
         checks: list[DoctorCheck] = []
@@ -62,6 +68,7 @@ class DoctorService:
         checks.append(self._check_mistral_api_key(strict=strict))
         checks.append(self._check_html_renderer(strict=strict))
         checks.append(self._check_converters())
+        checks.extend(self._check_graphrag(strict=strict))
         return DoctorReport(checks=checks)
 
     def _check_project_structure(self) -> DoctorCheck:
@@ -288,6 +295,124 @@ class DoctorService:
             detail=(
                 "wkhtmltopdf is not available. Required for the default HTML/HTM "
                 "render-to-PDF OCR route."
+            ),
+            severity=sev,
+        )
+
+    def _check_graphrag(self, *, strict: bool = False) -> list[DoctorCheck]:
+        sev = "error" if strict else "warning"
+        checks: list[DoctorCheck] = []
+        checks.append(
+            DoctorCheck(
+                name="graphrag_dependency",
+                ok=importlib.util.find_spec("graphrag") is not None,
+                detail=(
+                    "GraphRAG dependency is importable."
+                    if importlib.util.find_spec("graphrag") is not None
+                    else "GraphRAG dependency is missing. Run `poetry install`."
+                ),
+                severity=(
+                    "ok"
+                    if importlib.util.find_spec("graphrag") is not None
+                    else "error"
+                ),
+            )
+        )
+        status = (
+            self.graphrag_status_service.status()
+            if self.graphrag_status_service is not None
+            else None
+        )
+        workspace_ok = bool(status and status.workspace_initialized)
+        checks.append(
+            DoctorCheck(
+                name="graphrag_workspace",
+                ok=workspace_ok,
+                detail=(
+                    "GraphRAG workspace initialized."
+                    if workspace_ok
+                    else "GraphRAG workspace missing. Run `kb init` or `kb update`."
+                ),
+                severity="ok" if workspace_ok else sev,
+            )
+        )
+        checks.append(self._check_graphrag_api_key(strict=strict))
+        input_ok = bool(
+            status and status.input_exists and status.input_document_count > 0
+        )
+        checks.append(
+            DoctorCheck(
+                name="graphrag_input",
+                ok=input_ok,
+                detail=(
+                    f"GraphRAG input has {status.input_document_count} document(s)."
+                    if input_ok and status
+                    else "GraphRAG input is missing or empty. Run `kb update`."
+                ),
+                severity="ok" if input_ok else sev,
+            )
+        )
+        index_ok = bool(status and status.output_present)
+        checks.append(
+            DoctorCheck(
+                name="graphrag_index",
+                ok=index_ok,
+                detail=(
+                    "GraphRAG index output is present."
+                    if index_ok
+                    else "GraphRAG index output is missing. Run `kb update`."
+                ),
+                severity="ok" if index_ok else sev,
+            )
+        )
+        export_ok = bool(status and status.wiki_export_present)
+        checks.append(
+            DoctorCheck(
+                name="graphrag_wiki_export",
+                ok=export_ok,
+                detail=(
+                    "GraphRAG wiki export is present."
+                    if export_ok
+                    else "GraphRAG wiki export is missing. Run `kb update` or `kb export`."
+                ),
+                severity="ok" if export_ok else sev,
+            )
+        )
+        return checks
+
+    def _check_graphrag_api_key(self, *, strict: bool = False) -> DoctorCheck:
+        sev = "error" if strict else "warning"
+        try:
+            graph_config = resolve_graph_config(self.config)
+        except ValueError as exc:
+            return DoctorCheck(
+                name="graphrag_api_key",
+                ok=False,
+                detail=str(exc),
+                severity="error",
+            )
+        dot_env = self.paths.graph_dir / "graphrag" / ".env"
+        missing = []
+        for key in dict.fromkeys(
+            (graph_config.api_key_env, graph_config.embedding_api_key_env)
+        ):
+            if os.environ.get(key) or env_file_has_key(dot_env, key):
+                continue
+            missing.append(key)
+        if not missing:
+            return DoctorCheck(
+                name="graphrag_api_key",
+                ok=True,
+                detail="GraphRAG provider API key environment is configured.",
+                severity="ok",
+            )
+        return DoctorCheck(
+            name="graphrag_api_key",
+            ok=False,
+            detail=(
+                "Missing GraphRAG API key environment variable(s): "
+                + ", ".join(missing)
+                + ". Set them before provider-backed graph indexing or asking."
             ),
             severity=sev,
         )

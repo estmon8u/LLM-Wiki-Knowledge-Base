@@ -101,13 +101,11 @@ class GraphAskControllerService:
         manifest_mtime = self._manifest_mtime()
         if manifest_mtime is not None and status.input_updated_at:
             if manifest_mtime > status.input_updated_at:
-                warnings.append(
-                    "Manifest is newer than graph input. Run `kb graph sync`."
-                )
+                warnings.append("Manifest is newer than graph input. Run `kb update`.")
         if status.input_updated_at and status.output_updated_at:
             if status.input_updated_at > status.output_updated_at:
                 warnings.append(
-                    "Graph input is newer than index output. Run `kb graph sync`."
+                    "Graph input is newer than index output. Run `kb update`."
                 )
         return warnings
 

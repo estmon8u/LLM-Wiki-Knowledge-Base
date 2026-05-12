@@ -73,10 +73,25 @@ def build_services(
         "compile": compile_service,
         "concepts": ConceptService(paths, provider=provider),
         "diff": DiffService(paths, manifest_service),
-        "doctor": DoctorService(paths, config, provider=provider),
-        "lint": LintService(paths, config, manifest_service),
+        "doctor": DoctorService(
+            paths,
+            config,
+            provider=provider,
+            graphrag_status_service=graphrag_status_service,
+        ),
+        "lint": LintService(
+            paths,
+            config,
+            manifest_service,
+            graphrag_status_service=graphrag_status_service,
+        ),
         "search": search_service,
-        "status": StatusService(paths, manifest_service, config=config),
+        "status": StatusService(
+            paths,
+            manifest_service,
+            config=config,
+            graphrag_status_service=graphrag_status_service,
+        ),
         "query": QueryService(
             paths,
             search_service,

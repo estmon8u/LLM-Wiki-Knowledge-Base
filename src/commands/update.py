@@ -40,6 +40,11 @@ def _get_update_service(command_context: CommandContext) -> UpdateService:
         concept_service=command_context.services["concepts"],
         search_service=command_context.services["search"],
         config=command_context.config,
+        graphrag_workspace_service=command_context.services.get("graphrag_workspace"),
+        graphrag_sync_service=command_context.services.get("graphrag_sync"),
+        graphrag_wiki_export_service=command_context.services.get(
+            "graphrag_wiki_export"
+        ),
     )
 
 
@@ -64,17 +69,28 @@ def create_command() -> click.Command:
         is_flag=True,
         help="Resume the most recent interrupted or failed update run.",
     )
+    @click.option(
+        "--no-graph",
+        is_flag=True,
+        help="Skip GraphRAG sync, indexing, and graph wiki export.",
+    )
     @click.pass_obj
     def command(
         command_context: CommandContext,
         source_paths: tuple[Path, ...],
         force: bool,
         resume: bool,
+        no_graph: bool,
     ) -> None:
         require_initialized(command_context)
         service = _get_update_service(command_context)
 
-        options = UpdateOptions(source_paths=source_paths, force=force, resume=resume)
+        options = UpdateOptions(
+            source_paths=source_paths,
+            force=force,
+            resume=resume,
+            no_graph=no_graph,
+        )
 
         try:
 
@@ -135,5 +151,34 @@ def create_command() -> click.Command:
             )
         for path in concept_result.concept_paths:
             echo_bullet(path)
+
+        graph_result = result.graph_result
+        if graph_result is not None:
+            console.print("")
+            echo_section("GraphRAG Summary")
+            if graph_result.initialized:
+                echo_bullet("initialized graph workspace")
+            if graph_result.preflight_result is not None:
+                decision = graph_result.preflight_result.decision
+                if decision.action == "index":
+                    console.print(
+                        f"Graph index action: {decision.method} ({decision.reason})"
+                    )
+                    if decision.cost_warning:
+                        console.print(decision.cost_warning)
+                else:
+                    console.print(f"Graph index action: {decision.reason}")
+            if graph_result.sync_result and graph_result.sync_result.index_run:
+                run = graph_result.sync_result.index_run
+                console.print(f"Graph index run: {run.run_id} ({run.method})")
+            if graph_result.export_result:
+                console.print(
+                    "Graph wiki export: "
+                    f"{graph_result.export_result.exported_count} page(s)"
+                )
+            if graph_result.warning:
+                console.print(f"[yellow]{graph_result.warning}[/yellow]")
+            elif graph_result.skipped and graph_result.skip_reason:
+                console.print(f"Graph skipped: {graph_result.skip_reason}")
 
     return command

@@ -235,26 +235,22 @@ class GraphRAGQueryService:
     def _require_query_ready(self, status: GraphRAGStatus) -> None:
         if not status.workspace_initialized:
             raise GraphRAGQueryError(
-                "GraphRAG workspace is not initialized. Run `kb graph init` first."
+                "GraphRAG workspace is not initialized. Run `kb init` first."
             )
         if not status.input_exists:
-            raise GraphRAGQueryError(
-                "GraphRAG input not found. Run `kb graph sync` first."
-            )
+            raise GraphRAGQueryError("GraphRAG input not found. Run `kb update` first.")
         if status.input_document_count == 0:
             raise GraphRAGQueryError(
                 "GraphRAG input has no documents. Add and compile sources, then run "
-                "`kb graph sync`."
+                "`kb update`."
             )
         if not status.output_present:
             raise GraphRAGQueryError(
-                "GraphRAG index output not found. Run "
-                "`kb graph sync --dry-run`, then `kb graph sync`."
+                "GraphRAG index output not found. Run `kb update`."
             )
         if status.last_index_success is False:
             raise GraphRAGQueryError(
-                "The last GraphRAG index run failed. Re-run "
-                "`kb graph sync --dry-run` before asking."
+                "The last GraphRAG index run failed. Re-run `kb update` before asking."
             )
 
     @staticmethod

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+import hashlib
+import json
 from pathlib import Path
 import re
 from typing import Any, Dict, Optional, Tuple
@@ -14,6 +16,7 @@ from src.services.compile_service import (
     SOURCE_PAGE_CONTRACT_VERSION,
     SOURCE_PAGE_CONTRACT_VERSION_KEY,
 )
+from src.services.graphrag_status_service import GraphRAGStatusService
 from src.services.markdown_document import (
     headings as markdown_headings,
     markdown_links,
@@ -81,10 +84,12 @@ class LintService:
         paths: ProjectPaths,
         config: dict[str, Any],
         manifest_service: ManifestService,
+        graphrag_status_service: GraphRAGStatusService | None = None,
     ) -> None:
         self.paths = paths
         self.config = config
         self.manifest_service = manifest_service
+        self.graphrag_status_service = graphrag_status_service
 
     def lint(self) -> LintReport:
         issues: list[LintIssue] = []
@@ -238,6 +243,8 @@ class LintService:
 
         for source in source_records:
             issues.extend(self._lint_manifest_state(source))
+
+        issues.extend(self._lint_graph_staleness())
 
         return LintReport(issues=issues)
 
@@ -586,6 +593,67 @@ class LintService:
             )
         return issues
 
+    def _lint_graph_staleness(self) -> list[LintIssue]:
+        if self.graphrag_status_service is None:
+            return []
+        status = self.graphrag_status_service.status()
+        issues: list[LintIssue] = []
+        if status.input_exists and self.paths.raw_manifest_file.exists():
+            current_manifest_hash = _file_sha256(self.paths.raw_manifest_file)
+            synced_manifest_hash = _input_manifest_hash(status.input_path)
+            if (
+                current_manifest_hash
+                and synced_manifest_hash
+                and current_manifest_hash != synced_manifest_hash
+            ):
+                issues.append(
+                    LintIssue(
+                        severity="warning",
+                        code="graph-input-stale",
+                        path=status.input_path.relative_to(self.paths.root).as_posix(),
+                        message="Manifest changed since last sync. Run `kb update`.",
+                    )
+                )
+        last_run = self.graphrag_status_service.last_successful_index_run()
+        if status.input_exists and last_run:
+            current_input_hash = _file_sha256(status.input_path)
+            indexed_input_hash = last_run.get("input_hash") or last_run.get(
+                "input_digest"
+            )
+            if (
+                current_input_hash
+                and indexed_input_hash
+                and current_input_hash != indexed_input_hash
+            ):
+                issues.append(
+                    LintIssue(
+                        severity="warning",
+                        code="graph-index-stale",
+                        path=status.input_path.relative_to(self.paths.root).as_posix(),
+                        message="Graph input changed since last index. Run `kb update`.",
+                    )
+                )
+        graph_index_path = self.paths.wiki_dir / "graph" / "index.md"
+        if status.last_index_run_id and graph_index_path.exists():
+            try:
+                text = graph_index_path.read_text(encoding="utf-8")
+            except OSError:
+                text = ""
+            frontmatter, _ = _split_frontmatter(text)
+            exported_run_id = (
+                str(frontmatter.get("index_run_id", "")).strip() if frontmatter else ""
+            )
+            if exported_run_id and exported_run_id != status.last_index_run_id:
+                issues.append(
+                    LintIssue(
+                        severity="warning",
+                        code="graph-export-stale",
+                        path=graph_index_path.relative_to(self.paths.root).as_posix(),
+                        message="Index newer than wiki export. Run `kb update`.",
+                    )
+                )
+        return issues
+
 
 def _split_frontmatter(text: str) -> Tuple[Optional[Dict[str, Any]], str]:
     if not text.startswith("---\n"):
@@ -689,3 +757,38 @@ def _source_page_contract_version(source: Optional[RawSourceRecord]) -> int:
     except (TypeError, ValueError):
         return 0
     return max(parsed, 0)
+
+
+def _file_sha256(path: Path) -> str | None:
+    try:
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except OSError:
+        return None
+
+
+def _input_manifest_hash(path: Path) -> str | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    records: list[Any]
+    if isinstance(payload, list):
+        records = payload
+    elif isinstance(payload, dict):
+        value = payload.get("sources") or payload.get("documents")
+        records = value if isinstance(value, list) else []
+        top_level = payload.get("manifest_hash")
+        if isinstance(top_level, str) and top_level:
+            return top_level
+    else:
+        return None
+    for record in records:
+        if isinstance(record, dict):
+            value = record.get("manifest_hash")
+            if isinstance(value, str) and value:
+                return value
+    return None

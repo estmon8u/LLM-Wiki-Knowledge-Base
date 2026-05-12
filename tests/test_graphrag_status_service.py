@@ -53,7 +53,7 @@ def test_status_reports_workspace_input_outputs_and_last_run(test_project) -> No
     assert status.last_index_run_id == run.run_id
     assert status.last_index_method == "fast"
     assert status.last_index_success is True
-    assert status.next_action.startswith("Run `kb graph ask")
+    assert status.next_action.startswith("Run `kb ask")
     payload = status.to_dict(test_project.paths.root)
     assert payload["workspace_dir"] == "graph/graphrag"
     assert payload["input_path"] == "graph/graphrag/input/sources.json"
@@ -117,7 +117,7 @@ def test_status_reports_next_actions_for_missing_workspace(test_project) -> None
     assert status.workspace_initialized is False
     assert status.input_document_count == 0
     assert status.output_present is False
-    assert status.next_action == "Run `kb graph init`."
+    assert status.next_action == "Run `kb init`."
 
 
 def test_status_counts_documents_from_dict_payload(test_project) -> None:
@@ -131,7 +131,7 @@ def test_status_counts_documents_from_dict_payload(test_project) -> None:
     status = service.status()
 
     assert status.input_document_count == 3
-    assert status.next_action == ("Run `kb graph sync --dry-run` before a full index.")
+    assert status.next_action == ("Run `kb update` to sync and build the graph index.")
 
 
 def test_status_after_successful_dry_run_points_to_full_index(test_project) -> None:
@@ -156,7 +156,7 @@ def test_status_after_successful_dry_run_points_to_full_index(test_project) -> N
     status = service.status()
 
     assert status.output_present is False
-    assert status.next_action == ("Run `kb graph sync` to build the graph index.")
+    assert status.next_action == ("Run `kb update` to build the graph index.")
 
 
 def test_status_after_failed_index_points_to_error_recovery(test_project) -> None:
@@ -182,7 +182,7 @@ def test_status_after_failed_index_points_to_error_recovery(test_project) -> Non
 
     assert status.last_index_success is False
     assert status.next_action == (
-        "Fix the last graph index error, then rerun `kb graph sync --dry-run`."
+        "Fix the last graph index error, then rerun `kb update`."
     )
 
 
@@ -197,7 +197,7 @@ def test_status_handles_invalid_input_and_run_metadata(test_project) -> None:
     assert status.input_exists is True
     assert status.input_document_count == 0
     assert status.last_index_run_id is None
-    assert status.next_action == "Add and compile sources, then run `kb graph sync`."
+    assert status.next_action == "Add and compile sources, then run `kb update`."
 
 
 def test_status_ignores_non_list_run_metadata(test_project) -> None:
@@ -227,7 +227,7 @@ def test_status_to_dict_handles_paths_outside_project(test_project, tmp_path) ->
         last_index_run_at=None,
         last_index_method=None,
         last_index_success=None,
-        next_action="Run `kb graph init`.",
+        next_action="Run `kb init`.",
     )
 
     payload = status.to_dict(tmp_path)

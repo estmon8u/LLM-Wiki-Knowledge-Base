@@ -6,6 +6,7 @@ from typing import Any
 
 from src.providers import resolve_provider_settings
 from src.models.wiki_models import StatusSnapshot
+from src.services.graphrag_status_service import GraphRAGStatusService
 from src.services.manifest_service import ManifestService
 from src.services.project_service import ProjectPaths
 
@@ -17,10 +18,12 @@ class StatusService:
         manifest_service: ManifestService,
         *,
         config: dict[str, Any] | None = None,
+        graphrag_status_service: GraphRAGStatusService | None = None,
     ) -> None:
         self.paths = paths
         self.manifest_service = manifest_service
         self._config = config or {}
+        self._graphrag_status = graphrag_status_service
 
     def snapshot(self, *, initialized: bool) -> StatusSnapshot:
         sources = (
@@ -67,7 +70,13 @@ class StatusService:
             provider_summary=self._provider_summary(),
             index_status=self._index_status(),
             export_status=self._export_status(last_compile_at),
+            graph_status=self._graph_status(),
         )
+
+    def _graph_status(self) -> dict[str, Any]:
+        if self._graphrag_status is None:
+            return {}
+        return self._graphrag_status.status().to_dict(self.paths.root)
 
     def _provider_summary(self) -> str:
         resolved = resolve_provider_settings(

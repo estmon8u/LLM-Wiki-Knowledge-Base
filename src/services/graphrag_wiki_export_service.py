@@ -121,12 +121,12 @@ class GraphRAGWikiExportService:
     def _require_export_ready(self, status: GraphRAGStatus) -> None:
         if not status.workspace_initialized:
             raise GraphRAGWikiExportError(
-                "GraphRAG workspace is not initialized. Run `kb graph init` first."
+                "GraphRAG workspace is not initialized. Run `kb init` first."
             )
         if not status.output_present:
             raise GraphRAGWikiExportError(
-                "GraphRAG index output not found. Run `kb graph sync` "
-                "before exporting graph wiki pages."
+                "GraphRAG index output not found. Run `kb update` before exporting "
+                "graph wiki pages."
             )
 
     def _load_tables(self) -> tuple[dict[str, list[dict[str, Any]]], list[str]]:

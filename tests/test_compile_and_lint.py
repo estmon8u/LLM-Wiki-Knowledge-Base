@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 
 import pytest
 
 from src.models.wiki_models import LintIssue, LintReport
 from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
+from src.services.graphrag_command_service import GraphRAGCommandResult
 from src.services.compile_service import (
     SOURCE_PAGE_CONTRACT_VERSION,
     _abstract_paragraphs,
@@ -1650,6 +1652,105 @@ def test_lint_no_missing_type_warning_when_type_present(test_project) -> None:
     missing_type = [i for i in report.issues if i.code == "missing-type"]
 
     assert missing_type == []
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _record_graph_run(test_project, *, input_hash: str) -> str:
+    run = test_project.services["graphrag_status"].record_index_run(
+        method="fast",
+        dry_run=False,
+        result=GraphRAGCommandResult(
+            command=("python", "-m", "graphrag", "index"),
+            cwd=test_project.paths.root,
+            returncode=0,
+            stdout="indexed",
+            stderr="",
+        ),
+        input_digest=input_hash,
+    )
+    return run.run_id
+
+
+def test_lint_reports_graph_input_stale(test_project) -> None:
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "src-1", "manifest_hash": "old"}]),
+    )
+
+    report = test_project.services["lint"].lint()
+
+    assert any(issue.code == "graph-input-stale" for issue in report.issues)
+
+
+def test_lint_reports_graph_index_stale(test_project) -> None:
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    input_path = test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps(
+            [
+                {
+                    "id": "src-1",
+                    "manifest_hash": _sha256(test_project.paths.raw_manifest_file),
+                }
+            ]
+        ),
+    )
+    _record_graph_run(test_project, input_hash="old-input")
+
+    report = test_project.services["lint"].lint()
+
+    assert _sha256(input_path) != "old-input"
+    assert any(issue.code == "graph-index-stale" for issue in report.issues)
+
+
+def test_lint_reports_graph_export_stale(test_project) -> None:
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    input_path = test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps(
+            [
+                {
+                    "id": "src-1",
+                    "manifest_hash": _sha256(test_project.paths.raw_manifest_file),
+                }
+            ]
+        ),
+    )
+    run_id = _record_graph_run(test_project, input_hash=_sha256(input_path))
+    assert run_id
+    test_project.write_file(
+        "wiki/graph/index.md",
+        "---\ntype: graph_index\nindex_run_id: older-run\n---\n\n# GraphRAG Index\n",
+    )
+
+    report = test_project.services["lint"].lint()
+
+    assert any(issue.code == "graph-export-stale" for issue in report.issues)
+
+
+def test_lint_reports_no_graph_staleness_when_fresh(test_project) -> None:
+    manifest_hash = _sha256(test_project.paths.raw_manifest_file)
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    input_path = test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "src-1", "manifest_hash": manifest_hash}]),
+    )
+    run_id = _record_graph_run(test_project, input_hash=_sha256(input_path))
+    test_project.write_file(
+        "wiki/graph/index.md",
+        f"---\ntype: graph_index\nindex_run_id: {run_id}\n---\n\n# GraphRAG Index\n",
+    )
+
+    report = test_project.services["lint"].lint()
+
+    graph_codes = {
+        issue.code for issue in report.issues if issue.code.startswith("graph-")
+    }
+    assert graph_codes == set()
 
 
 def test_index_includes_analysis_pages_section(test_project) -> None:

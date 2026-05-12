@@ -121,7 +121,6 @@ def test_help_lists_core_commands() -> None:
         "doctor",
         "export",
         "find",
-        "graph",
         "init",
         "legacy",
         "review",
@@ -167,7 +166,7 @@ def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
 
         _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            update_result = runner.invoke(main, ["update"])
+            update_result = runner.invoke(main, ["update", "--no-graph"])
         assert update_result.exit_code == 0
         assert "Update Summary" in update_result.output
         assert "Compiled 1 source page(s)" in update_result.output
@@ -216,7 +215,7 @@ def test_end_to_end_cli_flow_for_local_html_source() -> None:
 
         _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            update_result = runner.invoke(main, ["update"])
+            update_result = runner.invoke(main, ["update", "--no-graph"])
         assert update_result.exit_code == 0
         assert "Compiled 1 source page(s)" in update_result.output
 
@@ -239,7 +238,7 @@ def test_legacy_search_empty_and_top_level_retrieval_guides_to_legacy() -> None:
         assert find_result.exit_code != 0
         assert "kb legacy find" in find_result.output
         assert ask_result.exit_code != 0
-        assert "kb graph init" in ask_result.output
+        assert "kb update" in ask_result.output
         assert "kb legacy ask" not in ask_result.output
 
 
@@ -491,7 +490,7 @@ def test_diff_end_to_end_new_then_compiled() -> None:
 
         _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["update"]).exit_code == 0
+            assert runner.invoke(main, ["update", "--no-graph"]).exit_code == 0
 
         diff_after = runner.invoke(main, ["status", "--changed"])
         assert diff_after.exit_code == 0
@@ -530,7 +529,7 @@ def test_ask_save_flag_creates_analysis_page() -> None:
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
         _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["update"]).exit_code == 0
+            assert runner.invoke(main, ["update", "--no-graph"]).exit_code == 0
 
         _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
@@ -620,7 +619,7 @@ def test_query_piped_input_does_not_save_without_flag() -> None:
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
         _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["update"]).exit_code == 0
+            assert runner.invoke(main, ["update", "--no-graph"]).exit_code == 0
 
         _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
@@ -695,7 +694,7 @@ def test_provider_override_flag_switches_provider() -> None:
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
         _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["update"]).exit_code == 0
+            assert runner.invoke(main, ["update", "--no-graph"]).exit_code == 0
 
         _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
@@ -776,7 +775,7 @@ def test_update_compiles_and_generates_concepts() -> None:
         _set_provider_config()
 
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            result = runner.invoke(main, ["update"])
+            result = runner.invoke(main, ["update", "--no-graph"])
 
         assert result.exit_code == 0
         assert "Update Summary" in result.output
@@ -794,7 +793,7 @@ def test_update_with_paths_adds_then_compiles() -> None:
         _set_provider_config()
 
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            result = runner.invoke(main, ["update", "note.md"])
+            result = runner.invoke(main, ["update", "--no-graph", "note.md"])
 
         assert result.exit_code == 0
         assert "Added note.md" in result.output
@@ -977,7 +976,7 @@ def test_ask_show_evidence_flag() -> None:
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
         _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["update"]).exit_code == 0
+            assert runner.invoke(main, ["update", "--no-graph"]).exit_code == 0
 
             result = runner.invoke(
                 main,
@@ -1023,7 +1022,7 @@ def test_status_shows_current_after_compile() -> None:
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
         _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["update"]).exit_code == 0
+            assert runner.invoke(main, ["update", "--no-graph"]).exit_code == 0
 
         result = runner.invoke(main, ["status"])
 
@@ -1041,7 +1040,7 @@ def test_update_with_directory_path_adds_then_compiles() -> None:
         _set_provider_config()
 
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            result = runner.invoke(main, ["update", "docs"])
+            result = runner.invoke(main, ["update", "--no-graph", "docs"])
 
         assert result.exit_code == 0
         assert "Added 2 source(s) from" in result.output
@@ -1058,7 +1057,7 @@ def test_update_with_already_present_file() -> None:
         _set_provider_config()
 
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            result = runner.invoke(main, ["update", "note.md"])
+            result = runner.invoke(main, ["update", "--no-graph", "note.md"])
 
         assert result.exit_code == 0
         assert "Already present: note.md" in result.output
@@ -1087,7 +1086,7 @@ def test_update_fails_without_provider_config() -> None:
         assert runner.invoke(main, ["init"]).exit_code == 0
 
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            result = runner.invoke(main, ["update"])
+            result = runner.invoke(main, ["update", "--no-graph"])
 
         assert result.exit_code != 0
         assert "Provider is not configured" in result.output
@@ -1107,7 +1106,7 @@ def test_update_generic_service_error_becomes_click_exception() -> None:
             "src.services.update_service.UpdateService.run",
             side_effect=RuntimeError("boom"),
         ):
-            result = runner.invoke(main, ["update"])
+            result = runner.invoke(main, ["update", "--no-graph"])
 
         assert result.exit_code != 0
         assert "boom" in result.output
@@ -1223,7 +1222,7 @@ def test_find_json_output() -> None:
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
         _set_provider_config()
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
-            assert runner.invoke(main, ["update"]).exit_code == 0
+            assert runner.invoke(main, ["update", "--no-graph"]).exit_code == 0
 
         result = runner.invoke(main, ["legacy", "find", "--json", "traceability"])
 

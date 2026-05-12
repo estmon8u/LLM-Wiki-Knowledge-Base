@@ -90,6 +90,7 @@ class GraphRAGSyncService:
         skip_validation: bool = False,
         verbose: bool = False,
         run_index: bool = True,
+        preview_only: bool = False,
     ) -> GraphRAGSyncResult:
         if self.workspace_service.is_initialized():
             self.workspace_service.sync_settings()
@@ -114,7 +115,7 @@ class GraphRAGSyncService:
             last_successful_run=last_successful_run,
         )
 
-        if decision.action != "index" or decision.method is None:
+        if preview_only or decision.action != "index" or decision.method is None:
             return GraphRAGSyncResult(input_sync=input_sync, decision=decision)
 
         try:
@@ -340,12 +341,10 @@ class GraphRAGSyncService:
     def _require_synced_input(status: GraphRAGStatus) -> None:
         if not status.workspace_initialized:
             raise GraphRAGSyncError(
-                "GraphRAG workspace is not initialized. Run `kb graph init` first."
+                "GraphRAG workspace is not initialized. Run `kb init` first."
             )
         if not status.input_exists:
-            raise GraphRAGSyncError(
-                "GraphRAG input not found. Run `kb graph sync` first."
-            )
+            raise GraphRAGSyncError("GraphRAG input not found. Run `kb update` first.")
 
 
 def graph_output_state(status: GraphRAGStatus) -> str:

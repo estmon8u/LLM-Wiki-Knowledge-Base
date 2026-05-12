@@ -21,11 +21,16 @@ def create_command() -> click.Command:
         project_service = command_context.services["project"]
         config_service = command_context.services["config"]
         manifest_service = command_context.services["manifest"]
+        graphrag_workspace_service = command_context.services.get("graphrag_workspace")
 
         created_items = project_service.ensure_structure()
         created_items.extend(config_service.ensure_files())
         if manifest_service.ensure_manifest():
             created_items.append("raw/_manifest.json")
+        if graphrag_workspace_service is not None and command_context.config.get(
+            "graph"
+        ):
+            created_items.extend(graphrag_workspace_service.ensure_workspace())
 
         click.echo(f"Initialized project at {command_context.project_root}")
         if created_items:

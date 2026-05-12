@@ -22,16 +22,15 @@
 | `src/commands/init.py` | Project initialization behavior |
 | `src/commands/add.py` | Primary source-add command, delegates to `src/commands/ingest.py` for shared implementation |
 | `src/commands/ingest.py` | Shared ingest implementation for single files and directory ingest that recurses by default |
-| `src/commands/update.py` | Full update workflow: add → build wiki pages → concepts → search refresh, with progress bar; delegates to `UpdateService` |
+| `src/commands/update.py` | Full update workflow: add → build wiki pages → concepts → search refresh → GraphRAG sync/index/export, with progress bar; delegates to `UpdateService` |
 | `src/commands/find.py` | Reserved GraphRAG search entry point; currently fails with next-step guidance instead of routing to FTS5 |
 | `src/commands/ask.py` | GraphRAG-aware default answer entry point; delegates to the graph ask controller and never routes to FTS5 |
-| `src/commands/graph.py` | GraphRAG command group; exposes workspace initialization, normalized-corpus input sync, official GraphRAG indexing, explicit graph query modes, graph wiki export, and graph status checks |
 | `src/commands/legacy.py` | Deprecated SQLite FTS5 search and ask command group that invokes the legacy search/query services |
 | `src/commands/review.py` | Semantic review command |
 | `src/commands/lint.py` | Deterministic structural lint command |
-| `src/commands/status.py` | Status command; `--changed` for pre-update diff view |
-| `src/commands/export_cmd.py` | Vault export command; `--clean` removes stale files |
-| `src/commands/doctor.py` | Project health checks |
+| `src/commands/status.py` | Status command with GraphRAG health summary; `--changed` for pre-update diff view |
+| `src/commands/export_cmd.py` | Vault export command that refreshes graph wiki pages when output exists; `--clean` removes stale files |
+| `src/commands/doctor.py` | Project health checks, including GraphRAG dependency/workspace/key/input/index/export readiness |
 | `src/commands/config_cmd.py` | Config display and provider management |
 | `src/commands/sources.py` | Source inventory management |
 
@@ -46,8 +45,8 @@
 | `src/services/graphrag_workspace_service.py` | Prepares the project-local `graph/graphrag/` workspace, delegates reproducible non-interactive initialization to the GraphRAG command wrapper, and syncs `kb.config.yaml` graph settings into GraphRAG `settings.yaml` |
 | `src/services/graphrag_command_service.py` | Thin subprocess boundary around `python -m graphrag` for `init`, `index`, and `query`, with captured stdout/stderr and structured command errors |
 | `src/services/graphrag_defaults.py` | Shared GraphRAG model, embedding, and API-key environment defaults used by command defaults and user-facing setup guidance |
-| `src/services/graphrag_status_service.py` | Reports GraphRAG workspace readiness, synced input counts, output table presence, and ignored local index-run metadata |
-| `src/services/graphrag_sync_service.py` | Coordinates `kb graph sync`: refreshes workspace settings, writes GraphRAG input, compares source/runtime digests to the last successful index, chooses full rebuild, incremental update, skip, or explicit override, and records reproducibility metadata |
+| `src/services/graphrag_status_service.py` | Reports GraphRAG workspace readiness, synced input counts, output table presence, wiki export presence, row counts, and ignored local index-run metadata |
+| `src/services/graphrag_sync_service.py` | Coordinates GraphRAG sync/index decisions used by `kb update`: refreshes workspace settings, writes GraphRAG input, compares source/runtime digests to the last successful index, chooses full rebuild, incremental update, or skip, and records reproducibility metadata |
 | `src/services/graphrag_query_service.py` | Requires a ready graph index, runs explicit GraphRAG query modes, captures answer/raw output metadata, computes the synced-input hash, and saves optional GraphRAG analysis pages with lint-compatible analysis frontmatter and stdout-only raw answer text |
 | `src/services/query_router_service.py` | Deterministically chooses `basic`, `local`, `global`, or `drift` for top-level `kb ask` based on question wording and known graph entity/document terms |
 | `src/services/graph_ask_controller_service.py` | User-facing GraphRAG ask controller: checks graph readiness and credentials, asks the router for a method, delegates to `GraphRAGQueryService`, and saves analysis pages with planner metadata |
@@ -61,10 +60,10 @@
 | `src/services/search_service.py` | Deprecated legacy search over compiled artifacts using a SQLite FTS5 chunk index with page-level result deduplication, evidence-section chunking, metadata-section suppression, best-chunk section/index preservation for downstream citations, concept/analysis filtering controls for callers, and fallback markdown scanning if FTS5 is unavailable |
 | `src/services/query_service.py` | Provider-backed query answer assembly from primary source-page evidence while excluding generated concept pages and saved analysis pages; schema-excerpt-enhanced prompts, low-reasoning structured ask requests with larger output budget, raw citation-ref cleanup in answer prose, parseable heading-style log entries, semantic answer/citation validation, provider-status capture, and optional save-to-wiki for non-blank analysis pages that also refresh the search index and wiki index immediately |
 | `src/services/review_service.py` | Provider-required semantic review: deterministic source-page topic overlap, terminology checks over reviewable source/concept pages with inflection/specificity/negating-prefix suppression, and schema-guided JSON provider review over curated source-page excerpts that rejects malformed output and filters excerpt-boundary truncation claims |
-| `src/services/lint_service.py` | Structural validation for wiki links, markdown links, fragments, headings, titles, typed frontmatter (including `missing-type` warning for legacy source pages), empty pages, and maintenance findings |
+| `src/services/lint_service.py` | Structural validation for wiki links, markdown links, fragments, headings, titles, typed frontmatter (including `missing-type` warning for legacy source pages), empty pages, GraphRAG input/index/export staleness, and maintenance findings |
 | `src/services/export_service.py` | Vault export generation with atomic copies into the Obsidian view |
-| `src/services/status_service.py` | Project and corpus status reporting |
-| `src/services/update_service.py` | Orchestrates the full update workflow: preflight → ingest → compile → concepts → search refresh |
+| `src/services/status_service.py` | Project, corpus, and GraphRAG status reporting |
+| `src/services/update_service.py` | Orchestrates the full update workflow: preflight → ingest → compile → concepts → search refresh → GraphRAG sync/index/export |
 
 ## Current Model Files
 
@@ -90,10 +89,10 @@
 | `graph/graphrag/settings.yaml` | Initialized Microsoft GraphRAG workspace settings; synced from `kb.config.yaml` graph defaults, uses JSON input columns, and configures `chunking.prepend_metadata` for source provenance fields |
 | `graph/graphrag/prompts/` | Default GraphRAG prompt templates generated by `graphrag init` and kept as the baseline for later prompt tuning |
 | `graph/graphrag/input/.gitkeep` | Tracked input-directory scaffold for generated GraphRAG JSON input |
-| `graph/graphrag/input/sources.json` | Generated by `kb graph sync`; ignored because it can contain local corpus text |
+| `graph/graphrag/input/sources.json` | Generated by `kb update`; ignored because it can contain local corpus text |
 | `graph/graphrag/output/` | Generated by GraphRAG indexing; ignored because it is rebuildable local runtime output |
-| `graph/runs/graph_index_runs.json` | Local index-run record written by `kb graph sync` and `kb graph index`; ignored because it can contain local paths and command output. Records include method, dry-run status, success, input digest, source hashes, runtime config digest, output state, and command tails. |
-| `wiki/graph/` | Generated by `kb graph export-wiki`; tracked/user-visible graph artifact layer for GraphRAG documents, entities, relationships, communities, and text units |
+| `graph/runs/graph_index_runs.json` | Local index-run record written by `kb update`; ignored because it can contain local paths and command output. Records include method, dry-run status, success, input digest/hash, source hashes, runtime config digest, output state, and command tails. |
+| `wiki/graph/` | Generated by `kb update` and `kb export`; tracked/user-visible graph artifact layer for GraphRAG documents, entities, relationships, communities, and text units |
 | `eval/benchmark.yaml` | Phase 8 benchmark questions and expected methods/sources for deprecated FTS versus GraphRAG Basic, Local, Global, and DRIFT comparison |
 | `eval/results/` | Evaluation report directory for summary and CSV metrics; per-question artifacts under `eval/results/artifacts/` are ignored because they can contain local corpus text or model output |
 | `scripts/evaluation_lib.py` | Shared Phase 8 evaluation logic for loading the benchmark, invoking CLI commands, computing retrieval/answer metrics, writing CSVs, and rendering the summary |

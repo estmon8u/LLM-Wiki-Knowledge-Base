@@ -125,49 +125,40 @@ If a source changed and you want to refresh generated pages:
 poetry run kb --project-root $projectRoot update --force
 ```
 
-## 6. Initialize and sync GraphRAG
+## 6. Check GraphRAG state
 
-After `kb update` has normalized and compiled the corpus, initialize the
-GraphRAG workspace and sync the normalized artifacts into it:
+`kb init` creates the project-local GraphRAG workspace and syncs
+`graph.provider`, `graph.model`, `graph.embedding_provider`, and
+`graph.embedding_model` from `kb.config.yaml` into
+`graph/graphrag/settings.yaml`. Unless graph-specific API-key overrides are
+set, the API-key environment variables come from the centralized `providers`
+catalog.
 
-```powershell
-poetry run kb --project-root $projectRoot graph init
-poetry run kb --project-root $projectRoot graph sync --dry-run
-poetry run kb --project-root $projectRoot graph sync
-```
+`kb update` writes `graph/graphrag/input/sources.json` from
+`raw/_manifest.json` and `raw/normalized/`, preserving source IDs, hashes,
+paths, converter metadata, and the normalized text for GraphRAG indexing. The
+generated JSON file can contain local corpus text and stays untracked. It then
+auto-decides whether the GraphRAG index needs a full `fast` rebuild, an
+incremental `fast-update`, or no index job because sources and runtime settings
+already match the last successful run.
 
-This writes `graph/graphrag/input/sources.json` from `raw/_manifest.json` and
-`raw/normalized/`, preserving source IDs, hashes, paths, converter metadata, and
-the normalized text for GraphRAG indexing. The generated JSON file can contain
-local corpus text and stays untracked. `graph sync` then auto-decides whether
-the GraphRAG index needs a full `fast` rebuild, an incremental `fast-update`,
-or no index job because sources and runtime settings already match the last
-successful run.
-
-`graph init` syncs `graph.provider`, `graph.model`,
-`graph.embedding_provider`, and `graph.embedding_model` from `kb.config.yaml`
-into `graph/graphrag/settings.yaml`. Unless graph-specific API-key overrides
-are set, the API-key environment variables come from the centralized
-`providers` catalog. Re-run it after changing graph config.
-
-Check readiness after the sync:
+Check readiness after update:
 
 ```powershell
-poetry run kb --project-root $projectRoot graph status
+poetry run kb --project-root $projectRoot status
 ```
 
-Real non-dry-run `kb graph sync` index actions call the configured GraphRAG
-model and embedding provider, so set the provider API key such as
-`OPENAI_API_KEY`, or put the same variable in the local GraphRAG `.env` file,
-before running the non-dry-run sync. Use `kb graph sync --force` for a full
-rebuild after model/prompt changes or suspected corrupt output; use
-`kb graph sync --no-index` only when you want to refresh `sources.json` without
-touching the GraphRAG index.
+Real GraphRAG index actions call the configured GraphRAG model and embedding
+provider, so set the provider API key such as `OPENAI_API_KEY`, or put the same
+variable in the local GraphRAG `.env` file, before running `kb update`. Use
+`kb update --force` for a full source-page and GraphRAG rebuild after
+model/prompt changes or suspected corrupt output. Use `kb update --no-graph`
+only when you want to refresh the wiki and legacy index without touching
+GraphRAG.
 
 ## 7. Search and ask
 
-After a real non-dry-run `kb graph sync`, ask through the default GraphRAG
-controller:
+After a real `kb update`, ask through the default GraphRAG controller:
 
 ```powershell
 poetry run kb --project-root $projectRoot ask "What are the main retrieval design patterns?"
@@ -179,14 +170,6 @@ The default `--method auto` router uses question wording and known graph terms
 to choose Basic, Local, Global, or DRIFT. It does not fall back to FTS5 if the
 graph is missing or not ready; it fails with the next GraphRAG setup command to run.
 
-Use explicit `kb graph ask` modes when debugging GraphRAG behavior directly:
-
-```powershell
-poetry run kb --project-root $projectRoot graph ask "What are the main retrieval design patterns?" --method global
-poetry run kb --project-root $projectRoot graph ask "How does REALM differ from RAG?" --method local
-poetry run kb --project-root $projectRoot graph ask "Compare RAG, REALM, FiD, Self-RAG, and GraphRAG." --method drift
-```
-
 Use `local` for specific entity, method, or paper questions; `global` for
 whole-corpus themes; `drift` for multi-paper comparisons; and `basic` as the
 simple vector-RAG baseline. Saved graph answers go to `wiki/analysis/` with
@@ -195,7 +178,7 @@ graph metadata and raw GraphRAG output preserved.
 Export graph artifacts into inspectable wiki pages:
 
 ```powershell
-poetry run kb --project-root $projectRoot graph export-wiki
+poetry run kb --project-root $projectRoot export
 ```
 
 This creates `wiki/graph/index.md` plus generated pages for GraphRAG documents,
@@ -254,7 +237,6 @@ poetry run kb --project-root $projectRoot status --changed
 Export an Obsidian-compatible vault:
 
 ```powershell
-poetry run kb --project-root $projectRoot graph export-wiki
 poetry run kb --project-root $projectRoot export
 poetry run kb --project-root $projectRoot export --clean
 ```
@@ -267,9 +249,9 @@ poetry run kb --project-root $projectRoot export --clean
 | Provider authentication errors | Confirm the matching API key environment variable is set in the same shell. |
 | PDF, DOCX, PPTX, image, or HTML conversion fails | Set `MISTRAL_API_KEY`; for HTML also install/configure `wkhtmltopdf`. |
 | Search returns stale results | Run `kb update` after adding or changing sources. |
-| GraphRAG workspace is missing | Run `kb graph init`. |
-| GraphRAG input is missing | Run `kb graph sync` after `kb update`. |
-| GraphRAG output is missing | Run `kb graph sync --dry-run`, then `kb graph sync` when provider credentials and cost are acceptable. |
+| GraphRAG workspace is missing | Run `kb init`. |
+| GraphRAG input is missing | Run `kb update`. |
+| GraphRAG output is missing | Set graph provider credentials, then run `kb update`. |
 | Generated pages look stale | Run `kb status --changed`, then `kb update --force` if needed. |
 
 ## Next Steps

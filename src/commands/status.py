@@ -91,6 +91,7 @@ def create_command(
                     "provider_summary": snapshot.provider_summary,
                     "index_status": snapshot.index_status,
                     "export_status": snapshot.export_status,
+                    "graph_status": snapshot.graph_status,
                 }
             )
             return
@@ -128,6 +129,30 @@ def create_command(
         echo_section("Export")
         console.print(f"  {snapshot.export_status}")
         console.print("")
+
+        if snapshot.graph_status:
+            graph = snapshot.graph_status
+            echo_section("GraphRAG")
+            workspace = (
+                "initialized" if graph.get("workspace_initialized") else "missing"
+            )
+            output = "present" if graph.get("output_present") else "missing"
+            console.print(f"  Workspace: {workspace}")
+            console.print(f"  Input documents: {graph.get('input_document_count', 0)}")
+            console.print(f"  Index output: {output}")
+            if graph.get("last_index_run_at"):
+                console.print(f"  Last index: {graph.get('last_index_run_at')}")
+                console.print(f"  Index method: {graph.get('last_index_method')}")
+            for label, key in (
+                ("Entities", "entity_count"),
+                ("Relationships", "relationship_count"),
+                ("Communities", "community_count"),
+                ("Community reports", "community_report_count"),
+            ):
+                value = graph.get(key)
+                console.print(f"  {label}: {value if value is not None else 'unknown'}")
+            console.print(f"  Next action: {graph.get('next_action')}")
+            console.print("")
 
         # Suggest what to do next
         if not snapshot.initialized:

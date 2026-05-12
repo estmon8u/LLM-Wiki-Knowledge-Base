@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 from typing import Any
+import hashlib
 
 import yaml
 
@@ -70,7 +71,11 @@ class GraphRAGInputSyncService:
         sources = self.manifest_service.list_sources()
         self._reject_duplicate_source_ids(sources)
 
-        records = [self._record_for_source(source) for source in sources]
+        manifest_hash = self._manifest_hash()
+        records = [
+            {**self._record_for_source(source), "manifest_hash": manifest_hash}
+            for source in sources
+        ]
         settings_updated = self.configure_settings()
         payload = json.dumps(records, indent=2, sort_keys=True, default=str) + "\n"
         atomic_write_text(self.input_file, payload)
@@ -91,7 +96,7 @@ class GraphRAGInputSyncService:
                 "Run `poetry run graphrag init --root graph/graphrag "
                 f"--model {DEFAULT_GRAPHRAG_MODEL} "
                 f"--embedding {DEFAULT_GRAPHRAG_EMBEDDING_MODEL} --force` "
-                "before `kb graph sync`."
+                "or run `kb init` before `kb update`."
             )
 
         original = self.settings_file.read_text(encoding="utf-8")
@@ -204,3 +209,12 @@ class GraphRAGInputSyncService:
         if value is None:
             return None
         return Path(value).as_posix()
+
+    def _manifest_hash(self) -> str | None:
+        if not self.paths.raw_manifest_file.exists():
+            return None
+        digest = hashlib.sha256()
+        with self.paths.raw_manifest_file.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()

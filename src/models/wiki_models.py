@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 
 @dataclass
@@ -56,6 +56,7 @@ class StatusSnapshot:
     provider_summary: str
     index_status: str
     export_status: str
+    graph_status: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

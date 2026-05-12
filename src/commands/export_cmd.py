@@ -4,6 +4,7 @@ import click
 
 from src.commands.common import console, echo_bullet, echo_section, require_initialized
 from src.models.command_models import CommandContext, CommandSpec
+from src.services.graphrag_wiki_export_service import GraphRAGWikiExportError
 
 
 SUMMARY = (
@@ -41,5 +42,23 @@ def create_command() -> click.Command:
             )
             for path in result.removed_paths:
                 echo_bullet(path)
+
+        graph_status_service = command_context.services.get("graphrag_status")
+        graph_export_service = command_context.services.get("graphrag_wiki_export")
+        if graph_status_service is None or graph_export_service is None:
+            return
+        graph_status = graph_status_service.status()
+        if not graph_status.workspace_initialized or not graph_status.output_present:
+            return
+        try:
+            graph_result = graph_export_service.export_wiki()
+        except GraphRAGWikiExportError as exc:
+            console.print(f"[yellow]Graph wiki export skipped: {exc}[/yellow]")
+            return
+        console.print("")
+        echo_section("Graph Wiki Export")
+        console.print(
+            f"Exported {graph_result.exported_count} GraphRAG wiki page(s) to wiki/graph"
+        )
 
     return command
