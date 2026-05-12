@@ -276,10 +276,29 @@ def test_update_runs_graph_sync_index_and_export(monkeypatch) -> None:
         _write_graph_tables(Path(cwd))
         return subprocess.CompletedProcess(command, 0, stdout="indexed\n", stderr="")
 
+    class FakePopen:
+        """Simulate subprocess.Popen for the streaming path."""
+
+        def __init__(self, command, *, cwd, stdout, stderr, text):
+            calls.append(command)
+            _write_graph_tables(Path(cwd))
+            self.returncode = 0
+            import io
+
+            self.stdout = io.StringIO("indexed\n")
+            self.stderr = io.StringIO("")
+
+        def wait(self):
+            pass
+
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr(
         "src.services.graphrag_command_service.subprocess.run",
         fake_run,
+    )
+    monkeypatch.setattr(
+        "src.services.graphrag_command_service.subprocess.Popen",
+        FakePopen,
     )
     runner = CliRunner()
     with runner.isolated_filesystem():

@@ -100,6 +100,7 @@ class UpdateService:
         compile_progress_factory: (
             Callable[[int], contextmanager[Iterator[Callable]]] | None
         ) = None,
+        graph_status_callback: Callable[[str], None] | None = None,
     ) -> UpdateResult:
         if options.force and options.resume:
             raise ValueError("--resume cannot be combined with --force.")
@@ -140,7 +141,9 @@ class UpdateService:
         self._search.refresh(force=True)
         result.search_refreshed = True
 
-        result.graph_result = self._run_graph_sync(options)
+        result.graph_result = self._run_graph_sync(
+            options, status_callback=graph_status_callback
+        )
 
         return result
 
@@ -173,7 +176,12 @@ class UpdateService:
                 else f"Already present: {source_path.name}",
             )
 
-    def _run_graph_sync(self, options: UpdateOptions) -> GraphUpdateResult:
+    def _run_graph_sync(
+        self,
+        options: UpdateOptions,
+        *,
+        status_callback: Callable[[str], None] | None = None,
+    ) -> GraphUpdateResult:
         if options.no_graph:
             return GraphUpdateResult(skipped=True, skip_reason="--no-graph requested.")
         if not (
@@ -236,7 +244,10 @@ class UpdateService:
                 force=options.force,
                 dry_run=False,
                 run_index=True,
+                status_callback=status_callback,
             )
+            if status_callback is not None:
+                status_callback("exporting graph pages")
             result.export_result = self._graphrag_wiki_export.export_wiki()
         except Exception as exc:
             result.warning = f"Graph index/export failed: {exc}"

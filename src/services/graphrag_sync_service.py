@@ -91,6 +91,7 @@ class GraphRAGSyncService:
         verbose: bool = False,
         run_index: bool = True,
         preview_only: bool = False,
+        status_callback: Any | None = None,
     ) -> GraphRAGSyncResult:
         if self.workspace_service.is_initialized():
             self.workspace_service.sync_settings()
@@ -125,6 +126,7 @@ class GraphRAGSyncService:
                 cache=cache,
                 skip_validation=skip_validation,
                 verbose=verbose,
+                status_callback=status_callback,
             )
         except GraphRAGCommandError as exc:
             if exc.result is not None:

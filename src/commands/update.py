@@ -9,6 +9,8 @@ from src.commands.common import (
     echo_bullet,
     echo_section,
     echo_status_line,
+    err_console,
+    live_status,
     progress_report,
     require_initialized,
 )
@@ -101,13 +103,38 @@ def create_command() -> click.Command:
                     item_label="source",
                 )
 
+            # Graph status callback: starts a live spinner on first call,
+            # updates with each status line from GraphRAG indexing.
+            _graph_spinner = [None]  # mutable container for the Status widget
+
+            def _graph_status_update(message: str) -> None:
+                from rich.status import Status
+
+                if _graph_spinner[0] is None:
+                    _graph_spinner[0] = Status(
+                        f"GraphRAG indexing \u2014 {message}",
+                        console=err_console,
+                        spinner="dots",
+                    )
+                    _graph_spinner[0].start()
+                else:
+                    _graph_spinner[0].update(f"GraphRAG indexing \u2014 {message}")
+
             result = service.run(
                 options,
                 compile_progress_factory=_progress_factory,
+                graph_status_callback=_graph_status_update,
             )
+
+            if _graph_spinner[0] is not None:
+                _graph_spinner[0].stop()
         except (UpdatePreflightError, ValueError) as exc:
+            if _graph_spinner[0] is not None:
+                _graph_spinner[0].stop()
             raise click.ClickException(str(exc)) from exc
         except Exception as exc:
+            if _graph_spinner[0] is not None:
+                _graph_spinner[0].stop()
             raise click.ClickException(str(exc)) from exc
 
         # Render ingest phase

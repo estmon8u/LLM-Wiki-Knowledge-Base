@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import io
 from pathlib import Path
 import subprocess
 import sys
@@ -10,6 +11,7 @@ from src.services.project_service import ProjectPaths
 
 
 Runner = Callable[..., subprocess.CompletedProcess[str]]
+StatusCallback = Callable[[str], None] | None
 
 
 @dataclass(frozen=True)
@@ -66,6 +68,7 @@ class GraphRAGCommandService:
         cache: bool,
         skip_validation: bool,
         verbose: bool = False,
+        status_callback: StatusCallback = None,
     ) -> GraphRAGCommandResult:
         args = [
             "index",
@@ -82,6 +85,8 @@ class GraphRAGCommandService:
             args.append("--skip-validation")
         if verbose:
             args.append("--verbose")
+        if status_callback is not None:
+            return self._run_streaming(args, status_callback)
         return self._run(args)
 
     def query(
@@ -139,6 +144,55 @@ class GraphRAGCommandService:
             raise GraphRAGCommandError(message, result=result)
         return result
 
+    def _run_streaming(
+        self, args: Sequence[str], status_callback: Callable[[str], None]
+    ) -> GraphRAGCommandResult:
+        """Run a GraphRAG command while streaming stderr to *status_callback*."""
+        command = (sys.executable, "-m", "graphrag", *args)
+        try:
+            proc = subprocess.Popen(
+                command,
+                cwd=self.paths.root,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except FileNotFoundError as exc:
+            raise GraphRAGCommandError(
+                "Unable to run GraphRAG because the Python executable was not found."
+            ) from exc
+
+        stderr_lines: list[str] = []
+        stdout_data = ""
+        try:
+            assert proc.stderr is not None  # guaranteed by PIPE
+            for raw_line in proc.stderr:
+                line = raw_line.rstrip()
+                stderr_lines.append(raw_line)
+                if line:
+                    display = _extract_progress_label(line)
+                    if display:
+                        status_callback(display)
+            if proc.stdout is not None:
+                stdout_data = proc.stdout.read()
+        finally:
+            proc.wait()
+
+        stderr_text = "".join(stderr_lines)
+        completed = subprocess.CompletedProcess(
+            command, proc.returncode, stdout=stdout_data, stderr=stderr_text
+        )
+        result = self._to_result(command, completed)
+        if result.returncode != 0:
+            detail = _last_non_empty_line(result.stderr) or _last_non_empty_line(
+                result.stdout
+            )
+            message = "GraphRAG command failed"
+            if detail:
+                message = f"{message}: {detail}"
+            raise GraphRAGCommandError(message, result=result)
+        return result
+
     def _to_result(
         self,
         command: tuple[str, ...],
@@ -167,6 +221,31 @@ def _sanitize_stderr(command: tuple[str, ...], stderr: str) -> str:
     if _is_known_graphrag_dry_run_logging_error(stderr):
         return ""
     return stderr
+
+
+def _extract_progress_label(line: str) -> str:
+    """Extract a human-readable status fragment from a GraphRAG log line."""
+    # GraphRAG logs lines like:
+    #   "graphrag.index ... Running workflow: extract_graph"
+    #   "graphrag.index ... 50% complete"
+    #   "Running ... verb: extract_graph"
+    lowered = line.lower()
+    # Skip noisy debug lines
+    if any(skip in lowered for skip in ("debug", "traceback", "warning:")):
+        return ""
+    # Try to extract workflow step name
+    for marker in ("running workflow:", "running verb:", "running step:"):
+        idx = lowered.find(marker)
+        if idx >= 0:
+            return line[idx:].strip()
+    # Show percentage lines directly
+    if "%" in line and any(c.isdigit() for c in line):
+        return line.strip()
+    # Pass through other substantive lines (but cap length)
+    stripped = line.strip()
+    if len(stripped) > 120:
+        return stripped[:117] + "..."
+    return stripped
 
 
 def _is_known_graphrag_dry_run_logging_error(stderr: str) -> bool:

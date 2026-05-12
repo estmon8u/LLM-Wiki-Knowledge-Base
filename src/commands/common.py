@@ -9,6 +9,7 @@ import click
 from rich.console import Console
 from rich.markup import escape as _esc
 from rich.progress import Progress
+from rich.status import Status
 from rich.table import Table
 
 from src.models.command_models import CommandContext
@@ -101,3 +102,27 @@ def progress_report(
             progress.advance(task)
 
         yield advance
+
+
+@contextmanager
+def live_status(
+    label: str,
+    *,
+    spinner: str = "dots",
+) -> Iterator[Callable[[str], None]]:
+    """Show a Rich spinner with a live status message for indeterminate operations."""
+    if not err_console.is_terminal:
+        console.print(f"{label}...")
+        yield lambda _msg: None
+        return
+
+    status = Status(label, console=err_console, spinner=spinner)
+    status.start()
+    try:
+
+        def update(message: str) -> None:
+            status.update(f"{label} — {message}")
+
+        yield update
+    finally:
+        status.stop()
