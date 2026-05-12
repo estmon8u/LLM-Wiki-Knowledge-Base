@@ -191,7 +191,7 @@ class GraphRAGWikiExportService:
                 "",
                 "## GraphRAG Document",
                 "",
-                _field_list(record, exclude={"text", "raw_content"}),
+                _field_list(record, exclude={"text", "raw_content", "raw_data"}),
             ]
             if _first_text(record, "text", "raw_content"):
                 body.extend(
@@ -232,7 +232,7 @@ class GraphRAGWikiExportService:
                 "",
                 "## Metadata",
                 "",
-                _field_list(record, exclude={"text", "content", "chunk"}),
+                _field_list(record, exclude={"text", "content", "chunk", "raw_data"}),
             ]
             exported.append(
                 self._write_page("text-units", slug, frontmatter, "\n".join(body))
@@ -283,7 +283,10 @@ class GraphRAGWikiExportService:
                 "",
                 "## Metadata",
                 "",
-                _field_list(record, exclude={"description", "title", "name"}),
+                _field_list(
+                    record,
+                    exclude={"description", "title", "name", "raw_data"},
+                ),
             ]
             exported.append(
                 self._write_page("entities", slug, frontmatter, "\n".join(body))
@@ -324,7 +327,7 @@ class GraphRAGWikiExportService:
                 "",
                 "## Metadata",
                 "",
-                _field_list(record, exclude={"description"}),
+                _field_list(record, exclude={"description", "raw_data"}),
             ]
             exported.append(
                 self._write_page("relationships", slug, frontmatter, "\n".join(body))
@@ -399,6 +402,7 @@ class GraphRAGWikiExportService:
                         "findings",
                         "entity_ids",
                         "text_unit_ids",
+                        "raw_data",
                     },
                 ),
             ]

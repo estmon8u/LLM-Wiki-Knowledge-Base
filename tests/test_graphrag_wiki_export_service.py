@@ -436,11 +436,18 @@ def test_export_wiki_fences_raw_document_and_text_unit_markdown(test_project) ->
     output_dir.mkdir(parents=True, exist_ok=True)
     raw_text = "# Raw Heading\nSee [tbl-0.md](tbl-0.md)."
     pd.DataFrame(
-        [{"id": "doc-1", "title": "Raw Markdown Document", "raw_content": raw_text}]
+        [
+            {
+                "id": "doc-1",
+                "title": "Raw Markdown Document",
+                "raw_content": raw_text,
+                "raw_data": {"text": raw_text},
+            }
+        ]
     ).to_parquet(output_dir / "documents.parquet")
-    pd.DataFrame([{"id": "tu-1", "chunk": raw_text}]).to_parquet(
-        output_dir / "text_units.parquet"
-    )
+    pd.DataFrame(
+        [{"id": "tu-1", "chunk": raw_text, "raw_data": {"text": raw_text}}]
+    ).to_parquet(output_dir / "text_units.parquet")
     GraphRAGStatusService(test_project.paths).record_index_run(
         method="fast",
         dry_run=False,
@@ -464,6 +471,8 @@ def test_export_wiki_fences_raw_document_and_text_unit_markdown(test_project) ->
     ).read_text(encoding="utf-8")
     assert f"```text\n{raw_text}\n```" in document_text
     assert f"```text\n{raw_text}\n```" in text_unit_text
+    assert "`raw_data`" not in document_text
+    assert "`raw_data`" not in text_unit_text
 
 
 def test_graph_wiki_export_helpers_handle_sparse_values() -> None:

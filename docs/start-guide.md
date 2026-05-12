@@ -199,7 +199,10 @@ poetry run kb --project-root $projectRoot graph export-wiki
 ```
 
 This creates `wiki/graph/index.md` plus generated pages for GraphRAG documents,
-entities, relationships, communities, and text units. Existing
+entities, relationships, communities, and text units. Raw document and text-unit
+content is fenced so paper-internal markdown is inspectable without creating
+wiki lint failures. Large relationship tables are counted in the graph index,
+but only the strongest relationship pages are materialized. Existing
 `wiki/concepts/` pages stay in place as legacy concept pages.
 
 Deprecated legacy search returns matching wiki pages:

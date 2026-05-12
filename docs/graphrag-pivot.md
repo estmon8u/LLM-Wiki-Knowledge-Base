@@ -50,9 +50,9 @@ GraphRAG is the retrieval and synthesis engine.
   - `local` for specific entity, paper, or method questions,
   - `global` for whole-corpus themes,
   - `drift` for comparison questions that benefit from global context plus local refinement.
-- Top-level `kb ask` is now the default GraphRAG-aware answer controller. It checks graph readiness, chooses `basic`, `local`, `global`, or `drift` with deterministic routing unless `--method` is explicit, runs GraphRAG retrieval, and saves analysis pages with planner, method, index-run, manifest-hash, and source-trace metadata.
+- Top-level `kb ask` is now the default GraphRAG-aware answer controller. It checks graph readiness, chooses `basic`, `local`, `global`, or `drift` with deterministic routing unless `--method` is explicit, runs GraphRAG retrieval, and saves analysis pages with planner, method, index-run, manifest-hash, source-trace, and lint-compatible analysis/citation metadata.
 - GraphRAG runtime configuration now lives in the `graph` section of `kb.config.yaml`; `kb graph init` syncs completion provider/model, embedding provider/model, and API-key environment variables resolved from the centralized `providers` catalog into `graph/graphrag/settings.yaml`.
-- `kb graph export-wiki` converts GraphRAG Parquet outputs into generated markdown pages under `wiki/graph/` for documents, text units, entities, relationships, and communities.
+- `kb graph export-wiki` converts GraphRAG Parquet outputs into generated markdown pages under `wiki/graph/` for documents, text units, entities, relationships, and communities. Raw document/text-unit content is fenced to keep source markdown inspectable without creating wiki lint failures, and relationship-page materialization is capped while full relationship row counts remain visible in the graph index.
 - Wiki pages are now the inspection, provenance, export, and maintenance layer over the graph workflow.
 
 ## 4. New architecture

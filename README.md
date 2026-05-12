@@ -335,7 +335,7 @@ poetry run kb graph ask "How does REALM differ from RAG?" --method drift --save
 | `--save-as` | | Save with a custom analysis slug. Implies `--save`. |
 | `--json` | off | Include the answer, raw GraphRAG output, command, `retriever`, `method`, `index_run_id`, and `input_manifest_hash` as JSON. |
 
-The command requires synced input and GraphRAG index output. Saved analysis pages use `type: analysis`, `retriever: graphrag`, `method`, `question`, `created_at`, `index_run_id`, and `input_manifest_hash` frontmatter, then store the answer, retrieval mode metadata, source trace, and raw GraphRAG CLI output. The explicit graph command preserves raw output for debugging and comparison. For the default user-facing answer path, use `kb ask`, which adds planner/method metadata and graph readiness checks on top of the same GraphRAG query service.
+The command requires synced input and GraphRAG index output. Saved analysis pages use the standard analysis frontmatter contract (`type`, `question`, `saved_at`, `citations`, `insufficient_evidence`, `claim_count`, and `citation_count`) plus graph metadata such as `retriever: graphrag`, `method`, `created_at`, `index_run_id`, and `input_manifest_hash`. The page stores the answer, retrieval mode metadata, source trace, and raw GraphRAG answer text. GraphRAG stderr warnings and progress bars stay in JSON `stderr`; they are not copied into the saved raw-output section when stdout contains the answer. For the default user-facing answer path, use `kb ask`, which adds planner/method metadata and graph readiness checks on top of the same GraphRAG query service.
 
 ### `kb graph export-wiki`
 
@@ -355,7 +355,7 @@ The export reads standard GraphRAG tables such as `documents`, `text_units`, `en
 - `wiki/graph/communities/*.md`
 - `wiki/graph/text-units/*.md`
 
-Generated graph pages use frontmatter types such as `graph_entity`, `graph_relationship`, `graph_community`, `graph_text_unit`, and `graph_document`. Existing `wiki/concepts/` pages are not deleted; they are now legacy LLM-wiki concept pages beside the GraphRAG-derived `wiki/graph/` layer.
+Generated graph pages use frontmatter types such as `graph_entity`, `graph_relationship`, `graph_community`, `graph_text_unit`, and `graph_document`. Document and text-unit pages render raw GraphRAG text in fenced code blocks so paper-internal markdown links and headings remain inspectable without becoming wiki lint targets. Large relationship tables are counted in `wiki/graph/index.md`, but only the strongest 500 relationship pages are materialized and entity pages show a bounded relationship table. Existing `wiki/concepts/` pages are not deleted; they are now legacy LLM-wiki concept pages beside the GraphRAG-derived `wiki/graph/` layer.
 
 ### `kb find <terms>`
 
