@@ -15,6 +15,7 @@ from src.services.graphrag_wiki_export_service import (
     MAX_EXPORTED_RELATIONSHIP_PAGES,
     _clean_value,
     _field_list,
+    _fenced_text,
     _findings_markdown,
     _first_number,
     _first_text,
@@ -425,6 +426,46 @@ def test_export_wiki_caps_relationship_pages_and_entity_tables(test_project) -> 
     assert "relationship 0" not in entity_text
 
 
+def test_export_wiki_fences_raw_document_and_text_unit_markdown(test_project) -> None:
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "doc-1", "text": "Raw markdown"}]),
+    )
+    output_dir = test_project.paths.graph_dir / "graphrag" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    raw_text = "# Raw Heading\nSee [tbl-0.md](tbl-0.md)."
+    pd.DataFrame(
+        [{"id": "doc-1", "title": "Raw Markdown Document", "raw_content": raw_text}]
+    ).to_parquet(output_dir / "documents.parquet")
+    pd.DataFrame([{"id": "tu-1", "chunk": raw_text}]).to_parquet(
+        output_dir / "text_units.parquet"
+    )
+    GraphRAGStatusService(test_project.paths).record_index_run(
+        method="fast",
+        dry_run=False,
+        result=GraphRAGCommandResult(
+            command=("python", "-m", "graphrag", "index"),
+            cwd=test_project.paths.root,
+            returncode=0,
+            stdout="indexed",
+            stderr="",
+        ),
+    )
+    service = _build_service(test_project)
+
+    service.export_wiki()
+
+    document_text = (
+        test_project.paths.wiki_dir / "graph" / "documents" / "raw-markdown-document.md"
+    ).read_text(encoding="utf-8")
+    text_unit_text = (
+        test_project.paths.wiki_dir / "graph" / "text-units" / "text-unit-tu-1.md"
+    ).read_text(encoding="utf-8")
+    assert f"```text\n{raw_text}\n```" in document_text
+    assert f"```text\n{raw_text}\n```" in text_unit_text
+
+
 def test_graph_wiki_export_helpers_handle_sparse_values() -> None:
     class ArrayLike:
         def tolist(self):
@@ -453,6 +494,9 @@ def test_graph_wiki_export_helpers_handle_sparse_values() -> None:
 
     assert _relationship_table([]) == "No relationships listed."
     assert "A -> B" in _relationship_table([{"source": "A", "target": "B"}])
+    assert _fenced_text("before\n```text\ninside") == (
+        "````text\nbefore\n```text\ninside\n````"
+    )
     assert _top_relationships(
         [
             {"source": "A", "target": "low", "weight": 1},

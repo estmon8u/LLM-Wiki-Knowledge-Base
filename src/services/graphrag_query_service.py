@@ -275,7 +275,11 @@ def _raw_output(result: GraphRAGCommandResult) -> str:
 
 
 def _graph_data_references(text: str) -> list[str]:
-    return list(dict.fromkeys(match.group(0) for match in GRAPH_DATA_REFERENCE_PATTERN.finditer(text)))
+    return list(
+        dict.fromkeys(
+            match.group(0) for match in GRAPH_DATA_REFERENCE_PATTERN.finditer(text)
+        )
+    )
 
 
 def _source_trace_citations(answer: GraphRAGQueryAnswer) -> list[str]:

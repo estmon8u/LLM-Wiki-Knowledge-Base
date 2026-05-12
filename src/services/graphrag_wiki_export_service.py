@@ -195,7 +195,12 @@ class GraphRAGWikiExportService:
             ]
             if _first_text(record, "text", "raw_content"):
                 body.extend(
-                    ["", "## Text", "", _first_text(record, "text", "raw_content")]
+                    [
+                        "",
+                        "## Text",
+                        "",
+                        _fenced_text(_first_text(record, "text", "raw_content")),
+                    ]
                 )
             exported.append(
                 self._write_page("documents", slug, frontmatter, "\n".join(body))
@@ -223,7 +228,7 @@ class GraphRAGWikiExportService:
                 "",
                 "## Text",
                 "",
-                text or "No text content exported by GraphRAG.",
+                _fenced_text(text) if text else "No text content exported by GraphRAG.",
                 "",
                 "## Metadata",
                 "",
@@ -547,6 +552,13 @@ def _bullet_values(value: Any, *, empty: str) -> str:
     if not isinstance(value, (list, tuple, set)) or not value:
         return empty
     return "\n".join(f"- `{item}`" for item in value)
+
+
+def _fenced_text(text: str) -> str:
+    fence = "```"
+    while fence in text:
+        fence += "`"
+    return f"{fence}text\n{text.rstrip()}\n{fence}"
 
 
 def _relationships_by_entity(

@@ -124,6 +124,9 @@ def test_graph_query_raw_output_prefers_stdout_over_progress_stderr(
     assert answer.raw_output == "GraphRAG answer"
     assert "Progress" in answer.stderr
     saved_text = (test_project.root / saved_path).read_text(encoding="utf-8")
+    frontmatter = yaml.safe_load(saved_text.split("---", 2)[1])
+    assert frontmatter["citations"] == [f"GraphRAG index {answer.index_run_id}"]
+    assert frontmatter["citation_count"] == 1
     assert "GraphRAG answer" in saved_text
     assert "Warning: noisy dependency output" not in saved_text
     assert "Progress: 100%" not in saved_text
@@ -138,7 +141,10 @@ def test_graph_query_save_writes_analysis_page_and_refreshes_index(
         return subprocess.CompletedProcess(
             command,
             0,
-            stdout="REALM augments pretraining, while RAG augments generation.\n",
+            stdout=(
+                "REALM augments pretraining, while RAG augments generation. "
+                "[Data: Sources (1)]\n"
+            ),
             stderr="",
         )
 
@@ -155,6 +161,12 @@ def test_graph_query_save_writes_analysis_page_and_refreshes_index(
     assert frontmatter["retriever"] == "graphrag"
     assert frontmatter["method"] == "drift"
     assert frontmatter["question"] == "How does REALM differ from RAG?"
+    assert frontmatter["saved_at"] == answer.created_at
+    assert frontmatter["citations"] == ["[Data: Sources (1)]"]
+    assert frontmatter["citation_count"] == 1
+    assert frontmatter["claim_count"] == 0
+    assert frontmatter["claims"] == []
+    assert frontmatter["insufficient_evidence"] is False
     assert frontmatter["index_run_id"] == answer.index_run_id
     assert frontmatter["input_manifest_hash"] == answer.input_manifest_hash
     assert "## Retrieval Mode" in text
