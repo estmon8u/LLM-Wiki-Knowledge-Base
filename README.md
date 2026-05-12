@@ -55,41 +55,34 @@ poetry run python scripts/evaluate_graph_modes.py --allow-provider-calls --inclu
 
 The default run does not call model providers. It records skipped rows for GraphRAG and legacy answer commands unless `--allow-provider-calls` is passed, because those jobs can incur provider costs and may include local corpus text in generated artifacts. Per-question JSON artifacts are written under `eval/results/artifacts/`, which is ignored by Git.
 
-## Current Transitional Quick Start
+## Quick Start
 
 ```bash
-# 1. Initialize a new project
+# 1. Initialize project and graph workspace
 poetry run kb init
 
-# 2. Add some source documents
-poetry run kb add path/to/paper.pdf
-poetry run kb add path/to/notes.md
-poetry run kb add path/to/slides.pptx
-poetry run kb add path/to/research-folder
+# 2. Add and process documents
+#    This ingests, compiles, builds the graph index, and exports graph wiki pages.
+poetry run kb update path/to/research-papers/
 
-# 3. Update the knowledge base (wiki, legacy FTS index, GraphRAG input/index, graph wiki export)
-poetry run kb update
+# 3. Ask graph-grounded questions
+poetry run kb ask "How does REALM differ from RAG?"
+poetry run kb ask "What are the main retrieval themes across the corpus?" --method global
 
-# 4. Check project and GraphRAG health
+# 4. Check project health
 poetry run kb status
+poetry run kb doctor
 
-# 5. Ask through the default GraphRAG controller
-poetry run kb ask "What are the main retrieval patterns?"
-poetry run kb ask --method global "What are the main retrieval patterns?"
-
-# 6. Export the maintained wiki and refresh graph inspection pages when available
+# 5. Export to Obsidian vault
 poetry run kb export
-
-# 7. Search the deprecated legacy/wiki path
-poetry run kb legacy find "knowledge base traceability"
-
-# 8. Ask through the deprecated legacy source-grounded path
-poetry run kb legacy ask "How does the wiki handle stale pages?"
 ```
 
-That's the current GraphRAG-first workflow: **init -> add -> update -> status -> ask -> export**.
-The legacy commands exist only for comparison and exact lexical lookup while
-later GraphRAG phases finish generated graph artifact health checks.
+`kb update` automatically syncs normalized sources into GraphRAG input, runs a
+preflight check, auto-detects whether a full or incremental graph index is
+needed, and exports graph artifacts to the wiki. Use `--no-graph` for quick
+wiki-only updates, or `--force` for a full rebuild including the graph index.
+That's the current GraphRAG-first workflow: **init -> update -> status -> ask -> export**.
+The legacy commands exist only for comparison and exact lexical lookup.
 There is no silent fallback from GraphRAG to FTS5.
 
 For a slower first-run walkthrough that keeps the repository and knowledge-base
@@ -101,6 +94,42 @@ variable. If you ingest `.pdf`, `.docx`, `.pptx`, supported images, or
 `.html` / `.htm`, also set `MISTRAL_API_KEY`. HTML inputs additionally require
 `wkhtmltopdf` on your `PATH` or configured in `kb.config.yaml`. See
 `Provider Configuration` and `Conversion Configuration` below.
+
+## Architecture Flow
+
+```text
+Documents
+  |
+  v
+kb init
+  - project scaffold
+  - GraphRAG workspace and settings
+  |
+  v
+kb update
+  - ingest and normalize sources
+  - compile source pages with provenance
+  - generate legacy concept pages and FTS comparator index
+  - sync GraphRAG JSON input
+  - auto-select full index, incremental update, or skip
+  - export graph tables to wiki/graph/
+  |
+  v
+kb ask
+  - GraphRAG-first controller
+  - auto-routes to basic, local, global, or drift
+  - saves graph-backed analysis pages when requested
+  |
+  v
+kb status / kb doctor / kb lint
+  - project and graph health
+  - hash-based freshness checks
+  |
+  v
+kb export
+  - Obsidian vault
+  - refreshed graph wiki inspection pages
+```
 
 ## Global Options
 
@@ -122,16 +151,16 @@ poetry run kb --project-root /path/to/project status
 ### Everyday Commands
 
 These are the commands you will use most often today. The GraphRAG-first happy
-path is **init -> add -> update -> status -> ask -> export**.
+path is **init -> update -> status -> ask -> export**. Use `add` when you want
+to stage sources without running the maintenance pipeline yet.
 
 | Command | Description |
 | --- | --- |
-| `init` | Create project folders, config, schema, and manifest |
-| `add` | Add and normalize source documents |
-| `update` | Build wiki pages, generate concepts, and refresh indexes |
+| `init` | Create project folders, config, schema, manifest, and GraphRAG workspace |
+| `add` | Add and normalize source documents without running the full update |
+| `update` | Add optional sources, build wiki pages, refresh legacy comparator index, sync/index GraphRAG, and export graph pages |
 | `find` | Reserved GraphRAG search entry point; currently fails with guidance |
 | `ask` | GraphRAG-aware answer controller with deterministic auto-routing |
-| `graph` | GraphRAG workspace commands for init, input sync, indexing, explicit query modes, graph wiki export, and status |
 | `legacy` | Deprecated SQLite FTS5 search and ask commands for comparison |
 | `status` | Show project state and what to do next |
 
