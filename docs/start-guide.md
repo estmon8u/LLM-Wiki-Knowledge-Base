@@ -14,7 +14,7 @@ Requirements:
 | Poetry | Yes | Installs dependencies and runs the `kb` entrypoint. |
 | LLM API key | Yes for `update`, `legacy ask`, `review`, and real GraphRAG index/query jobs | OpenAI, Anthropic, Gemini, and the configured GraphRAG provider. |
 | Mistral API key | Required for PDFs, Office docs, images, and HTML OCR | Markdown and plain text do not need it. |
-| wkhtmltopdf | Required only for HTML OCR | Must be on `PATH` or configured in `kb.config.yaml`. |
+| HTML renderer | Required only for HTML OCR | `wkhtmltopdf` is preferred when installed; bundled `xhtml2pdf` is the pure-Python fallback. |
 
 From the repository root:
 
@@ -150,8 +150,9 @@ poetry run kb --project-root $projectRoot status
 
 Real GraphRAG index actions call the configured GraphRAG model and embedding
 provider, so set the provider API key such as `OPENAI_API_KEY`, or put the same
-variable in the local GraphRAG `.env` file, before running `kb update`. Use
-`kb update --force` for a full source-page and GraphRAG rebuild after
+variable in the local GraphRAG `.env` file, before running `kb update`.
+Interactive terminals show a live indexing status spinner while GraphRAG runs.
+Use `kb update --force` for a full source-page and GraphRAG rebuild after
 model/prompt changes or suspected corrupt output. Use `kb update --no-graph`
 only when you want to refresh the wiki and legacy index without touching
 GraphRAG.
@@ -247,7 +248,7 @@ poetry run kb --project-root $projectRoot export --clean
 | --- | --- |
 | `Provider is not configured` | Run `kb config provider set openai`, `anthropic`, or `gemini`. |
 | Provider authentication errors | Confirm the matching API key environment variable is set in the same shell. |
-| PDF, DOCX, PPTX, image, or HTML conversion fails | Set `MISTRAL_API_KEY`; for HTML also install/configure `wkhtmltopdf`. |
+| PDF, DOCX, PPTX, image, or HTML conversion fails | Set `MISTRAL_API_KEY`; for HTML confirm `wkhtmltopdf` or bundled `xhtml2pdf` is available. |
 | Search returns stale results | Run `kb update` after adding or changing sources. |
 | GraphRAG workspace is missing | Run `kb init`. |
 | GraphRAG input is missing | Run `kb update`. |

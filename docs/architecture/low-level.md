@@ -43,7 +43,7 @@
 | `src/services/config_service.py` | Config loading, Pydantic-backed provider/conversion/graph validation, schema defaults, `schema_excerpt()` helper for extracting schema sections by heading, and in-place migration of legacy `kb.config.yaml` versions |
 | `src/services/manifest_service.py` | Raw-source manifest read/write behavior |
 | `src/services/graphrag_workspace_service.py` | Prepares the project-local `graph/graphrag/` workspace, delegates reproducible non-interactive initialization to the GraphRAG command wrapper, and syncs `kb.config.yaml` graph settings into GraphRAG `settings.yaml` |
-| `src/services/graphrag_command_service.py` | Thin subprocess boundary around `python -m graphrag` for `init`, `index`, and `query`, with captured stdout/stderr and structured command errors |
+| `src/services/graphrag_command_service.py` | Thin subprocess boundary around `python -m graphrag` for `init`, `index`, and `query`, with UTF-8 subprocess decoding, captured stdout/stderr, streaming stderr status callbacks for live indexing progress, and structured command errors |
 | `src/services/graphrag_defaults.py` | Shared GraphRAG model, embedding, and API-key environment defaults used by command defaults and user-facing setup guidance |
 | `src/services/graphrag_status_service.py` | Reports GraphRAG workspace readiness, synced input counts, output table presence, wiki export presence, row counts, and ignored local index-run metadata |
 | `src/services/graphrag_sync_service.py` | Coordinates GraphRAG sync/index decisions used by `kb update`: refreshes workspace settings, writes GraphRAG input, compares source/runtime digests to the last successful index, chooses full rebuild, incremental update, or skip, and records reproducibility metadata |
@@ -52,7 +52,7 @@
 | `src/services/graph_ask_controller_service.py` | User-facing GraphRAG ask controller: checks graph readiness and credentials, asks the router for a method, delegates to `GraphRAGQueryService`, and saves analysis pages with planner metadata |
 | `src/services/graphrag_wiki_export_service.py` | Reads GraphRAG Parquet output tables and generates `wiki/graph/` markdown pages for documents, text units, entities, relationships, communities, and the graph index; fences raw document/text-unit content and caps high-volume relationship page export |
 | `src/services/graphrag_input_sync_service.py` | Syncs manifest-backed normalized artifacts into `graph/graphrag/input/sources.json`, validates the GraphRAG workspace settings file, configures JSON input columns, and lists provenance metadata fields for chunk prepending |
-| `src/services/normalization_service.py` | Document-type normalization routing for direct text inputs, Mistral OCR-backed native documents and images, `wkhtmltopdf`-rendered HTML OCR, MarkItDown-backed born-digital converters, explicit Docling/MarkItDown fallbacks, and conversion quality gates |
+| `src/services/normalization_service.py` | Document-type normalization routing for direct text inputs, Mistral OCR-backed native documents and images, HTML OCR rendered through `wkhtmltopdf` first and `xhtml2pdf` as fallback, MarkItDown-backed born-digital converters, explicit Docling/MarkItDown fallbacks, and conversion quality gates |
 | `src/services/ingest_service.py` | Raw-source copy, normalized-artifact write, duplicate detection, source registration, deterministic recursive directory ingest, and callback-friendly batch progress hooks used by `kb add` |
 | `src/services/compile_service.py` | Derived wiki generation with provider-backed summary generation, deterministic summary fallback on weak provider output, sentence-safe excerpts, schema-excerpt-enhanced prompts, `type: source` frontmatter, analysis-page discovery for index, parseable heading-style log entries, callback-friendly compile planning/progress hooks, and persisted resume/failure tracking for interrupted compiles |
 | `src/services/concept_service.py` | Provider-first structured concept clustering with source-digest cache, deterministic NLTK/collocation fallback, concept-page generation, and backlink maintenance |
@@ -85,7 +85,7 @@
 
 | File | Responsibility |
 | --- | --- |
-| `pyproject.toml` | Dependency pins, including Microsoft GraphRAG, OpenAI/Anthropic/Gemini SDKs, Pydantic, markdown/frontmatter/NLP helpers, Mistral SDK, pdfkit, Docling, and MarkItDown, plus CLI entrypoint, Black config, pytest and coverage settings |
+| `pyproject.toml` | Dependency pins, including Microsoft GraphRAG, OpenAI/Anthropic/Gemini SDKs, Pydantic, markdown/frontmatter/NLP helpers, Mistral SDK, pdfkit, xhtml2pdf, Docling, and MarkItDown, plus CLI entrypoint, Black config, pytest and coverage settings |
 | `graph/graphrag/settings.yaml` | Initialized Microsoft GraphRAG workspace settings; synced from `kb.config.yaml` graph defaults, uses JSON input columns, and configures `chunking.prepend_metadata` for source provenance fields |
 | `graph/graphrag/prompts/` | Default GraphRAG prompt templates generated by `graphrag init` and kept as the baseline for later prompt tuning |
 | `graph/graphrag/input/.gitkeep` | Tracked input-directory scaffold for generated GraphRAG JSON input |

@@ -47,7 +47,7 @@ GraphRAG is the retrieval and synthesis engine.
 - Conversion routing:
   - direct markdown/text
   - Mistral OCR-first for `.pdf`, `.docx`, `.pptx`, `.png`, `.jpg`, `.jpeg`, `.avif`
-  - `wkhtmltopdf` + Mistral OCR for `.html`/`.htm`
+  - `wkhtmltopdf` or `xhtml2pdf` + Mistral OCR for `.html`/`.htm`
   - MarkItDown for bounded born-digital subset with quality-gated fallbacks.
 - Update pipeline that builds source pages, updates the wiki index, generates concepts, refreshes FTS5 chunk index, writes compile-run state for resumable runs, and runs GraphRAG sync/index/export unless `--no-graph` is set.
 - Deterministic lint for links, fragments, headings, frontmatter, duplicates, empties, stale pages, GraphRAG input/index/export staleness, and maintenance signals.

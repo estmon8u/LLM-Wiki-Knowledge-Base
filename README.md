@@ -100,7 +100,8 @@ Before running `kb update`, `kb legacy ask`, or `kb review`, configure the activ
 provider in `kb.config.yaml` and set the matching API key environment
 variable. If you ingest `.pdf`, `.docx`, `.pptx`, supported images, or
 `.html` / `.htm`, also set `MISTRAL_API_KEY`. HTML inputs additionally require
-`wkhtmltopdf` on your `PATH` or configured in `kb.config.yaml`. See
+either `wkhtmltopdf` on your `PATH` or the bundled pure-Python `xhtml2pdf`
+fallback. See
 `Provider Configuration` and `Conversion Configuration` below.
 
 ## Architecture Flow
@@ -503,7 +504,7 @@ poetry run kb sources show <slug>
 | Markdown | `.md`, `.markdown` | Direct (no conversion needed) |
 | Plain text | `.txt` | Direct (no conversion needed) |
 | PDF | `.pdf` | Mistral OCR (Docling fallback) |
-| HTML | `.htm`, `.html` | `wkhtmltopdf` → Mistral OCR (MarkItDown fallback) |
+| HTML | `.htm`, `.html` | `wkhtmltopdf` or `xhtml2pdf` → Mistral OCR (MarkItDown fallback) |
 | CSV | `.csv` | MarkItDown |
 | Word | `.docx` | Mistral OCR (MarkItDown fallback) |
 | PowerPoint | `.pptx` | Mistral OCR (MarkItDown fallback) |
@@ -645,7 +646,8 @@ poetry run kb doctor --strict
 
 Document conversion settings also live in `kb.config.yaml`. The `conversion`
 section controls which converter is used for Mistral-native document types and
-how HTML is rendered before OCR:
+how HTML is rendered before OCR. HTML rendering tries `wkhtmltopdf` first when
+available and falls back to the bundled pure-Python `xhtml2pdf` renderer:
 
 ```yaml
 conversion:
@@ -667,7 +669,7 @@ Default routing is:
 
 - `.pdf`, `.docx`, `.pptx` → Mistral OCR first
 - `.png`, `.jpg`, `.jpeg`, `.avif` → Mistral OCR first
-- `.htm`, `.html` → `wkhtmltopdf` then Mistral OCR first
+- `.htm`, `.html` → `wkhtmltopdf` first, then `xhtml2pdf` if needed, then Mistral OCR
 - `.csv`, `.epub`, `.ipynb`, `.xls`, `.xlsx` → MarkItDown
 - `.md`, `.markdown`, `.txt` → direct passthrough
 
