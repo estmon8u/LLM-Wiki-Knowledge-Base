@@ -5,7 +5,7 @@ from typing import Optional
 import click
 from rich.markdown import Markdown as RichMarkdown
 
-from src.commands.common import console, emit_json, require_initialized
+from src.commands.common import console, emit_json, err_console, require_initialized
 from src.models.command_models import CommandContext, CommandSpec
 from src.services.graph_ask_controller_service import GraphAskControllerError
 from src.services.graphrag_query_service import GraphRAGQueryError
@@ -90,16 +90,23 @@ def create_command() -> click.Command:
         controller = command_context.services["graph_ask_controller"]
 
         try:
-            answer = controller.ask(
-                question,
-                method=method,
-                community_level=community_level,
-                dynamic_community_selection=dynamic_community_selection,
-                response_type=response_type,
-                verbose=verbose,
-                save=save_answer,
-                save_as=save_as_name,
-            )
+            from rich.status import Status
+
+            spinner = Status("Querying GraphRAG…", console=err_console, spinner="dots")
+            spinner.start()
+            try:
+                answer = controller.ask(
+                    question,
+                    method=method,
+                    community_level=community_level,
+                    dynamic_community_selection=dynamic_community_selection,
+                    response_type=response_type,
+                    verbose=verbose,
+                    save=save_answer,
+                    save_as=save_as_name,
+                )
+            finally:
+                spinner.stop()
         except (GraphAskControllerError, GraphRAGQueryError) as exc:
             raise click.ClickException(str(exc)) from exc
 

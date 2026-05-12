@@ -279,7 +279,7 @@ def test_update_runs_graph_sync_index_and_export(monkeypatch) -> None:
     class FakePopen:
         """Simulate subprocess.Popen for the streaming path."""
 
-        def __init__(self, command, *, cwd, stdout, stderr, text):
+        def __init__(self, command, *, cwd, stdout, stderr, text, encoding=None):
             calls.append(command)
             _write_graph_tables(Path(cwd))
             self.returncode = 0

@@ -30,6 +30,13 @@ class GraphRAGCommandError(RuntimeError):
 
 
 class GraphRAGCommandService:
+    @staticmethod
+    def _default_runner(
+        command: Sequence[str], **kwargs: Any
+    ) -> subprocess.CompletedProcess[str]:
+        kwargs.setdefault("encoding", "utf-8")
+        return subprocess.run(command, **kwargs)
+
     def __init__(
         self,
         paths: ProjectPaths,
@@ -37,7 +44,7 @@ class GraphRAGCommandService:
         runner: Runner | None = None,
     ) -> None:
         self.paths = paths
-        self.runner = runner or subprocess.run
+        self.runner = runner or self._default_runner
         self.workspace_dir = paths.graph_dir / "graphrag"
 
     def init_workspace(
@@ -156,6 +163,7 @@ class GraphRAGCommandService:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                encoding="utf-8",
             )
         except FileNotFoundError as exc:
             raise GraphRAGCommandError(
