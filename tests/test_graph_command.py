@@ -25,8 +25,8 @@ def _write_graphrag_settings() -> None:
         "  base_dir: input\n"
         "chunking:\n"
         "  type: tokens\n"
-        "  size: 1200\n"
-        "  overlap: 100\n"
+        "  size: 100\n"
+        "  overlap: 25\n"
         "  encoding_model: o200k_base\n",
         encoding="utf-8",
     )

@@ -122,8 +122,8 @@ class GraphRAGInputSyncService:
 
         chunking = dict(settings.get("chunking") or {})
         chunking.setdefault("type", "tokens")
-        chunking.setdefault("size", 1200)
-        chunking.setdefault("overlap", 100)
+        chunking.setdefault("size", 100)
+        chunking.setdefault("overlap", 25)
         chunking.setdefault("encoding_model", "o200k_base")
         chunking["prepend_metadata"] = list(GRAPH_INPUT_METADATA_FIELDS)
         settings["chunking"] = chunking
