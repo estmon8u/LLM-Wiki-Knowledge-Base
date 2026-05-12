@@ -149,7 +149,16 @@ def test_graph_query_save_writes_analysis_page_and_refreshes_index(
         )
 
     service = _build_query_service(test_project, runner)
-    answer = service.ask("How does REALM differ from RAG?", method="drift")
+    answer = service.ask(
+        "How does REALM differ from RAG?",
+        method="drift",
+        community_level=2,
+        dynamic_community_selection=True,
+        response_type="Multiple Paragraphs",
+    )
+    answer.planner = "heuristic"
+    answer.route_reason = "comparison question"
+    answer.claim_support = "graph-grounded"
 
     saved_path = service.save_answer(answer)
 
@@ -169,7 +178,15 @@ def test_graph_query_save_writes_analysis_page_and_refreshes_index(
     assert frontmatter["insufficient_evidence"] is False
     assert frontmatter["index_run_id"] == answer.index_run_id
     assert frontmatter["input_manifest_hash"] == answer.input_manifest_hash
+    assert frontmatter["planner"] == "heuristic"
+    assert frontmatter["claim_support"] == "graph-grounded"
     assert "## Retrieval Mode" in text
+    assert "- Planner: heuristic" in text
+    assert "- Route reason: comparison question" in text
+    assert "- Claim support: graph-grounded" in text
+    assert "- Community level: 2" in text
+    assert "- Dynamic community selection: True" in text
+    assert "- Response type: Multiple Paragraphs" in text
     assert "## Source Trace" in text
     assert "## Raw GraphRAG Output" in text
     assert "graph ask --save" in test_project.paths.wiki_log_file.read_text(

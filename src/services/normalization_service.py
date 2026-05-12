@@ -355,15 +355,34 @@ class Xhtml2pdfRenderer:
             ) from exc
 
         import io
+        import logging
+        import os
+        import sys
 
         html_text = source_path.read_text(encoding="utf-8", errors="replace")
         pdf_buffer = io.BytesIO()
+
+        # xhtml2pdf and reportlab emit noisy CSS/font warnings to
+        # stdout/stderr and via the logging system.  Suppress them all.
+        xhtml2pdf_logger = logging.getLogger("xhtml2pdf")
+        prev_level = xhtml2pdf_logger.level
+        xhtml2pdf_logger.setLevel(logging.CRITICAL)
+        saved_stdout, saved_stderr = sys.stdout, sys.stderr
+        devnull = open(os.devnull, "w")  # noqa: SIM115
         try:
+            sys.stdout = devnull
+            sys.stderr = devnull
             status = pisa.CreatePDF(html_text, dest=pdf_buffer, encoding="utf-8")
         except Exception as error:
             raise ValueError(
                 f"xhtml2pdf could not render {source_path.name}: {error}"
             ) from error
+        finally:
+            sys.stdout = saved_stdout
+            sys.stderr = saved_stderr
+            devnull.close()
+            xhtml2pdf_logger.setLevel(prev_level)
+
         if status.err:
             raise ValueError(f"xhtml2pdf reported errors rendering {source_path.name}.")
         pdf_bytes = pdf_buffer.getvalue()

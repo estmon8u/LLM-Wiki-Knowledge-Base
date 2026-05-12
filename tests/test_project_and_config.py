@@ -23,11 +23,13 @@ from src.services.graphrag_defaults import (
 )
 from src.services.project_service import (
     ProjectService,
+    _replace_with_retry,
     atomic_copy_file,
     atomic_write_text,
     build_project_paths,
     discover_project_root,
     slugify,
+    unique_markdown_heading,
     utc_now_iso,
 )
 
@@ -42,6 +44,12 @@ def test_utc_now_iso_uses_utc_and_strips_microseconds() -> None:
 def test_slugify_normalizes_values_and_handles_empty() -> None:
     assert slugify("  A Complex_Title!!  ") == "a-complex-title"
     assert slugify("***") == "untitled"
+
+
+def test_unique_markdown_heading_skips_existing_suffixes() -> None:
+    existing = "# Title\n\n## Entry\n\n## Entry (2)\n"
+
+    assert unique_markdown_heading(existing, "## Entry") == "## Entry (3)"
 
 
 def test_discover_project_root_finds_parent_marker(test_project) -> None:
@@ -91,6 +99,41 @@ def test_atomic_copy_file_copies_without_leaving_temp_files(tmp_path: Path) -> N
 
     assert destination.read_text(encoding="utf-8") == "payload"
     assert not any(path.suffix == ".tmp" for path in tmp_path.iterdir())
+
+
+def test_replace_with_retry_retries_transient_permission_error(monkeypatch) -> None:
+    calls = []
+
+    def fake_replace(source, destination):
+        calls.append((source, destination))
+        if len(calls) < 2:
+            raise PermissionError("locked")
+
+    monkeypatch.setattr("src.services.project_service.os.replace", fake_replace)
+    monkeypatch.setattr("src.services.project_service.time.sleep", lambda _secs: None)
+
+    _replace_with_retry(Path("source.tmp"), Path("dest.txt"))
+
+    assert calls == [
+        (Path("source.tmp"), Path("dest.txt")),
+        (Path("source.tmp"), Path("dest.txt")),
+    ]
+
+
+def test_replace_with_retry_raises_last_permission_error(monkeypatch) -> None:
+    calls = []
+
+    def fake_replace(source, destination):
+        calls.append((source, destination))
+        raise PermissionError("still locked")
+
+    monkeypatch.setattr("src.services.project_service.os.replace", fake_replace)
+    monkeypatch.setattr("src.services.project_service.time.sleep", lambda _secs: None)
+
+    with pytest.raises(PermissionError, match="still locked"):
+        _replace_with_retry(Path("source.tmp"), Path("dest.txt"))
+
+    assert len(calls) == 10
 
 
 def test_project_service_creates_structure_and_relative_paths(

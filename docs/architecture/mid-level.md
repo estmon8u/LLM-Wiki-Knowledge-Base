@@ -62,7 +62,7 @@ Most commands are flat top-level verbs. The GraphRAG pivot keeps the deprecated 
 ## Structural Rules
 
 - Commands should stay thin and delegate quickly.
-- The command layer owns terminal-only concerns such as section headings, list formatting, and progress display via Rich (`Console`, `Table`, `Progress`); long-running services expose callback-friendly hooks instead of writing directly to the terminal. User-supplied content is markup-escaped via `rich.markup.escape`.
+- The command layer owns terminal-only concerns such as section headings, list formatting, progress bars, and lazy status spinners via Rich (`Console`, `Table`, `Progress`, `Status`); long-running services expose callback-friendly hooks instead of writing directly to the terminal. User-supplied content is markup-escaped via `rich.markup.escape`.
 - Services should remain deterministic unless the feature explicitly requires model-backed synthesis.
 - GraphRAG orchestration should wrap the official `graphrag` CLI/library instead of reimplementing graph indexing or query modes.
 - Shared parsing belongs in `src/services/markdown_document.py`: services should consume parser-backed markdown/frontmatter helpers instead of adding new ad hoc regex stacks.

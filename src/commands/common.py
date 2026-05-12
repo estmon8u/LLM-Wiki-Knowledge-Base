@@ -111,18 +111,36 @@ def live_status(
     spinner: str = "dots",
 ) -> Iterator[Callable[[str], None]]:
     """Show a Rich spinner with a live status message for indeterminate operations."""
+    with lazy_live_status(label, spinner=spinner) as update:
+        update("")
+        yield update
+
+
+@contextmanager
+def lazy_live_status(
+    label: str,
+    *,
+    spinner: str = "dots",
+) -> Iterator[Callable[[str], None]]:
+    """Start a Rich status spinner on the first update callback."""
     if not err_console.is_terminal:
-        console.print(f"{label}...")
         yield lambda _msg: None
         return
 
-    status = Status(label, console=err_console, spinner=spinner)
-    status.start()
+    status: Status | None = None
+
+    def update(message: str) -> None:
+        nonlocal status
+        cleaned = message.strip()
+        display = f"{label} - {cleaned}" if cleaned else label
+        if status is None:
+            status = Status(display, console=err_console, spinner=spinner)
+            status.start()
+            return
+        status.update(display)
+
     try:
-
-        def update(message: str) -> None:
-            status.update(f"{label} — {message}")
-
         yield update
     finally:
-        status.stop()
+        if status is not None:
+            status.stop()

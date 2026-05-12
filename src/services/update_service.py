@@ -239,6 +239,8 @@ class UpdateService:
             return result
 
         try:
+            if status_callback is not None:
+                status_callback(f"running {decision.method} graph index")
             result.sync_result = self._graphrag_sync.sync(
                 method=decision.method,
                 force=options.force,

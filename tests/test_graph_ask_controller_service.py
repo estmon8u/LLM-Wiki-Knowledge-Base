@@ -82,6 +82,23 @@ def test_controller_accepts_graph_env_file_credentials(
     assert answer.claim_support == "graph-grounded"
 
 
+def test_controller_saves_answer_when_requested(test_project, monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    _write_ready_graph(test_project)
+
+    def runner(command, *, cwd, capture_output, text):
+        return subprocess.CompletedProcess(
+            command, 0, stdout="Graph answer.\n", stderr=""
+        )
+
+    controller = _build_controller(test_project, runner)
+
+    answer = controller.ask("What is RAG?", save=True, save_as="rag-note")
+
+    assert answer.saved_path == "wiki/analysis/graphrag-rag-note.md"
+    assert (test_project.root / answer.saved_path).exists()
+
+
 def test_controller_reports_missing_graph_credentials(
     test_project, monkeypatch
 ) -> None:

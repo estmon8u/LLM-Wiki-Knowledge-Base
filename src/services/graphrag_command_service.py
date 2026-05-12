@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import io
+import os
 from pathlib import Path
+from queue import Empty, Queue
 import subprocess
 import sys
+import threading
 from typing import Any, Callable, Sequence
 
 from src.services.project_service import ProjectPaths
@@ -156,6 +158,8 @@ class GraphRAGCommandService:
     ) -> GraphRAGCommandResult:
         """Run a GraphRAG command while streaming stderr to *status_callback*."""
         command = (sys.executable, "-m", "graphrag", *args)
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"
         try:
             proc = subprocess.Popen(
                 command,
@@ -164,6 +168,9 @@ class GraphRAGCommandService:
                 stderr=subprocess.PIPE,
                 text=True,
                 encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+                env=env,
             )
         except FileNotFoundError as exc:
             raise GraphRAGCommandError(
@@ -171,21 +178,57 @@ class GraphRAGCommandService:
             ) from exc
 
         stderr_lines: list[str] = []
-        stdout_data = ""
+        stdout_lines: list[str] = []
+        status_lines: Queue[str] = Queue()
+        threads: list[threading.Thread] = []
+
+        def read_stream(stream: Any, sink: list[str]) -> None:
+            try:
+                for raw_line in iter(stream.readline, ""):
+                    sink.append(raw_line)
+                    status_lines.put(raw_line)
+            finally:
+                close = getattr(stream, "close", None)
+                if close is not None:
+                    close()
+
         try:
-            assert proc.stderr is not None  # guaranteed by PIPE
-            for raw_line in proc.stderr:
+            status_callback("starting graph index")
+            if proc.stdout is not None:
+                stdout_thread = threading.Thread(
+                    target=read_stream,
+                    args=(proc.stdout, stdout_lines),
+                    daemon=True,
+                )
+                threads.append(stdout_thread)
+                stdout_thread.start()
+            if proc.stderr is not None:
+                stderr_thread = threading.Thread(
+                    target=read_stream,
+                    args=(proc.stderr, stderr_lines),
+                    daemon=True,
+                )
+                threads.append(stderr_thread)
+                stderr_thread.start()
+
+            while (
+                any(thread.is_alive() for thread in threads) or not status_lines.empty()
+            ):
+                try:
+                    raw_line = status_lines.get(timeout=0.1)
+                except Empty:
+                    continue
                 line = raw_line.rstrip()
-                stderr_lines.append(raw_line)
                 if line:
                     display = _extract_progress_label(line)
                     if display:
                         status_callback(display)
-            if proc.stdout is not None:
-                stdout_data = proc.stdout.read()
         finally:
             proc.wait()
+            for thread in threads:
+                thread.join(timeout=1)
 
+        stdout_data = "".join(stdout_lines)
         stderr_text = "".join(stderr_lines)
         completed = subprocess.CompletedProcess(
             command, proc.returncode, stdout=stdout_data, stderr=stderr_text

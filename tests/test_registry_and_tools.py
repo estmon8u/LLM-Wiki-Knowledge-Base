@@ -5,6 +5,7 @@ import types
 import click
 import pytest
 
+from src.commands import common as common_module
 from src.cli import _extract_project_root, build_runtime_context
 from src.commands.common import (
     echo_bullet,
@@ -12,6 +13,8 @@ from src.commands.common import (
     echo_section,
     echo_status_line,
     emit_json,
+    lazy_live_status,
+    live_status,
     progress_report,
     require_initialized,
 )
@@ -45,6 +48,66 @@ class _FakeProgressBar:
         self.updates.append(amount)
 
 
+class _TerminalConsole:
+    is_terminal = True
+
+
+class _FakeRichProgress:
+    instances: list["_FakeRichProgress"] = []
+
+    def __init__(self, *, console, transient: bool) -> None:
+        self.console = console
+        self.transient = transient
+        self.advanced: list[str] = []
+        _FakeRichProgress.instances.append(self)
+
+    def __enter__(self) -> "_FakeRichProgress":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        return False
+
+    def add_task(self, label: str, *, total: int) -> str:
+        self.label = label
+        self.total = total
+        return "task-1"
+
+    def advance(self, task: str) -> None:
+        self.advanced.append(task)
+
+
+class _FakeStatus:
+    instances: list["_FakeStatus"] = []
+
+    def __init__(self, label: str, *, console, spinner: str) -> None:
+        self.labels = [label]
+        self.console = console
+        self.spinner = spinner
+        self.started = False
+        self.stopped = False
+        _FakeStatus.instances.append(self)
+
+    def start(self) -> None:
+        self.started = True
+
+    def update(self, label: str) -> None:
+        self.labels.append(label)
+
+    def stop(self) -> None:
+        self.stopped = True
+
+
+class _FakeOutputStream:
+    def __init__(self, *, raises: bool = False) -> None:
+        self.raises = raises
+        self.errors: list[str] = []
+
+    def reconfigure(self, *, errors: str) -> None:
+        if self.raises:
+            raise OSError("stream is closed")
+        self.errors.append(errors)
+
+
 def test_command_registry_resolves_aliases_and_lists_names() -> None:
     assert list_command_names() == sorted(list_command_names())
     assert "add" in list_command_names()
@@ -58,6 +121,18 @@ def test_command_registry_resolves_aliases_and_lists_names() -> None:
     assert "review" in list_command_names()
     assert "export" in list_command_names()
     assert "lint" in list_command_names()
+
+
+def test_configure_output_streams_uses_replacement_errors(monkeypatch) -> None:
+    stdout = _FakeOutputStream()
+    stderr = _FakeOutputStream(raises=True)
+    monkeypatch.setattr(common_module.sys, "stdout", stdout)
+    monkeypatch.setattr(common_module.sys, "stderr", stderr)
+
+    common_module._configure_output_streams()
+
+    assert stdout.errors == ["replace"]
+    assert stderr.errors == []
 
 
 def test_command_registry_returns_click_commands_and_specs(test_project) -> None:
@@ -207,6 +282,27 @@ def test_progress_report_interactive_updates_progress_bar(capsys) -> None:
     capsys.readouterr()  # consume output
 
 
+def test_progress_report_uses_rich_progress_in_terminal(monkeypatch) -> None:
+    _FakeRichProgress.instances.clear()
+    monkeypatch.setattr(common_module, "err_console", _TerminalConsole())
+    monkeypatch.setattr(common_module, "Progress", _FakeRichProgress)
+
+    with progress_report(
+        label="Compiling",
+        length=2,
+        item_label="source page",
+    ) as advance:
+        advance()
+        advance()
+
+    progress = _FakeRichProgress.instances[0]
+    assert progress.console.is_terminal is True
+    assert progress.transient is True
+    assert progress.label == "Compiling"
+    assert progress.total == 2
+    assert progress.advanced == ["task-1", "task-1"]
+
+
 def test_progress_report_zero_length_is_noop(capsys) -> None:
     with progress_report(
         label="Compiling",
@@ -218,6 +314,42 @@ def test_progress_report_zero_length_is_noop(capsys) -> None:
     # Zero-length progress should not produce any output
     output = capsys.readouterr()
     assert output.out == ""
+
+
+def test_lazy_live_status_starts_on_first_update(monkeypatch) -> None:
+    _FakeStatus.instances.clear()
+    monkeypatch.setattr(common_module, "err_console", _TerminalConsole())
+    monkeypatch.setattr(common_module, "Status", _FakeStatus)
+
+    with lazy_live_status("GraphRAG indexing") as update:
+        assert _FakeStatus.instances == []
+        update("running fast graph index")
+        update("exporting graph pages")
+
+    status = _FakeStatus.instances[0]
+    assert status.started is True
+    assert status.stopped is True
+    assert status.labels == [
+        "GraphRAG indexing - running fast graph index",
+        "GraphRAG indexing - exporting graph pages",
+    ]
+
+
+def test_live_status_starts_immediately_and_updates(monkeypatch) -> None:
+    _FakeStatus.instances.clear()
+    monkeypatch.setattr(common_module, "err_console", _TerminalConsole())
+    monkeypatch.setattr(common_module, "Status", _FakeStatus)
+
+    with live_status("Querying GraphRAG") as update:
+        update("waiting for answer")
+
+    status = _FakeStatus.instances[0]
+    assert status.started is True
+    assert status.stopped is True
+    assert status.labels == [
+        "Querying GraphRAG",
+        "Querying GraphRAG - waiting for answer",
+    ]
 
 
 def test_emit_json_outputs_valid_json(capsys) -> None:

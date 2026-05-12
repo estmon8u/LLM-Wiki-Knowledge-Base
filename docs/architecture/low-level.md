@@ -18,13 +18,13 @@
 
 | File | Responsibility |
 | --- | --- |
-| `src/commands/common.py` | Shared Rich-based command helpers: initialization checks, `echo_section`, `echo_bullet`, `echo_kv`, `echo_status_line`, `make_table`, `progress_report`, `emit_json`; module-level `console` and `err_console` with automatic TTY, `NO_COLOR` detection, and replacement-mode output encoding |
+| `src/commands/common.py` | Shared Rich-based command helpers: initialization checks, `echo_section`, `echo_bullet`, `echo_kv`, `echo_status_line`, `make_table`, `progress_report`, `live_status`, `lazy_live_status`, `emit_json`; module-level `console` and `err_console` with automatic TTY, `NO_COLOR` detection, and replacement-mode output encoding |
 | `src/commands/init.py` | Project initialization behavior |
 | `src/commands/add.py` | Primary source-add command, delegates to `src/commands/ingest.py` for shared implementation |
 | `src/commands/ingest.py` | Shared ingest implementation for single files and directory ingest that recurses by default |
-| `src/commands/update.py` | Full update workflow: add → build wiki pages → concepts → search refresh → GraphRAG sync/index/export, with progress bar; delegates to `UpdateService` |
+| `src/commands/update.py` | Full update workflow: add → build wiki pages → concepts → search refresh → GraphRAG sync/index/export, with compile progress and lazy GraphRAG status rendering; delegates to `UpdateService` |
 | `src/commands/find.py` | Reserved GraphRAG search entry point; currently fails with next-step guidance instead of routing to FTS5 |
-| `src/commands/ask.py` | GraphRAG-aware default answer entry point; delegates to the graph ask controller and never routes to FTS5 |
+| `src/commands/ask.py` | GraphRAG-aware default answer entry point with TTY-aware query status rendering; delegates to the graph ask controller and never routes to FTS5 |
 | `src/commands/legacy.py` | Deprecated SQLite FTS5 search and ask command group that invokes the legacy search/query services |
 | `src/commands/review.py` | Semantic review command |
 | `src/commands/lint.py` | Deterministic structural lint command |
@@ -43,7 +43,7 @@
 | `src/services/config_service.py` | Config loading, Pydantic-backed provider/conversion/graph validation, schema defaults, `schema_excerpt()` helper for extracting schema sections by heading, and in-place migration of legacy `kb.config.yaml` versions |
 | `src/services/manifest_service.py` | Raw-source manifest read/write behavior |
 | `src/services/graphrag_workspace_service.py` | Prepares the project-local `graph/graphrag/` workspace, delegates reproducible non-interactive initialization to the GraphRAG command wrapper, and syncs `kb.config.yaml` graph settings into GraphRAG `settings.yaml` |
-| `src/services/graphrag_command_service.py` | Thin subprocess boundary around `python -m graphrag` for `init`, `index`, and `query`, with UTF-8 subprocess decoding, captured stdout/stderr, streaming stderr status callbacks for live indexing progress, and structured command errors |
+| `src/services/graphrag_command_service.py` | Thin subprocess boundary around `python -m graphrag` for `init`, `index`, and `query`, with UTF-8 subprocess decoding, unbuffered streaming index subprocesses, concurrent stdout/stderr draining, status callbacks for live indexing progress, and structured command errors |
 | `src/services/graphrag_defaults.py` | Shared GraphRAG model, embedding, and API-key environment defaults used by command defaults and user-facing setup guidance |
 | `src/services/graphrag_status_service.py` | Reports GraphRAG workspace readiness, synced input counts, output table presence, wiki export presence, row counts, and ignored local index-run metadata |
 | `src/services/graphrag_sync_service.py` | Coordinates GraphRAG sync/index decisions used by `kb update`: refreshes workspace settings, writes GraphRAG input, compares source/runtime digests to the last successful index, chooses full rebuild, incremental update, or skip, and records reproducibility metadata |
