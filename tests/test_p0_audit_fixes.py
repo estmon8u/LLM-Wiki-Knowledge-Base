@@ -343,7 +343,7 @@ def test_doctor_uses_catalog_default_model_when_override_missing(test_project) -
         "provider": {"name": "gemini"},
         "providers": {
             "openai": {
-                "model": "gpt-5.4-mini",
+                "model": "gpt-5.4-nano",
                 "api_key_env": "OPENAI_API_KEY",
                 "reasoning_effort": "high",
             },

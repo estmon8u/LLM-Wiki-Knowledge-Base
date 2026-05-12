@@ -26,6 +26,8 @@ GRAPH_TABLE_DIRS = {
     "communities": "communities",
     "community_reports": "communities",
 }
+MAX_EXPORTED_RELATIONSHIP_PAGES = 500
+MAX_ENTITY_RELATIONSHIP_ROWS = 50
 
 
 class GraphRAGWikiExportError(RuntimeError):
@@ -74,9 +76,11 @@ class GraphRAGWikiExportService:
 
         exported_paths: list[str] = []
         index_run_id = status.last_index_run_id
+        relationships = tables.get("relationships", [])
         context = _ExportContext(
             index_run_id=index_run_id,
-            relationships=tables.get("relationships", []),
+            relationships=relationships,
+            relationships_by_entity=_relationships_by_entity(relationships),
             community_reports=tables.get("community_reports", []),
         )
 
@@ -121,7 +125,7 @@ class GraphRAGWikiExportService:
             )
         if not status.output_present:
             raise GraphRAGWikiExportError(
-                "GraphRAG index output not found. Run `kb graph index --method fast` "
+                "GraphRAG index output not found. Run `kb graph sync` "
                 "before exporting graph wiki pages."
             )
 
@@ -246,7 +250,11 @@ class GraphRAGWikiExportService:
                 "degree": _first_number(record, "degree", "rank", "combined_degree"),
                 "index_run_id": context.index_run_id,
             }
-            relationships = _relationships_for_entity(context.relationships, title)
+            relationships = _relationships_for_entity(
+                context.relationships_by_entity,
+                title,
+                limit=MAX_ENTITY_RELATIONSHIP_ROWS,
+            )
             body = [
                 f"# {title}",
                 "",
@@ -282,7 +290,7 @@ class GraphRAGWikiExportService:
     ) -> list[str]:
         exported: list[str] = []
         used: set[str] = set()
-        for record in records:
+        for record in _top_relationships(records, MAX_EXPORTED_RELATIONSHIP_PAGES):
             source = _first_text(record, "source", "source_title", default="source")
             target = _first_text(record, "target", "target_title", default="target")
             slug = _unique_slug(
@@ -419,7 +427,18 @@ class GraphRAGWikiExportService:
         for table_name, directory in GRAPH_TABLE_DIRS.items():
             if table_name == "community_reports":
                 continue
-            lines.append(f"- `{directory}/`: {len(tables.get(table_name, []))} page(s)")
+            row_count = len(tables.get(table_name, []))
+            if (
+                table_name == "relationships"
+                and row_count > MAX_EXPORTED_RELATIONSHIP_PAGES
+            ):
+                lines.append(
+                    f"- `{directory}/`: {MAX_EXPORTED_RELATIONSHIP_PAGES} of "
+                    f"{row_count} page(s); export capped to the strongest "
+                    "relationships."
+                )
+                continue
+            lines.append(f"- `{directory}/`: {row_count} page(s)")
         if missing_tables:
             lines.extend(["", "## Missing Tables", ""])
             lines.extend(f"- `{table}`" for table in missing_tables)
@@ -446,6 +465,7 @@ class GraphRAGWikiExportService:
 class _ExportContext:
     index_run_id: str | None
     relationships: list[dict[str, Any]]
+    relationships_by_entity: dict[str, list[dict[str, Any]]]
     community_reports: list[dict[str, Any]]
 
 
@@ -529,17 +549,46 @@ def _bullet_values(value: Any, *, empty: str) -> str:
     return "\n".join(f"- `{item}`" for item in value)
 
 
-def _relationships_for_entity(
-    relationships: list[dict[str, Any]], entity_title: str
-) -> list[dict[str, Any]]:
-    normalized = entity_title.casefold()
-    matches = []
+def _relationships_by_entity(
+    relationships: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    by_entity: dict[str, list[dict[str, Any]]] = {}
     for relationship in relationships:
-        source = _first_text(relationship, "source", "source_title")
-        target = _first_text(relationship, "target", "target_title")
-        if source.casefold() == normalized or target.casefold() == normalized:
-            matches.append(relationship)
-    return matches
+        source = _first_text(relationship, "source", "source_title").casefold()
+        target = _first_text(relationship, "target", "target_title").casefold()
+        if source:
+            by_entity.setdefault(source, []).append(relationship)
+        if target and target != source:
+            by_entity.setdefault(target, []).append(relationship)
+    return by_entity
+
+
+def _relationships_for_entity(
+    relationships_by_entity: dict[str, list[dict[str, Any]]],
+    entity_title: str,
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    return _top_relationships(
+        relationships_by_entity.get(entity_title.casefold(), []),
+        limit,
+    )
+
+
+def _top_relationships(
+    relationships: list[dict[str, Any]],
+    limit: int,
+) -> list[dict[str, Any]]:
+    return sorted(
+        relationships,
+        key=_relationship_sort_key,
+        reverse=True,
+    )[:limit]
+
+
+def _relationship_sort_key(relationship: dict[str, Any]) -> float:
+    score = _first_number(relationship, "weight", "combined_degree", "rank", "degree")
+    return float(score) if score is not None else 0.0
 
 
 def _relationship_table(relationships: list[dict[str, Any]]) -> str:

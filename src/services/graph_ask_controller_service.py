@@ -107,8 +107,7 @@ class GraphAskControllerService:
         if status.input_updated_at and status.output_updated_at:
             if status.input_updated_at > status.output_updated_at:
                 warnings.append(
-                    "Graph input is newer than index output. "
-                    "Run `kb graph index --method fast`."
+                    "Graph input is newer than index output. Run `kb graph sync`."
                 )
         return warnings
 

@@ -82,7 +82,7 @@ def test_build_provider_creates_openai_provider() -> None:
             provider = build_provider({"provider": {"name": "openai"}})
     assert provider is not None
     assert provider.name == "openai"
-    assert provider.model == "gpt-5.4-mini"
+    assert provider.model == "gpt-5.4-nano"
 
 
 def test_build_provider_uses_catalog_defaults_for_openai() -> None:
@@ -140,7 +140,7 @@ def test_build_provider_uses_catalog_thinking_budget_for_anthropic() -> None:
         "provider": {"name": "anthropic"},
         "providers": {
             "openai": {
-                "model": "gpt-5.4-mini",
+                "model": "gpt-5.4-nano",
                 "api_key_env": "OPENAI_API_KEY",
                 "reasoning_effort": "high",
             },
@@ -250,7 +250,7 @@ def test_openai_provider_generate() -> None:
         with patch("src.providers.openai_provider.OpenAI") as MockClient:
             from src.providers.openai_provider import OpenAIProvider
 
-            provider = OpenAIProvider(model="gpt-5.4-mini")
+            provider = OpenAIProvider(model="gpt-5.4-nano")
             mock_completion = MagicMock()
             mock_completion.choices = [MagicMock()]
             mock_completion.choices[0].message.content = " Hello world "
@@ -263,7 +263,7 @@ def test_openai_provider_generate() -> None:
             )
 
     assert result.text == "Hello world"
-    assert result.model_name == "gpt-5.4-mini"
+    assert result.model_name == "gpt-5.4-nano"
 
 
 def test_openai_provider_uses_request_reasoning_effort_override() -> None:

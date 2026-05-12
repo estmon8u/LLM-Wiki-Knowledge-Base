@@ -15,7 +15,7 @@ class OpenAIProvider(TextProvider):
 
     def __init__(
         self,
-        model: str = "gpt-5.4-mini",
+        model: str = "gpt-5.4-nano",
         api_key_env: str = "OPENAI_API_KEY",
         reasoning_effort: str = "high",
     ) -> None:

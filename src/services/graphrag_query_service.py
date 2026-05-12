@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass, field
 import hashlib
 import json
 from pathlib import Path
+import re
 from typing import Callable
 
 import yaml
@@ -25,6 +26,7 @@ from src.services.search_service import SearchService
 
 
 GRAPH_QUERY_METHODS = ("local", "global", "drift", "basic")
+GRAPH_DATA_REFERENCE_PATTERN = re.compile(r"\[Data:\s*[^\]]+\]")
 
 
 class GraphRAGQueryError(RuntimeError):
@@ -145,6 +147,12 @@ class GraphRAGQueryService:
 
     def _render_saved_page(self, answer: GraphRAGQueryAnswer) -> str:
         summary = answer.answer.replace("\n", " ").strip()[:280].rstrip()
+        insufficient_evidence = answer.claim_support == "no-answer" or not bool(
+            answer.answer.strip()
+        )
+        citations = _graph_data_references(answer.answer)
+        if not citations and not insufficient_evidence:
+            citations = _source_trace_citations(answer)
         frontmatter = {
             "title": answer.question,
             "summary": summary,
@@ -153,6 +161,12 @@ class GraphRAGQueryService:
             "method": answer.method,
             "question": answer.question,
             "created_at": answer.created_at,
+            "saved_at": answer.created_at,
+            "citations": citations,
+            "insufficient_evidence": insufficient_evidence,
+            "claim_count": 0,
+            "citation_count": len(citations),
+            "claims": [],
             "index_run_id": answer.index_run_id,
             "input_manifest_hash": answer.input_manifest_hash,
         }
@@ -235,13 +249,12 @@ class GraphRAGQueryService:
         if not status.output_present:
             raise GraphRAGQueryError(
                 "GraphRAG index output not found. Run "
-                "`kb graph index --method fast --dry-run`, then "
-                "`kb graph index --method fast`."
+                "`kb graph sync --dry-run`, then `kb graph sync`."
             )
         if status.last_index_success is False:
             raise GraphRAGQueryError(
                 "The last GraphRAG index run failed. Re-run "
-                "`kb graph index --method fast --dry-run` before asking."
+                "`kb graph sync --dry-run` before asking."
             )
 
     @staticmethod
@@ -258,12 +271,20 @@ def _answer_from_result(result: GraphRAGCommandResult) -> str:
 
 
 def _raw_output(result: GraphRAGCommandResult) -> str:
-    parts = []
-    if result.stdout.strip():
-        parts.append(result.stdout.strip())
-    if result.stderr.strip():
-        parts.append(result.stderr.strip())
-    return "\n\n".join(parts)
+    return result.stdout.strip() or result.stderr.strip()
+
+
+def _graph_data_references(text: str) -> list[str]:
+    return list(dict.fromkeys(match.group(0) for match in GRAPH_DATA_REFERENCE_PATTERN.finditer(text)))
+
+
+def _source_trace_citations(answer: GraphRAGQueryAnswer) -> list[str]:
+    if answer.index_run_id:
+        return [f"GraphRAG index {answer.index_run_id}"]
+    input_path = answer.source_trace.get("input_path")
+    if input_path:
+        return [f"GraphRAG input {input_path}"]
+    return []
 
 
 def _relative_path(path: Path, root: Path) -> str:

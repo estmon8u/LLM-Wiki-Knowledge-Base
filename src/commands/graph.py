@@ -13,6 +13,14 @@ from src.services.graphrag_defaults import (
 from src.services.graphrag_input_sync_service import GraphRAGInputSyncError
 from src.services.graphrag_query_service import GRAPH_QUERY_METHODS, GraphRAGQueryError
 from src.services.graphrag_status_service import GraphRAGStatus
+from src.services.graphrag_sync_service import (
+    GRAPH_SYNC_METHODS,
+    GraphRAGSyncError,
+    file_digest,
+    graph_input_source_hashes,
+    graph_output_state,
+    graph_runtime_digest,
+)
 from src.services.graphrag_wiki_export_service import GraphRAGWikiExportError
 
 
@@ -116,40 +124,105 @@ def create_command() -> click.Command:
 
     @graph_group.command(
         name="sync",
-        help="Sync normalized source artifacts into GraphRAG JSON input.",
-        short_help="Sync normalized sources.",
+        help="Sync normalized source artifacts and auto-refresh the GraphRAG index.",
+        short_help="Sync graph sources and index.",
+    )
+    @click.option(
+        "--method",
+        type=click.Choice(GRAPH_SYNC_METHODS),
+        default="auto",
+        show_default=True,
+        help="GraphRAG indexing method selection after input sync.",
+    )
+    @click.option(
+        "--force",
+        is_flag=True,
+        help="Always run a full graph rebuild.",
+    )
+    @click.option("--dry-run", is_flag=True, help="Validate indexing without running.")
+    @click.option(
+        "--cache/--no-cache",
+        default=True,
+        show_default=True,
+        help="Enable GraphRAG cache use during indexing.",
+    )
+    @click.option(
+        "--skip-validation",
+        is_flag=True,
+        help="Forward GraphRAG's --skip-validation flag during indexing.",
+    )
+    @click.option("--verbose", is_flag=True, help="Forward GraphRAG's verbose flag.")
+    @click.option(
+        "--index/--no-index",
+        "run_index",
+        default=True,
+        show_default=True,
+        help="Run the selected GraphRAG index action after syncing input.",
     )
     @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
     @click.pass_obj
-    def sync(command_context: CommandContext, as_json: bool) -> None:
+    def sync(
+        command_context: CommandContext,
+        method: str,
+        force: bool,
+        dry_run: bool,
+        cache: bool,
+        skip_validation: bool,
+        verbose: bool,
+        run_index: bool,
+        as_json: bool,
+    ) -> None:
         require_initialized(command_context)
-        sync_service = command_context.services["graphrag_input_sync"]
+        sync_service = command_context.services["graphrag_sync"]
 
         try:
-            result = sync_service.sync()
-        except GraphRAGInputSyncError as exc:
+            result = sync_service.sync(
+                method=method,
+                force=force,
+                dry_run=dry_run,
+                cache=cache,
+                skip_validation=skip_validation,
+                verbose=verbose,
+                run_index=run_index,
+            )
+        except (GraphRAGInputSyncError, GraphRAGSyncError, GraphRAGCommandError) as exc:
             raise click.ClickException(str(exc)) from exc
 
-        output_path = result.output_path.relative_to(command_context.project_root)
-        settings_path = result.settings_path.relative_to(command_context.project_root)
+        input_result = result.input_sync
+        output_path = input_result.output_path.relative_to(command_context.project_root)
+        settings_path = input_result.settings_path.relative_to(
+            command_context.project_root
+        )
 
         if as_json:
-            emit_json(
-                {
-                    "source_count": result.source_count,
-                    "output_path": output_path.as_posix(),
-                    "settings_path": settings_path.as_posix(),
-                    "metadata_fields": list(result.metadata_fields),
-                    "settings_updated": result.settings_updated,
-                }
-            )
+            payload = {
+                "source_count": input_result.source_count,
+                "output_path": output_path.as_posix(),
+                "settings_path": settings_path.as_posix(),
+                "metadata_fields": list(input_result.metadata_fields),
+                "settings_updated": input_result.settings_updated,
+                "decision": result.decision.to_dict(),
+                "run": result.index_run.to_dict() if result.index_run else None,
+            }
+            if result.command_result is not None:
+                payload["command"] = list(result.command_result.command)
+                payload["stdout"] = result.command_result.stdout
+                payload["stderr"] = result.command_result.stderr
+            emit_json(payload)
             return
 
         console.print(
-            f"Synced {result.source_count} normalized source(s) to "
+            f"Synced {input_result.source_count} normalized source(s) to "
             f"{output_path.as_posix()}"
         )
         console.print(f"Configured GraphRAG JSON input in {settings_path.as_posix()}")
+        _print_sync_decision(result.decision, dry_run=dry_run)
+        if result.index_run:
+            mode = "dry run" if dry_run else "index"
+            console.print(
+                f"GraphRAG {mode} completed with method {result.decision.method}."
+            )
+            console.print(f"Run ID: {result.index_run.run_id}")
 
     @graph_group.command(
         name="index",
@@ -192,6 +265,10 @@ def create_command() -> click.Command:
         command_service = command_context.services["graphrag_command"]
         status = status_service.status()
         _require_graph_index_ready(status)
+        input_digest = file_digest(status.input_path)
+        config_digest = graph_runtime_digest(status.workspace_dir)
+        source_hashes = graph_input_source_hashes(status.input_path)
+        output_state = graph_output_state(status)
 
         try:
             command_result = command_service.index(
@@ -207,13 +284,26 @@ def create_command() -> click.Command:
                     method=method,
                     dry_run=dry_run,
                     result=exc.result,
+                    input_digest=input_digest,
+                    config_digest=config_digest,
+                    input_source_count=status.input_document_count,
+                    source_hashes=source_hashes,
+                    output_state=output_state,
                 )
             raise click.ClickException(str(exc)) from exc
+
+        if not dry_run:
+            output_state = graph_output_state(status_service.status())
 
         run = status_service.record_index_run(
             method=method,
             dry_run=dry_run,
             result=command_result,
+            input_digest=input_digest,
+            config_digest=config_digest,
+            input_source_count=status.input_document_count,
+            source_hashes=source_hashes,
+            output_state=output_state,
         )
 
         if as_json:
@@ -367,6 +457,31 @@ def _require_graph_index_ready(status: GraphRAGStatus) -> None:
             "GraphRAG input has no documents. Add and compile sources, then run "
             "`kb graph sync`."
         )
+
+
+def _print_sync_decision(decision, *, dry_run: bool) -> None:
+    if decision.action == "skip":
+        console.print("Graph index is current; no index job run.")
+        console.print(f"Reason: {decision.reason}")
+        return
+    if decision.action == "input-only":
+        console.print(decision.reason)
+        return
+
+    mode = "dry run" if dry_run else "index"
+    console.print(
+        f"Graph sync selected {mode} method {decision.method}: {decision.reason}"
+    )
+    if decision.changed_source_count is not None:
+        console.print(f"Changed source(s): {decision.changed_source_count}")
+    if decision.config_changed:
+        console.print("Graph runtime settings changed; full rebuild selected.")
+    if decision.stale_metadata:
+        console.print(
+            "Graph index provenance metadata was missing; full rebuild selected."
+        )
+    if decision.cost_warning:
+        console.print(decision.cost_warning)
 
 
 def _print_status(status: GraphRAGStatus, project_root) -> None:

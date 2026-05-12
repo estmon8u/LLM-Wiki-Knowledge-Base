@@ -7,7 +7,7 @@
 completion_models:
   default_completion_model:
     model_provider: openai
-    model: gpt-4.1-mini
+    model: gpt-5.4-nano
     auth_method: api_key # or azure_managed_identity
     api_key: ${OPENAI_API_KEY} # set this in the environment or local .env file, or remove if managed identity
     retry:

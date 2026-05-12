@@ -40,7 +40,7 @@ class UnavailableProvider(TextProvider):
 
 _FALLBACK_PROVIDER_CATALOG = {
     "openai": {
-        "model": "gpt-5.4-mini",
+        "model": "gpt-5.4-nano",
         "api_key_env": "OPENAI_API_KEY",
         "reasoning_effort": "high",
     },

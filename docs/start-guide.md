@@ -70,7 +70,7 @@ $env:MISTRAL_API_KEY = "..."
 ```
 
 GraphRAG runtime settings live in the `graph` section of `kb.config.yaml`.
-The default graph provider is OpenAI with `gpt-4.1-mini`,
+The default graph provider is OpenAI with `gpt-5.4-nano`,
 `text-embedding-3-small`, and the centralized `OPENAI_API_KEY` provider entry.
 Set that key before running a real graph index or query job:
 
@@ -132,13 +132,17 @@ GraphRAG workspace and sync the normalized artifacts into it:
 
 ```powershell
 poetry run kb --project-root $projectRoot graph init
+poetry run kb --project-root $projectRoot graph sync --dry-run
 poetry run kb --project-root $projectRoot graph sync
 ```
 
 This writes `graph/graphrag/input/sources.json` from `raw/_manifest.json` and
 `raw/normalized/`, preserving source IDs, hashes, paths, converter metadata, and
 the normalized text for GraphRAG indexing. The generated JSON file can contain
-local corpus text and stays untracked.
+local corpus text and stays untracked. `graph sync` then auto-decides whether
+the GraphRAG index needs a full `fast` rebuild, an incremental `fast-update`,
+or no index job because sources and runtime settings already match the last
+successful run.
 
 `graph init` syncs `graph.provider`, `graph.model`,
 `graph.embedding_provider`, and `graph.embedding_model` from `kb.config.yaml`
@@ -146,20 +150,23 @@ into `graph/graphrag/settings.yaml`. Unless graph-specific API-key overrides
 are set, the API-key environment variables come from the centralized
 `providers` catalog. Re-run it after changing graph config.
 
-Check readiness before running an index job:
+Check readiness after the sync:
 
 ```powershell
 poetry run kb --project-root $projectRoot graph status
-poetry run kb --project-root $projectRoot graph index --method fast --dry-run
 ```
 
-Real `kb graph index` runs call the configured GraphRAG model and embedding
-provider, so set the provider API key such as `OPENAI_API_KEY`, or put the same
-variable in the local GraphRAG `.env` file, before running a non-dry-run index.
+Real non-dry-run `kb graph sync` index actions call the configured GraphRAG
+model and embedding provider, so set the provider API key such as
+`OPENAI_API_KEY`, or put the same variable in the local GraphRAG `.env` file,
+before running the non-dry-run sync. Use `kb graph sync --force` for a full
+rebuild after model/prompt changes or suspected corrupt output; use
+`kb graph sync --no-index` only when you want to refresh `sources.json` without
+touching the GraphRAG index.
 
 ## 7. Search and ask
 
-After a real non-dry-run `kb graph index`, ask through the default GraphRAG
+After a real non-dry-run `kb graph sync`, ask through the default GraphRAG
 controller:
 
 ```powershell
@@ -259,7 +266,7 @@ poetry run kb --project-root $projectRoot export --clean
 | Search returns stale results | Run `kb update` after adding or changing sources. |
 | GraphRAG workspace is missing | Run `kb graph init`. |
 | GraphRAG input is missing | Run `kb graph sync` after `kb update`. |
-| GraphRAG output is missing | Run `kb graph index --method fast --dry-run`, then a real index when provider credentials and cost are acceptable. |
+| GraphRAG output is missing | Run `kb graph sync --dry-run`, then `kb graph sync` when provider credentials and cost are acceptable. |
 | Generated pages look stale | Run `kb status --changed`, then `kb update --force` if needed. |
 
 ## Next Steps

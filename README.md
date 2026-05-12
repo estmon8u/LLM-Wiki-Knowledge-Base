@@ -29,14 +29,14 @@ The repository contains an initialized GraphRAG workspace under `graph/graphrag/
 ```bash
 poetry run graphrag --help
 poetry run kb graph init
-poetry run kb graph init --model gpt-4.1-mini --embedding text-embedding-3-small
+poetry run kb graph init --model gpt-5.4-nano --embedding text-embedding-3-small
 ```
 
 GraphRAG runtime defaults live in the `graph` section of `kb.config.yaml`. `kb graph init` reads that config and syncs the selected completion provider, embedding provider, models, and resolved API-key environment variables into `graph/graphrag/settings.yaml`; `--model` and `--embedding` are per-run model overrides. By default, GraphRAG reuses the OpenAI provider entry and references `OPENAI_API_KEY`, so a separate `GRAPHRAG_API_KEY` is not required unless you explicitly set a graph-specific override.
 
-`kb graph sync` uses the existing knowledge-base corpus as the source of truth. It reads `raw/_manifest.json` plus the normalized artifacts in `raw/normalized/`, writes `graph/graphrag/input/sources.json`, and configures GraphRAG for JSON input with metadata prepended into chunks.
+`kb graph sync` uses the existing knowledge-base corpus as the source of truth. It reads `raw/_manifest.json` plus the normalized artifacts in `raw/normalized/`, writes `graph/graphrag/input/sources.json`, configures GraphRAG for JSON input with metadata prepended into chunks, and then auto-decides whether to run a full index, incremental update, or skip because the graph is already current. It records the source digest, source hashes, runtime settings/prompt digest, selected method, and command result under ignored run metadata for reproducibility.
 
-`kb graph index` wraps `python -m graphrag index` with explicit method choices (`standard`, `fast`, `standard-update`, `fast-update`) and supports `--dry-run` before a real index job. `kb graph status` checks whether settings, synced input, GraphRAG output tables, and the last recorded index run are present. `kb graph ask` wraps `python -m graphrag query` with explicit Local, Global, DRIFT, and Basic modes and can save raw GraphRAG answers as analysis pages. `kb graph export-wiki` reads GraphRAG Parquet tables and writes human-readable documents, entities, relationships, communities, and text units under `wiki/graph/`.
+`kb graph index` remains the explicit low-level wrapper around `python -m graphrag index` with method choices (`standard`, `fast`, `standard-update`, `fast-update`) and `--dry-run` support. Use it when you want to bypass `graph sync`'s automatic decision. `kb graph status` checks whether settings, synced input, GraphRAG output tables, and the last recorded sync/index run are present. `kb graph ask` wraps `python -m graphrag query` with explicit Local, Global, DRIFT, and Basic modes and can save raw GraphRAG answers as analysis pages. `kb graph export-wiki` reads GraphRAG Parquet tables and writes human-readable documents, entities, relationships, communities, and text units under `wiki/graph/`.
 
 ## Evaluation Harness
 
@@ -73,14 +73,14 @@ poetry run kb update
 # 4. Initialize or refresh the GraphRAG workspace settings
 poetry run kb graph init
 
-# 5. Sync normalized artifacts into GraphRAG input
+# 5. Sync normalized artifacts and preview the selected index action
+poetry run kb graph sync --dry-run
+
+# 6. Run the selected GraphRAG full/index update, or skip if current
 poetry run kb graph sync
-
-# 6. Check graph readiness before running a provider-backed index
 poetry run kb graph status
-poetry run kb graph index --method fast --dry-run
 
-# 7. After a real index, ask through the default GraphRAG controller
+# 7. Ask through the default GraphRAG controller
 poetry run kb ask "What are the main retrieval patterns?"
 poetry run kb ask --method global "What are the main retrieval patterns?"
 
@@ -97,9 +97,9 @@ poetry run kb legacy find "knowledge base traceability"
 poetry run kb legacy ask "How does the wiki handle stale pages?"
 ```
 
-That's the current GraphRAG-first workflow: **add -> update -> graph init -> graph sync -> graph status/index -> kb ask**.
+That's the current GraphRAG-first workflow: **add -> update -> graph init -> graph sync -> graph status -> kb ask**.
 The legacy commands exist only for comparison and exact lexical lookup while
-later GraphRAG phases add broader graph health checks.
+later GraphRAG phases finish generated graph artifact health checks.
 There is no silent fallback from GraphRAG to FTS5.
 
 For a slower first-run walkthrough that keeps the repository and knowledge-base
@@ -132,7 +132,7 @@ poetry run kb --project-root /path/to/project status
 ### Everyday Commands
 
 These are the commands you will use most often today. The GraphRAG-first happy
-path is **init -> add -> update -> graph init -> graph sync -> graph index -> ask**.
+path is **init -> add -> update -> graph init -> graph sync -> ask**.
 
 | Command | Description |
 | --- | --- |
@@ -242,7 +242,7 @@ Initialize or refresh the local GraphRAG workspace settings.
 
 ```bash
 poetry run kb graph init
-poetry run kb graph init --model gpt-4.1-mini --embedding text-embedding-3-small
+poetry run kb graph init --model gpt-5.4-nano --embedding text-embedding-3-small
 poetry run kb graph init --json
 ```
 
@@ -250,10 +250,14 @@ The wrapper delegates to the official GraphRAG CLI through `python -m graphrag i
 
 ### `kb graph sync`
 
-Sync normalized source artifacts into the initialized GraphRAG workspace.
+Sync normalized source artifacts into the initialized GraphRAG workspace and auto-refresh the graph index when needed.
 
 ```bash
 poetry run kb graph sync
+poetry run kb graph sync --dry-run
+poetry run kb graph sync --force
+poetry run kb graph sync --method fast-update
+poetry run kb graph sync --no-index
 poetry run kb graph sync --json
 ```
 
@@ -265,9 +269,21 @@ artifact, then writes `graph/graphrag/input/sources.json` as JSON records with
 GraphRAG JSON input and metadata prepending through `chunking.prepend_metadata`.
 Generated `sources.json` can contain local corpus text and is ignored by Git.
 
+After syncing input, the command chooses an index action:
+
+| State | Default action |
+| --- | --- |
+| No GraphRAG Parquet output exists | Full rebuild with `fast` |
+| Output exists but required tables are incomplete | Full rebuild with `fast` |
+| Source hashes changed since the last successful index | Incremental update with `fast-update` |
+| Graph runtime settings or prompts changed | Full rebuild with `fast` |
+| Sources and runtime config match the last successful index | Skip indexing |
+
+`--force` always chooses a full rebuild, which is the recovery path for model changes, prompt edits, or suspected corrupt output. `--method standard|fast|standard-update|fast-update` is an explicit override, and `--no-index` preserves the old input-only sync behavior. Human output and JSON both include the selected action, reason, source-change count when available, and a cost warning before a provider-backed index run.
+
 ### `kb graph index`
 
-Run the official GraphRAG indexer against the synced JSON input.
+Run the official GraphRAG indexer against the synced JSON input. Most users should run `kb graph sync`; this command is the explicit override for reproducible/manual GraphRAG indexing.
 
 ```bash
 poetry run kb graph index --method fast --dry-run
@@ -295,7 +311,7 @@ poetry run kb graph status
 poetry run kb graph status --json
 ```
 
-Status checks whether the workspace is initialized, synced input exists, input records are present, GraphRAG output Parquet tables are present for documents, text units, entities, relationships, communities, and community reports, and whether a previous `kb graph index` run was recorded.
+Status checks whether the workspace is initialized, synced input exists, input records are present, GraphRAG output Parquet tables are present for documents, text units, entities, relationships, communities, and community reports, and whether a previous `kb graph sync` or `kb graph index` run was recorded.
 
 ### `kb graph ask <question>`
 
@@ -396,7 +412,7 @@ poetry run kb ask --show-evidence "How does the graph index support source trace
 
 The controller checks workspace, input, and index readiness before querying.
 It does not silently fall back to FTS5. If the graph is missing or not ready, run
-`kb graph init`, `kb graph sync`, and `kb graph index` as directed by the error.
+`kb graph init` and `kb graph sync` as directed by the error.
 Saved pages use `retriever: graph`, `method`, `planner`, `claim_support`,
 `index_run_id`, and `input_manifest_hash` metadata.
 
@@ -579,7 +595,7 @@ provider:
   name: openai
 providers:
   openai:
-    model: gpt-5.4-mini
+    model: gpt-5.4-nano
     api_key_env: OPENAI_API_KEY
     reasoning_effort: high
   anthropic:
@@ -605,7 +621,7 @@ conversion:
     html: markitdown
 graph:
   provider: openai
-  model: gpt-4.1-mini
+  model: gpt-5.4-nano
   embedding_provider: openai
   embedding_model: text-embedding-3-small
   api_key_env: null
@@ -624,7 +640,7 @@ providers:
     thinking_budget: 2048
 ```
 
-The `graph` section controls GraphRAG runtime setup independently from the text-provider section used by `kb update`, `kb review`, and `kb legacy ask`, but it does not duplicate API keys by default. `api_key_env: null` means "resolve this from `providers.<graph.provider>.api_key_env`"; `embedding_api_key_env: null` does the same for `providers.<graph.embedding_provider>.api_key_env`. Run `kb graph init` after editing it so `graph/graphrag/settings.yaml` is refreshed.
+The `graph` section controls GraphRAG runtime setup independently from the text-provider section used by `kb update`, `kb review`, and `kb legacy ask`, but it does not duplicate API keys by default. `api_key_env: null` means "resolve this from `providers.<graph.provider>.api_key_env`"; `embedding_api_key_env: null` does the same for `providers.<graph.embedding_provider>.api_key_env`. Run `kb graph init` after editing it so `graph/graphrag/settings.yaml` is refreshed; `kb graph sync` also syncs existing workspace settings before deciding whether model or prompt changes require a rebuild.
 
 OpenAI and Google Gemini both expose embedding models that can be configured for GraphRAG. Anthropic does not currently provide its own embedding model; Anthropic's embedding guidance points users to Voyage AI instead. GraphRAG uses LiteLLM underneath and supports non-OpenAI providers, but its own docs say OpenAI GPT-4-series models remain the most thoroughly tested path.
 
@@ -642,9 +658,11 @@ seeded into `kb.config.yaml`:
 
 | Provider | Default model | Env variable | Alternatives |
 | --- | --- | --- | --- |
-| `openai` | `gpt-5.4-mini` | `OPENAI_API_KEY` | `gpt-5.4`, `gpt-5.4-nano` |
+| `openai` | `gpt-5.4-nano` | `OPENAI_API_KEY` | `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini` |
 | `anthropic` | `claude-sonnet-4-6` | `ANTHROPIC_API_KEY` | `claude-opus-4-6`, `claude-haiku-4-5` |
 | `gemini` | `gemini-3.1-flash-lite-preview` | `GEMINI_API_KEY` | `gemini-3.1-pro-preview`, `gemini-2.5-flash` |
+
+As of the latest OpenAI model docs checked for this branch, `gpt-5.5` is the flagship model, while the cost-sensitive current smaller variants are `gpt-5.4-mini` and `gpt-5.4-nano`; there is no documented `gpt-5.5-mini` or `gpt-5.5-nano` model ID. OpenAI also documents `gpt-5-nano`, but recommends starting with `gpt-5.4-nano` for most new speed- and cost-sensitive workloads. The project uses `gpt-5.4-nano` as the default to keep graph rebuilds and routine provider-backed maintenance inexpensive, with `gpt-5.4-mini`, `gpt-5.4`, or `gpt-5.5` available as explicit quality/cost upgrades.
 
 See the official model documentation for the full list of available models, pricing, and capabilities:
 

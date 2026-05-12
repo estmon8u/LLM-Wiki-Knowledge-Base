@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-DEFAULT_GRAPHRAG_MODEL = "gpt-4.1-mini"
+DEFAULT_GRAPHRAG_MODEL = "gpt-5.4-nano"
 DEFAULT_GRAPHRAG_EMBEDDING_MODEL = "text-embedding-3-small"
 DEFAULT_GRAPHRAG_PROVIDER = "openai"
 DEFAULT_GRAPHRAG_API_KEY_ENV = "OPENAI_API_KEY"

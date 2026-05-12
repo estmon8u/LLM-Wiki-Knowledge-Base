@@ -40,10 +40,10 @@ GraphRAG is the retrieval and synthesis engine.
 
 - Retrieval moves from lexical/wiki-first to GraphRAG-first.
 - SQLite FTS5 is not a peer default. It is retained only as an explicit deprecated legacy path for comparison or exact lookup unless it is removed later.
-- GraphRAG must not silently fall back to FTS5 when the graph index is missing or stale; it should fail with clear next-step guidance such as `kb graph sync` and `kb graph index`.
+- GraphRAG must not silently fall back to FTS5 when the graph index is missing or stale; it should fail with clear next-step guidance such as `kb graph sync`.
 - A dedicated GraphRAG workspace now lives under `graph/graphrag/`.
-- Normalized corpus artifacts are synced into GraphRAG JSON input with source metadata attached through `kb graph sync`.
-- `kb graph init`, `kb graph index`, and `kb graph status` wrap the official GraphRAG CLI for reproducible workspace setup, dry-run/full indexing, output-table detection, and local index-run metadata.
+- Normalized corpus artifacts are synced into GraphRAG JSON input with source metadata attached through `kb graph sync`; the same command now auto-decides whether to run a full `fast` index, an incremental `fast-update`, or skip when sources and runtime settings match the last successful index.
+- `kb graph init`, `kb graph sync`, `kb graph index`, and `kb graph status` wrap the official GraphRAG CLI for reproducible workspace setup, auto/dry-run/full indexing, output-table detection, and local index-run metadata. `kb graph index` remains the explicit manual override.
 - GraphRAG indexing creates graph outputs such as text units, entities, relationships, communities, and community reports.
 - GraphRAG query modes are now first-class explicit CLI behavior under `kb graph ask`:
   - `basic` for simple vector-RAG comparison,
@@ -66,8 +66,7 @@ User documents
   -> kb update
   -> source wiki artifacts and optional legacy FTS index
   -> kb graph sync
-  -> GraphRAG JSON input with provenance metadata
-  -> kb graph index
+  -> GraphRAG JSON input with provenance metadata and auto index/update/skip decision
   -> text units, entities, relationships, communities, community reports
   -> kb graph export-wiki
   -> wiki/graph pages for graph inspection and export

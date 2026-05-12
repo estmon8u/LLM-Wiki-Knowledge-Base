@@ -31,6 +31,11 @@ class GraphRAGIndexRun:
     command: tuple[str, ...]
     stdout_tail: str
     stderr_tail: str
+    input_digest: str | None = None
+    config_digest: str | None = None
+    input_source_count: int | None = None
+    source_hashes: dict[str, str] | None = None
+    output_state: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -59,6 +64,10 @@ class GraphRAGStatus:
     last_index_method: str | None
     last_index_success: bool | None
     next_action: str
+    last_index_input_digest: str | None = None
+    last_index_config_digest: str | None = None
+    last_index_input_source_count: int | None = None
+    last_index_output_state: str | None = None
     input_updated_at: str | None = None
     output_updated_at: str | None = None
     wiki_export_present: bool = False
@@ -138,6 +147,14 @@ class GraphRAGStatusService:
                 output_present=output_present,
                 last_run=last_run,
             ),
+            last_index_input_digest=last_run.get("input_digest") if last_run else None,
+            last_index_config_digest=last_run.get("config_digest")
+            if last_run
+            else None,
+            last_index_input_source_count=last_run.get("input_source_count")
+            if last_run
+            else None,
+            last_index_output_state=last_run.get("output_state") if last_run else None,
             input_updated_at=self._file_mtime_iso(self.input_path),
             output_updated_at=self._latest_parquet_mtime_iso(),
             wiki_export_present=wiki_export_path.exists(),
@@ -156,6 +173,11 @@ class GraphRAGStatusService:
         method: str,
         dry_run: bool,
         result: GraphRAGCommandResult,
+        input_digest: str | None = None,
+        config_digest: str | None = None,
+        input_source_count: int | None = None,
+        source_hashes: dict[str, str] | None = None,
+        output_state: str | None = None,
     ) -> GraphRAGIndexRun:
         created_at = utc_now_iso()
         record = GraphRAGIndexRun(
@@ -168,6 +190,11 @@ class GraphRAGStatusService:
             command=result.command,
             stdout_tail=_tail(result.stdout),
             stderr_tail=_tail(result.stderr),
+            input_digest=input_digest,
+            config_digest=config_digest,
+            input_source_count=input_source_count,
+            source_hashes=source_hashes,
+            output_state=output_state,
         )
         runs = self._load_runs()
         runs.append(record.to_dict())
@@ -176,6 +203,12 @@ class GraphRAGStatusService:
             json.dumps(runs, indent=2, sort_keys=True) + "\n",
         )
         return record
+
+    def last_successful_index_run(self) -> dict[str, Any] | None:
+        for run in reversed(self._load_runs()):
+            if run.get("success") is True and run.get("dry_run") is False:
+                return run
+        return None
 
     def _input_document_count(self) -> int:
         if not self.input_path.exists():
@@ -263,11 +296,11 @@ class GraphRAGStatusService:
             if last_run and last_run.get("success") is False:
                 return (
                     "Fix the last graph index error, then rerun "
-                    "`kb graph index --method fast --dry-run`."
+                    "`kb graph sync --dry-run`."
                 )
             if last_run and last_run.get("dry_run") is True:
-                return "Run `kb graph index --method fast` to build the graph index."
-            return "Run `kb graph index --method fast --dry-run` before a full index."
+                return "Run `kb graph sync` to build the graph index."
+            return "Run `kb graph sync --dry-run` before a full index."
         return 'Run `kb graph ask --method drift "..."` or `kb graph export-wiki`.'
 
 

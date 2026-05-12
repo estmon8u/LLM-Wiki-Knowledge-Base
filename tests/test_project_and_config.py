@@ -168,7 +168,7 @@ def test_config_service_invalid_provider_settings_raise(test_project) -> None:
         "version: 3\n"
         "providers:\n"
         "  openai:\n"
-        "    model: gpt-5.4-mini\n"
+        "    model: gpt-5.4-nano\n"
         "    api_key_env: OPENAI_API_KEY\n"
         "    reasoning_effort: 7\n"
         "  anthropic:\n"
@@ -231,7 +231,7 @@ def test_apply_config_migrations_upgrades_version_one_payload() -> None:
     assert "summary_paragraph_limit" not in migrated["compile"]
     assert migrated["storage"]["raw_normalized_dir"] == "raw/normalized"
     assert migrated["provider"] == {}
-    assert migrated["providers"]["openai"]["model"] == "gpt-5.4-mini"
+    assert migrated["providers"]["openai"]["model"] == "gpt-5.4-nano"
 
 
 def test_config_service_merges_custom_config(test_project) -> None:
@@ -580,6 +580,7 @@ def test_build_services_returns_expected_keys(test_project) -> None:
         "graphrag_command",
         "graphrag_workspace",
         "graphrag_status",
+        "graphrag_sync",
         "graphrag_query",
         "graphrag_wiki_export",
         "query_router",

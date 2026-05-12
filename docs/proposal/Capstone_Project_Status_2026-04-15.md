@@ -1,7 +1,7 @@
 # Capstone Project Status Overview
 
 Date: 2026-04-24
-Updated: 2026-05-11 for GraphRAG pivot Phase 8
+Updated: 2026-05-12 for GraphRAG sync UX and model defaults
 
 ## Current Position
 
@@ -11,8 +11,8 @@ The project has moved from scaffold+implementation into a controlled GraphRAG pi
 2. Simplification and deterministic baseline are complete.
 3. The SQLite FTS5/wiki retrieval path has been demoted to explicit deprecated legacy behavior.
 4. Microsoft GraphRAG is installed, and the dedicated `graph/graphrag/` workspace is initialized.
-5. `kb graph sync` writes GraphRAG JSON input from normalized artifacts and manifest metadata.
-6. `kb graph init`, `kb graph index`, and `kb graph status` expose the GraphRAG workspace lifecycle through the project CLI.
+5. `kb graph sync` writes GraphRAG JSON input from normalized artifacts and manifest metadata, then auto-selects full index, incremental update, or skip.
+6. `kb graph init`, explicit `kb graph index`, and `kb graph status` expose the GraphRAG workspace lifecycle through the project CLI.
 7. `kb graph ask --method local|global|drift|basic` exposes explicit GraphRAG query modes.
 8. `kb graph export-wiki` exports GraphRAG output tables into generated markdown pages under `wiki/graph/`.
 9. Top-level `kb ask` is now the GraphRAG-aware default controller with deterministic auto-routing across Basic, Local, Global, and DRIFT modes.
@@ -52,8 +52,8 @@ GraphRAG is the retrieval and synthesis engine.
 - Deterministic lint for links, fragments, headings, frontmatter, duplicates, empties, stale pages, and maintenance signals.
 - Deprecated search over compiled wiki artifacts via SQLite FTS5 chunk index through `kb legacy find`, now treated as temporary legacy infrastructure rather than the future default.
 - Microsoft GraphRAG dependency and initialized workspace under `graph/graphrag/`, with tracked settings/prompts/input scaffolding and ignored local `.env`, generated input, output, cache, and logs.
-- GraphRAG input sync through `kb graph sync`, which writes `graph/graphrag/input/sources.json` from `raw/_manifest.json` and `raw/normalized/` while configuring JSON input and metadata prepending in `settings.yaml`.
-- GraphRAG workspace/index wrappers through `kb graph init`, `kb graph index --method fast --dry-run`, and `kb graph status`.
+- GraphRAG input/index sync through `kb graph sync`, which writes `graph/graphrag/input/sources.json` from `raw/_manifest.json` and `raw/normalized/`, configures JSON input and metadata prepending in `settings.yaml`, and auto-selects full `fast`, incremental `fast-update`, or skip based on output completeness plus source/runtime digests.
+- GraphRAG workspace/index wrappers through `kb graph init`, auto-detecting `kb graph sync --dry-run`, explicit `kb graph index`, and `kb graph status`.
 - GraphRAG query wrapper through `kb graph ask --method local|global|drift|basic`, including `--save` for GraphRAG-backed analysis pages with retriever/method/index-hash metadata.
 - GraphRAG wiki export through `kb graph export-wiki`, which converts GraphRAG output tables into `wiki/graph/index.md`, documents, text units, entities, relationships, and communities while preserving legacy `wiki/concepts/` pages.
 - Default GraphRAG ask controller through `kb ask --method auto|basic|local|global|drift`, with readiness checks, deterministic routing, explicit provider credential validation, and graph-backed saved analysis metadata.
@@ -69,11 +69,11 @@ GraphRAG is the retrieval and synthesis engine.
 ## In Progress Now
 
 - Running Phase 8 evaluation on the frozen benchmark and deciding when to allow provider-backed GraphRAG/legacy answer captures.
-- Preparing broader freshness/status checks over graph inputs, outputs, and generated graph wiki pages.
+- Preparing generated graph wiki freshness/status checks now that synced input and GraphRAG output freshness are covered by `kb graph sync`.
 
 ## Next Regular Work
 
-- Add graph freshness/status checks around synced input, GraphRAG output, and generated `wiki/graph/` pages.
+- Add generated `wiki/graph/` freshness/status checks and run the real-corpus comparison outputs.
 - Use Phase 8 outputs to support the Update 3 and final comparison narrative.
 
 ## Planned Later
@@ -88,4 +88,4 @@ GraphRAG is the retrieval and synthesis engine.
 ## Overall Assessment
 
 The current implementation is a strong baseline for the pivot:
-ingest/update/graph init/graph sync/graph index/status/graph ask/default ask/graph wiki export/legacy search/legacy ask/review/lint/export/evaluation are operational and covered by tests, and the remaining effort is now expanding graph freshness checks and producing real-corpus comparison results without losing provenance, maintainability, or the ability to compare against the original FTS path as deprecated legacy behavior.
+ingest/update/graph init/graph sync/graph index/status/graph ask/default ask/graph wiki export/legacy search/legacy ask/review/lint/export/evaluation are operational and covered by tests, and the remaining effort is now finishing generated graph artifact freshness checks and producing real-corpus comparison results without losing provenance, maintainability, or the ability to compare against the original FTS path as deprecated legacy behavior.

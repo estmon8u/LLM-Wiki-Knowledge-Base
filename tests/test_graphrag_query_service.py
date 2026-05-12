@@ -102,6 +102,33 @@ def test_graph_query_runs_explicit_method_and_options(test_project) -> None:
     )
 
 
+def test_graph_query_raw_output_prefers_stdout_over_progress_stderr(
+    test_project,
+) -> None:
+    _write_ready_graph(test_project)
+
+    def runner(command, *, cwd, capture_output, text):
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="GraphRAG answer\n",
+            stderr="Warning: noisy dependency output\nProgress: 100%\n",
+        )
+
+    service = _build_query_service(test_project, runner)
+
+    answer = service.ask("What is RAG?", method="basic")
+    saved_path = service.save_answer(answer)
+
+    assert answer.answer == "GraphRAG answer"
+    assert answer.raw_output == "GraphRAG answer"
+    assert "Progress" in answer.stderr
+    saved_text = (test_project.root / saved_path).read_text(encoding="utf-8")
+    assert "GraphRAG answer" in saved_text
+    assert "Warning: noisy dependency output" not in saved_text
+    assert "Progress: 100%" not in saved_text
+
+
 def test_graph_query_save_writes_analysis_page_and_refreshes_index(
     test_project,
 ) -> None:

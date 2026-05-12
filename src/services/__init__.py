@@ -16,6 +16,7 @@ from src.services.graphrag_command_service import GraphRAGCommandService
 from src.services.graphrag_input_sync_service import GraphRAGInputSyncService
 from src.services.graphrag_query_service import GraphRAGQueryService
 from src.services.graphrag_status_service import GraphRAGStatusService
+from src.services.graphrag_sync_service import GraphRAGSyncService
 from src.services.graphrag_wiki_export_service import GraphRAGWikiExportService
 from src.services.graphrag_workspace_service import GraphRAGWorkspaceService
 from src.services.ingest_service import IngestService
@@ -42,6 +43,12 @@ def build_services(
     compile_run_store = CompileRunStore(paths.graph_exports_dir / "compile_runs.json")
     graphrag_command_service = GraphRAGCommandService(paths)
     graphrag_status_service = GraphRAGStatusService(paths)
+    graphrag_input_sync_service = GraphRAGInputSyncService(paths, manifest_service)
+    graphrag_workspace_service = GraphRAGWorkspaceService(
+        paths,
+        graphrag_command_service,
+        config=config,
+    )
     query_router_service = QueryRouterService(graphrag_status_service)
     compile_service = CompileService(
         paths,
@@ -79,11 +86,7 @@ def build_services(
         ),
         "export": ExportService(paths),
         "graphrag_command": graphrag_command_service,
-        "graphrag_workspace": GraphRAGWorkspaceService(
-            paths,
-            graphrag_command_service,
-            config=config,
-        ),
+        "graphrag_workspace": graphrag_workspace_service,
         "graphrag_status": graphrag_status_service,
         "graphrag_query": graphrag_query_service,
         "query_router": query_router_service,
@@ -101,7 +104,14 @@ def build_services(
             search_service,
             refresh_index=compile_service.refresh_index,
         ),
-        "graphrag_input_sync": GraphRAGInputSyncService(paths, manifest_service),
+        "graphrag_input_sync": graphrag_input_sync_service,
+        "graphrag_sync": GraphRAGSyncService(
+            paths,
+            graphrag_workspace_service,
+            graphrag_input_sync_service,
+            graphrag_status_service,
+            graphrag_command_service,
+        ),
         "review": ReviewService(paths, provider=provider),
         "compile_run_store": compile_run_store,
     }

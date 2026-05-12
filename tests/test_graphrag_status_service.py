@@ -131,9 +131,7 @@ def test_status_counts_documents_from_dict_payload(test_project) -> None:
     status = service.status()
 
     assert status.input_document_count == 3
-    assert status.next_action == (
-        "Run `kb graph index --method fast --dry-run` before a full index."
-    )
+    assert status.next_action == ("Run `kb graph sync --dry-run` before a full index.")
 
 
 def test_status_after_successful_dry_run_points_to_full_index(test_project) -> None:
@@ -158,9 +156,7 @@ def test_status_after_successful_dry_run_points_to_full_index(test_project) -> N
     status = service.status()
 
     assert status.output_present is False
-    assert status.next_action == (
-        "Run `kb graph index --method fast` to build the graph index."
-    )
+    assert status.next_action == ("Run `kb graph sync` to build the graph index.")
 
 
 def test_status_after_failed_index_points_to_error_recovery(test_project) -> None:
@@ -186,8 +182,7 @@ def test_status_after_failed_index_points_to_error_recovery(test_project) -> Non
 
     assert status.last_index_success is False
     assert status.next_action == (
-        "Fix the last graph index error, then rerun "
-        "`kb graph index --method fast --dry-run`."
+        "Fix the last graph index error, then rerun `kb graph sync --dry-run`."
     )
 
 

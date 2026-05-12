@@ -11,12 +11,17 @@ from src.services.graphrag_status_service import GraphRAGStatusService
 from src.services.graphrag_wiki_export_service import (
     GraphRAGWikiExportError,
     GraphRAGWikiExportService,
+    MAX_ENTITY_RELATIONSHIP_ROWS,
+    MAX_EXPORTED_RELATIONSHIP_PAGES,
     _clean_value,
     _field_list,
     _findings_markdown,
     _first_number,
     _first_text,
     _relationship_table,
+    _relationships_by_entity,
+    _relationships_for_entity,
+    _top_relationships,
     _unique_slug,
 )
 
@@ -347,6 +352,79 @@ def test_export_wiki_handles_realistic_create_final_parquet_shapes(
     )
 
 
+def test_export_wiki_caps_relationship_pages_and_entity_tables(test_project) -> None:
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "doc-1", "text": "Hub has many relationships."}]),
+    )
+    output_dir = test_project.paths.graph_dir / "graphrag" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    relationship_count = MAX_EXPORTED_RELATIONSHIP_PAGES + 3
+    pd.DataFrame(
+        [
+            {
+                "id": "entity-1",
+                "title": "Hub",
+                "description": "Central graph entity.",
+            }
+        ]
+    ).to_parquet(output_dir / "entities.parquet")
+    pd.DataFrame(
+        [
+            {
+                "id": f"rel-{index}",
+                "source": "Hub",
+                "target": f"Target {index}",
+                "description": f"relationship {index}",
+                "weight": index,
+            }
+            for index in range(relationship_count)
+        ]
+    ).to_parquet(output_dir / "relationships.parquet")
+    GraphRAGStatusService(test_project.paths).record_index_run(
+        method="fast",
+        dry_run=False,
+        result=GraphRAGCommandResult(
+            command=("python", "-m", "graphrag", "index"),
+            cwd=test_project.paths.root,
+            returncode=0,
+            stdout="indexed",
+            stderr="",
+        ),
+    )
+    service = _build_service(test_project)
+
+    result = service.export_wiki()
+
+    relationship_pages = list(
+        (test_project.paths.wiki_dir / "graph" / "relationships").glob("*.md")
+    )
+    assert len(relationship_pages) == MAX_EXPORTED_RELATIONSHIP_PAGES
+    assert result.table_counts["relationships"] == relationship_count
+    index_text = (test_project.paths.wiki_dir / "graph" / "index.md").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        f"`relationships/`: {MAX_EXPORTED_RELATIONSHIP_PAGES} of "
+        f"{relationship_count} page(s)"
+    ) in index_text
+    exported_relationship_text = "\n".join(
+        path.read_text(encoding="utf-8") for path in relationship_pages
+    )
+    assert f"relationship {relationship_count - 1}" in exported_relationship_text
+    assert "relationship 0" not in exported_relationship_text
+    entity_text = (
+        test_project.paths.wiki_dir / "graph" / "entities" / "hub.md"
+    ).read_text(encoding="utf-8")
+    connected_rows = [
+        line for line in entity_text.splitlines() if line.startswith("| Hub -> Target")
+    ]
+    assert len(connected_rows) == MAX_ENTITY_RELATIONSHIP_ROWS
+    assert f"relationship {relationship_count - 1}" in entity_text
+    assert "relationship 0" not in entity_text
+
+
 def test_graph_wiki_export_helpers_handle_sparse_values() -> None:
     class ArrayLike:
         def tolist(self):
@@ -375,6 +453,26 @@ def test_graph_wiki_export_helpers_handle_sparse_values() -> None:
 
     assert _relationship_table([]) == "No relationships listed."
     assert "A -> B" in _relationship_table([{"source": "A", "target": "B"}])
+    assert _top_relationships(
+        [
+            {"source": "A", "target": "low", "weight": 1},
+            {"source": "A", "target": "high", "weight": 9},
+            {"source": "A", "target": "mid", "weight": 3},
+        ],
+        2,
+    ) == [
+        {"source": "A", "target": "high", "weight": 9},
+        {"source": "A", "target": "mid", "weight": 3},
+    ]
+    relationships_by_entity = _relationships_by_entity(
+        [
+            {"source": "Hub", "target": "A", "weight": 1},
+            {"source": "Hub", "target": "B", "weight": 3},
+        ]
+    )
+    assert _relationships_for_entity(relationships_by_entity, "Hub", limit=1) == [
+        {"source": "Hub", "target": "B", "weight": 3}
+    ]
 
     findings = _findings_markdown(
         {

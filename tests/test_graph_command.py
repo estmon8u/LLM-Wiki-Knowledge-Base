@@ -113,7 +113,7 @@ def test_graph_sync_command_writes_sources_json() -> None:
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
         _write_graphrag_settings()
 
-        result = runner.invoke(main, ["graph", "sync"])
+        result = runner.invoke(main, ["graph", "sync", "--no-index"])
 
         assert result.exit_code == 0
         assert "Synced 1 normalized source(s)" in result.output
@@ -130,7 +130,7 @@ def test_graph_sync_command_supports_json_output() -> None:
         assert runner.invoke(main, ["init"]).exit_code == 0
         _write_graphrag_settings()
 
-        result = runner.invoke(main, ["graph", "sync", "--json"])
+        result = runner.invoke(main, ["graph", "sync", "--no-index", "--json"])
 
         assert result.exit_code == 0
         payload = json.loads(result.output)
@@ -138,6 +138,70 @@ def test_graph_sync_command_supports_json_output() -> None:
         assert payload["output_path"] == "graph/graphrag/input/sources.json"
         assert payload["settings_path"] == "graph/graphrag/settings.yaml"
         assert "source_id" in payload["metadata_fields"]
+        assert payload["decision"]["action"] == "input-only"
+
+
+def test_graph_sync_command_auto_runs_full_index_when_output_missing(
+    monkeypatch,
+) -> None:
+    calls = []
+
+    def fake_run(command, *, cwd, capture_output, text):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="indexed\n", stderr="")
+
+    monkeypatch.setattr(
+        "src.services.graphrag_command_service.subprocess.run",
+        fake_run,
+    )
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Sample\n\nGraph sync index.\n", encoding="utf-8"
+        )
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        _write_graphrag_settings()
+
+        result = runner.invoke(main, ["graph", "sync", "--json"])
+
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        assert payload["decision"]["action"] == "index"
+        assert payload["decision"]["method"] == "fast"
+        assert payload["decision"]["reason"] == "Graph index output is missing."
+        assert payload["run"]["method"] == "fast"
+        assert payload["run"]["input_digest"]
+        assert payload["run"]["config_digest"]
+        assert payload["run"]["source_hashes"]
+        assert calls[0][1:4] == ("-m", "graphrag", "index")
+
+
+def test_graph_sync_command_reports_human_index_decision(monkeypatch) -> None:
+    def fake_run(command, *, cwd, capture_output, text):
+        return subprocess.CompletedProcess(command, 0, stdout="indexed\n", stderr="")
+
+    monkeypatch.setattr(
+        "src.services.graphrag_command_service.subprocess.run",
+        fake_run,
+    )
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("sample.md").write_text(
+            "# Sample\n\nGraph sync index.\n", encoding="utf-8"
+        )
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
+        _write_graphrag_settings()
+
+        result = runner.invoke(main, ["graph", "sync", "--dry-run"])
+
+        assert result.exit_code == 0
+        assert "Graph sync selected dry run method fast" in result.output
+        assert "Graph index output is missing." in result.output
+        assert "Full GraphRAG rebuild can incur" in result.output
+        assert "GraphRAG dry run completed with method fast." in result.output
+        assert "Run ID:" in result.output
 
 
 def test_graph_sync_command_requires_initialized_project() -> None:
@@ -342,7 +406,7 @@ def test_graph_index_command_records_run(monkeypatch) -> None:
         assert runner.invoke(main, ["init"]).exit_code == 0
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
         _write_graphrag_settings()
-        assert runner.invoke(main, ["graph", "sync"]).exit_code == 0
+        assert runner.invoke(main, ["graph", "sync", "--no-index"]).exit_code == 0
 
         result = runner.invoke(
             main,
@@ -373,7 +437,7 @@ def test_graph_index_command_supports_human_output(monkeypatch) -> None:
         assert runner.invoke(main, ["init"]).exit_code == 0
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
         _write_graphrag_settings()
-        assert runner.invoke(main, ["graph", "sync"]).exit_code == 0
+        assert runner.invoke(main, ["graph", "sync", "--no-index"]).exit_code == 0
 
         result = runner.invoke(
             main, ["graph", "index", "--method", "fast", "--dry-run"]
@@ -403,7 +467,7 @@ def test_graph_index_command_records_failed_run(monkeypatch) -> None:
         assert runner.invoke(main, ["init"]).exit_code == 0
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
         _write_graphrag_settings()
-        assert runner.invoke(main, ["graph", "sync"]).exit_code == 0
+        assert runner.invoke(main, ["graph", "sync", "--no-index"]).exit_code == 0
 
         result = runner.invoke(main, ["graph", "index", "--method", "fast"])
 
@@ -497,7 +561,7 @@ def test_graph_status_command_supports_human_output(monkeypatch) -> None:
         assert runner.invoke(main, ["init"]).exit_code == 0
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
         _write_graphrag_settings()
-        assert runner.invoke(main, ["graph", "sync"]).exit_code == 0
+        assert runner.invoke(main, ["graph", "sync", "--no-index"]).exit_code == 0
         assert (
             runner.invoke(
                 main, ["graph", "index", "--method", "fast", "--dry-run"]
