@@ -1,3 +1,11 @@
+"""Tests for test compile and lint.
+
+This module belongs to `tests.test_compile_and_lint` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import json
@@ -42,6 +50,13 @@ from src.services.lint_service import (
 
 
 def _ingest_source(test_project, relative_path: str, content: str):
+    """Handles ingest source.
+
+    Args:
+        test_project: Test project value used by the operation.
+        relative_path: Relative path value used by the operation.
+        content: Content value used by the operation.
+    """
     path = test_project.write_file(relative_path, content)
     return test_project.services["ingest"].ingest_path(path).source
 
@@ -53,6 +68,17 @@ def _compiled_page(
     summary: str = "Summary",
     page_type: str | None = "source",
 ) -> str:
+    """Handles compiled page.
+
+    Args:
+        title: Title value used by the operation.
+        body: Body value used by the operation.
+        summary: Summary value used by the operation.
+        page_type: Page type value used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     type_block = f"type: {page_type}\n" if page_type else ""
     return (
         "---\n"
@@ -70,12 +96,27 @@ def _compiled_page(
 
 
 class _FailOnSecondSummaryProvider(TextProvider):
+    """Represents fail on second summary provider behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     name = "fail-on-second"
 
     def __init__(self) -> None:
+        """Initializes the instance."""
         self.calls = 0
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        """Generate.
+
+        Args:
+            request: Request value used by the operation.
+
+        Returns:
+            ProviderResponse produced by the operation.
+        """
         self.calls += 1
         if self.calls == 2:
             raise RuntimeError("summary failure")
@@ -85,21 +126,50 @@ class _FailOnSecondSummaryProvider(TextProvider):
 
 
 class _StableSummaryProvider(TextProvider):
+    """Represents stable summary provider behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     name = "stable-summary"
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        """Generate.
+
+        Args:
+            request: Request value used by the operation.
+
+        Returns:
+            ProviderResponse produced by the operation.
+        """
         return ProviderResponse(
             text="Stub summary of the document.", model_name="stable-summary-v1"
         )
 
 
 class _RecordingSummaryProvider(TextProvider):
+    """Represents recording summary provider behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     name = "recording-summary"
 
     def __init__(self) -> None:
+        """Initializes the instance."""
         self.requests: list[ProviderRequest] = []
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        """Generate.
+
+        Args:
+            request: Request value used by the operation.
+
+        Returns:
+            ProviderResponse produced by the operation.
+        """
         self.requests.append(request)
         return ProviderResponse(
             text="Stub summary of the document.", model_name="recording-summary-v1"
@@ -107,6 +177,7 @@ class _RecordingSummaryProvider(TextProvider):
 
 
 def test_markdown_paragraphs_strip_frontmatter_and_headings() -> None:
+    """Verifies that markdown paragraphs strip frontmatter and headings."""
     contents = (
         "---\n"
         "title: Example\n"
@@ -124,6 +195,7 @@ def test_markdown_paragraphs_strip_frontmatter_and_headings() -> None:
 
 
 def test_strip_frontmatter_returns_original_text_when_marker_is_invalid() -> None:
+    """Verifies that strip frontmatter returns original text when marker is invalid."""
     invalid = "---\ntitle: Example\nNo closing marker"
 
     assert _strip_frontmatter(invalid) == invalid
@@ -131,6 +203,11 @@ def test_strip_frontmatter_returns_original_text_when_marker_is_invalid() -> Non
 
 
 def test_compile_service_compiles_source_pages_index_and_log(test_project) -> None:
+    """Verifies that compile service compiles source pages index and log.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     source = _ingest_source(
         test_project,
         "notes/doc.md",
@@ -158,6 +235,11 @@ def test_compile_service_compiles_source_pages_index_and_log(test_project) -> No
 def test_compile_service_skips_unchanged_sources_and_force_rebuilds(
     test_project,
 ) -> None:
+    """Verifies that compile service skips unchanged sources and force rebuilds.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     _ingest_source(test_project, "notes/doc.md", "# Doc\n\nText\n")
     compile_service = test_project.services["compile"]
 
@@ -172,6 +254,11 @@ def test_compile_service_skips_unchanged_sources_and_force_rebuilds(
 
 
 def test_compile_service_plan_and_progress_callback_track_work(test_project) -> None:
+    """Verifies that compile service plan and progress callback track work.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     _ingest_source(test_project, "notes/alpha.md", "# Alpha\n\nBody\n")
     _ingest_source(test_project, "notes/beta.md", "# Beta\n\nBody\n")
     compile_service = test_project.services["compile"]
@@ -192,6 +279,11 @@ def test_compile_service_plan_and_progress_callback_track_work(test_project) -> 
 
 
 def test_compile_service_handles_empty_manifest(test_project) -> None:
+    """Verifies that compile service handles empty manifest.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     result = test_project.services["compile"].compile()
 
     assert result.compiled_count == 0
@@ -205,6 +297,11 @@ def test_compile_service_handles_empty_manifest(test_project) -> None:
 def test_compile_service_uses_provider_summary_for_minimal_content(
     test_project,
 ) -> None:
+    """Verifies that compile service uses provider summary for minimal content.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     source = _ingest_source(test_project, "notes/empty.md", "# Empty\n")
 
     test_project.services["compile"].compile()
@@ -218,11 +315,21 @@ def test_compile_service_uses_provider_summary_for_minimal_content(
 
 
 def test_compile_service_resume_requires_failed_run(test_project) -> None:
+    """Verifies that compile service resume requires failed run.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     with pytest.raises(ValueError, match="No failed compile run"):
         test_project.services["compile"].compile(resume=True)
 
 
 def test_compile_service_plan_rejects_force_resume_combination(test_project) -> None:
+    """Verifies that compile service plan rejects force resume combination.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     with pytest.raises(ValueError, match="cannot be combined"):
         test_project.services["compile"].plan(force=True, resume=True)
 
@@ -230,6 +337,11 @@ def test_compile_service_plan_rejects_force_resume_combination(test_project) -> 
 def test_compile_service_records_failure_and_resumes_remaining_sources(
     test_project,
 ) -> None:
+    """Verifies that compile service records failure and resumes remaining sources.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     _ingest_source(test_project, "notes/alpha.md", "# Alpha\n\nBody\n")
     _ingest_source(test_project, "notes/beta.md", "# Beta\n\nBody\n")
     compile_service = test_project.services["compile"]
@@ -249,12 +361,24 @@ def test_compile_service_records_failure_and_resumes_remaining_sources(
 def test_compile_service_resume_handles_post_loop_failure_with_no_pending_sources(
     monkeypatch, test_project
 ) -> None:
+    """Verifies that compile service resume handles post loop failure with no pending sources.
+
+    Args:
+        monkeypatch: Monkeypatch value used by the operation.
+        test_project: Test project value used by the operation.
+    """
     _ingest_source(test_project, "notes/doc.md", "# Doc\n\nBody\n")
     compile_service = test_project.services["compile"]
     original_write_index = compile_service._write_index
     fail_once = {"value": True}
 
     def flaky_write_index(*args, **kwargs):
+        """Flaky write index.
+
+        Args:
+            args: Parsed or forwarded command arguments.
+            kwargs: Kwargs value used by the operation.
+        """
         if fail_once["value"]:
             fail_once["value"] = False
             raise OSError("index write failure")
@@ -280,6 +404,11 @@ def test_compile_service_resume_handles_post_loop_failure_with_no_pending_source
 def test_compile_service_append_log_adds_separator_for_non_newline_file(
     test_project,
 ) -> None:
+    """Verifies that compile service append log adds separator for non newline file.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     compile_service = test_project.services["compile"]
     test_project.paths.wiki_log_file.parent.mkdir(parents=True, exist_ok=True)
     test_project.paths.wiki_log_file.write_text("# Activity Log", encoding="utf-8")
@@ -293,10 +422,12 @@ def test_compile_service_append_log_adds_separator_for_non_newline_file(
 
 
 def test_is_content_paragraph_rejects_link_heavy_navigation_text() -> None:
+    """Verifies that is content paragraph rejects link heavy navigation text."""
     assert _is_content_paragraph("[one](a) [two](b) [three](c) leftover text") is False
 
 
 def test_parse_frontmatter_returns_empty_dict_for_invalid_inputs() -> None:
+    """Verifies that parse frontmatter returns empty dict for invalid inputs."""
     assert _parse_frontmatter("plain text") == {}
     assert _parse_frontmatter("---\ntitle: broken") == {}
     assert _parse_frontmatter("---\ntitle: [broken\n---\nBody\n") == {}
@@ -305,6 +436,12 @@ def test_parse_frontmatter_returns_empty_dict_for_invalid_inputs() -> None:
 def test_discover_concept_pages_handles_missing_and_unreadable_files(
     monkeypatch, test_project
 ) -> None:
+    """Verifies that discover concept pages handles missing and unreadable files.
+
+    Args:
+        monkeypatch: Monkeypatch value used by the operation.
+        test_project: Test project value used by the operation.
+    """
     concept_dir = test_project.paths.wiki_concepts_dir
     for path in concept_dir.glob("*.md"):
         path.unlink()
@@ -320,6 +457,12 @@ def test_discover_concept_pages_handles_missing_and_unreadable_files(
     original_read_text = Path.read_text
 
     def flaky_read_text(self, *args, **kwargs):
+        """Flaky read text.
+
+        Args:
+            args: Parsed or forwarded command arguments.
+            kwargs: Kwargs value used by the operation.
+        """
         if self == unreadable:
             raise OSError("locked")
         return original_read_text(self, *args, **kwargs)
@@ -336,6 +479,7 @@ def test_discover_concept_pages_handles_missing_and_unreadable_files(
 
 
 def test_split_frontmatter_parses_valid_yaml_and_invalid_text() -> None:
+    """Verifies that split frontmatter parses valid yaml and invalid text."""
     frontmatter, content = _split_frontmatter("---\ntitle: Test\n---\nBody\n")
 
     assert frontmatter == {"title": "Test"}
@@ -348,6 +492,11 @@ def test_split_frontmatter_parses_valid_yaml_and_invalid_text() -> None:
 
 
 def test_lint_service_reports_stale_and_missing_compiled_pages(test_project) -> None:
+    """Verifies that lint service reports stale and missing compiled pages.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     source = _ingest_source(test_project, "notes/stale.md", "# Stale\n\nBody\n")
     lint_service = test_project.services["lint"]
 
@@ -365,6 +514,11 @@ def test_lint_service_reports_stale_and_missing_compiled_pages(test_project) -> 
 def test_lint_service_reports_missing_frontmatter_and_broken_links(
     test_project,
 ) -> None:
+    """Verifies that lint service reports missing frontmatter and broken links.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/manual.md",
         "# Manual\n\nBroken link [[Missing Target]]\n",
@@ -381,6 +535,11 @@ def test_lint_service_reports_missing_frontmatter_and_broken_links(
 def test_lint_service_reports_missing_fields_empty_summary_and_orphan_page(
     test_project,
 ) -> None:
+    """Verifies that lint service reports missing fields empty summary and orphan page.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/incomplete.md",
         "---\n" "title: Incomplete\n" "summary: ''\n" "---\n\n" "# Incomplete\n",
@@ -397,6 +556,11 @@ def test_lint_service_reports_missing_fields_empty_summary_and_orphan_page(
 def test_lint_service_ignores_malformed_timestamp_markdown_links(
     test_project,
 ) -> None:
+    """Verifies that lint service ignores malformed timestamp markdown links.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/target-page.md",
         "---\n"
@@ -434,6 +598,11 @@ def test_lint_service_ignores_malformed_timestamp_markdown_links(
 def test_lint_service_reports_markdown_link_and_empty_target_errors(
     test_project,
 ) -> None:
+    """Verifies that lint service reports markdown link and empty target errors.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/bad.md",
         _compiled_page(
@@ -452,6 +621,11 @@ def test_lint_service_reports_markdown_link_and_empty_target_errors(
 def test_lint_service_reports_broken_fragments_for_wiki_and_markdown_links(
     test_project,
 ) -> None:
+    """Verifies that lint service reports broken fragments for wiki and markdown links.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/target-page.md",
         _compiled_page("Target Page", "## Present Section\n\nBody."),
@@ -479,6 +653,11 @@ def test_lint_service_reports_broken_fragments_for_wiki_and_markdown_links(
 
 
 def test_lint_service_counts_markdown_links_for_orphan_detection(test_project) -> None:
+    """Verifies that lint service counts markdown links for orphan detection.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/target-page.md",
         _compiled_page("Target Page", "Body."),
@@ -499,6 +678,11 @@ def test_lint_service_counts_markdown_links_for_orphan_detection(test_project) -
 def test_lint_service_reports_heading_structure_and_duplicate_titles(
     test_project,
 ) -> None:
+    """Verifies that lint service reports heading structure and duplicate titles.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/alpha.md",
         _compiled_page(
@@ -521,6 +705,11 @@ def test_lint_service_reports_heading_structure_and_duplicate_titles(
 
 
 def test_lint_service_allows_duplicate_analysis_titles(test_project) -> None:
+    """Verifies that lint service allows duplicate analysis titles.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     analysis_page = (
         "---\n"
         "title: Repeated Question\n"
@@ -545,6 +734,11 @@ def test_lint_service_allows_duplicate_analysis_titles(test_project) -> None:
 
 
 def test_lint_service_reports_invalid_frontmatter_types(test_project) -> None:
+    """Verifies that lint service reports invalid frontmatter types.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/bad-types.md",
         "---\n"
@@ -569,6 +763,11 @@ def test_lint_service_reports_invalid_frontmatter_types(test_project) -> None:
 
 
 def test_lint_service_reports_invalid_date_format(test_project) -> None:
+    """Verifies that lint service reports invalid date format.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/bad-date.md",
         "---\n"
@@ -593,6 +792,11 @@ def test_lint_service_reports_invalid_date_format(test_project) -> None:
 
 
 def test_lint_service_reports_empty_page(test_project) -> None:
+    """Verifies that lint service reports empty page.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/empty-body.md",
         _compiled_page("Empty Body", ""),
@@ -621,6 +825,7 @@ def test_lint_service_reports_empty_page(test_project) -> None:
 
 
 def test_lint_report_properties_count_issue_severities() -> None:
+    """Verifies that lint report properties count issue severities."""
     report = LintReport(
         issues=[
             LintIssue("error", "broken-link", "a.md", "bad"),
@@ -638,6 +843,7 @@ def test_lint_report_properties_count_issue_severities() -> None:
 
 
 def test_strip_fenced_code_blocks_removes_backtick_and_tilde_fences() -> None:
+    """Verifies that strip fenced code blocks removes backtick and tilde fences."""
     text = (
         "Before\n"
         "```python\n"
@@ -660,6 +866,7 @@ def test_strip_fenced_code_blocks_removes_backtick_and_tilde_fences() -> None:
 
 
 def test_split_markdown_target_handles_angle_brackets_and_space_title() -> None:
+    """Verifies that split markdown target handles angle brackets and space title."""
     dest, frag = _split_markdown_target("<page.md#section>")
     assert dest == "page.md"
     assert frag == "section"
@@ -670,6 +877,7 @@ def test_split_markdown_target_handles_angle_brackets_and_space_title() -> None:
 
 
 def test_page_title_falls_back_to_file_stem() -> None:
+    """Verifies that page title falls back to file stem."""
     title = _page_title(Path("wiki/sources/my-page.md"), None, [])
     assert title == "my-page"
 
@@ -678,6 +886,11 @@ def test_page_title_falls_back_to_file_stem() -> None:
 
 
 def test_lint_ignores_links_inside_fenced_code_blocks(test_project) -> None:
+    """Verifies that lint ignores links inside fenced code blocks.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/code-page.md",
         _compiled_page(
@@ -702,6 +915,7 @@ def test_lint_ignores_links_inside_fenced_code_blocks(test_project) -> None:
 
 
 def test_lint_ignores_image_links() -> None:
+    """Verifies that lint ignores image links."""
     from src.services.lint_service import MARKDOWN_LINK_PATTERN
 
     image = "![alt text](image.png)"
@@ -712,6 +926,11 @@ def test_lint_ignores_image_links() -> None:
 
 
 def test_lint_empty_page_skips_non_source_directories(test_project) -> None:
+    """Verifies that lint empty page skips non source directories.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/index.md",
         "---\ntitle: Index\n---\n\n# Index\n",
@@ -726,6 +945,11 @@ def test_lint_empty_page_skips_non_source_directories(test_project) -> None:
 
 
 def test_lint_fragment_only_link_checks_current_page_anchors(test_project) -> None:
+    """Verifies that lint fragment only link checks current page anchors.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/self-ref.md",
         _compiled_page(
@@ -750,6 +974,7 @@ def test_lint_fragment_only_link_checks_current_page_anchors(test_project) -> No
 
 
 def test_extract_headings_skips_empty_normalized_titles() -> None:
+    """Verifies that extract headings skips empty normalized titles."""
     content = "# Valid Heading\n\n#  \n\n## Another\n"
 
     headings = _extract_headings(content)
@@ -760,6 +985,7 @@ def test_extract_headings_skips_empty_normalized_titles() -> None:
 
 
 def test_fragment_exists_returns_false_for_empty_fragment() -> None:
+    """Verifies that fragment exists returns false for empty fragment."""
     state = _PageState(
         file_path=Path("wiki/sources/test.md"),
         relative_path="wiki/sources/test.md",
@@ -777,6 +1003,7 @@ def test_fragment_exists_returns_false_for_empty_fragment() -> None:
 
 
 def test_resolve_markdown_target_handles_absolute_path() -> None:
+    """Verifies that resolve markdown target handles absolute path."""
     current = Path("wiki/sources/page.md")
     result = _resolve_markdown_target(current, "/absolute/path.md")
 
@@ -785,6 +1012,11 @@ def test_resolve_markdown_target_handles_absolute_path() -> None:
 
 
 def test_lint_heading_structure_returns_empty_for_no_headings(test_project) -> None:
+    """Verifies that lint heading structure returns empty for no headings.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/no-headings.md",
         "---\ntitle: No Headings\nsummary: Summary\nsource_id: id\n"
@@ -805,6 +1037,11 @@ def test_lint_heading_structure_returns_empty_for_no_headings(test_project) -> N
 
 
 def test_lint_valid_frontmatter_produces_no_type_issues(test_project) -> None:
+    """Verifies that lint valid frontmatter produces no type issues.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/valid-types.md",
         "---\n"
@@ -836,6 +1073,11 @@ def test_lint_valid_frontmatter_produces_no_type_issues(test_project) -> None:
 
 
 def test_lint_yaml_datetime_coercion_passes_date_check(test_project) -> None:
+    """Verifies that lint yaml datetime coercion passes date check.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/bare-date.md",
         "---\n"
@@ -860,6 +1102,11 @@ def test_lint_yaml_datetime_coercion_passes_date_check(test_project) -> None:
 
 
 def test_lint_case_insensitive_duplicate_heading(test_project) -> None:
+    """Verifies that lint case insensitive duplicate heading.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/case-dup.md",
         _compiled_page("Case Dup", "## Setup\n\nFirst.\n\n## setup\n\nSecond.\n"),
@@ -876,6 +1123,11 @@ def test_lint_case_insensitive_duplicate_heading(test_project) -> None:
 
 
 def test_compile_requires_provider(test_project) -> None:
+    """Verifies that compile requires provider.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     from src.providers import ProviderConfigurationError
 
     test_project.services["compile"].provider = None
@@ -892,6 +1144,11 @@ def test_compile_requires_provider(test_project) -> None:
 
 
 def test_compile_custom_excerpt_character_limit(test_project) -> None:
+    """Verifies that compile custom excerpt character limit.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.config["compile"]["excerpt_character_limit"] = 30
     long_para = "A" * 100
     _ingest_source(test_project, "notes/long.md", f"# Long\n\n{long_para}\n")
@@ -909,6 +1166,11 @@ def test_compile_custom_excerpt_character_limit(test_project) -> None:
 def test_compile_includes_canonical_file_line_when_normalized_path_set(
     test_project,
 ) -> None:
+    """Verifies that compile includes canonical file line when normalized path set.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     _ingest_source(test_project, "notes/canon.md", "# Canon\n\nBody text.\n")
 
     test_project.services["compile"].compile()
@@ -922,6 +1184,11 @@ def test_compile_includes_canonical_file_line_when_normalized_path_set(
 def test_compile_omits_canonical_file_line_when_normalized_path_none(
     test_project,
 ) -> None:
+    """Verifies that compile omits canonical file line when normalized path none.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     _ingest_source(test_project, "notes/nocanon.md", "# No Canon\n\nBody text.\n")
     sources = test_project.services["manifest"].list_sources()
     for source in sources:
@@ -938,6 +1205,11 @@ def test_compile_omits_canonical_file_line_when_normalized_path_none(
 
 
 def test_compile_appends_to_existing_log(test_project) -> None:
+    """Verifies that compile appends to existing log.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.wiki_log_file.write_text(
         "# Activity Log\n\nPre-existing entry.\n", encoding="utf-8"
     )
@@ -954,6 +1226,11 @@ def test_compile_appends_to_existing_log(test_project) -> None:
 
 
 def test_lint_circular_wiki_links_terminates(test_project) -> None:
+    """Verifies that lint circular wiki links terminates.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/page-a.md",
         _compiled_page("Page A", "See [[page-b]]."),
@@ -972,6 +1249,11 @@ def test_lint_circular_wiki_links_terminates(test_project) -> None:
 
 
 def test_lint_page_with_many_links_performs_reasonably(test_project) -> None:
+    """Verifies that lint page with many links performs reasonably.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     links = " ".join(f"[[target-{i}]]" for i in range(200))
     test_project.write_file(
         "wiki/sources/many-links.md",
@@ -989,6 +1271,7 @@ def test_lint_page_with_many_links_performs_reasonably(test_project) -> None:
 
 
 def test_frontmatter_yaml_injection_blocked_by_safe_load() -> None:
+    """Verifies that frontmatter yaml injection blocked by safe load."""
     import yaml
     from src.services.lint_service import _split_frontmatter
 
@@ -1001,6 +1284,7 @@ def test_frontmatter_yaml_injection_blocked_by_safe_load() -> None:
 
 
 def test_markdown_paragraphs_preserves_content_before_first_heading() -> None:
+    """Verifies that markdown paragraphs preserves content before first heading."""
     contents = (
         "Lead paragraph.\n\n"
         "# Real Title\n\n"
@@ -1018,6 +1302,7 @@ def test_markdown_paragraphs_preserves_content_before_first_heading() -> None:
 
 
 def test_markdown_paragraphs_falls_back_when_no_headings() -> None:
+    """Verifies that markdown paragraphs falls back when no headings."""
     contents = "First paragraph.\n\nSecond paragraph.\n"
 
     result = _markdown_paragraphs(contents)
@@ -1026,6 +1311,7 @@ def test_markdown_paragraphs_falls_back_when_no_headings() -> None:
 
 
 def test_markdown_paragraphs_trims_leading_toc_boilerplate() -> None:
+    """Verifies that markdown paragraphs trims leading toc boilerplate."""
     contents = (
         "[![Site](banner.svg)](index.html)\n\n"
         "Small. Fast. Reliable. Choose any three.\n\n"
@@ -1047,30 +1333,40 @@ def test_markdown_paragraphs_trims_leading_toc_boilerplate() -> None:
 
 
 def test_is_content_paragraph_rejects_image_only() -> None:
+    """Verifies that is content paragraph rejects image only."""
     assert not _is_content_paragraph("[![SQLite](img.svg)](index.html)")
 
 
 def test_is_content_paragraph_rejects_nav_links() -> None:
+    """Verifies that is content paragraph rejects nav links."""
     nav = "* [Home](index.html)* [About](about.html)* [Docs](docs.html)"
     assert not _is_content_paragraph(nav)
 
 
 def test_is_content_paragraph_rejects_toc_links() -> None:
+    """Verifies that is content paragraph rejects toc links."""
     toc = "[1. Overview](#overview) [2. Setup](#setup)"
     assert not _is_content_paragraph(toc)
 
 
 def test_is_content_paragraph_rejects_single_word() -> None:
+    """Verifies that is content paragraph rejects single word."""
     assert not _is_content_paragraph("CREATE")
     assert not _is_content_paragraph("hide")
 
 
 def test_is_content_paragraph_accepts_real_content() -> None:
+    """Verifies that is content paragraph accepts real content."""
     assert _is_content_paragraph("FTS5 is a virtual table module for full-text search.")
     assert _is_content_paragraph("Second paragraph.")
 
 
 def test_compile_index_lists_concept_pages(test_project) -> None:
+    """Verifies that compile index lists concept pages.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     _ingest_source(test_project, "notes/doc.md", "# Doc\n\nBody text.\n")
     test_project.services["compile"].compile()
     test_project.write_file(
@@ -1091,6 +1387,11 @@ def test_compile_index_lists_concept_pages(test_project) -> None:
 
 
 def test_update_refreshes_index_after_removing_stale_concept_page(test_project) -> None:
+    """Verifies that update refreshes index after removing stale concept page.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     _ingest_source(test_project, "notes/doc.md", "# Doc\n\nBody text.\n")
     test_project.config["provider"] = {"name": "openai"}
     test_project.write_file(
@@ -1129,6 +1430,7 @@ def test_update_refreshes_index_after_removing_stale_concept_page(test_project) 
 
 
 def test_markdown_paragraphs_skips_fenced_code_blocks() -> None:
+    """Verifies that markdown paragraphs skips fenced code blocks."""
     contents = (
         "Real paragraph before code.\n\n"
         "```python\n"
@@ -1143,6 +1445,7 @@ def test_markdown_paragraphs_skips_fenced_code_blocks() -> None:
 
 
 def test_markdown_paragraphs_skips_tilde_fenced_code_blocks() -> None:
+    """Verifies that markdown paragraphs skips tilde fenced code blocks."""
     contents = (
         "Before tilde block.\n\n"
         "~~~\n"
@@ -1157,6 +1460,7 @@ def test_markdown_paragraphs_skips_tilde_fenced_code_blocks() -> None:
 
 
 def test_markdown_paragraphs_skips_html_comments() -> None:
+    """Verifies that markdown paragraphs skips html comments."""
     contents = (
         "Before comment.\n\n"
         "<!-- This is a multi-line\n"
@@ -1170,6 +1474,7 @@ def test_markdown_paragraphs_skips_html_comments() -> None:
 
 
 def test_markdown_paragraphs_skips_single_line_html_comment() -> None:
+    """Verifies that markdown paragraphs skips single line html comment."""
     contents = "Real content before comment.\n\n<!-- single line -->\n\nReal content after comment.\n"
 
     result = _markdown_paragraphs(contents)
@@ -1178,6 +1483,7 @@ def test_markdown_paragraphs_skips_single_line_html_comment() -> None:
 
 
 def test_markdown_paragraphs_skips_horizontal_rules() -> None:
+    """Verifies that markdown paragraphs skips horizontal rules."""
     contents = "Before rule.\n\n---\n\nAfter rule.\n"
 
     result = _markdown_paragraphs(contents)
@@ -1186,14 +1492,17 @@ def test_markdown_paragraphs_skips_horizontal_rules() -> None:
 
 
 def test_normalize_newlines_strips_bom_and_crlf() -> None:
+    """Verifies that normalize newlines strips bom and crlf."""
     assert _normalize_newlines("\ufeffHello\r\nWorld\rEnd") == "Hello\nWorld\nEnd"
 
 
 def test_normalize_newlines_passes_clean_input() -> None:
+    """Verifies that normalize newlines passes clean input."""
     assert _normalize_newlines("clean\ninput") == "clean\ninput"
 
 
 def test_plain_text_fallback_strips_markdown() -> None:
+    """Verifies that plain text fallback strips markdown."""
     contents = (
         "---\ntitle: Test\n---\n\n"
         "# Heading\n\n"
@@ -1211,21 +1520,25 @@ def test_plain_text_fallback_strips_markdown() -> None:
 
 
 def test_safe_int_returns_parsed_value() -> None:
+    """Verifies that safe int returns parsed value."""
     assert _safe_int(5, default=2, minimum=1) == 5
     assert _safe_int("10", default=2, minimum=1) == 10
 
 
 def test_safe_int_returns_default_for_invalid() -> None:
+    """Verifies that safe int returns default for invalid."""
     assert _safe_int(None, default=2, minimum=1) == 2
     assert _safe_int("abc", default=3, minimum=1) == 3
 
 
 def test_safe_int_enforces_minimum() -> None:
+    """Verifies that safe int enforces minimum."""
     assert _safe_int(0, default=2, minimum=1) == 1
     assert _safe_int(-5, default=2, minimum=1) == 1
 
 
 def test_sorted_sources_deterministic_order() -> None:
+    """Verifies that sorted sources deterministic order."""
     from src.models.source_models import RawSourceRecord
 
     sources = [
@@ -1257,6 +1570,11 @@ def test_sorted_sources_deterministic_order() -> None:
 
 
 def test_compile_raises_when_source_file_missing(test_project) -> None:
+    """Verifies that compile raises when source file missing.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     source = _ingest_source(test_project, "notes/doc.md", "# Doc\n\nBody text.\n")
     canonical = source.normalized_path or source.raw_path
     canonical_full = test_project.root / canonical
@@ -1267,6 +1585,11 @@ def test_compile_raises_when_source_file_missing(test_project) -> None:
 
 
 def test_lint_concept_page_does_not_require_source_fields(test_project) -> None:
+    """Verifies that lint concept page does not require source fields.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/concepts/analysis.md",
         "---\ntitle: My Analysis\nsummary: An analysis page.\ntype: analysis\n"
@@ -1287,6 +1610,11 @@ def test_lint_concept_page_does_not_require_source_fields(test_project) -> None:
 def test_lint_generated_concept_page_requires_concept_fields_not_source_fields(
     test_project,
 ) -> None:
+    """Verifies that lint generated concept page requires concept fields not source fields.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/concepts/concept.md",
         "---\n"
@@ -1312,6 +1640,11 @@ def test_lint_generated_concept_page_requires_concept_fields_not_source_fields(
 
 
 def test_lint_source_page_still_requires_all_fields(test_project) -> None:
+    """Verifies that lint source page still requires all fields.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/incomplete.md",
         "---\ntitle: Incomplete\nsummary: S\n---\n\n# Incomplete\n\nBody.\n",
@@ -1326,6 +1659,7 @@ def test_lint_source_page_still_requires_all_fields(test_project) -> None:
 
 
 def test_strip_excerpt_section_removes_key_excerpt() -> None:
+    """Verifies that strip excerpt section removes key excerpt."""
     content = (
         "# Title\n\n"
         "## Summary\n\nGood content.\n\n"
@@ -1340,12 +1674,18 @@ def test_strip_excerpt_section_removes_key_excerpt() -> None:
 
 
 def test_strip_excerpt_section_preserves_content_without_excerpt() -> None:
+    """Verifies that strip excerpt section preserves content without excerpt."""
     content = "# Title\n\n## Summary\n\nBody.\n"
 
     assert _strip_excerpt_section(content) == content
 
 
 def test_lint_ignores_broken_links_inside_key_excerpt(test_project) -> None:
+    """Verifies that lint ignores broken links inside key excerpt.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/excerpt-page.md",
         "---\n"
@@ -1378,6 +1718,11 @@ def test_lint_ignores_broken_links_inside_key_excerpt(test_project) -> None:
 def test_compile_provider_empty_content_returns_no_content_message(
     test_project,
 ) -> None:
+    """Verifies that compile provider empty content returns no content message.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     from src.services.compile_service import CompileService
 
     service = test_project.services["compile"]
@@ -1387,12 +1732,31 @@ def test_compile_provider_empty_content_returns_no_content_message(
 
 
 def test_compile_provider_structured_summary_fields(test_project) -> None:
+    """Verifies that compile provider structured summary fields.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
 
     class StructuredSummaryProvider(TextProvider):
+        """Represents structured summary provider behavior and data.
+
+        Attributes:
+            See annotated class attributes for stored values.
+        """
+
         name = "structured-summary"
 
         def generate(self, request: ProviderRequest) -> ProviderResponse:
+            """Generate.
+
+            Args:
+                request: Request value used by the operation.
+
+            Returns:
+                ProviderResponse produced by the operation.
+            """
             return ProviderResponse(
                 text=json.dumps(
                     {
@@ -1422,12 +1786,31 @@ def test_compile_provider_structured_summary_fields(test_project) -> None:
 
 
 def test_compile_provider_empty_response_falls_back(test_project) -> None:
+    """Verifies that compile provider empty response falls back.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
 
     class EmptyProvider(TextProvider):
+        """Represents empty provider behavior and data.
+
+        Attributes:
+            See annotated class attributes for stored values.
+        """
+
         name = "empty"
 
         def generate(self, request: ProviderRequest) -> ProviderResponse:
+            """Generate.
+
+            Args:
+                request: Request value used by the operation.
+
+            Returns:
+                ProviderResponse produced by the operation.
+            """
             return ProviderResponse(text="", model_name="empty-v1")
 
     test_project.services["compile"].provider = EmptyProvider()
@@ -1445,12 +1828,31 @@ def test_compile_provider_empty_response_falls_back(test_project) -> None:
 def test_compile_provider_error_falls_back_to_deterministic_summary(
     test_project,
 ) -> None:
+    """Verifies that compile provider error falls back to deterministic summary.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
 
     class ErrorProvider(TextProvider):
+        """Represents error provider behavior and data.
+
+        Attributes:
+            See annotated class attributes for stored values.
+        """
+
         name = "error"
 
         def generate(self, request: ProviderRequest) -> ProviderResponse:
+            """Generate.
+
+            Args:
+                request: Request value used by the operation.
+
+            Returns:
+                ProviderResponse produced by the operation.
+            """
             raise RuntimeError("API timeout")
 
     test_project.services["compile"].provider = ErrorProvider()
@@ -1467,12 +1869,31 @@ def test_compile_provider_error_falls_back_to_deterministic_summary(
 def test_compile_prompt_echo_summary_falls_back_to_deterministic_summary(
     test_project,
 ) -> None:
+    """Verifies that compile prompt echo summary falls back to deterministic summary.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
 
     class EchoProvider(TextProvider):
+        """Represents echo provider behavior and data.
+
+        Attributes:
+            See annotated class attributes for stored values.
+        """
+
         name = "echo"
 
         def generate(self, request: ProviderRequest) -> ProviderResponse:
+            """Generate.
+
+            Args:
+                request: Request value used by the operation.
+
+            Returns:
+                ProviderResponse produced by the operation.
+            """
             return ProviderResponse(
                 text=(
                     "source_id: source_1\n"
@@ -1502,6 +1923,11 @@ def test_compile_prompt_echo_summary_falls_back_to_deterministic_summary(
 def test_compile_unavailable_provider_raises_configuration_error(
     test_project,
 ) -> None:
+    """Verifies that compile unavailable provider raises configuration error.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     from src.providers import ProviderConfigurationError, UnavailableProvider
 
     test_project.services["compile"].provider = UnavailableProvider(
@@ -1514,6 +1940,7 @@ def test_compile_unavailable_provider_raises_configuration_error(
 
 
 def test_abstract_paragraphs_extracts_from_abstract_heading() -> None:
+    """Verifies that abstract paragraphs extracts from abstract heading."""
     contents = (
         "## Title\n\n"
         "Author names and affiliations\n\n"
@@ -1533,12 +1960,18 @@ def test_abstract_paragraphs_extracts_from_abstract_heading() -> None:
 
 
 def test_abstract_paragraphs_returns_empty_without_abstract_heading() -> None:
+    """Verifies that abstract paragraphs returns empty without abstract heading."""
     contents = "## Title\n\nBody text.\n\n## Methods\n\nMore text.\n"
 
     assert _abstract_paragraphs(contents) == []
 
 
 def test_compile_excerpt_prefers_abstract_section(test_project) -> None:
+    """Verifies that compile excerpt prefers abstract section.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     _ingest_source(
         test_project,
         "notes/paper.md",
@@ -1562,6 +1995,7 @@ def test_compile_excerpt_prefers_abstract_section(test_project) -> None:
 
 
 def test_abstract_paragraphs_extracts_without_following_heading() -> None:
+    """Verifies that abstract paragraphs extracts without following heading."""
     contents = (
         "## Abstract\n\n"
         "Only abstract content here.\n\n"
@@ -1577,6 +2011,7 @@ def test_abstract_paragraphs_extracts_without_following_heading() -> None:
 
 
 def test_abstract_paragraphs_strips_frontmatter() -> None:
+    """Verifies that abstract paragraphs strips frontmatter."""
     contents = (
         "---\ntitle: Paper\n---\n\n" "## Abstract\n\n" "Content after frontmatter.\n"
     )
@@ -1590,6 +2025,11 @@ def test_abstract_paragraphs_strips_frontmatter() -> None:
 
 
 def test_compiled_source_page_has_type_source(test_project) -> None:
+    """Verifies that compiled source page has type source.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     _ingest_source(test_project, "notes/typed.md", "# Typed\n\nBody.\n")
 
     test_project.services["compile"].compile()
@@ -1601,6 +2041,11 @@ def test_compiled_source_page_has_type_source(test_project) -> None:
 
 
 def test_lint_warns_on_old_source_page_missing_type(test_project) -> None:
+    """Verifies that lint warns on old source page missing type.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     source = _ingest_source(test_project, "notes/old.md", "# Old\n\nBody.\n")
     source.compiled_at = "2026-04-21T00:00:00Z"
     source.compiled_from_hash = source.content_hash
@@ -1621,6 +2066,11 @@ def test_lint_warns_on_old_source_page_missing_type(test_project) -> None:
 
 
 def test_lint_errors_when_current_source_page_loses_type(test_project) -> None:
+    """Verifies that lint errors when current source page loses type.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     _ingest_source(test_project, "notes/current.md", "# Current\n\nBody.\n")
 
     test_project.services["compile"].compile()
@@ -1642,6 +2092,11 @@ def test_lint_errors_when_current_source_page_loses_type(test_project) -> None:
 
 
 def test_lint_no_missing_type_warning_when_type_present(test_project) -> None:
+    """Verifies that lint no missing type warning when type present.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/new.md",
         "---\ntitle: New\nsummary: S\ntype: source\nsource_id: s\n"
@@ -1655,10 +2110,27 @@ def test_lint_no_missing_type_warning_when_type_present(test_project) -> None:
 
 
 def _sha256(path: Path) -> str:
+    """Handles sha256.
+
+    Args:
+        path: Filesystem path used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _record_graph_run(test_project, *, input_hash: str) -> str:
+    """Handles record graph run.
+
+    Args:
+        test_project: Test project value used by the operation.
+        input_hash: Input hash value used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     run = test_project.services["graphrag_status"].record_index_run(
         method="fast",
         dry_run=False,
@@ -1675,6 +2147,11 @@ def _record_graph_run(test_project, *, input_hash: str) -> str:
 
 
 def test_lint_reports_graph_input_stale(test_project) -> None:
+    """Verifies that lint reports graph input stale.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
     test_project.write_file(
         "graph/graphrag/input/sources.json",
@@ -1687,6 +2164,11 @@ def test_lint_reports_graph_input_stale(test_project) -> None:
 
 
 def test_lint_reports_graph_index_stale(test_project) -> None:
+    """Verifies that lint reports graph index stale.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
     input_path = test_project.write_file(
         "graph/graphrag/input/sources.json",
@@ -1708,6 +2190,11 @@ def test_lint_reports_graph_index_stale(test_project) -> None:
 
 
 def test_lint_reports_graph_export_stale(test_project) -> None:
+    """Verifies that lint reports graph export stale.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
     input_path = test_project.write_file(
         "graph/graphrag/input/sources.json",
@@ -1733,6 +2220,11 @@ def test_lint_reports_graph_export_stale(test_project) -> None:
 
 
 def test_lint_reports_no_graph_staleness_when_fresh(test_project) -> None:
+    """Verifies that lint reports no graph staleness when fresh.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     manifest_hash = _sha256(test_project.paths.raw_manifest_file)
     test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
     input_path = test_project.write_file(
@@ -1754,6 +2246,11 @@ def test_lint_reports_no_graph_staleness_when_fresh(test_project) -> None:
 
 
 def test_index_includes_analysis_pages_section(test_project) -> None:
+    """Verifies that index includes analysis pages section.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/analysis/my-question.md",
         "---\ntitle: My Question\ntype: analysis\n---\n\n# My Question\n",
@@ -1773,6 +2270,11 @@ def test_index_includes_analysis_pages_section(test_project) -> None:
 
 
 def test_index_shows_empty_analysis_section_when_none(test_project) -> None:
+    """Verifies that index shows empty analysis section when none.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.services["compile"]._write_index([])
 
     index_text = test_project.paths.wiki_index_markdown.read_text(encoding="utf-8")
@@ -1781,6 +2283,11 @@ def test_index_shows_empty_analysis_section_when_none(test_project) -> None:
 
 
 def test_compile_prompt_includes_schema_excerpt(test_project) -> None:
+    """Verifies that compile prompt includes schema excerpt.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     from src.services.config_service import DEFAULT_SCHEMA
 
     provider = _RecordingSummaryProvider()
@@ -1799,6 +2306,11 @@ def test_compile_prompt_includes_schema_excerpt(test_project) -> None:
 
 
 def test_log_entry_uses_heading_format(test_project) -> None:
+    """Verifies that log entry uses heading format.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     compile_service = test_project.services["compile"]
     compile_service._append_log(3, 7, True)
 
@@ -1809,6 +2321,11 @@ def test_log_entry_uses_heading_format(test_project) -> None:
 
 
 def test_log_entry_no_flags_when_not_force_or_resume(test_project) -> None:
+    """Verifies that log entry no flags when not force or resume.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     compile_service = test_project.services["compile"]
     compile_service._append_log(2, 0, False)
 
@@ -1819,17 +2336,20 @@ def test_log_entry_no_flags_when_not_force_or_resume(test_project) -> None:
 
 
 def test_truncate_with_boundary_fits_entirely() -> None:
+    """Verifies that truncate with boundary fits entirely."""
     text = "Short text."
     assert _truncate_with_boundary(text, 100, add_ellipsis=True) == text
 
 
 def test_truncate_with_boundary_cuts_at_sentence() -> None:
+    """Verifies that truncate with boundary cuts at sentence."""
     text = "First sentence. Second sentence. Third sentence that is longer."
     result = _truncate_with_boundary(text, 35, add_ellipsis=True)
     assert result.endswith("Second sentence....")
 
 
 def test_truncate_with_boundary_cuts_at_word_when_no_sentence() -> None:
+    """Verifies that truncate with boundary cuts at word when no sentence."""
     text = "one two three four five six seven eight nine ten eleven twelve"
     result = _truncate_with_boundary(text, 30, add_ellipsis=True)
     assert not result.rstrip(".").endswith("elev")
@@ -1837,10 +2357,12 @@ def test_truncate_with_boundary_cuts_at_word_when_no_sentence() -> None:
 
 
 def test_truncate_with_boundary_empty_input() -> None:
+    """Verifies that truncate with boundary empty input."""
     assert _truncate_with_boundary("", 100, add_ellipsis=True) == ""
 
 
 def test_is_weak_summary_detects_placeholders() -> None:
+    """Verifies that is weak summary detects placeholders."""
     assert _is_weak_summary("") is True
     assert _is_weak_summary("No summary available yet.") is True
     assert _is_weak_summary("ok") is True
@@ -1848,6 +2370,7 @@ def test_is_weak_summary_detects_placeholders() -> None:
 
 
 def test_deterministic_summary_uses_abstract() -> None:
+    """Verifies that deterministic summary uses abstract."""
     text = "# Paper\n\n## Abstract\n\nFirst sentence. Second sentence. Third.\n"
     result = _deterministic_summary(text)
     assert "First sentence." in result
@@ -1855,6 +2378,7 @@ def test_deterministic_summary_uses_abstract() -> None:
 
 
 def test_deterministic_summary_falls_back_to_paragraphs() -> None:
+    """Verifies that deterministic summary falls back to paragraphs."""
     text = "# Paper\n\nSome first paragraph. With details.\n\nSecond paragraph.\n"
     result = _deterministic_summary(text)
     assert "Some first paragraph" in result
@@ -1866,6 +2390,7 @@ def test_deterministic_summary_falls_back_to_paragraphs() -> None:
 
 
 def test_plain_text_fallback_strips_markdown_via_ast() -> None:
+    """Verifies that plain text fallback strips markdown via ast."""
     md = "# Heading\n\nSome **bold** text with [a link](http://example.com).\n"
     result = _plain_text_fallback(md)
     assert "bold" in result
@@ -1876,6 +2401,7 @@ def test_plain_text_fallback_strips_markdown_via_ast() -> None:
 
 
 def test_plain_text_fallback_skips_fenced_code() -> None:
+    """Verifies that plain text fallback skips fenced code."""
     md = "Hello.\n\n```python\ncode = True\n```\n\nWorld.\n"
     result = _plain_text_fallback(md)
     assert "Hello." in result
@@ -1884,6 +2410,7 @@ def test_plain_text_fallback_skips_fenced_code() -> None:
 
 
 def test_plain_text_fallback_skips_html_comments() -> None:
+    """Verifies that plain text fallback skips html comments."""
     md = "Before.\n\n<!-- hidden comment -->\n\nAfter.\n"
     result = _plain_text_fallback(md)
     assert "Before." in result
@@ -1892,6 +2419,7 @@ def test_plain_text_fallback_skips_html_comments() -> None:
 
 
 def test_plain_text_fallback_skips_images() -> None:
+    """Verifies that plain text fallback skips images."""
     md = "Text before.\n\n![alt](image.png)\n\nText after.\n"
     result = _plain_text_fallback(md)
     assert "Text before." in result
@@ -1900,6 +2428,7 @@ def test_plain_text_fallback_skips_images() -> None:
 
 
 def test_markdown_paragraphs_uses_ast() -> None:
+    """Verifies that markdown paragraphs uses ast."""
     md = (
         "# Title\n\n"
         "First real paragraph.\n\n"
@@ -1913,6 +2442,7 @@ def test_markdown_paragraphs_uses_ast() -> None:
 
 
 def test_markdown_paragraphs_skips_link_only() -> None:
+    """Verifies that markdown paragraphs skips link only."""
     md = "[Go here](http://example.com)\n\nReal content paragraph.\n"
     result = _markdown_paragraphs(md)
     assert "Real content paragraph." in result
@@ -1920,6 +2450,7 @@ def test_markdown_paragraphs_skips_link_only() -> None:
 
 
 def test_is_link_only_inline_detects_pure_links() -> None:
+    """Verifies that is link only inline detects pure links."""
     from markdown_it import MarkdownIt
 
     parser = MarkdownIt()
@@ -1929,6 +2460,7 @@ def test_is_link_only_inline_detects_pure_links() -> None:
 
 
 def test_is_link_only_inline_rejects_mixed_content() -> None:
+    """Verifies that is link only inline rejects mixed content."""
     from markdown_it import MarkdownIt
 
     parser = MarkdownIt()
@@ -1943,6 +2475,7 @@ def test_is_link_only_inline_rejects_mixed_content() -> None:
 
 
 def test_split_sentences_with_nltk() -> None:
+    """Verifies that split sentences with nltk."""
     text = "First sentence. Second sentence. Third one."
     result = _split_sentences(text)
     assert len(result) >= 2
@@ -1950,6 +2483,7 @@ def test_split_sentences_with_nltk() -> None:
 
 
 def test_split_sentences_handles_abbreviations() -> None:
+    """Verifies that split sentences handles abbreviations."""
     text = "Dr. Smith found results. The test passed."
     result = _split_sentences(text)
     # NLTK should not split on "Dr."
@@ -1957,5 +2491,6 @@ def test_split_sentences_handles_abbreviations() -> None:
 
 
 def test_split_sentences_empty_input() -> None:
+    """Verifies that split sentences empty input."""
     assert _split_sentences("") == []
     assert _split_sentences("   ") == []

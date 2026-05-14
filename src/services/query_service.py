@@ -1,3 +1,11 @@
+"""Query service service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.query_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import json
@@ -80,16 +88,34 @@ _QUERY_RESPONSE_SCHEMA = {
 
 
 class _ProviderQueryClaim(BaseModel):
+    """Represents provider query claim behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     text: str = Field(min_length=1)
     citation_refs: list[str] = Field(default_factory=list)
 
 
 class _ProviderQueryCitation(BaseModel):
+    """Represents provider query citation behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     ref: str = Field(min_length=1)
     title: str = Field(default="")
 
 
 class _ProviderQueryAnswer(BaseModel):
+    """Represents provider query answer behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     answer_markdown: str = ""
     claims: list[_ProviderQueryClaim] = Field(default_factory=list)
     citations: list[_ProviderQueryCitation] = Field(default_factory=list)
@@ -98,18 +124,36 @@ class _ProviderQueryAnswer(BaseModel):
 
 @dataclass
 class QueryClaim:
+    """Represents query claim behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     text: str
     citation_refs: list[str] = field(default_factory=list)
 
 
 @dataclass
 class QueryCitation:
+    """Represents query citation behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     ref: str
     title: str = ""
 
 
 @dataclass
 class QueryAnswer:
+    """Represents query answer behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     answer: str
     citations: list[SearchResult]
     saved_path: str | None = None
@@ -121,6 +165,12 @@ class QueryAnswer:
 
 
 class QueryService:
+    """Coordinates query operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(
         self,
         paths: ProjectPaths,
@@ -137,6 +187,15 @@ class QueryService:
         self.schema_text = schema_text
 
     def answer_question(self, question: str, *, limit: int = 3) -> QueryAnswer:
+        """Answer question.
+
+        Args:
+            question: User question to answer from available evidence.
+            limit: Maximum number of results to return or process.
+
+        Returns:
+            QueryAnswer produced by the operation.
+        """
         provider = self._require_provider()
         matches = self.search_service.search(
             question, limit=limit, include_analysis=False
@@ -227,6 +286,16 @@ class QueryService:
     def save_answer(
         self, question: str, answer: QueryAnswer, *, slug: str | None = None
     ) -> str:
+        """Saves answer.
+
+        Args:
+            question: User question to answer from available evidence.
+            answer: Answer value used by the operation.
+            slug: Slug value used by the operation.
+
+        Returns:
+            str produced by the operation.
+        """
         _validate_saved_answer(answer)
         if slug:
             safe_slug = slugify(slug)

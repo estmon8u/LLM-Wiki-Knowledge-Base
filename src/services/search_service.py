@@ -1,3 +1,11 @@
+"""Search service service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.search_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -41,11 +49,23 @@ _INDEXABLE_FM_KEYS: frozenset[str] = frozenset(
 
 @dataclass(frozen=True)
 class _SectionChunk:
+    """Represents section chunk behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     section: str
     body: str
 
 
 class SearchService:
+    """Coordinates search operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(self, paths: ProjectPaths) -> None:
         self.paths = paths
         self.index_store = SearchIndexStore(
@@ -61,6 +81,17 @@ class SearchService:
         include_concepts: bool = False,
         include_analysis: bool = True,
     ) -> list[SearchResult]:
+        """Search.
+
+        Args:
+            query: User query or search text to evaluate.
+            limit: Maximum number of results to return or process.
+            include_concepts: Include concepts value used by the operation.
+            include_analysis: Include analysis value used by the operation.
+
+        Returns:
+            list[SearchResult] produced by the operation.
+        """
         terms = _query_terms(query)
         if not terms:
             return []
@@ -83,6 +114,14 @@ class SearchService:
         )
 
     def refresh(self, *, force: bool = False) -> bool:
+        """Refresh.
+
+        Args:
+            force: Force value used by the operation.
+
+        Returns:
+            bool produced by the operation.
+        """
         if not self._fts_available:
             return False
 
@@ -332,6 +371,11 @@ def _frontmatter_text(frontmatter: dict[str, object]) -> str:
     values: list[str] = []
 
     def append_value(value: object) -> None:
+        """Append value.
+
+        Args:
+            value: Input value being normalized, validated, or serialized.
+        """
         if isinstance(value, str):
             if value.strip():
                 values.append(value.strip())

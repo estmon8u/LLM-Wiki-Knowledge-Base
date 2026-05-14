@@ -1,3 +1,11 @@
+"""Tests for test graphrag workspace service.
+
+This module belongs to `tests.test_graphrag_workspace_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import subprocess
@@ -9,7 +17,21 @@ from src.services.graphrag_workspace_service import GraphRAGWorkspaceService
 
 
 def test_workspace_service_reports_initialization_state(test_project) -> None:
+    """Verifies that workspace service reports initialization state.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         settings_path = test_project.paths.graph_dir / "graphrag" / "settings.yaml"
         settings_path.parent.mkdir(parents=True, exist_ok=True)
         settings_path.write_text("input:\n  type: json\n", encoding="utf-8")
@@ -54,6 +76,11 @@ def test_workspace_service_reports_initialization_state(test_project) -> None:
 
 
 def test_workspace_service_syncs_graph_config_defaults(test_project) -> None:
+    """Verifies that workspace service syncs graph config defaults.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.config["graph"] = {
         "provider": "openai",
         "model": "configured-chat",
@@ -62,6 +89,14 @@ def test_workspace_service_syncs_graph_config_defaults(test_project) -> None:
     }
 
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         settings_path = test_project.paths.graph_dir / "graphrag" / "settings.yaml"
         settings_path.parent.mkdir(parents=True, exist_ok=True)
         settings_path.write_text("input:\n  type: json\n", encoding="utf-8")
@@ -88,6 +123,11 @@ def test_workspace_service_syncs_graph_config_defaults(test_project) -> None:
 
 
 def test_workspace_service_syncs_separate_embedding_provider(test_project) -> None:
+    """Verifies that workspace service syncs separate embedding provider.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.config["graph"] = {
         "provider": "openai",
         "model": "configured-chat",
@@ -96,6 +136,14 @@ def test_workspace_service_syncs_separate_embedding_provider(test_project) -> No
     }
 
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         settings_path = test_project.paths.graph_dir / "graphrag" / "settings.yaml"
         settings_path.parent.mkdir(parents=True, exist_ok=True)
         settings_path.write_text("input:\n  type: json\n", encoding="utf-8")

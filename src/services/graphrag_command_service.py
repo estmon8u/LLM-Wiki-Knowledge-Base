@@ -1,3 +1,11 @@
+"""Graphrag command service service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.graphrag_command_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,6 +26,12 @@ StatusCallback = Callable[[str], None] | None
 
 @dataclass(frozen=True)
 class GraphRAGCommandResult:
+    """Stores graph ragcommand result data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     command: tuple[str, ...]
     cwd: Path
     returncode: int
@@ -26,12 +40,24 @@ class GraphRAGCommandResult:
 
 
 class GraphRAGCommandError(RuntimeError):
+    """Error raised for graph ragcommand failures.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(self, message: str, *, result: GraphRAGCommandResult | None = None):
         super().__init__(message)
         self.result = result
 
 
 class GraphRAGCommandService:
+    """Coordinates graph ragcommand operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     @staticmethod
     def _default_runner(
         command: Sequence[str], **kwargs: Any
@@ -56,6 +82,16 @@ class GraphRAGCommandService:
         embedding: str,
         force: bool,
     ) -> GraphRAGCommandResult:
+        """Init workspace.
+
+        Args:
+            model: Model value used by the operation.
+            embedding: Embedding value used by the operation.
+            force: Force value used by the operation.
+
+        Returns:
+            GraphRAGCommandResult produced by the operation.
+        """
         args = [
             "init",
             "--root",
@@ -79,6 +115,19 @@ class GraphRAGCommandService:
         verbose: bool = False,
         status_callback: StatusCallback = None,
     ) -> GraphRAGCommandResult:
+        """Index.
+
+        Args:
+            method: Method value used by the operation.
+            dry_run: Dry run value used by the operation.
+            cache: Cache value used by the operation.
+            skip_validation: Skip validation value used by the operation.
+            verbose: Whether to emit verbose command output.
+            status_callback: Status callback value used by the operation.
+
+        Returns:
+            GraphRAGCommandResult produced by the operation.
+        """
         args = [
             "index",
             "--root",
@@ -108,6 +157,19 @@ class GraphRAGCommandService:
         response_type: str | None = None,
         verbose: bool = False,
     ) -> GraphRAGCommandResult:
+        """Query.
+
+        Args:
+            question: User question to answer from available evidence.
+            method: Method value used by the operation.
+            community_level: Community level value used by the operation.
+            dynamic_community_selection: Dynamic community selection value used by the operation.
+            response_type: Response type value used by the operation.
+            verbose: Whether to emit verbose command output.
+
+        Returns:
+            GraphRAGCommandResult produced by the operation.
+        """
         args = [
             "query",
             "--root",
@@ -183,6 +245,12 @@ class GraphRAGCommandService:
         threads: list[threading.Thread] = []
 
         def read_stream(stream: Any, sink: list[str]) -> None:
+            """Read stream.
+
+            Args:
+                stream: Stream value used by the operation.
+                sink: Sink value used by the operation.
+            """
             try:
                 for raw_line in iter(stream.readline, ""):
                     sink.append(raw_line)

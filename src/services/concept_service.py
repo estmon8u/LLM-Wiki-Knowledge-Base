@@ -1,3 +1,11 @@
+"""Concept service service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.concept_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from collections import Counter
@@ -93,6 +101,12 @@ _CONCEPT_RESPONSE_SCHEMA = {
 
 
 class _ProviderConcept(BaseModel):
+    """Represents provider concept behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     title: str = Field(min_length=1)
     summary: str = Field(default="")
     topic_terms: list[str] = Field(default_factory=list)
@@ -100,11 +114,23 @@ class _ProviderConcept(BaseModel):
 
 
 class _ProviderConceptReport(BaseModel):
+    """Stores provider concept report data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     concepts: list[_ProviderConcept] = Field(default_factory=list)
 
 
 @dataclass
 class ConceptGenerationResult:
+    """Stores concept generation result data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     concept_paths: list[str]
     updated_source_paths: list[str]
     removed_paths: list[str]
@@ -112,6 +138,12 @@ class ConceptGenerationResult:
 
 @dataclass
 class _SourcePage:
+    """Represents source page behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     file_path: Path
     relative_path: str
     slug: str
@@ -122,6 +154,12 @@ class _SourcePage:
 
 @dataclass
 class _ConceptDraft:
+    """Represents concept draft behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     title: str
     slug: str
     summary: str
@@ -130,6 +168,12 @@ class _ConceptDraft:
 
 
 class ConceptService:
+    """Coordinates concept operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(
         self,
         paths: ProjectPaths,
@@ -140,6 +184,11 @@ class ConceptService:
         self.provider = provider
 
     def generate(self) -> ConceptGenerationResult:
+        """Generate.
+
+        Returns:
+            ConceptGenerationResult produced by the operation.
+        """
         source_pages = self._load_source_pages()
         drafts = self._build_concept_drafts(source_pages)
         managed_pages = self._list_managed_pages()

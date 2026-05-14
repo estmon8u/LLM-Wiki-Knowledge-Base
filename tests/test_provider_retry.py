@@ -21,10 +21,23 @@ class _StubProvider:
     name = "stub"
 
     def __init__(self, mock_call: MagicMock) -> None:
+        """Initializes the instance.
+
+        Args:
+            mock_call: Mock call value used by the operation.
+        """
         self._mock = mock_call
 
     @provider_retry()
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        """Generate.
+
+        Args:
+            request: Request value used by the operation.
+
+        Returns:
+            ProviderResponse produced by the operation.
+        """
         return self._mock(request)
 
 
@@ -34,11 +47,13 @@ class _StubProvider:
 
 
 def test_transient_exceptions_includes_stdlib_types() -> None:
+    """Verifies that transient exceptions includes stdlib types."""
     assert ConnectionError in TRANSIENT_EXCEPTIONS
     assert TimeoutError in TRANSIENT_EXCEPTIONS
 
 
 def test_transient_exceptions_includes_openai_types() -> None:
+    """Verifies that transient exceptions includes openai types."""
     from openai import (
         APIConnectionError,
         APITimeoutError,
@@ -53,6 +68,7 @@ def test_transient_exceptions_includes_openai_types() -> None:
 
 
 def test_transient_exceptions_includes_anthropic_types() -> None:
+    """Verifies that transient exceptions includes anthropic types."""
     from anthropic import (
         APIConnectionError,
         APITimeoutError,
@@ -72,6 +88,7 @@ def test_transient_exceptions_includes_anthropic_types() -> None:
 
 
 def test_retry_succeeds_after_transient_errors() -> None:
+    """Verifies that retry succeeds after transient errors."""
     mock = MagicMock(
         side_effect=[
             ConnectionError("reset"),
@@ -91,6 +108,7 @@ def test_retry_succeeds_after_transient_errors() -> None:
 
 
 def test_retry_exhaustion_propagates_error() -> None:
+    """Verifies that retry exhaustion propagates error."""
     mock = MagicMock(
         side_effect=[
             ConnectionError("1"),
@@ -110,6 +128,7 @@ def test_retry_exhaustion_propagates_error() -> None:
 
 
 def test_non_retriable_error_propagates_immediately() -> None:
+    """Verifies that non retriable error propagates immediately."""
     mock = MagicMock(side_effect=ValueError("bad prompt"))
     provider = _StubProvider(mock)
     with pytest.raises(ValueError, match="bad prompt"):
@@ -118,6 +137,7 @@ def test_non_retriable_error_propagates_immediately() -> None:
 
 
 def test_non_retriable_runtime_error_propagates_immediately() -> None:
+    """Verifies that non retriable runtime error propagates immediately."""
     mock = MagicMock(side_effect=RuntimeError("something unexpected"))
     provider = _StubProvider(mock)
     with pytest.raises(RuntimeError, match="something unexpected"):
@@ -131,6 +151,7 @@ def test_non_retriable_runtime_error_propagates_immediately() -> None:
 
 
 def test_provider_retry_returns_new_decorator_each_call() -> None:
+    """Verifies that provider retry returns new decorator each call."""
     d1 = provider_retry()
     d2 = provider_retry()
     assert d1 is not d2

@@ -1,3 +1,11 @@
+"""Provider integration helpers for structured.
+
+This module belongs to `src.providers.structured` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import json

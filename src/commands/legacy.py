@@ -1,3 +1,11 @@
+"""Click command implementation for the kb legacy command.
+
+This module belongs to `src.commands.legacy` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from typing import Optional
@@ -25,10 +33,24 @@ LEGACY_WARNING = (
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
+    """Builds the command registry specification for this module.
+
+    Args:
+        _: Value value used by the operation.
+
+    Returns:
+        CommandSpec produced by the operation.
+    """
     return CommandSpec(name="legacy", summary=SUMMARY)
 
 
 def create_command() -> click.Command:
+    """Creates the Click command exposed by this module.
+
+    Returns:
+        click.Command produced by the operation.
+    """
+
     @click.group(
         name="legacy", help=SUMMARY, short_help="Run deprecated FTS5 commands."
     )
@@ -50,6 +72,14 @@ def create_command() -> click.Command:
         limit: int,
         as_json: bool,
     ) -> None:
+        """Legacy find.
+
+        Args:
+            command_context: Command context value used by the operation.
+            query_terms: Query terms value used by the operation.
+            limit: Maximum number of results to return or process.
+            as_json: As json value used by the operation.
+        """
         require_initialized(command_context)
         if not query_terms:
             raise click.ClickException("Provide at least one search term.")
@@ -124,6 +154,16 @@ def create_command() -> click.Command:
         save_as_name: Optional[str],
         show_evidence: bool,
     ) -> None:
+        """Legacy ask.
+
+        Args:
+            command_context: Command context value used by the operation.
+            question_terms: Question terms value used by the operation.
+            limit: Maximum number of results to return or process.
+            save_answer: Save answer value used by the operation.
+            save_as_name: Save as name value used by the operation.
+            show_evidence: Show evidence value used by the operation.
+        """
         require_initialized(command_context)
         if not question_terms:
             raise click.ClickException("Provide a question to answer.")

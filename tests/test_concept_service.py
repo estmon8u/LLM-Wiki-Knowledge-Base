@@ -1,3 +1,11 @@
+"""Tests for test concept service.
+
+This module belongs to `tests.test_concept_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -25,6 +33,16 @@ from src.services.concept_service import (
 
 
 def _compiled_page(title: str, summary: str, body: str) -> str:
+    """Handles compiled page.
+
+    Args:
+        title: Title value used by the operation.
+        summary: Summary value used by the operation.
+        body: Body value used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     return (
         "---\n"
         f"title: {title}\n"
@@ -42,6 +60,7 @@ def _compiled_page(title: str, summary: str, body: str) -> str:
 
 
 def test_stem_token_strips_common_suffixes() -> None:
+    """Verifies that stem token strips common suffixes."""
     assert _stem_token("retrieval") == "retriev"
     assert _stem_token("models") == "model"
     assert _stem_token("training") == "train"
@@ -62,6 +81,7 @@ def test_stem_token_minimum_length_guard() -> None:
 
 
 def test_extract_terms_skips_stopwords_and_short_tokens() -> None:
+    """Verifies that extract terms skips stopwords and short tokens."""
     terms = _extract_terms("The models are used for retrieval tasks.")
     assert "the" not in terms
     assert "are" not in terms
@@ -70,6 +90,7 @@ def test_extract_terms_skips_stopwords_and_short_tokens() -> None:
 
 
 def test_extract_terms_filters_stemmed_generic_tokens() -> None:
+    """Verifies that extract terms filters stemmed generic tokens."""
     terms = _extract_terms(
         "Question answering with language models and learning systems."
     )
@@ -84,6 +105,7 @@ def test_extract_terms_filters_stemmed_generic_tokens() -> None:
 
 
 def test_split_frontmatter_parses_yaml() -> None:
+    """Verifies that split frontmatter parses yaml."""
     text = "---\ntitle: Hello\n---\n\nBody text.\n"
     fm, body = _split_frontmatter(text)
     assert fm["title"] == "Hello"
@@ -91,6 +113,7 @@ def test_split_frontmatter_parses_yaml() -> None:
 
 
 def test_split_frontmatter_handles_missing_frontmatter() -> None:
+    """Verifies that split frontmatter handles missing frontmatter."""
     text = "# No frontmatter\n\nBody.\n"
     fm, body = _split_frontmatter(text)
     assert fm == {}
@@ -98,10 +121,12 @@ def test_split_frontmatter_handles_missing_frontmatter() -> None:
 
 
 def test_format_concept_title_one_term() -> None:
+    """Verifies that format concept title one term."""
     assert _format_concept_title(["dense-retrieval"]) == "Dense Retrieval"
 
 
 def test_format_concept_title_two_terms() -> None:
+    """Verifies that format concept title two terms."""
     assert (
         _format_concept_title(["dense-retrieval", "question-answering"])
         == "Dense Retrieval and Question Answering"
@@ -109,11 +134,13 @@ def test_format_concept_title_two_terms() -> None:
 
 
 def test_format_concept_title_three_terms() -> None:
+    """Verifies that format concept title three terms."""
     result = _format_concept_title(["alpha", "beta", "gamma"])
     assert result == "Alpha, Beta, and Gamma"
 
 
 def test_replace_backlinks_block_adds_section() -> None:
+    """Verifies that replace backlinks block adds section."""
     original = "---\ntitle: Page\n---\n\n# Page\n\nBody.\n"
     result = _replace_backlinks_block(original, [("alpha", "Alpha")])
     assert "## Related Concept Pages" in result
@@ -122,6 +149,7 @@ def test_replace_backlinks_block_adds_section() -> None:
 
 
 def test_replace_backlinks_block_replaces_existing_block() -> None:
+    """Verifies that replace backlinks block replaces existing block."""
     original = (
         "# Page\n\nBody.\n"
         "\n## Related Concept Pages\n\n"
@@ -135,6 +163,7 @@ def test_replace_backlinks_block_replaces_existing_block() -> None:
 
 
 def test_replace_backlinks_block_removes_block_when_no_links() -> None:
+    """Verifies that replace backlinks block removes block when no links."""
     original = (
         "# Page\n\nBody.\n"
         "\n## Related Concept Pages\n\n"
@@ -148,11 +177,13 @@ def test_replace_backlinks_block_removes_block_when_no_links() -> None:
 
 
 def test_replace_backlinks_block_noop_when_empty_and_no_block() -> None:
+    """Verifies that replace backlinks block noop when empty and no block."""
     original = "# Page\n\nBody.\n"
     assert _replace_backlinks_block(original, []) == original
 
 
 def test_derive_topic_terms_uses_frequency() -> None:
+    """Verifies that derive topic terms uses frequency."""
     pages = [
         _SourcePage(
             file_path=None,
@@ -212,6 +243,11 @@ def test_derive_topic_terms_rejects_pure_stopword_themes() -> None:
 
 
 def test_generate_no_source_pages_returns_empty(test_project) -> None:
+    """Verifies that generate no source pages returns empty.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     service = ConceptService(test_project.paths)
     result = service.generate()
 
@@ -221,6 +257,11 @@ def test_generate_no_source_pages_returns_empty(test_project) -> None:
 
 
 def test_generate_single_source_page_returns_empty(test_project) -> None:
+    """Verifies that generate single source page returns empty.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/only-page.md",
         _compiled_page("Only Page", "Standalone page.", "Body content."),
@@ -233,6 +274,11 @@ def test_generate_single_source_page_returns_empty(test_project) -> None:
 
 
 def test_generate_creates_concept_page_for_related_sources(test_project) -> None:
+    """Verifies that generate creates concept page for related sources.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/alpha.md",
         _compiled_page(
@@ -271,6 +317,11 @@ def test_generate_creates_concept_page_for_related_sources(test_project) -> None
 
 
 def test_generate_adds_backlinks_to_source_pages(test_project) -> None:
+    """Verifies that generate adds backlinks to source pages.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/alpha.md",
         _compiled_page(
@@ -307,6 +358,11 @@ def test_generate_adds_backlinks_to_source_pages(test_project) -> None:
 
 
 def test_generate_removes_stale_managed_pages(test_project) -> None:
+    """Verifies that generate removes stale managed pages.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.wiki_concepts_dir.mkdir(parents=True, exist_ok=True)
     test_project.write_file(
         "wiki/concepts/stale-topic.md",
@@ -323,6 +379,11 @@ def test_generate_removes_stale_managed_pages(test_project) -> None:
 
 
 def test_generate_avoids_overwriting_manual_page(test_project) -> None:
+    """Verifies that generate avoids overwriting manual page.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/concepts/dense.md",
         "---\ntitle: Manual Dense Page\ntype: analysis\n---\n\n# Manual Dense Page\n\nHand-written.\n",
@@ -359,6 +420,11 @@ def test_generate_avoids_overwriting_manual_page(test_project) -> None:
 
 
 def test_generate_idempotent(test_project) -> None:
+    """Verifies that generate idempotent.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/alpha.md",
         _compiled_page(
@@ -385,6 +451,11 @@ def test_generate_idempotent(test_project) -> None:
 
 
 def test_lint_passes_for_generated_concept_page(test_project) -> None:
+    """Verifies that lint passes for generated concept page.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/alpha.md",
         _compiled_page(
@@ -413,6 +484,11 @@ def test_lint_passes_for_generated_concept_page(test_project) -> None:
 
 
 def test_generate_with_no_wiki_sources_dir(test_project) -> None:
+    """Verifies that generate with no wiki sources dir.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     import shutil
 
     if test_project.paths.wiki_sources_dir.exists():
@@ -425,6 +501,11 @@ def test_generate_with_no_wiki_sources_dir(test_project) -> None:
 
 
 def test_resolve_destination_skips_manual_page(test_project) -> None:
+    """Verifies that resolve destination skips manual page.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.wiki_concepts_dir.mkdir(parents=True, exist_ok=True)
     test_project.write_file(
         "wiki/concepts/dense-retrieval.md",
@@ -459,15 +540,30 @@ def test_resolve_destination_skips_manual_page(test_project) -> None:
 
 
 def test_compile_with_concepts_flag_cli() -> None:
+    """Verifies that compile with concepts flag cli."""
     from click.testing import CliRunner
     from unittest.mock import patch
     from src.cli import main
     from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
 
     class _FakeProvider(TextProvider):
+        """Represents fake provider behavior and data.
+
+        Attributes:
+            See annotated class attributes for stored values.
+        """
+
         name = "fake"
 
         def generate(self, request: ProviderRequest) -> ProviderResponse:
+            """Generate.
+
+            Args:
+                request: Request value used by the operation.
+
+            Returns:
+                ProviderResponse produced by the operation.
+            """
             return ProviderResponse(text="Stub summary.", model_name="fake-v1")
 
     runner = CliRunner()
@@ -505,12 +601,18 @@ def test_compile_with_concepts_flag_cli() -> None:
 
 
 def test_split_frontmatter_handles_invalid_yaml() -> None:
+    """Verifies that split frontmatter handles invalid yaml."""
     text = "---\n: :\n  bad: [unclosed\n---\n\nBody.\n"
     fm, body = _split_frontmatter(text)
     assert fm == {}
 
 
 def test_list_managed_pages_skips_non_concept_pages(test_project) -> None:
+    """Verifies that list managed pages skips non concept pages.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.wiki_concepts_dir.mkdir(parents=True, exist_ok=True)
     test_project.write_file(
         "wiki/concepts/manual.md",
@@ -524,6 +626,11 @@ def test_list_managed_pages_skips_non_concept_pages(test_project) -> None:
 
 
 def test_generate_with_unrelated_pages_produces_no_concepts(test_project) -> None:
+    """Verifies that generate with unrelated pages produces no concepts.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/apples.md",
         _compiled_page(
@@ -548,6 +655,7 @@ def test_generate_with_unrelated_pages_produces_no_concepts(test_project) -> Non
 
 
 def test_split_frontmatter_no_closing_marker() -> None:
+    """Verifies that split frontmatter no closing marker."""
     text = "---\ntitle: Hello\nNo closing marker here\n"
     fm, body = _split_frontmatter(text)
     assert fm == {}
@@ -555,6 +663,11 @@ def test_split_frontmatter_no_closing_marker() -> None:
 
 
 def test_resolve_destination_suffix_collision(test_project) -> None:
+    """Verifies that resolve destination suffix collision.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.wiki_concepts_dir.mkdir(parents=True, exist_ok=True)
     test_project.write_file(
         "wiki/concepts/test-slug.md",
@@ -572,6 +685,11 @@ def test_resolve_destination_suffix_collision(test_project) -> None:
 
 
 def test_list_managed_pages_no_concepts_dir(test_project) -> None:
+    """Verifies that list managed pages no concepts dir.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     import shutil
 
     if test_project.paths.wiki_concepts_dir.exists():
@@ -584,6 +702,11 @@ def test_list_managed_pages_no_concepts_dir(test_project) -> None:
 
 
 def test_list_managed_pages_handles_unreadable_file(test_project) -> None:
+    """Verifies that list managed pages handles unreadable file.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.wiki_concepts_dir.mkdir(parents=True, exist_ok=True)
     bad_path = test_project.paths.wiki_concepts_dir / "corrupt.md"
     bad_path.write_bytes(b"\x80\x81\x82")
@@ -684,6 +807,14 @@ def test_stem_token_short_input_unchanged() -> None:
 
 
 def _make_source_pages(count: int = 4) -> list[_SourcePage]:
+    """Handles make source pages.
+
+    Args:
+        count: Count value used by the operation.
+
+    Returns:
+        list[_SourcePage] produced by the operation.
+    """
     pages = []
     for i in range(count):
         slug = f"page-{i}"
@@ -703,6 +834,7 @@ def _make_source_pages(count: int = 4) -> list[_SourcePage]:
 
 
 def test_normalize_topic_terms_deduplicates_and_caps() -> None:
+    """Verifies that normalize topic terms deduplicates and caps."""
     result = _normalize_topic_terms(
         ["Dense Retrieval", "dense-retrieval", "QA", "extra"]
     )
@@ -710,10 +842,12 @@ def test_normalize_topic_terms_deduplicates_and_caps() -> None:
 
 
 def test_normalize_topic_terms_empty_input() -> None:
+    """Verifies that normalize topic terms empty input."""
     assert _normalize_topic_terms([]) == []
 
 
 def test_source_pages_digest_deterministic() -> None:
+    """Verifies that source pages digest deterministic."""
     pages = _make_source_pages(3)
     d1 = _source_pages_digest(pages)
     d2 = _source_pages_digest(pages)
@@ -722,6 +856,7 @@ def test_source_pages_digest_deterministic() -> None:
 
 
 def test_source_pages_digest_changes_on_content_change() -> None:
+    """Verifies that source pages digest changes on content change."""
     pages = _make_source_pages(3)
     d1 = _source_pages_digest(pages)
     pages[0] = _SourcePage(
@@ -737,6 +872,7 @@ def test_source_pages_digest_changes_on_content_change() -> None:
 
 
 def test_provider_concept_prompt_includes_all_pages() -> None:
+    """Verifies that provider concept prompt includes all pages."""
     pages = _make_source_pages(3)
     prompt = _provider_concept_prompt(pages)
     for page in pages:
@@ -745,6 +881,7 @@ def test_provider_concept_prompt_includes_all_pages() -> None:
 
 
 def test_parse_provider_concept_report_valid_json() -> None:
+    """Verifies that parse provider concept report valid json."""
     raw = '{"concepts": [{"title": "T", "summary": "S", "topic_terms": ["a"], "source_pages": ["x"]}]}'
     report = _parse_provider_concept_report(raw)
     assert len(report.concepts) == 1
@@ -752,6 +889,7 @@ def test_parse_provider_concept_report_valid_json() -> None:
 
 
 def test_parse_provider_concept_report_rejects_invalid_json() -> None:
+    """Verifies that parse provider concept report rejects invalid json."""
     import pytest
 
     with pytest.raises(Exception):
@@ -759,6 +897,7 @@ def test_parse_provider_concept_report_rejects_invalid_json() -> None:
 
 
 def test_drafts_from_provider_report_matches_by_relative_path() -> None:
+    """Verifies that drafts from provider report matches by relative path."""
     pages = _make_source_pages(4)
     report = _ProviderConceptReport(
         concepts=[
@@ -783,6 +922,7 @@ def test_drafts_from_provider_report_matches_by_relative_path() -> None:
 
 
 def test_drafts_from_provider_report_matches_by_slug() -> None:
+    """Verifies that drafts from provider report matches by slug."""
     pages = _make_source_pages(4)
     report = _parse_provider_concept_report(
         '{"concepts": [{"title": "By Slug", "summary": "S",'
@@ -795,6 +935,7 @@ def test_drafts_from_provider_report_matches_by_slug() -> None:
 
 
 def test_drafts_from_provider_report_skips_small_cluster() -> None:
+    """Verifies that drafts from provider report skips small cluster."""
     pages = _make_source_pages(4)
     report = _parse_provider_concept_report(
         '{"concepts": [{"title": "Small", "summary": "S",'
@@ -807,6 +948,7 @@ def test_drafts_from_provider_report_skips_small_cluster() -> None:
 
 
 def test_drafts_from_provider_report_deduplicates_slugs() -> None:
+    """Verifies that drafts from provider report deduplicates slugs."""
     pages = _make_source_pages(4)
     report = _parse_provider_concept_report(
         '{"concepts": ['
@@ -822,6 +964,11 @@ def test_drafts_from_provider_report_deduplicates_slugs() -> None:
 
 
 def test_write_and_load_concept_cache(tmp_path) -> None:
+    """Verifies that write and load concept cache.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     cache_path = tmp_path / "cache.json"
     report = _parse_provider_concept_report(
         '{"concepts": [{"title": "T", "summary": "S", "topic_terms": ["a"], "source_pages": ["x"]}]}'
@@ -835,6 +982,11 @@ def test_write_and_load_concept_cache(tmp_path) -> None:
 
 
 def test_load_concept_cache_returns_none_on_digest_mismatch(tmp_path) -> None:
+    """Verifies that load concept cache returns none on digest mismatch.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     cache_path = tmp_path / "cache.json"
     report = _parse_provider_concept_report('{"concepts": []}')
     _write_concept_cache(cache_path, "digest123", report)
@@ -843,16 +995,31 @@ def test_load_concept_cache_returns_none_on_digest_mismatch(tmp_path) -> None:
 
 
 def test_load_concept_cache_returns_none_on_missing_file(tmp_path) -> None:
+    """Verifies that load concept cache returns none on missing file.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     assert _load_concept_cache(tmp_path / "missing.json", "any") is None
 
 
 def test_load_concept_cache_returns_none_on_corrupt_json(tmp_path) -> None:
+    """Verifies that load concept cache returns none on corrupt json.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     cache_path = tmp_path / "cache.json"
     cache_path.write_text("not json", encoding="utf-8")
     assert _load_concept_cache(cache_path, "any") is None
 
 
 def test_load_concept_cache_returns_none_on_version_mismatch(tmp_path) -> None:
+    """Verifies that load concept cache returns none on version mismatch.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     import json
 
     cache_path = tmp_path / "cache.json"
@@ -869,9 +1036,20 @@ def test_load_concept_cache_returns_none_on_version_mismatch(tmp_path) -> None:
 
 
 class _StubConceptProvider:
+    """Represents stub concept provider behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     name = "stub"
 
     def generate(self, request):
+        """Generate.
+
+        Args:
+            request: Request value used by the operation.
+        """
         from src.providers.base import ProviderResponse
         import json
 
@@ -895,13 +1073,29 @@ class _StubConceptProvider:
 
 
 class _FailingProvider:
+    """Represents failing provider behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     name = "failing"
 
     def generate(self, request):
+        """Generate.
+
+        Args:
+            request: Request value used by the operation.
+        """
         raise RuntimeError("provider down")
 
 
 def test_generate_with_provider_creates_concept_pages(test_project) -> None:
+    """Verifies that generate with provider creates concept pages.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     for slug in ("alpha", "beta", "gamma"):
         test_project.write_file(
             f"wiki/sources/{slug}.md",
@@ -922,6 +1116,11 @@ def test_generate_with_provider_creates_concept_pages(test_project) -> None:
 
 
 def test_generate_with_provider_caches_and_reuses(test_project) -> None:
+    """Verifies that generate with provider caches and reuses.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     for slug in ("alpha", "beta", "gamma"):
         test_project.write_file(
             f"wiki/sources/{slug}.md",
@@ -946,6 +1145,11 @@ def test_generate_with_provider_caches_and_reuses(test_project) -> None:
 
 
 def test_generate_with_provider_falls_back_on_failure(test_project) -> None:
+    """Verifies that generate with provider falls back on failure.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     for slug in ("alpha", "beta", "gamma"):
         test_project.write_file(
             f"wiki/sources/{slug}.md",
@@ -966,6 +1170,11 @@ def test_generate_with_provider_falls_back_on_failure(test_project) -> None:
 def test_generate_with_provider_cache_invalidated_on_source_change(
     test_project,
 ) -> None:
+    """Verifies that generate with provider cache invalidated on source change.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     for slug in ("alpha", "beta", "gamma"):
         test_project.write_file(
             f"wiki/sources/{slug}.md",

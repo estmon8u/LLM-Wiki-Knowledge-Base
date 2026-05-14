@@ -1,3 +1,11 @@
+"""Click command implementation for the kb review command.
+
+This module belongs to `src.commands.review` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import click
@@ -21,10 +29,24 @@ _SEVERITY_STYLE = {
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
+    """Builds the command registry specification for this module.
+
+    Args:
+        _: Value value used by the operation.
+
+    Returns:
+        CommandSpec produced by the operation.
+    """
     return CommandSpec(name="review", summary=SUMMARY)
 
 
 def create_command() -> click.Command:
+    """Creates the Click command exposed by this module.
+
+    Returns:
+        click.Command produced by the operation.
+    """
+
     @click.command(
         name="review",
         help=SUMMARY,
@@ -32,6 +54,11 @@ def create_command() -> click.Command:
     )
     @click.pass_obj
     def command(command_context: CommandContext) -> None:
+        """Command.
+
+        Args:
+            command_context: Command context value used by the operation.
+        """
         require_initialized(command_context)
         review_service = command_context.services["review"]
         try:

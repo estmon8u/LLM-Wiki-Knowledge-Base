@@ -1,3 +1,11 @@
+"""Tests for test manifest and ingest.
+
+This module belongs to `tests.test_manifest_and_ingest` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -14,20 +22,51 @@ from src.services.project_service import utc_now_iso
 
 
 class FakePdfConverter:
+    """Represents fake pdf converter behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(self, markdown: str) -> None:
+        """Initializes the instance.
+
+        Args:
+            markdown: Markdown content being processed.
+        """
         self.markdown = markdown
 
     def convert_local(self, source_path: Path) -> str:
+        """Convert local.
+
+        Args:
+            source_path: Source path being processed.
+
+        Returns:
+            str produced by the operation.
+        """
         return self.markdown
 
 
 class FakeMistralConverter:
+    """Represents fake mistral converter behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(
         self,
         *,
         document_text: str = "",
         document_error: Exception | None = None,
     ) -> None:
+        """Initializes the instance.
+
+        Args:
+            document_text: Document text value used by the operation.
+            document_error: Document error value used by the operation.
+        """
         self.document_text = document_text
         self.document_error = document_error
 
@@ -38,6 +77,16 @@ class FakeMistralConverter:
         mime_type: str,
         document_name: str = "",
     ) -> _ConvertedText:
+        """Convert document bytes.
+
+        Args:
+            document_bytes: Document bytes value used by the operation.
+            mime_type: Mime type value used by the operation.
+            document_name: Document name value used by the operation.
+
+        Returns:
+            _ConvertedText produced by the operation.
+        """
         if self.document_error is not None:
             raise self.document_error
         return _ConvertedText(normalized_text=self.document_text, page_count=1)
@@ -45,18 +94,47 @@ class FakeMistralConverter:
     def convert_image_bytes(
         self, image_bytes: bytes, *, mime_type: str
     ) -> _ConvertedText:
+        """Convert image bytes.
+
+        Args:
+            image_bytes: Image bytes value used by the operation.
+            mime_type: Mime type value used by the operation.
+
+        Returns:
+            _ConvertedText produced by the operation.
+        """
         return _ConvertedText(normalized_text="", page_count=1)
 
 
 class FakeHtmlRenderer:
+    """Represents fake html renderer behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def resolve_binary(self) -> str:
+        """Resolve binary.
+
+        Returns:
+            str produced by the operation.
+        """
         return "C:/wkhtmltopdf.exe"
 
     def render_file(self, source_path: Path) -> bytes:
+        """Render file.
+
+        Args:
+            source_path: Source path being processed.
+
+        Returns:
+            bytes produced by the operation.
+        """
         return b"%PDF-1.4\nfake\n"
 
 
 def test_raw_source_record_round_trip_serialization() -> None:
+    """Verifies that raw source record round trip serialization."""
     record = RawSourceRecord(
         source_id="source-1",
         slug="sample",
@@ -78,6 +156,11 @@ def test_raw_source_record_round_trip_serialization() -> None:
 
 
 def test_manifest_service_ensures_empty_manifest(test_project) -> None:
+    """Verifies that manifest service ensures empty manifest.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     manifest_service = test_project.services["manifest"]
 
     assert manifest_service.ensure_manifest() is False
@@ -88,6 +171,11 @@ def test_manifest_service_ensures_empty_manifest(test_project) -> None:
 def test_manifest_service_reads_even_when_manifest_file_is_missing(
     uninitialized_project,
 ) -> None:
+    """Verifies that manifest service reads even when manifest file is missing.
+
+    Args:
+        uninitialized_project: Uninitialized project value used by the operation.
+    """
     manifest_service = uninitialized_project.services["manifest"]
 
     assert manifest_service.list_sources() == []
@@ -95,6 +183,11 @@ def test_manifest_service_reads_even_when_manifest_file_is_missing(
 
 
 def test_manifest_service_save_source_updates_existing_record(test_project) -> None:
+    """Verifies that manifest service save source updates existing record.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     manifest_service = test_project.services["manifest"]
     record = RawSourceRecord(
         source_id="source-1",
@@ -129,12 +222,23 @@ def test_manifest_service_save_source_updates_existing_record(test_project) -> N
 def test_extract_title_selects_best_available_title(
     contents: str, expected: str
 ) -> None:
+    """Verifies that extract title selects best available title.
+
+    Args:
+        contents: Contents value used by the operation.
+        expected: Expected value used by the operation.
+    """
     source_path = Path("fallback-name.md")
 
     assert _extract_title(contents, source_path) == expected
 
 
 def test_ingest_service_copies_source_and_updates_manifest(test_project) -> None:
+    """Verifies that ingest service copies source and updates manifest.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     source_path = test_project.write_file(
         "notes/example.md",
         "# Example Document\n\nUseful text about citations.\n",
@@ -160,6 +264,11 @@ def test_ingest_service_copies_source_and_updates_manifest(test_project) -> None
 def test_ingest_service_converts_html_and_stores_normalized_markdown(
     test_project,
 ) -> None:
+    """Verifies that ingest service converts html and stores normalized markdown.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     source_path = test_project.write_file(
         "notes/example.html",
         "<html><body><h1>HTML Research Note</h1><p>Useful converted text.</p></body></html>",
@@ -195,6 +304,11 @@ def test_ingest_service_converts_html_and_stores_normalized_markdown(
 
 
 def test_ingest_service_routes_pdf_sources_through_docling(test_project) -> None:
+    """Verifies that ingest service routes pdf sources through docling.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     source_path = test_project.write_file("notes/example.pdf", "not-a-real-pdf")
     normalization_service = NormalizationService(
         mistral_ocr_converter=FakeMistralConverter(
@@ -231,6 +345,11 @@ def test_ingest_service_routes_pdf_sources_through_docling(test_project) -> None
 
 
 def test_ingest_service_rejects_missing_and_unsupported_sources(test_project) -> None:
+    """Verifies that ingest service rejects missing and unsupported sources.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     ingest_service = test_project.services["ingest"]
     unsupported = test_project.write_file(
         "notes/data.bin",
@@ -250,6 +369,11 @@ def test_ingest_service_rejects_missing_and_unsupported_sources(test_project) ->
 def test_ingest_service_rejects_directory_path_without_recursive_mode(
     test_project,
 ) -> None:
+    """Verifies that ingest service rejects directory path without recursive mode.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     directory = test_project.root / "bulk"
     directory.mkdir()
 
@@ -258,6 +382,11 @@ def test_ingest_service_rejects_directory_path_without_recursive_mode(
 
 
 def test_ingest_service_detects_duplicate_content_hash(test_project) -> None:
+    """Verifies that ingest service detects duplicate content hash.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     source_path = test_project.write_file(
         "notes/duplicate.md",
         "# Duplicate\n\nSame body.\n",
@@ -275,6 +404,11 @@ def test_ingest_service_detects_duplicate_content_hash(test_project) -> None:
 
 
 def test_ingest_service_uses_unique_slug_for_duplicate_titles(test_project) -> None:
+    """Verifies that ingest service uses unique slug for duplicate titles.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     first = test_project.write_file("a.md", "# Same Title\n\nOne\n")
     second = test_project.write_file("b.md", "# Same Title\n\nTwo\n")
     third = test_project.write_file("c.md", "# Same Title\n\nThree\n")
@@ -290,6 +424,7 @@ def test_ingest_service_uses_unique_slug_for_duplicate_titles(test_project) -> N
 
 
 def test_supported_source_path_recognizes_supported_extensions() -> None:
+    """Verifies that supported source path recognizes supported extensions."""
     assert is_supported_source_path(Path("note.md")) is True
     assert is_supported_source_path(Path("paper.pdf")) is True
     assert is_supported_source_path(Path("slides.pptx")) is True
@@ -299,6 +434,11 @@ def test_supported_source_path_recognizes_supported_extensions() -> None:
 def test_ingest_service_recursively_ingests_supported_directory_files(
     test_project,
 ) -> None:
+    """Verifies that ingest service recursively ingests supported directory files.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     root = test_project.root / "bulk"
     test_project.write_file("bulk/alpha.md", "# Alpha\n\nAlpha body.\n")
     test_project.write_file("bulk/nested/beta.txt", "Beta title\n\nBeta body.\n")
@@ -319,6 +459,11 @@ def test_ingest_service_recursively_ingests_supported_directory_files(
 
 
 def test_ingest_service_directory_progress_callback_tracks_files(test_project) -> None:
+    """Verifies that ingest service directory progress callback tracks files.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     root = test_project.root / "bulk"
     test_project.write_file("bulk/alpha.md", "# Alpha\n\nAlpha body.\n")
     test_project.write_file("bulk/nested/beta.txt", "Beta title\n\nBeta body.\n")
@@ -336,6 +481,11 @@ def test_ingest_service_directory_progress_callback_tracks_files(test_project) -
 def test_ingest_service_directory_reports_duplicates_and_preserves_manifest(
     test_project,
 ) -> None:
+    """Verifies that ingest service directory reports duplicates and preserves manifest.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     root = test_project.root / "bulk"
     shared_content = "# Shared\n\nSame body.\n"
     test_project.write_file("bulk/first.md", shared_content)
@@ -351,6 +501,11 @@ def test_ingest_service_directory_reports_duplicates_and_preserves_manifest(
 
 
 def test_ingest_service_rejects_directory_without_supported_files(test_project) -> None:
+    """Verifies that ingest service rejects directory without supported files.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     root = test_project.root / "bulk"
     root.mkdir()
     test_project.write_file("bulk/ignored.bin", "ignore me")
@@ -360,11 +515,21 @@ def test_ingest_service_rejects_directory_without_supported_files(test_project) 
 
 
 def test_ingest_service_directory_requires_existing_directory(test_project) -> None:
+    """Verifies that ingest service directory requires existing directory.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     with pytest.raises(FileNotFoundError, match="Source directory not found"):
         test_project.services["ingest"].ingest_directory(test_project.root / "missing")
 
 
 def test_ingest_service_directory_rejects_file_input(test_project) -> None:
+    """Verifies that ingest service directory rejects file input.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     source = test_project.write_file("notes/example.md", "# Example\n\nBody.\n")
 
     with pytest.raises(ValueError, match="Source path is not a directory"):
@@ -375,6 +540,11 @@ def test_ingest_service_directory_rejects_file_input(test_project) -> None:
 
 
 def test_find_by_hash_miss_returns_none(test_project) -> None:
+    """Verifies that find by hash miss returns none.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     source_path = test_project.write_file("notes/item.md", "# Item\n\nBody.\n")
     test_project.services["ingest"].ingest_path(source_path)
 
@@ -382,6 +552,11 @@ def test_find_by_hash_miss_returns_none(test_project) -> None:
 
 
 def test_save_source_appends_new_record(test_project) -> None:
+    """Verifies that save source appends new record.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     manifest = test_project.services["manifest"]
     record = RawSourceRecord(
         source_id="new-id",
@@ -418,6 +593,11 @@ def test_save_source_appends_new_record(test_project) -> None:
 
 
 def test_manifest_write_creates_missing_parent(uninitialized_project) -> None:
+    """Verifies that manifest write creates missing parent.
+
+    Args:
+        uninitialized_project: Uninitialized project value used by the operation.
+    """
     manifest_file = uninitialized_project.paths.raw_manifest_file
     assert not manifest_file.parent.exists()
 
@@ -430,6 +610,11 @@ def test_manifest_write_creates_missing_parent(uninitialized_project) -> None:
 
 
 def test_ingest_source_with_null_bytes(test_project) -> None:
+    """Verifies that ingest source with null bytes.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     path = test_project.write_file("notes/null.md", "# Null\n\nBody with \x00 byte.\n")
 
     result = test_project.services["ingest"].ingest_path(path)
@@ -439,6 +624,11 @@ def test_ingest_source_with_null_bytes(test_project) -> None:
 
 
 def test_manifest_corrupted_json_raises(test_project) -> None:
+    """Verifies that manifest corrupted json raises.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.raw_manifest_file.write_text(
         "not valid json at all", encoding="utf-8"
     )
@@ -448,6 +638,11 @@ def test_manifest_corrupted_json_raises(test_project) -> None:
 
 
 def test_fifty_sources_compile_lint_search_complete(test_project) -> None:
+    """Verifies that fifty sources compile lint search complete.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     for i in range(50):
         path = test_project.write_file(
             f"notes/doc-{i}.md", f"# Doc {i}\n\nBody paragraph {i}.\n"
@@ -465,6 +660,7 @@ def test_fifty_sources_compile_lint_search_complete(test_project) -> None:
 
 
 def test_raw_source_record_origin_hash_round_trip() -> None:
+    """Verifies that raw source record origin hash round trip."""
     record = RawSourceRecord(
         source_id="origin-1",
         slug="origin-test",
@@ -484,6 +680,11 @@ def test_raw_source_record_origin_hash_round_trip() -> None:
 
 
 def test_manifest_find_by_origin_hash(test_project) -> None:
+    """Verifies that manifest find by origin hash.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     manifest = test_project.services["manifest"]
     record = RawSourceRecord(
         source_id="oh-1",
@@ -518,6 +719,11 @@ def test_ingest_detects_duplicate_by_origin_hash(test_project) -> None:
 
 
 def test_ingest_stores_origin_hash_on_record(test_project) -> None:
+    """Verifies that ingest stores origin hash on record.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     source = test_project.write_file("notes/hashme.md", "# HashMe\n\nBody.\n")
     result = test_project.services["ingest"].ingest_path(source)
 

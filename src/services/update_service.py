@@ -1,3 +1,11 @@
+"""Update service service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.update_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -18,6 +26,12 @@ from src.services.search_service import SearchService
 
 @dataclass
 class UpdateOptions:
+    """Represents update options behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     source_paths: tuple[Path, ...] = ()
     force: bool = False
     resume: bool = False
@@ -26,6 +40,12 @@ class UpdateOptions:
 
 @dataclass
 class IngestSummary:
+    """Represents ingest summary behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     path: Path
     is_dir: bool
     created_count: int = 0
@@ -34,6 +54,12 @@ class IngestSummary:
 
 @dataclass
 class UpdateResult:
+    """Stores update result data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     ingest_summaries: list[IngestSummary] = field(default_factory=list)
     compile_result: Optional[CompileResult] = None
     concept_result: Optional[ConceptGenerationResult] = None
@@ -42,11 +68,22 @@ class UpdateResult:
 
     @property
     def ok(self) -> bool:
+        """Ok.
+
+        Returns:
+            bool produced by the operation.
+        """
         return self.compile_result is not None
 
 
 @dataclass
 class GraphUpdateResult:
+    """Stores graph update result data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     skipped: bool = False
     skip_reason: str = ""
     initialized: bool = False
@@ -57,6 +94,12 @@ class GraphUpdateResult:
 
 
 class UpdateService:
+    """Coordinates update operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(
         self,
         *,
@@ -102,6 +145,18 @@ class UpdateService:
         ) = None,
         graph_status_callback: Callable[[str], None] | None = None,
     ) -> UpdateResult:
+        """Run.
+
+        Args:
+            options: Options value used by the operation.
+            ingest_progress: Ingest progress value used by the operation.
+            compile_progress: Compile progress value used by the operation.
+            compile_progress_factory: Compile progress factory value used by the operation.
+            graph_status_callback: Graph status callback value used by the operation.
+
+        Returns:
+            UpdateResult produced by the operation.
+        """
         if options.force and options.resume:
             raise ValueError("--resume cannot be combined with --force.")
 
@@ -269,4 +324,10 @@ class UpdateService:
 
 
 class UpdatePreflightError(Exception):
+    """Error raised for update preflight failures.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     pass

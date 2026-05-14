@@ -1,3 +1,11 @@
+"""Tests for test normalization service.
+
+This module belongs to `tests.test_normalization_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -30,21 +38,59 @@ from src.services.normalization_service import (
 
 
 class FakeDoclingFallbackConverter:
+    """Represents fake docling fallback converter behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(self, markdown: str) -> None:
+        """Initializes the instance.
+
+        Args:
+            markdown: Markdown content being processed.
+        """
         self.markdown = markdown
         self.paths: list[Path] = []
 
     def convert_local(self, source_path: Path) -> str:
+        """Convert local.
+
+        Args:
+            source_path: Source path being processed.
+
+        Returns:
+            str produced by the operation.
+        """
         self.paths.append(source_path)
         return self.markdown
 
 
 class FakeDoclingInnerConverter:
+    """Represents fake docling inner converter behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(self, markdown: str) -> None:
+        """Initializes the instance.
+
+        Args:
+            markdown: Markdown content being processed.
+        """
         self.markdown = markdown
         self.paths: list[Path] = []
 
     def convert(self, source_path: Path) -> SimpleNamespace:
+        """Convert.
+
+        Args:
+            source_path: Source path being processed.
+
+        Returns:
+            SimpleNamespace produced by the operation.
+        """
         self.paths.append(source_path)
         return SimpleNamespace(
             document=SimpleNamespace(export_to_markdown=lambda: self.markdown)
@@ -52,6 +98,12 @@ class FakeDoclingInnerConverter:
 
 
 class FakeMistralConverter:
+    """Represents fake mistral converter behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(
         self,
         *,
@@ -61,6 +113,15 @@ class FakeMistralConverter:
         image_error: Exception | None = None,
         page_count: int = 1,
     ) -> None:
+        """Initializes the instance.
+
+        Args:
+            document_text: Document text value used by the operation.
+            image_text: Image text value used by the operation.
+            document_error: Document error value used by the operation.
+            image_error: Image error value used by the operation.
+            page_count: Page count value used by the operation.
+        """
         self.document_text = document_text
         self.image_text = image_text
         self.document_error = document_error
@@ -76,6 +137,16 @@ class FakeMistralConverter:
         mime_type: str,
         document_name: str = "",
     ) -> _ConvertedText:
+        """Convert document bytes.
+
+        Args:
+            document_bytes: Document bytes value used by the operation.
+            mime_type: Mime type value used by the operation.
+            document_name: Document name value used by the operation.
+
+        Returns:
+            _ConvertedText produced by the operation.
+        """
         self.document_calls.append(
             {
                 "bytes": document_bytes,
@@ -96,6 +167,15 @@ class FakeMistralConverter:
         *,
         mime_type: str,
     ) -> _ConvertedText:
+        """Convert image bytes.
+
+        Args:
+            image_bytes: Image bytes value used by the operation.
+            mime_type: Mime type value used by the operation.
+
+        Returns:
+            _ConvertedText produced by the operation.
+        """
         self.image_calls.append({"bytes": image_bytes, "mime_type": mime_type})
         if self.image_error is not None:
             raise self.image_error
@@ -106,41 +186,101 @@ class FakeMistralConverter:
 
 
 class FakeMarkItDownConverter:
+    """Represents fake mark it down converter behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(self, markdown: str, *, title: str | None = None) -> None:
+        """Initializes the instance.
+
+        Args:
+            markdown: Markdown content being processed.
+            title: Title value used by the operation.
+        """
         self.markdown = markdown
         self.title = title
         self.paths: list[Path] = []
 
     def convert_local(self, source_path: Path) -> SimpleNamespace:
+        """Convert local.
+
+        Args:
+            source_path: Source path being processed.
+
+        Returns:
+            SimpleNamespace produced by the operation.
+        """
         self.paths.append(source_path)
         return SimpleNamespace(markdown=self.markdown, title=self.title)
 
 
 class FakeHtmlRenderer:
+    """Represents fake html renderer behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(
         self,
         *,
         pdf_bytes: bytes = b"%PDF-1.4\nfake\n",
         binary: str = "C:/wkhtmltopdf.exe",
     ) -> None:
+        """Initializes the instance.
+
+        Args:
+            pdf_bytes: Pdf bytes value used by the operation.
+            binary: Binary value used by the operation.
+        """
         self.pdf_bytes = pdf_bytes
         self.binary = binary
         self.paths: list[Path] = []
 
     def resolve_binary(self) -> str:
+        """Resolve binary.
+
+        Returns:
+            str produced by the operation.
+        """
         return self.binary
 
     def render_file(self, source_path: Path) -> bytes:
+        """Render file.
+
+        Args:
+            source_path: Source path being processed.
+
+        Returns:
+            bytes produced by the operation.
+        """
         self.paths.append(source_path)
         return self.pdf_bytes
 
 
 class FakeOcrClient:
+    """Represents fake ocr client behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(self) -> None:
+        """Initializes the instance."""
         self.calls: list[dict[str, object]] = []
         self.ocr = self
 
     def process(self, **kwargs) -> SimpleNamespace:
+        """Process.
+
+        Args:
+            kwargs: Kwargs value used by the operation.
+
+        Returns:
+            SimpleNamespace produced by the operation.
+        """
         self.calls.append(kwargs)
         return SimpleNamespace(
             pages=[
@@ -151,6 +291,11 @@ class FakeOcrClient:
 
 
 def test_normalization_service_preserves_markdown_inputs(tmp_path: Path) -> None:
+    """Verifies that normalization service preserves markdown inputs.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     source_path = tmp_path / "sample.md"
     source_path.write_text(
         "# Existing Note\n\nKeep this as markdown.\n", encoding="utf-8"
@@ -167,6 +312,11 @@ def test_normalization_service_preserves_markdown_inputs(tmp_path: Path) -> None
 
 
 def test_normalization_service_preserves_plain_text_inputs(tmp_path: Path) -> None:
+    """Verifies that normalization service preserves plain text inputs.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     source_path = tmp_path / "sample.txt"
     source_path.write_text("First line\nSecond line\n", encoding="utf-8")
 
@@ -183,6 +333,11 @@ def test_normalization_service_preserves_plain_text_inputs(tmp_path: Path) -> No
 def test_normalization_service_routes_html_through_renderer_then_mistral(
     tmp_path: Path,
 ) -> None:
+    """Verifies that normalization service routes html through renderer then mistral.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     source_path = tmp_path / "sample.html"
     source_path.write_text(
         "<html><body><h1>HTML Research Note</h1></body></html>",
@@ -209,6 +364,11 @@ def test_normalization_service_routes_html_through_renderer_then_mistral(
 
 
 def test_normalization_service_routes_pdf_to_mistral_by_default(tmp_path: Path) -> None:
+    """Verifies that normalization service routes pdf to mistral by default.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     source_path = tmp_path / "sample.pdf"
     source_path.write_bytes(b"%PDF-1.4\nfake\n")
     mistral = FakeMistralConverter(
@@ -229,6 +389,11 @@ def test_normalization_service_routes_pdf_to_mistral_by_default(tmp_path: Path) 
 
 
 def test_normalization_service_falls_back_to_docling_for_pdf(tmp_path: Path) -> None:
+    """Verifies that normalization service falls back to docling for pdf.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     source_path = tmp_path / "sample.pdf"
     source_path.write_bytes(b"%PDF-1.4\nfake\n")
     mistral = FakeMistralConverter(document_error=ValueError("ocr unavailable"))
@@ -252,6 +417,12 @@ def test_normalization_service_falls_back_when_mistral_key_missing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Verifies that normalization service falls back when mistral key missing.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     source_path = tmp_path / "sample.pdf"
     source_path.write_bytes(b"%PDF-1.4\nfake\n")
     pdf_converter = FakeDoclingFallbackConverter(
@@ -272,6 +443,11 @@ def test_normalization_service_falls_back_when_mistral_key_missing(
 def test_normalization_service_falls_back_to_markitdown_for_docx(
     tmp_path: Path,
 ) -> None:
+    """Verifies that normalization service falls back to markitdown for docx.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     source_path = tmp_path / "sample.docx"
     source_path.write_bytes(b"docx")
     mistral = FakeMistralConverter(document_error=ValueError("ocr unavailable"))
@@ -293,6 +469,11 @@ def test_normalization_service_falls_back_to_markitdown_for_docx(
 
 
 def test_normalization_service_routes_images_to_mistral(tmp_path: Path) -> None:
+    """Verifies that normalization service routes images to mistral.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     source_path = tmp_path / "figure.png"
     source_path.write_bytes(b"\x89PNG\r\n")
     mistral = FakeMistralConverter(
@@ -309,6 +490,11 @@ def test_normalization_service_routes_images_to_mistral(tmp_path: Path) -> None:
 
 
 def test_pdf_document_converter_uses_provided_converter(tmp_path: Path) -> None:
+    """Verifies that pdf document converter uses provided converter.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     source_path = tmp_path / "sample.pdf"
     source_path.write_bytes(b"%PDF-1.4\nfake\n")
     inner_converter = FakeDoclingInnerConverter("# Wrapped PDF\n\nExported text.\n")
@@ -322,14 +508,34 @@ def test_pdf_document_converter_uses_provided_converter(tmp_path: Path) -> None:
 def test_pdf_document_converter_uses_ascii_temp_copy_for_unicode_paths(
     tmp_path: Path,
 ) -> None:
+    """Verifies that pdf document converter uses ascii temp copy for unicode paths.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     source_path = tmp_path / "karpathy’s-note.pdf"
     source_path.write_bytes(b"%PDF-1.4\nfake\n")
 
     class UnicodeSensitiveDoclingConverter:
+        """Represents unicode sensitive docling converter behavior and data.
+
+        Attributes:
+            See annotated class attributes for stored values.
+        """
+
         def __init__(self) -> None:
+            """Initializes the instance."""
             self.paths: list[Path] = []
 
         def convert(self, source_path: Path) -> SimpleNamespace:
+            """Convert.
+
+            Args:
+                source_path: Source path being processed.
+
+            Returns:
+                SimpleNamespace produced by the operation.
+            """
             self.paths.append(source_path)
             if not str(source_path).isascii():
                 raise RuntimeError("unicode path not supported")
@@ -353,13 +559,33 @@ def test_pdf_document_converter_uses_ascii_temp_copy_for_unicode_paths(
 def test_pdf_document_converter_lazy_loads_docling_converter(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Verifies that pdf document converter lazy loads docling converter.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     source_path = tmp_path / "sample.pdf"
     source_path.write_bytes(b"%PDF-1.4\nfake\n")
 
     class FakeLazyDoclingConverter:
+        """Represents fake lazy docling converter behavior and data.
+
+        Attributes:
+            See annotated class attributes for stored values.
+        """
+
         paths: list[Path] = []
 
         def convert(self, source_path: Path) -> SimpleNamespace:
+            """Convert.
+
+            Args:
+                source_path: Source path being processed.
+
+            Returns:
+                SimpleNamespace produced by the operation.
+            """
             self.paths.append(source_path)
             return SimpleNamespace(
                 document=SimpleNamespace(
@@ -382,11 +608,30 @@ def test_pdf_document_converter_lazy_loads_docling_converter(
 
 
 def test_pdf_document_converter_wraps_docling_errors(tmp_path: Path) -> None:
+    """Verifies that pdf document converter wraps docling errors.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     source_path = tmp_path / "sample.pdf"
     source_path.write_bytes(b"%PDF-1.4\nfake\n")
 
     class BrokenDoclingConverter:
+        """Represents broken docling converter behavior and data.
+
+        Attributes:
+            See annotated class attributes for stored values.
+        """
+
         def convert(self, source_path: Path) -> SimpleNamespace:
+            """Convert.
+
+            Args:
+                source_path: Source path being processed.
+
+            Returns:
+                SimpleNamespace produced by the operation.
+            """
             raise RuntimeError("broken pdf")
 
     with pytest.raises(
@@ -397,11 +642,30 @@ def test_pdf_document_converter_wraps_docling_errors(tmp_path: Path) -> None:
 
 
 def test_pdf_document_converter_rejects_partial_success(tmp_path: Path) -> None:
+    """Verifies that pdf document converter rejects partial success.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     source_path = tmp_path / "sample.pdf"
     source_path.write_bytes(b"%PDF-1.4\nfake\n")
 
     class PartialDoclingConverter:
+        """Represents partial docling converter behavior and data.
+
+        Attributes:
+            See annotated class attributes for stored values.
+        """
+
         def convert(self, source_path: Path) -> SimpleNamespace:
+            """Convert.
+
+            Args:
+                source_path: Source path being processed.
+
+            Returns:
+                SimpleNamespace produced by the operation.
+            """
             return SimpleNamespace(
                 status=SimpleNamespace(value="partial_success"),
                 errors=["page 2 failed"],
@@ -418,16 +682,37 @@ def test_pdf_document_converter_rejects_partial_success(tmp_path: Path) -> None:
 def test_normalization_service_lazy_loads_pdf_fallback_converter(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Verifies that normalization service lazy loads pdf fallback converter.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     source_path = tmp_path / "sample.pdf"
     source_path.write_bytes(b"%PDF-1.4\nfake\n")
 
     class FakeServicePdfConverter:
+        """Represents fake service pdf converter behavior and data.
+
+        Attributes:
+            See annotated class attributes for stored values.
+        """
+
         instances = 0
 
         def __init__(self) -> None:
+            """Initializes the instance."""
             type(self).instances += 1
 
         def convert_local(self, source_path: Path) -> str:
+            """Convert local.
+
+            Args:
+                source_path: Source path being processed.
+
+            Returns:
+                str produced by the operation.
+            """
             return (
                 "# Lazy Service PDF\n\nCreated inside normalization service fallback.\n"
             )
@@ -450,11 +735,30 @@ def test_normalization_service_lazy_loads_pdf_fallback_converter(
 
 
 def test_normalization_service_wraps_markitdown_exception(tmp_path: Path) -> None:
+    """Verifies that normalization service wraps markitdown exception.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     source_path = tmp_path / "sample.csv"
     source_path.write_text("ignored", encoding="utf-8")
 
     class BrokenMarkItDownConverter:
+        """Represents broken mark it down converter behavior and data.
+
+        Attributes:
+            See annotated class attributes for stored values.
+        """
+
         def convert_local(self, source_path: Path) -> SimpleNamespace:
+            """Convert local.
+
+            Args:
+                source_path: Source path being processed.
+
+            Returns:
+                SimpleNamespace produced by the operation.
+            """
             raise MarkItDownException("broken csv")
 
     with pytest.raises(
@@ -469,11 +773,30 @@ def test_normalization_service_wraps_markitdown_exception(tmp_path: Path) -> Non
 def test_normalization_service_wraps_unexpected_markitdown_exception(
     tmp_path: Path,
 ) -> None:
+    """Verifies that normalization service wraps unexpected markitdown exception.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     source_path = tmp_path / "sample.csv"
     source_path.write_text("ignored", encoding="utf-8")
 
     class BrokenMarkItDownConverter:
+        """Represents broken mark it down converter behavior and data.
+
+        Attributes:
+            See annotated class attributes for stored values.
+        """
+
         def convert_local(self, source_path: Path) -> SimpleNamespace:
+            """Convert local.
+
+            Args:
+                source_path: Source path being processed.
+
+            Returns:
+                SimpleNamespace produced by the operation.
+            """
             raise RuntimeError("unexpected csv failure")
 
     with pytest.raises(
@@ -486,6 +809,11 @@ def test_normalization_service_wraps_unexpected_markitdown_exception(
 
 
 def test_normalization_service_uses_markitdown_for_csv_inputs(tmp_path: Path) -> None:
+    """Verifies that normalization service uses markitdown for csv inputs.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     source_path = tmp_path / "sample.csv"
     source_path.write_text("name,value\nalpha,1\n", encoding="utf-8")
     markitdown = FakeMarkItDownConverter(
@@ -501,6 +829,11 @@ def test_normalization_service_uses_markitdown_for_csv_inputs(tmp_path: Path) ->
 
 
 def test_normalization_service_html_falls_back_to_markitdown(tmp_path: Path) -> None:
+    """Verifies that normalization service html falls back to markitdown.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     source_path = tmp_path / "sample.html"
     source_path.write_text("<p>ignored</p>", encoding="utf-8")
     mistral = FakeMistralConverter(document_error=ValueError("ocr unavailable"))
@@ -523,6 +856,11 @@ def test_normalization_service_html_falls_back_to_markitdown(tmp_path: Path) -> 
 def test_normalization_service_html_without_markitdown_fallback_raises(
     tmp_path: Path,
 ) -> None:
+    """Verifies that normalization service html without markitdown fallback raises.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     source_path = tmp_path / "sample.html"
     source_path.write_text("<p>ignored</p>", encoding="utf-8")
 
@@ -539,6 +877,11 @@ def test_normalization_service_html_without_markitdown_fallback_raises(
 def test_normalization_service_pdf_without_supported_fallback_raises(
     tmp_path: Path,
 ) -> None:
+    """Verifies that normalization service pdf without supported fallback raises.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     source_path = tmp_path / "sample.pdf"
     source_path.write_bytes(b"%PDF-1.4\nfake\n")
 
@@ -554,6 +897,11 @@ def test_normalization_service_pdf_without_supported_fallback_raises(
 def test_normalization_service_fallback_failure_surfaces_both_errors(
     tmp_path: Path,
 ) -> None:
+    """Verifies that normalization service fallback failure surfaces both errors.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     source_path = tmp_path / "sample.html"
     source_path.write_text("<p>ignored</p>", encoding="utf-8")
     markitdown = FakeMarkItDownConverter("tiny", title="tiny")
@@ -571,6 +919,11 @@ def test_normalization_service_fallback_failure_surfaces_both_errors(
 
 
 def test_normalization_service_rejects_unsupported_suffix(tmp_path: Path) -> None:
+    """Verifies that normalization service rejects unsupported suffix.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     source_path = tmp_path / "sample.bin"
     source_path.write_text("bits", encoding="utf-8")
 
@@ -593,6 +946,7 @@ def test_validate_conversion_output_rejects_truncated_multi_page_text() -> None:
 
 
 def test_validate_conversion_output_allows_terminal_markdown_link_line() -> None:
+    """Verifies that validate conversion output allows terminal markdown link line."""
     contents = (
         "This paragraph has enough words and ends with punctuation.\n\n" * 60
     ) + "[tbl-14.md](tbl-14.md)\n"
@@ -605,11 +959,13 @@ def test_validate_conversion_output_allows_terminal_markdown_link_line() -> None
 
 
 def test_validate_conversion_output_rejects_empty_output() -> None:
+    """Verifies that validate conversion output rejects empty output."""
     with pytest.raises(ValueError, match="conversion produced empty output"):
         _validate_conversion_output("", page_count=1, source_name="empty.pdf")
 
 
 def test_validate_conversion_output_rejects_implausibly_short_multi_page_output() -> None:
+    """Verifies that validate conversion output rejects implausibly short multi page output."""
     with pytest.raises(ValueError, match="implausibly short"):
         _validate_conversion_output(
             "Enough words to clear the tiny text gate but not enough for five pages.",
@@ -619,6 +975,7 @@ def test_validate_conversion_output_rejects_implausibly_short_multi_page_output(
 
 
 def test_extract_title_prefers_heading_and_ignores_abstract() -> None:
+    """Verifies that extract title prefers heading and ignores abstract."""
     contents = (
         "Figure 1: Overview\n\n"
         "# Abstract\n\n"
@@ -634,6 +991,7 @@ def test_extract_title_prefers_heading_and_ignores_abstract() -> None:
 
 
 def test_extract_title_skips_frontmatter_and_affiliation_lines() -> None:
+    """Verifies that extract title skips frontmatter and affiliation lines."""
     contents = (
         "---\n"
         "title: ignored\n"
@@ -647,10 +1005,12 @@ def test_extract_title_skips_frontmatter_and_affiliation_lines() -> None:
 
 
 def test_extract_title_empty_file_falls_back_to_filename() -> None:
+    """Verifies that extract title empty file falls back to filename."""
     assert _extract_title("", Path("my-research.md")) == "My Research"
 
 
 def test_extract_title_rejects_numbered_generic_heading() -> None:
+    """Verifies that extract title rejects numbered generic heading."""
     contents = (
         "REALM: Retrieval-Augmented Language Model Pre-Training\n\n"
         "# Abstract\n\n"
@@ -666,6 +1026,7 @@ def test_extract_title_rejects_numbered_generic_heading() -> None:
 
 
 def test_extract_title_long_first_line_truncates() -> None:
+    """Verifies that extract title long first line truncates."""
     long_line = "A" * 200
     title = _extract_title(long_line, Path("source.md"))
 
@@ -674,6 +1035,7 @@ def test_extract_title_long_first_line_truncates() -> None:
 
 
 def test_extract_title_preserves_long_valid_title() -> None:
+    """Verifies that extract title preserves long valid title."""
     title = (
         "Leveraging Passage Retrieval with Generative Models for Open Domain "
         "Question Answering"
@@ -683,6 +1045,11 @@ def test_extract_title_preserves_long_valid_title() -> None:
 
 
 def test_resolve_wkhtmltopdf_binary_uses_configured_path(tmp_path: Path) -> None:
+    """Verifies that resolve wkhtmltopdf binary uses configured path.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     binary = tmp_path / "wkhtmltopdf.exe"
     binary.write_text("binary", encoding="utf-8")
     config = {
@@ -698,6 +1065,7 @@ def test_resolve_wkhtmltopdf_binary_uses_configured_path(tmp_path: Path) -> None
 
 
 def test_resolve_wkhtmltopdf_binary_returns_none_for_invalid_html_config() -> None:
+    """Verifies that resolve wkhtmltopdf binary returns none for invalid html config."""
     config = {"conversion": {"html": "oops"}}
 
     assert resolve_wkhtmltopdf_binary(config) is None
@@ -709,6 +1077,7 @@ def test_resolve_wkhtmltopdf_binary_returns_none_for_invalid_html_config() -> No
 
 
 def test_plain_text_extracts_text_from_markdown() -> None:
+    """Verifies that plain text extracts text from markdown."""
     md = "# Heading\n\nSome **bold** text with [a link](http://example.com).\n"
     result = _plain_text(md)
     assert "Heading" in result
@@ -719,6 +1088,7 @@ def test_plain_text_extracts_text_from_markdown() -> None:
 
 
 def test_plain_text_skips_fenced_code() -> None:
+    """Verifies that plain text skips fenced code."""
     md = "Hello.\n\n```python\ncode = True\n```\n\nWorld.\n"
     result = _plain_text(md)
     assert "Hello." in result
@@ -727,6 +1097,7 @@ def test_plain_text_skips_fenced_code() -> None:
 
 
 def test_plain_text_skips_images() -> None:
+    """Verifies that plain text skips images."""
     md = "Text before.\n\n![alt text](image.png)\n\nText after.\n"
     result = _plain_text(md)
     assert "Text before." in result
@@ -734,11 +1105,13 @@ def test_plain_text_skips_images() -> None:
 
 
 def test_plain_text_handles_empty_input() -> None:
+    """Verifies that plain text handles empty input."""
     assert _plain_text("") == ""
     assert _plain_text("   ") == ""
 
 
 def test_mistral_ocr_converter_uses_client_for_document_and_image() -> None:
+    """Verifies that mistral ocr converter uses client for document and image."""
     client = FakeOcrClient()
     converter = MistralOcrConverter(client=client)
 
@@ -757,6 +1130,7 @@ def test_mistral_ocr_converter_uses_client_for_document_and_image() -> None:
 
 
 def test_mistral_ocr_converter_rejects_empty_payloads() -> None:
+    """Verifies that mistral ocr converter rejects empty payloads."""
     converter = MistralOcrConverter(client=FakeOcrClient())
 
     with pytest.raises(ValueError, match="empty document"):
@@ -768,6 +1142,11 @@ def test_mistral_ocr_converter_rejects_empty_payloads() -> None:
 def test_mistral_ocr_converter_requires_api_key_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Verifies that mistral ocr converter requires api key env.
+
+    Args:
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
     converter = MistralOcrConverter()
 
@@ -776,6 +1155,11 @@ def test_mistral_ocr_converter_requires_api_key_env(
 
 
 def test_wkhtmltopdf_renderer_validates_binary_paths(tmp_path: Path) -> None:
+    """Verifies that wkhtmltopdf renderer validates binary paths.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     missing_renderer = WkhtmltopdfRenderer(str(tmp_path / "missing.exe"))
     with pytest.raises(ValueError, match="configured path"):
         missing_renderer.resolve_binary()
@@ -792,6 +1176,12 @@ def test_wkhtmltopdf_renderer_validates_binary_paths(tmp_path: Path) -> None:
 def test_wkhtmltopdf_renderer_wraps_render_failures(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Verifies that wkhtmltopdf renderer wraps render failures.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     source_path = tmp_path / "sample.html"
     source_path.write_text("<p>hello</p>", encoding="utf-8")
     binary = tmp_path / "wkhtmltopdf.exe"
@@ -816,6 +1206,12 @@ def test_wkhtmltopdf_renderer_wraps_render_failures(
 def test_wkhtmltopdf_renderer_accepts_string_pdf_output(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Verifies that wkhtmltopdf renderer accepts string pdf output.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     source_path = tmp_path / "sample.html"
     source_path.write_text("<p>hello</p>", encoding="utf-8")
     binary = tmp_path / "wkhtmltopdf.exe"
@@ -841,6 +1237,12 @@ def test_wkhtmltopdf_renderer_accepts_string_pdf_output(
 def test_wkhtmltopdf_renderer_rejects_empty_pdf_output(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Verifies that wkhtmltopdf renderer rejects empty pdf output.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     source_path = tmp_path / "sample.html"
     source_path.write_text("<p>hello</p>", encoding="utf-8")
     binary = tmp_path / "wkhtmltopdf.exe"
@@ -863,6 +1265,11 @@ def test_wkhtmltopdf_renderer_rejects_empty_pdf_output(
 
 
 def test_normalization_service_adds_trailing_newline(tmp_path: Path) -> None:
+    """Verifies that normalization service adds trailing newline.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     source_path = tmp_path / "no-newline.md"
     source_path.write_text("# Title\n\nNo trailing newline", encoding="utf-8")
 
@@ -873,6 +1280,11 @@ def test_normalization_service_adds_trailing_newline(tmp_path: Path) -> None:
 
 
 def test_normalization_service_newline_only_file(tmp_path: Path) -> None:
+    """Verifies that normalization service newline only file.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     source_path = tmp_path / "newline-only.md"
     source_path.write_text("\n", encoding="utf-8")
 
@@ -890,10 +1302,29 @@ def test_normalization_service_html_falls_back_when_wkhtmltopdf_missing(
     source_path.write_text("<h1>Report</h1><p>Body text.</p>", encoding="utf-8")
 
     class BrokenRenderer:
+        """Represents broken renderer behavior and data.
+
+        Attributes:
+            See annotated class attributes for stored values.
+        """
+
         def resolve_binary(self) -> str:
+            """Resolve binary.
+
+            Returns:
+                str produced by the operation.
+            """
             return "/nonexistent/wkhtmltopdf"
 
         def render_file(self, source_path: Path) -> bytes:
+            """Render file.
+
+            Args:
+                source_path: Source path being processed.
+
+            Returns:
+                bytes produced by the operation.
+            """
             raise ValueError("wkhtmltopdf not found")
 
     # Ensure xhtml2pdf fallback is also skipped so we reach MarkItDown fallback.
@@ -922,10 +1353,22 @@ def test_mistral_ocr_converter_retries_transient_errors() -> None:
     call_count = 0
 
     class FlakeyOcrClient:
+        """Represents flakey ocr client behavior and data.
+
+        Attributes:
+            See annotated class attributes for stored values.
+        """
+
         def __init__(self) -> None:
+            """Initializes the instance."""
             self.ocr = self
 
         def process(self, **kwargs):
+            """Process.
+
+            Args:
+                kwargs: Kwargs value used by the operation.
+            """
             nonlocal call_count
             call_count += 1
             if call_count < 3:
@@ -946,15 +1389,34 @@ class FakeFailingHtmlRenderer:
     """Renderer whose render_file always fails (simulates missing wkhtmltopdf)."""
 
     def resolve_binary(self) -> str:
+        """Resolve binary.
+
+        Returns:
+            str produced by the operation.
+        """
         return "C:/missing-wkhtmltopdf.exe"
 
     def render_file(self, source_path: Path) -> bytes:
+        """Render file.
+
+        Args:
+            source_path: Source path being processed.
+
+        Returns:
+            bytes produced by the operation.
+        """
         raise ValueError(f"wkhtmltopdf could not render {source_path.name}")
 
 
 def test_html_falls_back_to_xhtml2pdf_when_wkhtmltopdf_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Verifies that html falls back to xhtml2pdf when wkhtmltopdf fails.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     source_path = tmp_path / "sample.html"
     source_path.write_text(
         "<html><body><h1>Via xhtml2pdf</h1></body></html>", encoding="utf-8"

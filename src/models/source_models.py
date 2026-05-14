@@ -1,3 +1,11 @@
+"""Data models for source models.
+
+This module belongs to `src.models.source_models` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -6,6 +14,12 @@ from typing import Any, Optional
 
 @dataclass
 class RawSourceRecord:
+    """Stores raw source record data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     source_id: str
     slug: str
     title: str
@@ -21,10 +35,23 @@ class RawSourceRecord:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
+        """Serializes this value to a dictionary.
+
+        Returns:
+            dict[str, Any] produced by the operation.
+        """
         return asdict(self)
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "RawSourceRecord":
+        """Builds an instance from a dictionary payload.
+
+        Args:
+            payload: Structured payload being parsed or serialized.
+
+        Returns:
+            "RawSourceRecord" produced by the operation.
+        """
         return cls(
             source_id=payload["source_id"],
             slug=payload["slug"],

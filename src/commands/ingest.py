@@ -1,3 +1,11 @@
+"""Click command implementation for the kb ingest command.
+
+This module belongs to `src.commands.ingest` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -19,6 +27,14 @@ SHORT_HELP = "Ingest source files."
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
+    """Builds the command registry specification for this module.
+
+    Args:
+        _: Value value used by the operation.
+
+    Returns:
+        CommandSpec produced by the operation.
+    """
     return CommandSpec(name="ingest", summary=SUMMARY)
 
 
@@ -28,6 +44,17 @@ def create_command(
     help_text: str = SUMMARY,
     short_help: str = SHORT_HELP,
 ) -> click.Command:
+    """Creates the Click command exposed by this module.
+
+    Args:
+        name: Name value used for lookup or display.
+        help_text: Help text value used by the operation.
+        short_help: Short help value used by the operation.
+
+    Returns:
+        click.Command produced by the operation.
+    """
+
     @click.command(name=name, help=help_text, short_help=short_help)
     @click.argument(
         "source_paths",
@@ -46,6 +73,13 @@ def create_command(
         source_paths: tuple[Path, ...],
         recursive: bool,
     ) -> None:
+        """Command.
+
+        Args:
+            command_context: Command context value used by the operation.
+            source_paths: Source paths value used by the operation.
+            recursive: Recursive value used by the operation.
+        """
         require_initialized(command_context)
         ingest_service = command_context.services["ingest"]
         for source_path in source_paths:

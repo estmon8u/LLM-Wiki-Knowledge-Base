@@ -1,3 +1,11 @@
+"""Tests for test graphrag status service.
+
+This module belongs to `tests.test_graphrag_status_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import json
@@ -11,6 +19,11 @@ from src.services.graphrag_status_service import GraphRAGStatusService
 
 
 def test_status_reports_workspace_input_outputs_and_last_run(test_project) -> None:
+    """Verifies that status reports workspace input outputs and last run.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
     test_project.write_file(
         "graph/graphrag/input/sources.json",
@@ -62,6 +75,11 @@ def test_status_reports_workspace_input_outputs_and_last_run(test_project) -> No
 def test_status_counts_realistic_nested_graphrag_parquet_tables(
     test_project,
 ) -> None:
+    """Verifies that status counts realistic nested graphrag parquet tables.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
     test_project.write_file(
         "graph/graphrag/input/sources.json",
@@ -110,6 +128,11 @@ def test_status_counts_realistic_nested_graphrag_parquet_tables(
 
 
 def test_status_reports_next_actions_for_missing_workspace(test_project) -> None:
+    """Verifies that status reports next actions for missing workspace.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     service = GraphRAGStatusService(test_project.paths)
 
     status = service.status()
@@ -121,6 +144,11 @@ def test_status_reports_next_actions_for_missing_workspace(test_project) -> None
 
 
 def test_status_counts_documents_from_dict_payload(test_project) -> None:
+    """Verifies that status counts documents from dict payload.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
     test_project.write_file(
         "graph/graphrag/input/sources.json",
@@ -135,6 +163,11 @@ def test_status_counts_documents_from_dict_payload(test_project) -> None:
 
 
 def test_status_after_successful_dry_run_points_to_full_index(test_project) -> None:
+    """Verifies that status after successful dry run points to full index.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
     test_project.write_file(
         "graph/graphrag/input/sources.json",
@@ -160,6 +193,11 @@ def test_status_after_successful_dry_run_points_to_full_index(test_project) -> N
 
 
 def test_status_after_failed_index_points_to_error_recovery(test_project) -> None:
+    """Verifies that status after failed index points to error recovery.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
     test_project.write_file(
         "graph/graphrag/input/sources.json",
@@ -187,6 +225,11 @@ def test_status_after_failed_index_points_to_error_recovery(test_project) -> Non
 
 
 def test_status_handles_invalid_input_and_run_metadata(test_project) -> None:
+    """Verifies that status handles invalid input and run metadata.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
     test_project.write_file("graph/graphrag/input/sources.json", "{not json")
     test_project.write_file("graph/runs/graph_index_runs.json", "{not json")
@@ -201,6 +244,11 @@ def test_status_handles_invalid_input_and_run_metadata(test_project) -> None:
 
 
 def test_status_ignores_non_list_run_metadata(test_project) -> None:
+    """Verifies that status ignores non list run metadata.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("graph/runs/graph_index_runs.json", json.dumps({"run": 1}))
     service = GraphRAGStatusService(test_project.paths)
 
@@ -208,6 +256,12 @@ def test_status_ignores_non_list_run_metadata(test_project) -> None:
 
 
 def test_status_to_dict_handles_paths_outside_project(test_project, tmp_path) -> None:
+    """Verifies that status to dict handles paths outside project.
+
+    Args:
+        test_project: Test project value used by the operation.
+        tmp_path: Tmp path value used by the operation.
+    """
     status = GraphRAGStatus(
         workspace_dir=Path("D:/outside/workspace"),
         settings_path=Path("D:/outside/workspace/settings.yaml"),

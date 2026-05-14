@@ -1,3 +1,11 @@
+"""Tests for test project and config.
+
+This module belongs to `tests.test_project_and_config` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -35,6 +43,7 @@ from src.services.project_service import (
 
 
 def test_utc_now_iso_uses_utc_and_strips_microseconds() -> None:
+    """Verifies that utc now iso uses utc and strips microseconds."""
     timestamp = utc_now_iso()
 
     assert timestamp.endswith("+00:00")
@@ -42,17 +51,24 @@ def test_utc_now_iso_uses_utc_and_strips_microseconds() -> None:
 
 
 def test_slugify_normalizes_values_and_handles_empty() -> None:
+    """Verifies that slugify normalizes values and handles empty."""
     assert slugify("  A Complex_Title!!  ") == "a-complex-title"
     assert slugify("***") == "untitled"
 
 
 def test_unique_markdown_heading_skips_existing_suffixes() -> None:
+    """Verifies that unique markdown heading skips existing suffixes."""
     existing = "# Title\n\n## Entry\n\n## Entry (2)\n"
 
     assert unique_markdown_heading(existing, "## Entry") == "## Entry (3)"
 
 
 def test_discover_project_root_finds_parent_marker(test_project) -> None:
+    """Verifies that discover project root finds parent marker.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     nested = test_project.root / "nested" / "folder"
     nested.mkdir(parents=True)
 
@@ -62,6 +78,11 @@ def test_discover_project_root_finds_parent_marker(test_project) -> None:
 def test_discover_project_root_returns_start_when_no_markers(
     uninitialized_project,
 ) -> None:
+    """Verifies that discover project root returns start when no markers.
+
+    Args:
+        uninitialized_project: Uninitialized project value used by the operation.
+    """
     nested = uninitialized_project.root / "deeper"
     nested.mkdir()
 
@@ -69,6 +90,11 @@ def test_discover_project_root_returns_start_when_no_markers(
 
 
 def test_build_project_paths_uses_expected_layout(tmp_path: Path) -> None:
+    """Verifies that build project paths uses expected layout.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     paths = build_project_paths(tmp_path)
 
     assert paths.config_file == tmp_path / "kb.config.yaml"
@@ -81,6 +107,11 @@ def test_build_project_paths_uses_expected_layout(tmp_path: Path) -> None:
 def test_atomic_write_text_overwrites_without_leaving_temp_files(
     tmp_path: Path,
 ) -> None:
+    """Verifies that atomic write text overwrites without leaving temp files.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     target = tmp_path / "output.md"
 
     atomic_write_text(target, "first")
@@ -91,6 +122,11 @@ def test_atomic_write_text_overwrites_without_leaving_temp_files(
 
 
 def test_atomic_copy_file_copies_without_leaving_temp_files(tmp_path: Path) -> None:
+    """Verifies that atomic copy file copies without leaving temp files.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     source = tmp_path / "source.txt"
     destination = tmp_path / "dest.txt"
     source.write_text("payload", encoding="utf-8")
@@ -102,9 +138,20 @@ def test_atomic_copy_file_copies_without_leaving_temp_files(tmp_path: Path) -> N
 
 
 def test_replace_with_retry_retries_transient_permission_error(monkeypatch) -> None:
+    """Verifies that replace with retry retries transient permission error.
+
+    Args:
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     calls = []
 
     def fake_replace(source, destination):
+        """Fake replace.
+
+        Args:
+            source: Source record or path being processed.
+            destination: Destination value used by the operation.
+        """
         calls.append((source, destination))
         if len(calls) < 2:
             raise PermissionError("locked")
@@ -121,9 +168,20 @@ def test_replace_with_retry_retries_transient_permission_error(monkeypatch) -> N
 
 
 def test_replace_with_retry_raises_last_permission_error(monkeypatch) -> None:
+    """Verifies that replace with retry raises last permission error.
+
+    Args:
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     calls = []
 
     def fake_replace(source, destination):
+        """Fake replace.
+
+        Args:
+            source: Source record or path being processed.
+            destination: Destination value used by the operation.
+        """
         calls.append((source, destination))
         raise PermissionError("still locked")
 
@@ -139,6 +197,11 @@ def test_replace_with_retry_raises_last_permission_error(monkeypatch) -> None:
 def test_project_service_creates_structure_and_relative_paths(
     uninitialized_project,
 ) -> None:
+    """Verifies that project service creates structure and relative paths.
+
+    Args:
+        uninitialized_project: Uninitialized project value used by the operation.
+    """
     project_service = ProjectService(uninitialized_project.paths)
 
     assert project_service.is_initialized() is False
@@ -158,6 +221,11 @@ def test_project_service_creates_structure_and_relative_paths(
 
 
 def test_config_service_loads_defaults_and_creates_files(uninitialized_project) -> None:
+    """Verifies that config service loads defaults and creates files.
+
+    Args:
+        uninitialized_project: Uninitialized project value used by the operation.
+    """
     config_service = ConfigService(uninitialized_project.paths)
 
     assert config_service.load() == DEFAULT_CONFIG
@@ -177,6 +245,11 @@ def test_config_service_loads_defaults_and_creates_files(uninitialized_project) 
 
 
 def test_config_service_loads_custom_provider_settings(test_project) -> None:
+    """Verifies that config service loads custom provider settings.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 3\n"
         "provider:\n"
@@ -207,6 +280,11 @@ def test_config_service_loads_custom_provider_settings(test_project) -> None:
 
 
 def test_config_service_invalid_provider_settings_raise(test_project) -> None:
+    """Verifies that config service invalid provider settings raise.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 3\n"
         "providers:\n"
@@ -232,6 +310,11 @@ def test_config_service_invalid_provider_settings_raise(test_project) -> None:
 def test_config_service_rejects_provider_settings_in_active_provider_block(
     test_project,
 ) -> None:
+    """Verifies that config service rejects provider settings in active provider block.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 3\n" "provider:\n" "  name: openai\n" "  model: gpt-5.4\n",
         encoding="utf-8",
@@ -242,6 +325,7 @@ def test_config_service_rejects_provider_settings_in_active_provider_block(
 
 
 def test_config_version_helper_uses_legacy_default_and_validates_values() -> None:
+    """Verifies that config version helper uses legacy default and validates values."""
     assert _config_version({}) == 1
     assert (
         _config_version({"version": CURRENT_CONFIG_VERSION}) == CURRENT_CONFIG_VERSION
@@ -255,6 +339,7 @@ def test_config_version_helper_uses_legacy_default_and_validates_values() -> Non
 
 
 def test_apply_config_migrations_upgrades_version_one_payload() -> None:
+    """Verifies that apply config migrations upgrades version one payload."""
     migrated, changed = _apply_config_migrations(
         {
             "version": 1,
@@ -278,6 +363,11 @@ def test_apply_config_migrations_upgrades_version_one_payload() -> None:
 
 
 def test_config_service_merges_custom_config(test_project) -> None:
+    """Verifies that config service merges custom config.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "project:\n"
         "  name: Custom Project\n"
@@ -295,6 +385,11 @@ def test_config_service_merges_custom_config(test_project) -> None:
 
 
 def test_config_service_migrates_legacy_file_and_rewrites_disk(test_project) -> None:
+    """Verifies that config service migrates legacy file and rewrites disk.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     import yaml
 
     test_project.paths.config_file.write_text(
@@ -329,6 +424,11 @@ def test_config_service_migrates_legacy_file_and_rewrites_disk(test_project) -> 
 def test_config_service_migrates_provider_overrides_into_providers_section(
     test_project,
 ) -> None:
+    """Verifies that config service migrates provider overrides into providers section.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 2\n"
         "provider:\n"
@@ -351,6 +451,11 @@ def test_config_service_migrates_provider_overrides_into_providers_section(
 def test_config_service_migrates_v3_file_to_v4_with_conversion_defaults(
     test_project,
 ) -> None:
+    """Verifies that config service migrates v3 file to v4 with conversion defaults.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 3\nprovider:\n  name: openai\n",
         encoding="utf-8",
@@ -369,6 +474,11 @@ def test_config_service_migrates_v3_file_to_v4_with_conversion_defaults(
 def test_config_service_migrates_v4_file_to_v5_with_graph_defaults(
     test_project,
 ) -> None:
+    """Verifies that config service migrates v4 file to v5 with graph defaults.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 4\n"
         "conversion:\n"
@@ -394,6 +504,11 @@ def test_config_service_migrates_v4_file_to_v5_with_graph_defaults(
 
 
 def test_config_service_loads_custom_graph_config(test_project) -> None:
+    """Verifies that config service loads custom graph config.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 6\n"
         "graph:\n"
@@ -417,6 +532,11 @@ def test_config_service_loads_custom_graph_config(test_project) -> None:
 
 
 def test_graph_config_resolves_api_keys_from_provider_catalog(test_project) -> None:
+    """Verifies that graph config resolves api keys from provider catalog.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 6\n"
         "providers:\n"
@@ -447,6 +567,11 @@ def test_graph_config_resolves_api_keys_from_provider_catalog(test_project) -> N
 
 
 def test_graph_config_uses_explicit_embedding_api_key_override(test_project) -> None:
+    """Verifies that graph config uses explicit embedding api key override.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.config["graph"] = {
         "provider": "openai",
         "model": "gpt-4.1-mini",
@@ -462,6 +587,7 @@ def test_graph_config_uses_explicit_embedding_api_key_override(test_project) -> 
 
 
 def test_graph_config_defaults_openai_api_key_when_catalog_missing() -> None:
+    """Verifies that graph config defaults openai api key when catalog missing."""
     graph_config = resolve_graph_config(
         {
             "graph": DEFAULT_CONFIG["graph"],
@@ -474,6 +600,7 @@ def test_graph_config_defaults_openai_api_key_when_catalog_missing() -> None:
 
 
 def test_graph_config_requires_api_key_for_unknown_provider() -> None:
+    """Verifies that graph config requires api key for unknown provider."""
     with pytest.raises(ValueError, match="graph.*api_key_env"):
         resolve_graph_config(
             {
@@ -488,6 +615,11 @@ def test_graph_config_requires_api_key_for_unknown_provider() -> None:
 
 
 def test_config_service_migrates_legacy_graph_api_key_env(test_project) -> None:
+    """Verifies that config service migrates legacy graph api key env.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 5\n"
         "graph:\n"
@@ -508,6 +640,11 @@ def test_config_service_migrates_legacy_graph_api_key_env(test_project) -> None:
 
 
 def test_config_service_rejects_invalid_graph_config(test_project) -> None:
+    """Verifies that config service rejects invalid graph config.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 6\ngraph:\n  provider: ''\n",
         encoding="utf-8",
@@ -518,6 +655,11 @@ def test_config_service_rejects_invalid_graph_config(test_project) -> None:
 
 
 def test_config_service_rejects_blank_optional_graph_config(test_project) -> None:
+    """Verifies that config service rejects blank optional graph config.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 6\n" "graph:\n" "  provider: openai\n" "  embedding_provider: ''\n",
         encoding="utf-8",
@@ -528,6 +670,11 @@ def test_config_service_rejects_blank_optional_graph_config(test_project) -> Non
 
 
 def test_config_service_rejects_unknown_graph_keys(test_project) -> None:
+    """Verifies that config service rejects unknown graph keys.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 6\ngraph:\n  provider: openai\n  extra: nope\n",
         encoding="utf-8",
@@ -538,6 +685,11 @@ def test_config_service_rejects_unknown_graph_keys(test_project) -> None:
 
 
 def test_config_service_rejects_invalid_conversion_table_format(test_project) -> None:
+    """Verifies that config service rejects invalid conversion table format.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 4\n"
         "conversion:\n"
@@ -553,6 +705,11 @@ def test_config_service_rejects_invalid_conversion_table_format(test_project) ->
 
 
 def test_config_service_rejects_invalid_html_renderer_settings(test_project) -> None:
+    """Verifies that config service rejects invalid html renderer settings.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 4\n"
         "conversion:\n"
@@ -567,6 +724,11 @@ def test_config_service_rejects_invalid_html_renderer_settings(test_project) -> 
 
 
 def test_config_service_rejects_invalid_conversion_fallbacks(test_project) -> None:
+    """Verifies that config service rejects invalid conversion fallbacks.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 4\n"
         "conversion:\n"
@@ -583,12 +745,18 @@ def test_config_service_rejects_invalid_conversion_fallbacks(test_project) -> No
 
 
 def test_config_service_load_schema_reads_custom_schema(test_project) -> None:
+    """Verifies that config service load schema reads custom schema.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.schema_file.write_text("# custom\n", encoding="utf-8")
 
     assert ConfigService(test_project.paths).load_schema() == "# custom\n"
 
 
 def test_deep_merge_updates_nested_values_without_losing_defaults() -> None:
+    """Verifies that deep merge updates nested values without losing defaults."""
     merged = _deep_merge(
         {"project": {"name": "base", "description": "desc"}, "value": 1},
         {"project": {"name": "override"}, "extra": True},
@@ -602,6 +770,11 @@ def test_deep_merge_updates_nested_values_without_losing_defaults() -> None:
 
 
 def test_build_services_returns_expected_keys(test_project) -> None:
+    """Verifies that build services returns expected keys.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     services = build_services(test_project.paths, test_project.config)
 
     assert set(services) == {
@@ -636,6 +809,11 @@ def test_build_services_returns_expected_keys(test_project) -> None:
 
 
 def test_config_unknown_key_preserved_through_merge(test_project) -> None:
+    """Verifies that config unknown key preserved through merge.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "custom_key: custom_value\n", encoding="utf-8"
     )
@@ -647,6 +825,11 @@ def test_config_unknown_key_preserved_through_merge(test_project) -> None:
 
 
 def test_config_nested_override_excerpt_character_limit(test_project) -> None:
+    """Verifies that config nested override excerpt character limit.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "compile:\n  excerpt_character_limit: 500\n", encoding="utf-8"
     )
@@ -657,6 +840,11 @@ def test_config_nested_override_excerpt_character_limit(test_project) -> None:
 
 
 def test_config_invalid_yaml_raises(test_project) -> None:
+    """Verifies that config invalid yaml raises.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     import yaml
 
     test_project.paths.config_file.write_text(
@@ -668,6 +856,11 @@ def test_config_invalid_yaml_raises(test_project) -> None:
 
 
 def test_config_future_version_raises(test_project) -> None:
+    """Verifies that config future version raises.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text("version: 99\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="Unsupported kb.config.yaml version"):
@@ -675,6 +868,11 @@ def test_config_future_version_raises(test_project) -> None:
 
 
 def test_config_non_mapping_yaml_raises(test_project) -> None:
+    """Verifies that config non mapping yaml raises.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text("- just\n- a\n- list\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="must contain a YAML mapping"):
@@ -682,6 +880,11 @@ def test_config_non_mapping_yaml_raises(test_project) -> None:
 
 
 def test_discover_project_root_finds_schema_only(tmp_path: Path) -> None:
+    """Verifies that discover project root finds schema only.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     (tmp_path / "kb.schema.md").write_text("# Schema\n", encoding="utf-8")
     nested = tmp_path / "sub" / "deep"
     nested.mkdir(parents=True)
@@ -690,6 +893,11 @@ def test_discover_project_root_finds_schema_only(tmp_path: Path) -> None:
 
 
 def test_ensure_structure_returns_only_newly_created(test_project) -> None:
+    """Verifies that ensure structure returns only newly created.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     project_service = ProjectService(test_project.paths)
 
     first_run = project_service.ensure_structure()
@@ -705,6 +913,11 @@ def test_ensure_structure_returns_only_newly_created(test_project) -> None:
 
 
 def test_ensure_structure_seeds_wiki_log_file(uninitialized_project) -> None:
+    """Verifies that ensure structure seeds wiki log file.
+
+    Args:
+        uninitialized_project: Uninitialized project value used by the operation.
+    """
     project_service = ProjectService(uninitialized_project.paths)
 
     project_service.ensure_structure()
@@ -723,6 +936,7 @@ def test_ensure_structure_seeds_wiki_log_file(uninitialized_project) -> None:
 
 
 def test_schema_excerpt_extracts_matching_section() -> None:
+    """Verifies that schema excerpt extracts matching section."""
     from src.services.config_service import DEFAULT_SCHEMA, schema_excerpt
 
     result = schema_excerpt(DEFAULT_SCHEMA, ["Source Pages"])
@@ -732,6 +946,7 @@ def test_schema_excerpt_extracts_matching_section() -> None:
 
 
 def test_schema_excerpt_returns_multiple_sections() -> None:
+    """Verifies that schema excerpt returns multiple sections."""
     from src.services.config_service import DEFAULT_SCHEMA, schema_excerpt
 
     result = schema_excerpt(DEFAULT_SCHEMA, ["Source Pages", "Query Behavior"])
@@ -740,6 +955,7 @@ def test_schema_excerpt_returns_multiple_sections() -> None:
 
 
 def test_schema_excerpt_missing_heading_returns_empty() -> None:
+    """Verifies that schema excerpt missing heading returns empty."""
     from src.services.config_service import schema_excerpt
 
     result = schema_excerpt("# Just a title\n\nNo sections.\n", ["Missing Heading"])
@@ -747,12 +963,14 @@ def test_schema_excerpt_missing_heading_returns_empty() -> None:
 
 
 def test_schema_excerpt_empty_schema_returns_empty() -> None:
+    """Verifies that schema excerpt empty schema returns empty."""
     from src.services.config_service import schema_excerpt
 
     assert schema_excerpt("", ["Source Pages"]) == ""
 
 
 def test_slugify_all_special_characters() -> None:
+    """Verifies that slugify all special characters."""
     assert slugify("!!!???") == "untitled"
     assert slugify("@#$%^&*") == "untitled"
     assert slugify("   ") == "untitled"
@@ -762,6 +980,7 @@ def test_slugify_all_special_characters() -> None:
 
 
 def test_lint_report_zero_issues_all_counts_zero() -> None:
+    """Verifies that lint report zero issues all counts zero."""
     from src.models.wiki_models import LintReport
 
     report = LintReport(issues=[])
@@ -772,6 +991,7 @@ def test_lint_report_zero_issues_all_counts_zero() -> None:
 
 
 def test_diff_report_all_three_states_simultaneously() -> None:
+    """Verifies that diff report all three states simultaneously."""
     from src.models.wiki_models import DiffEntry, DiffReport
 
     report = DiffReport(
@@ -788,6 +1008,7 @@ def test_diff_report_all_three_states_simultaneously() -> None:
 
 
 def test_review_report_issue_count_matches_len() -> None:
+    """Verifies that review report issue count matches len."""
     from src.models.wiki_models import ReviewIssue, ReviewReport
 
     issues = [
@@ -801,6 +1022,7 @@ def test_review_report_issue_count_matches_len() -> None:
 
 
 def test_raw_source_record_from_dict_missing_optional_fields() -> None:
+    """Verifies that raw source record from dict missing optional fields."""
     from src.models.source_models import RawSourceRecord
 
     minimal = {
@@ -823,6 +1045,7 @@ def test_raw_source_record_from_dict_missing_optional_fields() -> None:
 
 
 def test_status_snapshot_none_compile_prints_na() -> None:
+    """Verifies that status snapshot none compile prints na."""
     from click.testing import CliRunner
     from src.cli import main
 
@@ -839,6 +1062,11 @@ def test_status_snapshot_none_compile_prints_na() -> None:
 
 
 def test_config_service_rejects_non_dict_conversion_block(test_project) -> None:
+    """Verifies that config service rejects non dict conversion block.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 4\nconversion: invalid\n",
         encoding="utf-8",
@@ -848,6 +1076,11 @@ def test_config_service_rejects_non_dict_conversion_block(test_project) -> None:
 
 
 def test_config_service_rejects_unknown_conversion_section(test_project) -> None:
+    """Verifies that config service rejects unknown conversion section.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 4\nconversion:\n  extra_section:\n    key: value\n",
         encoding="utf-8",
@@ -857,6 +1090,11 @@ def test_config_service_rejects_unknown_conversion_section(test_project) -> None
 
 
 def test_config_service_rejects_non_dict_mistral_ocr(test_project) -> None:
+    """Verifies that config service rejects non dict mistral ocr.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 4\nconversion:\n  mistral_ocr: invalid\n",
         encoding="utf-8",
@@ -866,6 +1104,11 @@ def test_config_service_rejects_non_dict_mistral_ocr(test_project) -> None:
 
 
 def test_config_service_rejects_unknown_mistral_ocr_keys(test_project) -> None:
+    """Verifies that config service rejects unknown mistral ocr keys.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 4\nconversion:\n  mistral_ocr:\n"
         "    model: mistral-ocr-latest\n    api_key_env: MISTRAL_API_KEY\n"
@@ -877,6 +1120,11 @@ def test_config_service_rejects_unknown_mistral_ocr_keys(test_project) -> None:
 
 
 def test_config_service_rejects_empty_mistral_ocr_model(test_project) -> None:
+    """Verifies that config service rejects empty mistral ocr model.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 4\nconversion:\n  mistral_ocr:\n"
         "    model: ''\n    api_key_env: MISTRAL_API_KEY\n"
@@ -888,6 +1136,11 @@ def test_config_service_rejects_empty_mistral_ocr_model(test_project) -> None:
 
 
 def test_config_service_rejects_non_dict_html_block(test_project) -> None:
+    """Verifies that config service rejects non dict html block.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 4\nconversion:\n  html: invalid\n",
         encoding="utf-8",
@@ -897,6 +1150,11 @@ def test_config_service_rejects_non_dict_html_block(test_project) -> None:
 
 
 def test_config_service_rejects_unknown_html_keys(test_project) -> None:
+    """Verifies that config service rejects unknown html keys.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 4\nconversion:\n  html:\n"
         "    renderer: wkhtmltopdf\n    extra: true\n",
@@ -907,6 +1165,11 @@ def test_config_service_rejects_unknown_html_keys(test_project) -> None:
 
 
 def test_config_service_rejects_empty_wkhtmltopdf_path_string(test_project) -> None:
+    """Verifies that config service rejects empty wkhtmltopdf path string.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 4\nconversion:\n  html:\n"
         "    renderer: wkhtmltopdf\n    wkhtmltopdf_path: ' '\n",
@@ -917,6 +1180,11 @@ def test_config_service_rejects_empty_wkhtmltopdf_path_string(test_project) -> N
 
 
 def test_config_service_rejects_non_dict_fallbacks(test_project) -> None:
+    """Verifies that config service rejects non dict fallbacks.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 4\nconversion:\n  fallbacks: invalid\n",
         encoding="utf-8",
@@ -926,6 +1194,11 @@ def test_config_service_rejects_non_dict_fallbacks(test_project) -> None:
 
 
 def test_config_service_rejects_unknown_fallback_keys(test_project) -> None:
+    """Verifies that config service rejects unknown fallback keys.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 4\nconversion:\n  fallbacks:\n"
         "    pdf: docling\n    docx: markitdown\n"

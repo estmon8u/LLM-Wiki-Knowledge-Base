@@ -1,3 +1,11 @@
+"""Init service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.__init__` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 """Service construction helpers for the capstone CLI."""
@@ -35,6 +43,15 @@ def build_services(
     paths: ProjectPaths,
     config: dict[str, Any],
 ) -> dict[str, Any]:
+    """Builds services.
+
+    Args:
+        paths: Resolved project paths used by the service.
+        config: Loaded knowledge-base configuration mapping.
+
+    Returns:
+        dict[str, Any] produced by the operation.
+    """
     config_service = ConfigService(paths)
     manifest_service = ManifestService(paths)
     search_service = SearchService(paths)

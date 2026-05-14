@@ -1,3 +1,11 @@
+"""Command engine helpers for command registry.
+
+This module belongs to `src.engine.command_registry` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from importlib import import_module
@@ -44,6 +52,14 @@ def get_click_command(name: str) -> Optional[click.BaseCommand]:
 
 
 def build_command_specs(context: CommandContext) -> tuple[CommandSpec, ...]:
+    """Builds command specs.
+
+    Args:
+        context: Execution context shared across the operation.
+
+    Returns:
+        tuple[CommandSpec, ...] produced by the operation.
+    """
     specs: list[CommandSpec] = []
     for name in sorted(FLAT_COMMAND_MODULES):
         module = import_module(FLAT_COMMAND_MODULES[name])

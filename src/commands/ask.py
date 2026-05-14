@@ -1,3 +1,11 @@
+"""Click command implementation for the kb ask command.
+
+This module belongs to `src.commands.ask` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from typing import Optional
@@ -19,10 +27,24 @@ SUMMARY = (
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
+    """Builds the command registry specification for this module.
+
+    Args:
+        _: Value value used by the operation.
+
+    Returns:
+        CommandSpec produced by the operation.
+    """
     return CommandSpec(name="ask", summary=SUMMARY)
 
 
 def create_command() -> click.Command:
+    """Creates the Click command exposed by this module.
+
+    Returns:
+        click.Command produced by the operation.
+    """
+
     @click.command(name="ask", help=SUMMARY, short_help="Ask with GraphRAG.")
     @click.argument("question_terms", nargs=-1)
     @click.option(
@@ -82,6 +104,22 @@ def create_command() -> click.Command:
         verbose: bool,
         as_json: bool,
     ) -> None:
+        """Command.
+
+        Args:
+            command_context: Command context value used by the operation.
+            question_terms: Question terms value used by the operation.
+            method: Method value used by the operation.
+            community_level: Community level value used by the operation.
+            dynamic_community_selection: Dynamic community selection value used by the operation.
+            response_type: Response type value used by the operation.
+            limit: Maximum number of results to return or process.
+            save_answer: Save answer value used by the operation.
+            save_as_name: Save as name value used by the operation.
+            show_evidence: Show evidence value used by the operation.
+            verbose: Whether to emit verbose command output.
+            as_json: As json value used by the operation.
+        """
         require_initialized(command_context)
         if not question_terms:
             raise click.ClickException("Provide a question to answer.")

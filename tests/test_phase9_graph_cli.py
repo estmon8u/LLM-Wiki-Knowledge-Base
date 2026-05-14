@@ -1,3 +1,11 @@
+"""Tests for test phase9 graph cli.
+
+This module belongs to `tests.test_phase9_graph_cli` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import json
@@ -26,6 +34,11 @@ from tests.test_cli import _CliFakeProvider, _set_provider_config
 
 
 def _write_graph_tables(root: Path) -> None:
+    """Handles write graph tables.
+
+    Args:
+        root: Root path used for discovery or relative path resolution.
+    """
     output_dir = root / "graph" / "graphrag" / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
     pd.DataFrame([{"id": "doc-1", "title": "RAG Paper"}]).to_parquet(
@@ -49,6 +62,14 @@ def _write_graph_tables(root: Path) -> None:
 
 
 def _graph_answer(*, saved_path: str | None = None) -> GraphRAGQueryAnswer:
+    """Handles graph answer.
+
+    Args:
+        saved_path: Saved path value used by the operation.
+
+    Returns:
+        GraphRAGQueryAnswer produced by the operation.
+    """
     return GraphRAGQueryAnswer(
         question="What changed?",
         answer="GraphRAG answered from the graph.",
@@ -73,6 +94,14 @@ def _graph_answer(*, saved_path: str | None = None) -> GraphRAGQueryAnswer:
 
 
 def _input_sync_result(root: Path) -> GraphRAGInputSyncResult:
+    """Handles input sync result.
+
+    Args:
+        root: Root path used for discovery or relative path resolution.
+
+    Returns:
+        GraphRAGInputSyncResult produced by the operation.
+    """
     return GraphRAGInputSyncResult(
         source_count=1,
         output_path=root / "graph/graphrag/input/sources.json",
@@ -83,6 +112,12 @@ def _input_sync_result(root: Path) -> GraphRAGInputSyncResult:
 
 
 def _decision(*, action: str = "index", method: str | None = "fast"):
+    """Handles decision.
+
+    Args:
+        action: Action value used by the operation.
+        method: Method value used by the operation.
+    """
     return GraphRAGSyncDecision(
         action=action,
         method=method,
@@ -98,6 +133,13 @@ def _decision(*, action: str = "index", method: str | None = "fast"):
 
 
 def _sync_result(root: Path, *, action: str = "index", method: str | None = "fast"):
+    """Handles sync result.
+
+    Args:
+        root: Root path used for discovery or relative path resolution.
+        action: Action value used by the operation.
+        method: Method value used by the operation.
+    """
     return GraphRAGSyncResult(
         input_sync=_input_sync_result(root),
         decision=_decision(action=action, method=method),
@@ -105,6 +147,11 @@ def _sync_result(root: Path, *, action: str = "index", method: str | None = "fas
 
 
 def _index_run() -> GraphRAGIndexRun:
+    """Handles index run.
+
+    Returns:
+        GraphRAGIndexRun produced by the operation.
+    """
     return GraphRAGIndexRun(
         run_id="run-1",
         created_at="2026-05-12T00:00:00+00:00",
@@ -120,6 +167,7 @@ def _index_run() -> GraphRAGIndexRun:
 
 
 def test_graph_command_group_is_removed() -> None:
+    """Verifies that graph command group is removed."""
     result = CliRunner().invoke(main, ["graph"])
 
     assert result.exit_code != 0
@@ -127,6 +175,7 @@ def test_graph_command_group_is_removed() -> None:
 
 
 def test_ask_prints_graph_answer_metadata_and_source_trace() -> None:
+    """Verifies that ask prints graph answer metadata and source trace."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -150,6 +199,7 @@ def test_ask_prints_graph_answer_metadata_and_source_trace() -> None:
 
 
 def test_ask_json_outputs_graph_answer_payload() -> None:
+    """Verifies that ask json outputs graph answer payload."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -168,6 +218,7 @@ def test_ask_json_outputs_graph_answer_payload() -> None:
 
 
 def test_update_output_renders_resume_removed_concepts_and_graph_details() -> None:
+    """Verifies that update output renders resume removed concepts and graph details."""
     update_result = UpdateResult(
         ingest_summaries=[
             IngestSummary(Path("folder"), is_dir=True, created_count=2),
@@ -217,6 +268,7 @@ def test_update_output_renders_resume_removed_concepts_and_graph_details() -> No
 
 
 def test_update_output_renders_non_index_graph_decision() -> None:
+    """Verifies that update output renders non index graph decision."""
     update_result = UpdateResult(
         compile_result=CompileResult(
             compiled_count=0,
@@ -248,6 +300,7 @@ def test_update_output_renders_non_index_graph_decision() -> None:
 
 
 def test_init_sets_up_graph_workspace_settings() -> None:
+    """Verifies that init sets up graph workspace settings."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         result = runner.invoke(main, ["init"])
@@ -269,9 +322,22 @@ def test_init_sets_up_graph_workspace_settings() -> None:
 
 
 def test_update_runs_graph_sync_index_and_export(monkeypatch) -> None:
+    """Verifies that update runs graph sync index and export.
+
+    Args:
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     calls = []
 
     def fake_run(command, *, cwd, capture_output, text):
+        """Fake run.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         calls.append(command)
         _write_graph_tables(Path(cwd))
         return subprocess.CompletedProcess(command, 0, stdout="indexed\n", stderr="")
@@ -292,6 +358,19 @@ def test_update_runs_graph_sync_index_and_export(monkeypatch) -> None:
             bufsize=None,
             env=None,
         ):
+            """Initializes the instance.
+
+            Args:
+                command: Command value used by the operation.
+                cwd: Cwd value used by the operation.
+                stdout: Stdout value used by the operation.
+                stderr: Stderr value used by the operation.
+                text: Text content being processed.
+                encoding: Encoding value used by the operation.
+                errors: Errors value used by the operation.
+                bufsize: Bufsize value used by the operation.
+                env: Env value used by the operation.
+            """
             calls.append(command)
             _write_graph_tables(Path(cwd))
             self.returncode = 0
@@ -301,6 +380,7 @@ def test_update_runs_graph_sync_index_and_export(monkeypatch) -> None:
             self.stderr = io.StringIO("")
 
         def wait(self):
+            """Wait."""
             pass
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
@@ -333,7 +413,19 @@ def test_update_runs_graph_sync_index_and_export(monkeypatch) -> None:
 
 
 def test_update_no_graph_flag_skips_graph(monkeypatch) -> None:
+    """Verifies that update no graph flag skips graph.
+
+    Args:
+        monkeypatch: Monkeypatch value used by the operation.
+    """
+
     def fail_run(*args, **kwargs):
+        """Fail run.
+
+        Args:
+            args: Parsed or forwarded command arguments.
+            kwargs: Kwargs value used by the operation.
+        """
         raise AssertionError("GraphRAG should not run with --no-graph")
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
@@ -355,6 +447,7 @@ def test_update_no_graph_flag_skips_graph(monkeypatch) -> None:
 
 
 def test_status_json_includes_graph_status() -> None:
+    """Verifies that status json includes graph status."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -368,6 +461,7 @@ def test_status_json_includes_graph_status() -> None:
 
 
 def test_status_human_output_includes_last_graph_index() -> None:
+    """Verifies that status human output includes last graph index."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -391,6 +485,7 @@ def test_status_human_output_includes_last_graph_index() -> None:
 
 
 def test_export_includes_graph_wiki_export() -> None:
+    """Verifies that export includes graph wiki export."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -405,26 +500,61 @@ def test_export_includes_graph_wiki_export() -> None:
 
 
 class _FakeWorkspace:
+    """Represents fake workspace behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(self, *, initialized: bool) -> None:
+        """Initializes the instance.
+
+        Args:
+            initialized: Initialized value used by the operation.
+        """
         self.initialized = initialized
         self.ensured = False
 
     def is_initialized(self) -> bool:
+        """Is initialized.
+
+        Returns:
+            bool produced by the operation.
+        """
         return self.initialized
 
     def ensure_workspace(self) -> None:
+        """Ensure workspace."""
         self.ensured = True
         self.initialized = True
 
 
 class _FakeGraphSync:
+    """Represents fake graph sync behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(self, root: Path, *results, error: Exception | None = None) -> None:
+        """Initializes the instance.
+
+        Args:
+            root: Root path used for discovery or relative path resolution.
+            results: Results value used by the operation.
+            error: Error value used by the operation.
+        """
         self.workspace_dir = root / "graph/graphrag"
         self.results = list(results)
         self.error = error
         self.calls = []
 
     def sync(self, **kwargs):
+        """Sync.
+
+        Args:
+            kwargs: Kwargs value used by the operation.
+        """
         self.calls.append(kwargs)
         if self.error is not None:
             raise self.error
@@ -432,10 +562,22 @@ class _FakeGraphSync:
 
 
 class _FakeGraphExport:
+    """Represents fake graph export behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(self, *, error: Exception | None = None) -> None:
+        """Initializes the instance.
+
+        Args:
+            error: Error value used by the operation.
+        """
         self.error = error
 
     def export_wiki(self):
+        """Export wiki."""
         if self.error is not None:
             raise self.error
         return GraphRAGWikiExportResult(
@@ -445,6 +587,14 @@ class _FakeGraphExport:
 
 
 def _update_service_for_graph(test_project, *, workspace, sync, export=None):
+    """Handles update service for graph.
+
+    Args:
+        test_project: Test project value used by the operation.
+        workspace: Workspace value used by the operation.
+        sync: Sync value used by the operation.
+        export: Export value used by the operation.
+    """
     from src.services.update_service import UpdateService
 
     return UpdateService(
@@ -462,6 +612,11 @@ def _update_service_for_graph(test_project, *, workspace, sync, export=None):
 def test_update_service_skips_graph_when_services_or_config_are_missing(
     test_project,
 ) -> None:
+    """Verifies that update service skips graph when services or config are missing.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     from src.services.update_service import UpdateOptions, UpdateService
 
     missing_services = UpdateService(
@@ -489,6 +644,11 @@ def test_update_service_skips_graph_when_services_or_config_are_missing(
 def test_update_service_initializes_and_skips_when_preflight_skips(
     test_project,
 ) -> None:
+    """Verifies that update service initializes and skips when preflight skips.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     from src.services.update_service import UpdateOptions
 
     workspace = _FakeWorkspace(initialized=False)
@@ -510,6 +670,11 @@ def test_update_service_initializes_and_skips_when_preflight_skips(
 
 
 def test_update_service_reports_preflight_failure(test_project) -> None:
+    """Verifies that update service reports preflight failure.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     from src.services.update_service import UpdateOptions
 
     service = _update_service_for_graph(
@@ -527,6 +692,12 @@ def test_update_service_reports_preflight_failure(test_project) -> None:
 def test_update_service_reports_missing_graph_credentials(
     test_project, monkeypatch
 ) -> None:
+    """Verifies that update service reports missing graph credentials.
+
+    Args:
+        test_project: Test project value used by the operation.
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     from src.services.update_service import UpdateOptions
 
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
@@ -543,6 +714,11 @@ def test_update_service_reports_missing_graph_credentials(
 
 
 def test_update_service_reports_invalid_graph_config(test_project) -> None:
+    """Verifies that update service reports invalid graph config.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     from src.services.update_service import UpdateOptions
 
     config = dict(test_project.command_context.config)
@@ -569,6 +745,12 @@ def test_update_service_reports_invalid_graph_config(test_project) -> None:
 def test_update_service_reports_index_or_export_failure(
     test_project, monkeypatch
 ) -> None:
+    """Verifies that update service reports index or export failure.
+
+    Args:
+        test_project: Test project value used by the operation.
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     from src.services.update_service import UpdateOptions
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
@@ -590,6 +772,11 @@ def test_update_service_reports_index_or_export_failure(
 
 
 def test_graph_hash_helpers_handle_missing_and_dict_inputs(tmp_path) -> None:
+    """Verifies that graph hash helpers handle missing and dict inputs.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     missing = tmp_path / "missing.json"
     dict_payload = tmp_path / "dict.json"
     empty_payload = tmp_path / "empty.json"

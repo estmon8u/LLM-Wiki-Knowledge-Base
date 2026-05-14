@@ -1,3 +1,11 @@
+"""Graphrag wiki export service service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.graphrag_wiki_export_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -31,20 +39,42 @@ MAX_ENTITY_RELATIONSHIP_ROWS = 50
 
 
 class GraphRAGWikiExportError(RuntimeError):
+    """Error raised for graph ragwiki export failures.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     pass
 
 
 @dataclass(frozen=True)
 class GraphRAGWikiExportResult:
+    """Stores graph ragwiki export result data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     exported_paths: list[str]
     table_counts: dict[str, int]
     missing_tables: list[str] = field(default_factory=list)
 
     @property
     def exported_count(self) -> int:
+        """Exported count.
+
+        Returns:
+            int produced by the operation.
+        """
         return len(self.exported_paths)
 
     def to_dict(self) -> dict[str, object]:
+        """Serializes this value to a dictionary.
+
+        Returns:
+            dict[str, object] produced by the operation.
+        """
         return {
             "exported_count": self.exported_count,
             "exported_paths": self.exported_paths,
@@ -54,6 +84,12 @@ class GraphRAGWikiExportResult:
 
 
 class GraphRAGWikiExportService:
+    """Coordinates graph ragwiki export operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(
         self,
         paths: ProjectPaths,
@@ -69,6 +105,11 @@ class GraphRAGWikiExportService:
         self.graph_wiki_dir = paths.wiki_dir / "graph"
 
     def export_wiki(self) -> GraphRAGWikiExportResult:
+        """Export wiki.
+
+        Returns:
+            GraphRAGWikiExportResult produced by the operation.
+        """
         status = self.status_service.status()
         self._require_export_ready(status)
         tables, missing = self._load_tables()
@@ -472,6 +513,12 @@ class GraphRAGWikiExportService:
 
 @dataclass(frozen=True)
 class _ExportContext:
+    """Represents export context behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     index_run_id: str | None
     relationships: list[dict[str, Any]]
     relationships_by_entity: dict[str, list[dict[str, Any]]]

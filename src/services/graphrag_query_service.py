@@ -1,3 +1,11 @@
+"""Graphrag query service service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.graphrag_query_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -30,11 +38,23 @@ GRAPH_DATA_REFERENCE_PATTERN = re.compile(r"\[Data:\s*[^\]]+\]")
 
 
 class GraphRAGQueryError(RuntimeError):
+    """Error raised for graph ragquery failures.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     pass
 
 
 @dataclass
 class GraphRAGQueryAnswer:
+    """Represents graph ragquery answer behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     question: str
     answer: str
     raw_output: str
@@ -56,12 +76,23 @@ class GraphRAGQueryAnswer:
     source_trace: dict[str, str | None] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
+        """Serializes this value to a dictionary.
+
+        Returns:
+            dict[str, object] produced by the operation.
+        """
         payload = asdict(self)
         payload["command"] = list(self.command)
         return payload
 
 
 class GraphRAGQueryService:
+    """Coordinates graph ragquery operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(
         self,
         paths: ProjectPaths,
@@ -87,6 +118,19 @@ class GraphRAGQueryService:
         response_type: str | None = None,
         verbose: bool = False,
     ) -> GraphRAGQueryAnswer:
+        """Ask.
+
+        Args:
+            question: User question to answer from available evidence.
+            method: Method value used by the operation.
+            community_level: Community level value used by the operation.
+            dynamic_community_selection: Dynamic community selection value used by the operation.
+            response_type: Response type value used by the operation.
+            verbose: Whether to emit verbose command output.
+
+        Returns:
+            GraphRAGQueryAnswer produced by the operation.
+        """
         status = self.status_service.status()
         self._require_query_ready(status)
         input_manifest_hash = self._input_manifest_hash(status.input_path)
@@ -131,6 +175,15 @@ class GraphRAGQueryService:
         *,
         slug: str | None = None,
     ) -> str:
+        """Saves answer.
+
+        Args:
+            answer: Answer value used by the operation.
+            slug: Slug value used by the operation.
+
+        Returns:
+            str produced by the operation.
+        """
         safe_slug = slugify(slug) if slug else slugify(answer.question)
         if not safe_slug or safe_slug == "untitled":
             safe_slug = "analysis"

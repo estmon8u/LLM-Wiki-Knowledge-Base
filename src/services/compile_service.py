@@ -1,3 +1,11 @@
+"""Compile service service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.compile_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -79,6 +87,12 @@ _SUMMARY_PROMPT_ECHO_PATTERN = re.compile(
 
 
 class _ProviderSummary(BaseModel):
+    """Represents provider summary behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     summary: str = ""
     key_points: list[str] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)
@@ -87,6 +101,12 @@ class _ProviderSummary(BaseModel):
 
 @dataclass
 class _SummaryResult:
+    """Stores summary result data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     summary: str
     key_points: list[str] = field(default_factory=list)
     open_questions: list[str] = field(default_factory=list)
@@ -95,6 +115,12 @@ class _SummaryResult:
 
 @dataclass
 class CompileResult:
+    """Stores compile result data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     compiled_count: int
     skipped_count: int
     compiled_paths: list[str]
@@ -103,15 +129,32 @@ class CompileResult:
 
 @dataclass
 class CompilePlan:
+    """Represents compile plan behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     pending_sources: list[RawSourceRecord]
     skipped_count: int
 
     @property
     def pending_count(self) -> int:
+        """Pending count.
+
+        Returns:
+            int produced by the operation.
+        """
         return len(self.pending_sources)
 
 
 class CompileService:
+    """Coordinates compile operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(
         self,
         paths: ProjectPaths,
@@ -142,6 +185,15 @@ class CompileService:
         return self.provider
 
     def plan(self, *, force: bool = False, resume: bool = False) -> CompilePlan:
+        """Plan.
+
+        Args:
+            force: Force value used by the operation.
+            resume: Resume value used by the operation.
+
+        Returns:
+            CompilePlan produced by the operation.
+        """
         if force and resume:
             raise ValueError("--resume cannot be combined with --force.")
         if resume and self.compile_run_store.resume_candidate() is None:
@@ -171,6 +223,16 @@ class CompileService:
         resume: bool = False,
         progress_callback: Optional[Callable[[RawSourceRecord], None]] = None,
     ) -> CompileResult:
+        """Compile.
+
+        Args:
+            force: Force value used by the operation.
+            resume: Resume value used by the operation.
+            progress_callback: Progress callback value used by the operation.
+
+        Returns:
+            CompileResult produced by the operation.
+        """
         compiled_paths: list[str] = []
         compiled_count = 0
         resume_record = self.compile_run_store.resume_candidate() if resume else None

@@ -1,3 +1,11 @@
+"""Provider integration helpers for gemini provider.
+
+This module belongs to `src.providers.gemini_provider` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import os
@@ -34,6 +42,14 @@ class GeminiProvider(TextProvider):
 
     @provider_retry()
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        """Generate.
+
+        Args:
+            request: Request value used by the operation.
+
+        Returns:
+            ProviderResponse produced by the operation.
+        """
         effort = request.reasoning_effort or self._reasoning_effort
         thinking_level = self._EFFORT_TO_LEVEL.get(effort, "high")
         config_kwargs: dict = {

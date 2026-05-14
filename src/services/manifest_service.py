@@ -1,3 +1,11 @@
+"""Manifest service service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.manifest_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import json
@@ -8,10 +16,21 @@ from src.services.project_service import ProjectPaths, atomic_write_text, utc_no
 
 
 class ManifestService:
+    """Coordinates manifest operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(self, paths: ProjectPaths) -> None:
         self.paths = paths
 
     def ensure_manifest(self) -> bool:
+        """Ensure manifest.
+
+        Returns:
+            bool produced by the operation.
+        """
         if self.paths.raw_manifest_file.exists():
             return False
         payload = {
@@ -24,22 +43,48 @@ class ManifestService:
         return True
 
     def list_sources(self) -> list[RawSourceRecord]:
+        """List sources.
+
+        Returns:
+            list[RawSourceRecord] produced by the operation.
+        """
         payload = self._read()
         return [RawSourceRecord.from_dict(item) for item in payload["sources"]]
 
     def find_by_hash(self, content_hash: str) -> Optional[RawSourceRecord]:
+        """Find by hash.
+
+        Args:
+            content_hash: Content hash value used by the operation.
+
+        Returns:
+            Optional[RawSourceRecord] produced by the operation.
+        """
         for source in self.list_sources():
             if source.content_hash == content_hash:
                 return source
         return None
 
     def find_by_origin_hash(self, origin_hash: str) -> Optional[RawSourceRecord]:
+        """Find by origin hash.
+
+        Args:
+            origin_hash: Origin hash value used by the operation.
+
+        Returns:
+            Optional[RawSourceRecord] produced by the operation.
+        """
         for source in self.list_sources():
             if source.origin_hash == origin_hash:
                 return source
         return None
 
     def save_source(self, source: RawSourceRecord) -> None:
+        """Saves source.
+
+        Args:
+            source: Source record or path being processed.
+        """
         payload = self._read()
         sources = [RawSourceRecord.from_dict(item) for item in payload["sources"]]
         updated = False

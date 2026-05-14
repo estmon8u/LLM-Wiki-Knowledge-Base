@@ -1,3 +1,11 @@
+"""Status service service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.status_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import hashlib
@@ -12,6 +20,12 @@ from src.services.project_service import ProjectPaths
 
 
 class StatusService:
+    """Coordinates status operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(
         self,
         paths: ProjectPaths,
@@ -26,6 +40,14 @@ class StatusService:
         self._graphrag_status = graphrag_status_service
 
     def snapshot(self, *, initialized: bool) -> StatusSnapshot:
+        """Snapshot.
+
+        Args:
+            initialized: Initialized value used by the operation.
+
+        Returns:
+            StatusSnapshot produced by the operation.
+        """
         sources = (
             self.manifest_service.list_sources()
             if self.paths.raw_manifest_file.exists()

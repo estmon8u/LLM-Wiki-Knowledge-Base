@@ -31,10 +31,24 @@ class FakeProvider(TextProvider):
     name = "fake"
 
     def __init__(self, text: str = "LLM says hello", model: str = "fake-v1") -> None:
+        """Initializes the instance.
+
+        Args:
+            text: Text content being processed.
+            model: Model value used by the operation.
+        """
         self._text = text
         self._model = model
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        """Generate.
+
+        Args:
+            request: Request value used by the operation.
+
+        Returns:
+            ProviderResponse produced by the operation.
+        """
         return ProviderResponse(text=self._text, model_name=self._model)
 
 
@@ -44,6 +58,14 @@ class FailingProvider(TextProvider):
     name = "failing"
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        """Generate.
+
+        Args:
+            request: Request value used by the operation.
+
+        Returns:
+            ProviderResponse produced by the operation.
+        """
         raise RuntimeError("API is down")
 
 
@@ -53,14 +75,17 @@ class FailingProvider(TextProvider):
 
 
 def test_build_provider_returns_none_when_no_provider_section() -> None:
+    """Verifies that build provider returns none when no provider section."""
     assert build_provider({}) is None
 
 
 def test_build_provider_returns_none_when_provider_name_empty() -> None:
+    """Verifies that build provider returns none when provider name empty."""
     assert build_provider({"provider": {"name": ""}}) is None
 
 
 def test_build_provider_returns_unavailable_provider_for_unknown_provider() -> None:
+    """Verifies that build provider returns unavailable provider for unknown provider."""
     provider = build_provider({"provider": {"name": "unknown-llm"}})
 
     assert provider is not None
@@ -69,6 +94,7 @@ def test_build_provider_returns_unavailable_provider_for_unknown_provider() -> N
 
 
 def test_build_provider_returns_unavailable_provider_when_api_key_missing() -> None:
+    """Verifies that build provider returns unavailable provider when api key missing."""
     with patch.dict("os.environ", {}, clear=True):
         provider = build_provider({"provider": {"name": "openai"}})
     assert provider is not None
@@ -77,6 +103,7 @@ def test_build_provider_returns_unavailable_provider_when_api_key_missing() -> N
 
 
 def test_build_provider_creates_openai_provider() -> None:
+    """Verifies that build provider creates openai provider."""
     with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key-123"}):
         with patch("src.providers.openai_provider.OpenAI"):
             provider = build_provider({"provider": {"name": "openai"}})
@@ -86,6 +113,7 @@ def test_build_provider_creates_openai_provider() -> None:
 
 
 def test_build_provider_uses_catalog_defaults_for_openai() -> None:
+    """Verifies that build provider uses catalog defaults for openai."""
     config = {
         "provider": {"name": "openai"},
         "providers": {
@@ -117,6 +145,7 @@ def test_build_provider_uses_catalog_defaults_for_openai() -> None:
 
 
 def test_build_provider_creates_openai_provider_with_custom_model() -> None:
+    """Verifies that build provider creates openai provider with custom model."""
     with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}):
         with patch("src.providers.openai_provider.OpenAI"):
             provider = build_provider(
@@ -127,6 +156,7 @@ def test_build_provider_creates_openai_provider_with_custom_model() -> None:
 
 
 def test_build_provider_creates_anthropic_provider() -> None:
+    """Verifies that build provider creates anthropic provider."""
     with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key-456"}):
         with patch("src.providers.anthropic_provider.Anthropic"):
             provider = build_provider({"provider": {"name": "anthropic"}})
@@ -136,6 +166,7 @@ def test_build_provider_creates_anthropic_provider() -> None:
 
 
 def test_build_provider_uses_catalog_thinking_budget_for_anthropic() -> None:
+    """Verifies that build provider uses catalog thinking budget for anthropic."""
     config = {
         "provider": {"name": "anthropic"},
         "providers": {
@@ -167,6 +198,7 @@ def test_build_provider_uses_catalog_thinking_budget_for_anthropic() -> None:
 
 
 def test_build_provider_creates_anthropic_provider_with_custom_model() -> None:
+    """Verifies that build provider creates anthropic provider with custom model."""
     with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
         with patch("src.providers.anthropic_provider.Anthropic"):
             provider = build_provider(
@@ -177,6 +209,7 @@ def test_build_provider_creates_anthropic_provider_with_custom_model() -> None:
 
 
 def test_build_provider_creates_gemini_provider() -> None:
+    """Verifies that build provider creates gemini provider."""
     with patch.dict("os.environ", {"GEMINI_API_KEY": "test-key-789"}):
         with patch("src.providers.gemini_provider.genai") as mock_genai:
             provider = build_provider({"provider": {"name": "gemini"}})
@@ -186,6 +219,7 @@ def test_build_provider_creates_gemini_provider() -> None:
 
 
 def test_build_provider_creates_gemini_provider_with_custom_model() -> None:
+    """Verifies that build provider creates gemini provider with custom model."""
     with patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}):
         with patch("src.providers.gemini_provider.genai"):
             provider = build_provider(
@@ -196,6 +230,7 @@ def test_build_provider_creates_gemini_provider_with_custom_model() -> None:
 
 
 def test_build_provider_respects_custom_api_key_env() -> None:
+    """Verifies that build provider respects custom api key env."""
     with patch.dict("os.environ", {"MY_KEY": "test-key-custom"}):
         with patch("src.providers.openai_provider.OpenAI"):
             provider = build_provider(
@@ -205,6 +240,7 @@ def test_build_provider_respects_custom_api_key_env() -> None:
 
 
 def test_build_provider_ignores_ambiguous_active_provider_overrides_in_v3() -> None:
+    """Verifies that build provider ignores ambiguous active provider overrides in v3."""
     config = {
         "version": 3,
         "provider": {
@@ -246,6 +282,7 @@ def test_build_provider_ignores_ambiguous_active_provider_overrides_in_v3() -> N
 
 
 def test_openai_provider_generate() -> None:
+    """Verifies that openai provider generate."""
     with patch.dict("os.environ", {"OPENAI_API_KEY": "test"}):
         with patch("src.providers.openai_provider.OpenAI") as MockClient:
             from src.providers.openai_provider import OpenAIProvider
@@ -267,6 +304,7 @@ def test_openai_provider_generate() -> None:
 
 
 def test_openai_provider_uses_request_reasoning_effort_override() -> None:
+    """Verifies that openai provider uses request reasoning effort override."""
     with patch.dict("os.environ", {"OPENAI_API_KEY": "test"}):
         with patch("src.providers.openai_provider.OpenAI") as MockClient:
             from src.providers.openai_provider import OpenAIProvider
@@ -286,6 +324,7 @@ def test_openai_provider_uses_request_reasoning_effort_override() -> None:
 
 
 def test_openai_provider_generate_without_system_prompt() -> None:
+    """Verifies that openai provider generate without system prompt."""
     with patch.dict("os.environ", {"OPENAI_API_KEY": "test"}):
         with patch("src.providers.openai_provider.OpenAI") as MockClient:
             from src.providers.openai_provider import OpenAIProvider
@@ -306,6 +345,7 @@ def test_openai_provider_generate_without_system_prompt() -> None:
 
 
 def test_openai_provider_missing_key_raises() -> None:
+    """Verifies that openai provider missing key raises."""
     with patch.dict("os.environ", {}, clear=True):
         with pytest.raises(ValueError, match="OPENAI_API_KEY"):
             from src.providers.openai_provider import OpenAIProvider
@@ -314,6 +354,7 @@ def test_openai_provider_missing_key_raises() -> None:
 
 
 def test_anthropic_provider_generate() -> None:
+    """Verifies that anthropic provider generate."""
     with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test"}):
         with patch("src.providers.anthropic_provider.Anthropic") as MockClient:
             from src.providers.anthropic_provider import AnthropicProvider
@@ -335,6 +376,7 @@ def test_anthropic_provider_generate() -> None:
 
 
 def test_anthropic_provider_generate_without_system_prompt() -> None:
+    """Verifies that anthropic provider generate without system prompt."""
     with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test"}):
         with patch("src.providers.anthropic_provider.Anthropic") as MockClient:
             from src.providers.anthropic_provider import AnthropicProvider
@@ -354,6 +396,7 @@ def test_anthropic_provider_generate_without_system_prompt() -> None:
 
 
 def test_anthropic_provider_missing_key_raises() -> None:
+    """Verifies that anthropic provider missing key raises."""
     with patch.dict("os.environ", {}, clear=True):
         with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
             from src.providers.anthropic_provider import AnthropicProvider
@@ -362,6 +405,7 @@ def test_anthropic_provider_missing_key_raises() -> None:
 
 
 def test_gemini_provider_generate() -> None:
+    """Verifies that gemini provider generate."""
     with patch.dict("os.environ", {"GEMINI_API_KEY": "test"}):
         with patch("src.providers.gemini_provider.genai") as mock_genai:
             from src.providers.gemini_provider import GeminiProvider
@@ -382,6 +426,7 @@ def test_gemini_provider_generate() -> None:
 
 
 def test_gemini_response_schema_removes_additional_properties() -> None:
+    """Verifies that gemini response schema removes additional properties."""
     from src.providers.gemini_provider import _gemini_response_schema
 
     schema = {
@@ -405,6 +450,7 @@ def test_gemini_response_schema_removes_additional_properties() -> None:
 
 
 def test_gemini_provider_generate_without_system_prompt() -> None:
+    """Verifies that gemini provider generate without system prompt."""
     with patch.dict("os.environ", {"GEMINI_API_KEY": "test"}):
         with patch("src.providers.gemini_provider.genai") as mock_genai:
             from src.providers.gemini_provider import GeminiProvider
@@ -422,6 +468,7 @@ def test_gemini_provider_generate_without_system_prompt() -> None:
 
 
 def test_gemini_provider_missing_key_raises() -> None:
+    """Verifies that gemini provider missing key raises."""
     with patch.dict("os.environ", {}, clear=True):
         with pytest.raises(ValueError, match="GEMINI_API_KEY"):
             from src.providers.gemini_provider import GeminiProvider
@@ -435,6 +482,11 @@ def test_gemini_provider_missing_key_raises() -> None:
 
 
 def test_query_service_uses_provider_when_available(test_project) -> None:
+    """Verifies that query service uses provider when available.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/alpha.md",
         "---\ntitle: Alpha\n---\n# Alpha\n\nKnowledge base traceability.\n",
@@ -472,6 +524,11 @@ def test_query_service_uses_provider_when_available(test_project) -> None:
 
 
 def test_query_service_raises_without_provider(test_project) -> None:
+    """Verifies that query service raises without provider.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/alpha.md",
         "---\ntitle: Alpha\n---\n# Alpha\n\nKnowledge base traceability.\n",
@@ -489,6 +546,11 @@ def test_query_service_raises_without_provider(test_project) -> None:
 
 
 def test_query_service_raises_on_provider_error(test_project) -> None:
+    """Verifies that query service raises on provider error.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/alpha.md",
         "---\ntitle: Alpha\n---\n# Alpha\n\nKnowledge base traceability.\n",
@@ -509,6 +571,11 @@ def test_query_service_raises_on_provider_error(test_project) -> None:
 def test_query_service_no_matches_returns_fallback_regardless_of_provider(
     test_project,
 ) -> None:
+    """Verifies that query service no matches returns fallback regardless of provider.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     provider = FakeProvider()
     from src.services.search_service import SearchService
 
@@ -530,6 +597,11 @@ def test_query_service_no_matches_returns_fallback_regardless_of_provider(
 
 
 def test_review_service_uses_provider_when_available(test_project) -> None:
+    """Verifies that review service uses provider when available.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/alpha.md",
         "Knowledge base markdown traceability.",
@@ -559,6 +631,11 @@ def test_review_service_uses_provider_when_available(test_project) -> None:
 
 
 def test_review_service_requires_provider(test_project) -> None:
+    """Verifies that review service requires provider.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     from src.providers import ProviderConfigurationError
 
     test_project.write_file("wiki/sources/alpha.md", "Some content here.")
@@ -571,6 +648,11 @@ def test_review_service_requires_provider(test_project) -> None:
 
 
 def test_review_service_falls_back_on_provider_error(test_project) -> None:
+    """Verifies that review service falls back on provider error.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/alpha.md", "Some content here.")
     provider = FailingProvider()
     review_service = ReviewService(test_project.paths, provider=provider)
@@ -580,6 +662,11 @@ def test_review_service_falls_back_on_provider_error(test_project) -> None:
 
 
 def test_review_service_provider_no_issues_response(test_project) -> None:
+    """Verifies that review service provider no issues response.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/alpha.md", "Some content here.")
     provider = FakeProvider(text=json.dumps({"issues": []}))
     review_service = ReviewService(test_project.paths, provider=provider)
@@ -595,6 +682,11 @@ def test_review_service_provider_no_issues_response(test_project) -> None:
 
 
 def test_review_service_provider_multiple_issues(test_project) -> None:
+    """Verifies that review service provider multiple issues.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/a.md", "Page A content.")
     test_project.write_file("wiki/sources/b.md", "Page B content.")
     provider = FakeProvider(
@@ -630,6 +722,11 @@ def test_review_service_provider_multiple_issues(test_project) -> None:
 
 
 def test_review_service_provider_rejects_malformed_json(test_project) -> None:
+    """Verifies that review service provider rejects malformed json.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/a.md", "Content.")
     provider = FakeProvider(text="Some random text")
     review_service = ReviewService(test_project.paths, provider=provider)
@@ -639,6 +736,11 @@ def test_review_service_provider_rejects_malformed_json(test_project) -> None:
 
 
 def test_review_service_provider_rejects_unknown_severity(test_project) -> None:
+    """Verifies that review service provider rejects unknown severity.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/a.md", "Content.")
     provider = FakeProvider(
         text=json.dumps(
@@ -666,6 +768,7 @@ def test_review_service_provider_rejects_unknown_severity(test_project) -> None:
 
 
 def test_parse_provider_issues_valid_json() -> None:
+    """Verifies that parse provider issues valid json."""
     raw = json.dumps(
         {
             "issues": [
@@ -685,21 +788,25 @@ def test_parse_provider_issues_valid_json() -> None:
 
 
 def test_parse_provider_issues_no_issues() -> None:
+    """Verifies that parse provider issues no issues."""
     assert ReviewService._parse_provider_issues("NO_ISSUES") == []
 
 
 def test_parse_provider_issues_empty_string() -> None:
+    """Verifies that parse provider issues empty string."""
     with pytest.raises(ValueError, match="structured JSON schema"):
         ReviewService._parse_provider_issues("")
 
 
 def test_parse_provider_issues_reads_fenced_json() -> None:
+    """Verifies that parse provider issues reads fenced json."""
     raw = '```json\n{"issues": []}\n```'
 
     assert ReviewService._parse_provider_issues(raw) == []
 
 
 def test_parse_provider_issues_rejects_non_json() -> None:
+    """Verifies that parse provider issues rejects non json."""
     raw = "Some preamble\nISSUE|warning|x|a.md|msg\nMore text"
     with pytest.raises(ValueError, match="structured JSON schema"):
         ReviewService._parse_provider_issues(raw)
@@ -711,15 +818,18 @@ def test_parse_provider_issues_rejects_non_json() -> None:
 
 
 def test_provider_request_max_tokens_default() -> None:
+    """Verifies that provider request max tokens default."""
     req = ProviderRequest(prompt="hi")
     assert req.max_tokens == 1024
 
 
 def test_provider_request_custom_max_tokens() -> None:
+    """Verifies that provider request custom max tokens."""
     req = ProviderRequest(prompt="hi", max_tokens=512)
     assert req.max_tokens == 512
 
 
 def test_provider_request_reasoning_effort_override() -> None:
+    """Verifies that provider request reasoning effort override."""
     req = ProviderRequest(prompt="hi", reasoning_effort="low")
     assert req.reasoning_effort == "low"

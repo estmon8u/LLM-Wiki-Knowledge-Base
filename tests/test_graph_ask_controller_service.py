@@ -1,3 +1,11 @@
+"""Tests for test graph ask controller service.
+
+This module belongs to `tests.test_graph_ask_controller_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import json
@@ -20,6 +28,11 @@ from src.services.query_router_service import QueryRouterService
 
 
 def _write_ready_graph(test_project) -> None:
+    """Handles write ready graph.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
     test_project.write_file(
         "graph/graphrag/input/sources.json",
@@ -40,6 +53,15 @@ def _write_ready_graph(test_project) -> None:
 
 
 def _build_controller(test_project, runner) -> GraphAskControllerService:
+    """Handles build controller.
+
+    Args:
+        test_project: Test project value used by the operation.
+        runner: Runner value used by the operation.
+
+    Returns:
+        GraphAskControllerService produced by the operation.
+    """
     status_service = GraphRAGStatusService(test_project.paths)
     command_service = GraphRAGCommandService(test_project.paths, runner=runner)
     query_service = GraphRAGQueryService(
@@ -63,11 +85,25 @@ def _build_controller(test_project, runner) -> GraphAskControllerService:
 def test_controller_accepts_graph_env_file_credentials(
     test_project, monkeypatch
 ) -> None:
+    """Verifies that controller accepts graph env file credentials.
+
+    Args:
+        test_project: Test project value used by the operation.
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     _write_ready_graph(test_project)
     test_project.write_file("graph/graphrag/.env", "OPENAI_API_KEY=local-key\n")
 
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         return subprocess.CompletedProcess(
             command, 0, stdout="Graph answer.\n", stderr=""
         )
@@ -83,10 +119,24 @@ def test_controller_accepts_graph_env_file_credentials(
 
 
 def test_controller_saves_answer_when_requested(test_project, monkeypatch) -> None:
+    """Verifies that controller saves answer when requested.
+
+    Args:
+        test_project: Test project value used by the operation.
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     _write_ready_graph(test_project)
 
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         return subprocess.CompletedProcess(
             command, 0, stdout="Graph answer.\n", stderr=""
         )
@@ -102,6 +152,12 @@ def test_controller_saves_answer_when_requested(test_project, monkeypatch) -> No
 def test_controller_reports_missing_graph_credentials(
     test_project, monkeypatch
 ) -> None:
+    """Verifies that controller reports missing graph credentials.
+
+    Args:
+        test_project: Test project value used by the operation.
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     _write_ready_graph(test_project)
     controller = _build_controller(
@@ -116,6 +172,12 @@ def test_controller_reports_missing_graph_credentials(
 def test_controller_requires_separate_embedding_credentials(
     test_project, monkeypatch
 ) -> None:
+    """Verifies that controller requires separate embedding credentials.
+
+    Args:
+        test_project: Test project value used by the operation.
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     test_project.config["graph"] = {
@@ -138,6 +200,12 @@ def test_controller_reports_graph_readiness_before_credentials(
     test_project,
     monkeypatch,
 ) -> None:
+    """Verifies that controller reports graph readiness before credentials.
+
+    Args:
+        test_project: Test project value used by the operation.
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     controller = _build_controller(
         test_project,
@@ -149,6 +217,11 @@ def test_controller_reports_graph_readiness_before_credentials(
 
 
 def test_controller_wraps_invalid_graph_config(test_project) -> None:
+    """Verifies that controller wraps invalid graph config.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     controller = _build_controller(
         test_project,
         lambda command, **kwargs: subprocess.CompletedProcess(command, 0),
@@ -165,6 +238,11 @@ def test_controller_wraps_invalid_graph_config(test_project) -> None:
 
 
 def test_env_file_has_key_ignores_invalid_lines_and_io_errors(tmp_path) -> None:
+    """Verifies that env file has key ignores invalid lines and io errors.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     env_file = tmp_path / ".env"
     env_file.write_text(
         "\n# comment\nMISSING_EQUALS\nGRAPHRAG_API_KEY=\n", encoding="utf-8"
@@ -193,6 +271,14 @@ def test_controller_claim_support_reports_stale_index(
     os.utime(manifest_path, (now, now))
 
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         return subprocess.CompletedProcess(command, 0, stdout="Answer.\n", stderr="")
 
     controller = _build_controller(test_project, runner)
@@ -207,6 +293,14 @@ def test_controller_claim_support_reports_no_answer(test_project, monkeypatch) -
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
     controller = _build_controller(test_project, runner)

@@ -1,3 +1,11 @@
+"""Query router service service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.query_router_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -40,21 +48,48 @@ DRIFT_KEYWORDS = (
 
 
 class QueryRouterError(ValueError):
+    """Error raised for query router failures.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     pass
 
 
 @dataclass(frozen=True)
 class QueryRoute:
+    """Represents query route behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     method: str
     planner: str = "heuristic"
     reason: str = "fallback"
 
 
 class QueryRouterService:
+    """Coordinates query router operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(self, status_service: GraphRAGStatusService | None = None) -> None:
         self.status_service = status_service
 
     def route(self, question: str, *, method: str = "auto") -> QueryRoute:
+        """Route.
+
+        Args:
+            question: User question to answer from available evidence.
+            method: Method value used by the operation.
+
+        Returns:
+            QueryRoute produced by the operation.
+        """
         normalized_method = method.strip().lower()
         if normalized_method not in GRAPH_ASK_METHODS:
             supported = ", ".join(GRAPH_ASK_METHODS)

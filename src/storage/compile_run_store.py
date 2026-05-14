@@ -1,3 +1,11 @@
+"""Storage helpers for compile run store.
+
+This module belongs to `src.storage.compile_run_store` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -21,6 +29,12 @@ def _default_payload() -> dict[str, Any]:
 
 @dataclass
 class CompileRunRecord:
+    """Stores compile run record data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     run_id: str
     status: str
     started_at: str
@@ -34,10 +48,23 @@ class CompileRunRecord:
     error: str = ""
 
     def to_dict(self) -> dict[str, Any]:
+        """Serializes this value to a dictionary.
+
+        Returns:
+            dict[str, Any] produced by the operation.
+        """
         return asdict(self)
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "CompileRunRecord":
+        """Builds an instance from a dictionary payload.
+
+        Args:
+            payload: Structured payload being parsed or serialized.
+
+        Returns:
+            "CompileRunRecord" produced by the operation.
+        """
         return cls(
             run_id=payload["run_id"],
             status=payload["status"],
@@ -54,10 +81,21 @@ class CompileRunRecord:
 
 
 class CompileRunStore:
+    """Represents compile run store behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(self, state_file: Path) -> None:
         self.state_file = state_file
 
     def resume_candidate(self) -> Optional[CompileRunRecord]:
+        """Resume candidate.
+
+        Returns:
+            Optional[CompileRunRecord] produced by the operation.
+        """
         payload = self._read_payload()
         resume_run = payload.get("resume_run")
         if isinstance(resume_run, dict):
@@ -68,6 +106,11 @@ class CompileRunStore:
         return None
 
     def active_run(self) -> Optional[CompileRunRecord]:
+        """Active run.
+
+        Returns:
+            Optional[CompileRunRecord] produced by the operation.
+        """
         payload = self._read_payload()
         active_run = payload.get("active_run")
         if not isinstance(active_run, dict):
@@ -75,6 +118,11 @@ class CompileRunStore:
         return CompileRunRecord.from_dict(active_run)
 
     def load_history(self) -> list[CompileRunRecord]:
+        """Loads history.
+
+        Returns:
+            list[CompileRunRecord] produced by the operation.
+        """
         payload = self._read_payload()
         return [
             CompileRunRecord.from_dict(item)
@@ -89,6 +137,16 @@ class CompileRunStore:
         force: bool,
         resumed_from_run_id: str = "",
     ) -> CompileRunRecord:
+        """Start run.
+
+        Args:
+            pending_sources: Pending sources value used by the operation.
+            force: Force value used by the operation.
+            resumed_from_run_id: Resumed from run id value used by the operation.
+
+        Returns:
+            CompileRunRecord produced by the operation.
+        """
         payload = self._normalize_interrupted_active(self._read_payload())
         payload["resume_run"] = None
         record = CompileRunRecord(
@@ -105,6 +163,12 @@ class CompileRunStore:
         return record
 
     def mark_source_compiled(self, run_id: str, source: RawSourceRecord) -> None:
+        """Mark source compiled.
+
+        Args:
+            run_id: Run id value used by the operation.
+            source: Source record or path being processed.
+        """
         payload = self._read_payload()
         active_run = self._require_active(payload, run_id)
         if source.slug not in active_run["completed_source_slugs"]:
@@ -122,6 +186,16 @@ class CompileRunStore:
         error: str,
         failed_source: Optional[RawSourceRecord] = None,
     ) -> CompileRunRecord:
+        """Mark failed.
+
+        Args:
+            run_id: Run id value used by the operation.
+            error: Error value used by the operation.
+            failed_source: Failed source value used by the operation.
+
+        Returns:
+            CompileRunRecord produced by the operation.
+        """
         payload = self._read_payload()
         active_run = self._require_active(payload, run_id)
         active_run["status"] = "failed"
@@ -137,6 +211,14 @@ class CompileRunStore:
         return record
 
     def mark_completed(self, run_id: str) -> CompileRunRecord:
+        """Mark completed.
+
+        Args:
+            run_id: Run id value used by the operation.
+
+        Returns:
+            CompileRunRecord produced by the operation.
+        """
         payload = self._read_payload()
         active_run = self._require_active(payload, run_id)
         active_run["status"] = "completed"
@@ -150,6 +232,7 @@ class CompileRunStore:
         return record
 
     def clear_resume_candidate(self) -> None:
+        """Clear resume candidate."""
         payload = self._read_payload()
         payload["resume_run"] = None
         self._write_payload(payload)

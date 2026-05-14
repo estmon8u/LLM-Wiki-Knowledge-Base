@@ -1,3 +1,11 @@
+"""Click command implementation for the kb export command.
+
+This module belongs to `src.commands.export_cmd` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import click
@@ -13,10 +21,24 @@ SUMMARY = (
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
+    """Builds the command registry specification for this module.
+
+    Args:
+        _: Value value used by the operation.
+
+    Returns:
+        CommandSpec produced by the operation.
+    """
     return CommandSpec(name="export", summary=SUMMARY)
 
 
 def create_command() -> click.Command:
+    """Creates the Click command exposed by this module.
+
+    Returns:
+        click.Command produced by the operation.
+    """
+
     @click.command(name="export", help=SUMMARY, short_help="Export the wiki.")
     @click.option(
         "--clean",
@@ -25,6 +47,12 @@ def create_command() -> click.Command:
     )
     @click.pass_obj
     def command(command_context: CommandContext, clean: bool) -> None:
+        """Command.
+
+        Args:
+            command_context: Command context value used by the operation.
+            clean: Clean value used by the operation.
+        """
         require_initialized(command_context)
         export_service = command_context.services["export"]
         result = export_service.export_vault(clean=clean)

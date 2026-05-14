@@ -1,3 +1,11 @@
+"""Diff service service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.diff_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import hashlib
@@ -8,11 +16,22 @@ from src.services.project_service import ProjectPaths
 
 
 class DiffService:
+    """Coordinates diff operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(self, paths: ProjectPaths, manifest_service: ManifestService) -> None:
         self.paths = paths
         self.manifest_service = manifest_service
 
     def diff(self) -> DiffReport:
+        """Diff.
+
+        Returns:
+            DiffReport produced by the operation.
+        """
         sources = (
             self.manifest_service.list_sources()
             if self.paths.raw_manifest_file.exists()

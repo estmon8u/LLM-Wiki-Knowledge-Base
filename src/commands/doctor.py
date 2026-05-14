@@ -1,3 +1,11 @@
+"""Click command implementation for the kb doctor command.
+
+This module belongs to `src.commands.doctor` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import click
@@ -10,10 +18,24 @@ SUMMARY = "Validate project structure, provider config, API keys, and converters
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
+    """Builds the command registry specification for this module.
+
+    Args:
+        _: Value value used by the operation.
+
+    Returns:
+        CommandSpec produced by the operation.
+    """
     return CommandSpec(name="doctor", summary=SUMMARY)
 
 
 def create_command() -> click.Command:
+    """Creates the Click command exposed by this module.
+
+    Returns:
+        click.Command produced by the operation.
+    """
+
     @click.command(
         name="doctor",
         help=SUMMARY,
@@ -27,6 +49,13 @@ def create_command() -> click.Command:
     @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
     @click.pass_obj
     def command(command_context: CommandContext, strict: bool, as_json: bool) -> None:
+        """Command.
+
+        Args:
+            command_context: Command context value used by the operation.
+            strict: Strict value used by the operation.
+            as_json: As json value used by the operation.
+        """
         doctor_service = command_context.services["doctor"]
         report = doctor_service.diagnose(strict=strict)
 

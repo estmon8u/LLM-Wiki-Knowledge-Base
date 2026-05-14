@@ -1,3 +1,11 @@
+"""Normalization service service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.normalization_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import base64
@@ -109,6 +117,12 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class NormalizationResult:
+    """Stores normalization result data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     normalized_text: str
     normalized_suffix: str
     title: str
@@ -117,6 +131,12 @@ class NormalizationResult:
 
 @dataclass
 class _ConvertedText:
+    """Represents converted text behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     normalized_text: str
     title: str | None = None
     page_count: int | None = None
@@ -124,10 +144,24 @@ class _ConvertedText:
 
 
 class DoclingPdfConverter:
+    """Represents docling pdf converter behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(self, converter: Optional[Any] = None) -> None:
         self._converter = converter
 
     def convert_local(self, source_path: Path) -> _ConvertedText:
+        """Convert local.
+
+        Args:
+            source_path: Source path being processed.
+
+        Returns:
+            _ConvertedText produced by the operation.
+        """
         conversion_path, temp_dir = self._prepare_conversion_path(source_path)
         try:
             result = self._converter_instance().convert(conversion_path)
@@ -192,6 +226,12 @@ class DoclingPdfConverter:
 
 
 class MistralOcrConverter:
+    """Represents mistral ocr converter behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(
         self,
         *,
@@ -212,6 +252,16 @@ class MistralOcrConverter:
         mime_type: str,
         document_name: str = "",
     ) -> _ConvertedText:
+        """Convert document bytes.
+
+        Args:
+            document_bytes: Document bytes value used by the operation.
+            mime_type: Mime type value used by the operation.
+            document_name: Document name value used by the operation.
+
+        Returns:
+            _ConvertedText produced by the operation.
+        """
         if not document_bytes:
             raise ValueError("Mistral OCR cannot process an empty document.")
         document_url = _data_uri(mime_type, document_bytes)
@@ -239,6 +289,15 @@ class MistralOcrConverter:
         *,
         mime_type: str,
     ) -> _ConvertedText:
+        """Convert image bytes.
+
+        Args:
+            image_bytes: Image bytes value used by the operation.
+            mime_type: Mime type value used by the operation.
+
+        Returns:
+            _ConvertedText produced by the operation.
+        """
         if not image_bytes:
             raise ValueError("Mistral OCR cannot process an empty image.")
         image_url = _data_uri(mime_type, image_bytes)
@@ -282,10 +341,21 @@ class MistralOcrConverter:
 
 
 class WkhtmltopdfRenderer:
+    """Represents wkhtmltopdf renderer behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(self, wkhtmltopdf_path: str | None = None) -> None:
         self._wkhtmltopdf_path = wkhtmltopdf_path
 
     def resolve_binary(self) -> str:
+        """Resolve binary.
+
+        Returns:
+            str produced by the operation.
+        """
         configured = (self._wkhtmltopdf_path or "").strip()
         if configured:
             candidate = Path(configured)
@@ -303,6 +373,14 @@ class WkhtmltopdfRenderer:
         )
 
     def render_file(self, source_path: Path) -> bytes:
+        """Render file.
+
+        Args:
+            source_path: Source path being processed.
+
+        Returns:
+            bytes produced by the operation.
+        """
         binary = self.resolve_binary()
         try:
             configuration = pdfkit.configuration(wkhtmltopdf=binary)
@@ -339,6 +417,11 @@ class Xhtml2pdfRenderer:
 
     @staticmethod
     def available() -> bool:
+        """Available.
+
+        Returns:
+            bool produced by the operation.
+        """
         try:
             import xhtml2pdf  # noqa: F401
 
@@ -347,6 +430,14 @@ class Xhtml2pdfRenderer:
             return False
 
     def render_file(self, source_path: Path) -> bytes:
+        """Render file.
+
+        Args:
+            source_path: Source path being processed.
+
+        Returns:
+            bytes produced by the operation.
+        """
         try:
             from xhtml2pdf import pisa
         except ImportError as exc:
@@ -392,6 +483,12 @@ class Xhtml2pdfRenderer:
 
 
 class NormalizationService:
+    """Coordinates normalization operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(
         self,
         config: Optional[dict[str, Any]] = None,
@@ -408,6 +505,14 @@ class NormalizationService:
         self._html_renderer = html_renderer
 
     def normalize_path(self, source_path: Path) -> NormalizationResult:
+        """Normalize path.
+
+        Args:
+            source_path: Source path being processed.
+
+        Returns:
+            NormalizationResult produced by the operation.
+        """
         suffix = source_path.suffix.lower()
         if suffix in SUPPORTED_MARKDOWN_SUFFIXES:
             return self._normalize_direct_text(
@@ -782,10 +887,26 @@ class NormalizationService:
 
 
 def is_supported_source_path(source_path: Path) -> bool:
+    """Is supported source path.
+
+    Args:
+        source_path: Source path being processed.
+
+    Returns:
+        bool produced by the operation.
+    """
     return source_path.suffix.lower() in SUPPORTED_SOURCE_SUFFIXES
 
 
 def resolve_wkhtmltopdf_binary(config: dict[str, Any] | None = None) -> str | None:
+    """Resolve wkhtmltopdf binary.
+
+    Args:
+        config: Loaded knowledge-base configuration mapping.
+
+    Returns:
+        str | None produced by the operation.
+    """
     merged = _merged_config(config)
     html = merged.get("conversion", {}).get("html", {})
     if not isinstance(html, dict):

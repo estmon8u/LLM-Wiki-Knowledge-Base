@@ -1,3 +1,11 @@
+"""Graphrag workspace service service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.graphrag_workspace_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -16,6 +24,12 @@ import yaml
 
 @dataclass(frozen=True)
 class GraphRAGWorkspaceInitResult:
+    """Stores graph ragworkspace init result data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     workspace_dir: Path
     settings_path: Path
     result: GraphRAGCommandResult
@@ -28,6 +42,12 @@ class GraphRAGWorkspaceInitResult:
 
 
 class GraphRAGWorkspaceService:
+    """Coordinates graph ragworkspace operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(
         self,
         paths: ProjectPaths,
@@ -41,9 +61,19 @@ class GraphRAGWorkspaceService:
         self.settings_path = self.workspace_dir / "settings.yaml"
 
     def is_initialized(self) -> bool:
+        """Is initialized.
+
+        Returns:
+            bool produced by the operation.
+        """
         return self.settings_path.exists()
 
     def ensure_workspace(self) -> list[str]:
+        """Ensure workspace.
+
+        Returns:
+            list[str] produced by the operation.
+        """
         created: list[str] = []
         for directory in (
             self.workspace_dir,
@@ -70,6 +100,16 @@ class GraphRAGWorkspaceService:
         embedding: str | None = None,
         force: bool,
     ) -> GraphRAGWorkspaceInitResult:
+        """Init workspace.
+
+        Args:
+            model: Model value used by the operation.
+            embedding: Embedding value used by the operation.
+            force: Force value used by the operation.
+
+        Returns:
+            GraphRAGWorkspaceInitResult produced by the operation.
+        """
         graph_config = resolve_graph_config(self.config)
         model_name = model or graph_config.model
         embedding_model = embedding or graph_config.embedding_model
@@ -102,6 +142,11 @@ class GraphRAGWorkspaceService:
         )
 
     def sync_settings(self, graph_config: GraphRAGRuntimeConfig | None = None) -> None:
+        """Sync settings.
+
+        Args:
+            graph_config: Graph config value used by the operation.
+        """
         graph_config = graph_config or resolve_graph_config(self.config)
         settings = self._load_settings()
         completion_models = settings.setdefault("completion_models", {})

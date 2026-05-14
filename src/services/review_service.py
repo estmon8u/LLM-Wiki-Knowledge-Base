@@ -1,3 +1,11 @@
+"""Review service service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.review_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import logging
@@ -84,6 +92,12 @@ _REVIEW_RESPONSE_SCHEMA = {
 
 
 class _ProviderReviewIssue(BaseModel):
+    """Represents provider review issue behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     severity: Literal["error", "warning", "suggestion"] = "suggestion"
     code: str = Field(min_length=1)
     pages: list[str] = Field(default_factory=list)
@@ -91,6 +105,12 @@ class _ProviderReviewIssue(BaseModel):
 
 
 class _ProviderReviewReport(BaseModel):
+    """Stores provider review report data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     issues: list[_ProviderReviewIssue] = Field(default_factory=list)
 
 
@@ -107,6 +127,11 @@ class ReviewService:
         self.provider = provider
 
     def review(self) -> ReviewReport:
+        """Review.
+
+        Returns:
+            ReviewReport produced by the operation.
+        """
         self._require_provider("kb review")
         issues: list[ReviewIssue] = []
         page_tokens = self._load_page_tokens()

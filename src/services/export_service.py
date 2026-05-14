@@ -1,3 +1,11 @@
+"""Export service service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.export_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -7,15 +15,35 @@ from src.services.project_service import ProjectPaths, atomic_copy_file
 
 @dataclass
 class ExportResult:
+    """Stores export result data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     exported_paths: list[str]
     removed_paths: list[str] = field(default_factory=list)
 
 
 class ExportService:
+    """Coordinates export operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(self, paths: ProjectPaths) -> None:
         self.paths = paths
 
     def export_vault(self, *, clean: bool = False) -> ExportResult:
+        """Export vault.
+
+        Args:
+            clean: Clean value used by the operation.
+
+        Returns:
+            ExportResult produced by the operation.
+        """
         exported_paths: list[str] = []
         removed_paths: list[str] = []
         # Copy current wiki pages into the vault.

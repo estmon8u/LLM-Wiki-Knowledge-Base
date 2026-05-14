@@ -1,3 +1,11 @@
+"""Provider integration helpers for anthropic provider.
+
+This module belongs to `src.providers.anthropic_provider` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import json
@@ -32,6 +40,14 @@ class AnthropicProvider(TextProvider):
 
     @provider_retry()
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        """Generate.
+
+        Args:
+            request: Request value used by the operation.
+
+        Returns:
+            ProviderResponse produced by the operation.
+        """
         max_tokens = max(request.max_tokens, self._thinking_budget + 4096)
         kwargs: dict = {
             "model": self.model,

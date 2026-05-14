@@ -1,3 +1,11 @@
+"""Tests for test registry and tools.
+
+This module belongs to `tests.test_registry_and_tools` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import types
@@ -27,59 +35,162 @@ from src.services.config_service import CURRENT_CONFIG_VERSION
 
 
 class _FakeStream:
+    """Represents fake stream behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(self, *, tty: bool) -> None:
+        """Initializes the instance.
+
+        Args:
+            tty: Tty value used by the operation.
+        """
         self._tty = tty
 
     def isatty(self) -> bool:
+        """Isatty.
+
+        Returns:
+            bool produced by the operation.
+        """
         return self._tty
 
 
 class _FakeProgressBar:
+    """Represents fake progress bar behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(self) -> None:
+        """Initializes the instance."""
         self.updates: list[int] = []
 
     def __enter__(self) -> "_FakeProgressBar":
+        """Handles enter.
+
+        Returns:
+            "_FakeProgressBar" produced by the operation.
+        """
         return self
 
     def __exit__(self, exc_type, exc, tb) -> bool:
+        """Handles exit.
+
+        Args:
+            exc_type: Exc type value used by the operation.
+            exc: Exc value used by the operation.
+            tb: Tb value used by the operation.
+
+        Returns:
+            bool produced by the operation.
+        """
         return False
 
     def update(self, amount: int) -> None:
+        """Update.
+
+        Args:
+            amount: Amount value used by the operation.
+        """
         self.updates.append(amount)
 
 
 class _TerminalConsole:
+    """Represents terminal console behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     is_terminal = True
 
 
 class _FakeRichProgress:
+    """Represents fake rich progress behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     instances: list["_FakeRichProgress"] = []
 
     def __init__(self, *, console, transient: bool) -> None:
+        """Initializes the instance.
+
+        Args:
+            console: Console value used by the operation.
+            transient: Transient value used by the operation.
+        """
         self.console = console
         self.transient = transient
         self.advanced: list[str] = []
         _FakeRichProgress.instances.append(self)
 
     def __enter__(self) -> "_FakeRichProgress":
+        """Handles enter.
+
+        Returns:
+            "_FakeRichProgress" produced by the operation.
+        """
         return self
 
     def __exit__(self, exc_type, exc, tb) -> bool:
+        """Handles exit.
+
+        Args:
+            exc_type: Exc type value used by the operation.
+            exc: Exc value used by the operation.
+            tb: Tb value used by the operation.
+
+        Returns:
+            bool produced by the operation.
+        """
         return False
 
     def add_task(self, label: str, *, total: int) -> str:
+        """Add task.
+
+        Args:
+            label: Label value used by the operation.
+            total: Total value used by the operation.
+
+        Returns:
+            str produced by the operation.
+        """
         self.label = label
         self.total = total
         return "task-1"
 
     def advance(self, task: str) -> None:
+        """Advance.
+
+        Args:
+            task: Task value used by the operation.
+        """
         self.advanced.append(task)
 
 
 class _FakeStatus:
+    """Represents fake status behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     instances: list["_FakeStatus"] = []
 
     def __init__(self, label: str, *, console, spinner: str) -> None:
+        """Initializes the instance.
+
+        Args:
+            label: Label value used by the operation.
+            console: Console value used by the operation.
+            spinner: Spinner value used by the operation.
+        """
         self.labels = [label]
         self.console = console
         self.spinner = spinner
@@ -88,27 +199,51 @@ class _FakeStatus:
         _FakeStatus.instances.append(self)
 
     def start(self) -> None:
+        """Start."""
         self.started = True
 
     def update(self, label: str) -> None:
+        """Update.
+
+        Args:
+            label: Label value used by the operation.
+        """
         self.labels.append(label)
 
     def stop(self) -> None:
+        """Stop."""
         self.stopped = True
 
 
 class _FakeOutputStream:
+    """Represents fake output stream behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(self, *, raises: bool = False) -> None:
+        """Initializes the instance.
+
+        Args:
+            raises: Raises value used by the operation.
+        """
         self.raises = raises
         self.errors: list[str] = []
 
     def reconfigure(self, *, errors: str) -> None:
+        """Reconfigure.
+
+        Args:
+            errors: Errors value used by the operation.
+        """
         if self.raises:
             raise OSError("stream is closed")
         self.errors.append(errors)
 
 
 def test_command_registry_resolves_aliases_and_lists_names() -> None:
+    """Verifies that command registry resolves aliases and lists names."""
     assert list_command_names() == sorted(list_command_names())
     assert "add" in list_command_names()
     assert "init" in list_command_names()
@@ -124,6 +259,11 @@ def test_command_registry_resolves_aliases_and_lists_names() -> None:
 
 
 def test_configure_output_streams_uses_replacement_errors(monkeypatch) -> None:
+    """Verifies that configure output streams uses replacement errors.
+
+    Args:
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     stdout = _FakeOutputStream()
     stderr = _FakeOutputStream(raises=True)
     monkeypatch.setattr(common_module.sys, "stdout", stdout)
@@ -136,6 +276,11 @@ def test_configure_output_streams_uses_replacement_errors(monkeypatch) -> None:
 
 
 def test_command_registry_returns_click_commands_and_specs(test_project) -> None:
+    """Verifies that command registry returns click commands and specs.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     add_command = get_click_command("add")
     command = get_click_command("export")
     specs = build_command_specs(test_project.command_context)
@@ -177,6 +322,11 @@ def test_command_registry_returns_click_commands_and_specs(test_project) -> None
     ],
 )
 def test_each_registered_command_has_a_click_command(command_name: str) -> None:
+    """Verifies that each registered command has a click command.
+
+    Args:
+        command_name: Command name value used by the operation.
+    """
     command = get_click_command(command_name)
 
     assert command is not None
@@ -184,6 +334,11 @@ def test_each_registered_command_has_a_click_command(command_name: str) -> None:
 
 
 def test_build_runtime_context_uses_project_root_files(test_project) -> None:
+    """Verifies that build runtime context uses project root files.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "project:\n  name: Runtime Test\n",
         encoding="utf-8",
@@ -197,6 +352,11 @@ def test_build_runtime_context_uses_project_root_files(test_project) -> None:
 
 
 def test_build_runtime_context_migrates_legacy_config_file(test_project) -> None:
+    """Verifies that build runtime context migrates legacy config file.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.paths.config_file.write_text(
         "version: 1\n"
         "project:\n  name: Runtime Legacy\n"
@@ -215,6 +375,11 @@ def test_build_runtime_context_migrates_legacy_config_file(test_project) -> None
 
 
 def test_extract_project_root_uses_param_when_available(test_project) -> None:
+    """Verifies that extract project root uses param when available.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     ctx = click.Context(click.Command("kb"))
     ctx.params = {"project_root": test_project.root / "nested"}
     ctx.params["project_root"].mkdir()
@@ -226,15 +391,30 @@ def test_extract_project_root_uses_param_when_available(test_project) -> None:
 def test_require_initialized_raises_for_uninitialized_project(
     uninitialized_project,
 ) -> None:
+    """Verifies that require initialized raises for uninitialized project.
+
+    Args:
+        uninitialized_project: Uninitialized project value used by the operation.
+    """
     with pytest.raises(click.ClickException):
         require_initialized(uninitialized_project.command_context)
 
 
 def test_require_initialized_allows_initialized_project(test_project) -> None:
+    """Verifies that require initialized allows initialized project.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     require_initialized(test_project.command_context)
 
 
 def test_echo_kv_prints_values_and_na(capsys) -> None:
+    """Verifies that echo kv prints values and na.
+
+    Args:
+        capsys: Capsys value used by the operation.
+    """
     echo_kv("label", "value")
     echo_kv("empty", None)
 
@@ -244,6 +424,11 @@ def test_echo_kv_prints_values_and_na(capsys) -> None:
 
 
 def test_echo_section_status_and_bullet_helpers(capsys) -> None:
+    """Verifies that echo section status and bullet helpers.
+
+    Args:
+        capsys: Capsys value used by the operation.
+    """
     echo_section("Summary")
     echo_status_line("OK", "ready")
     echo_bullet("item")
@@ -256,6 +441,11 @@ def test_echo_section_status_and_bullet_helpers(capsys) -> None:
 
 
 def test_progress_report_hidden_mode_prints_preamble(capsys) -> None:
+    """Verifies that progress report hidden mode prints preamble.
+
+    Args:
+        capsys: Capsys value used by the operation.
+    """
     with progress_report(
         label="Compiling",
         length=2,
@@ -269,6 +459,11 @@ def test_progress_report_hidden_mode_prints_preamble(capsys) -> None:
 
 
 def test_progress_report_interactive_updates_progress_bar(capsys) -> None:
+    """Verifies that progress report interactive updates progress bar.
+
+    Args:
+        capsys: Capsys value used by the operation.
+    """
     with progress_report(
         label="Compiling",
         length=2,
@@ -283,6 +478,11 @@ def test_progress_report_interactive_updates_progress_bar(capsys) -> None:
 
 
 def test_progress_report_uses_rich_progress_in_terminal(monkeypatch) -> None:
+    """Verifies that progress report uses rich progress in terminal.
+
+    Args:
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     _FakeRichProgress.instances.clear()
     monkeypatch.setattr(common_module, "err_console", _TerminalConsole())
     monkeypatch.setattr(common_module, "Progress", _FakeRichProgress)
@@ -304,6 +504,11 @@ def test_progress_report_uses_rich_progress_in_terminal(monkeypatch) -> None:
 
 
 def test_progress_report_zero_length_is_noop(capsys) -> None:
+    """Verifies that progress report zero length is noop.
+
+    Args:
+        capsys: Capsys value used by the operation.
+    """
     with progress_report(
         label="Compiling",
         length=0,
@@ -317,6 +522,11 @@ def test_progress_report_zero_length_is_noop(capsys) -> None:
 
 
 def test_lazy_live_status_starts_on_first_update(monkeypatch) -> None:
+    """Verifies that lazy live status starts on first update.
+
+    Args:
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     _FakeStatus.instances.clear()
     monkeypatch.setattr(common_module, "err_console", _TerminalConsole())
     monkeypatch.setattr(common_module, "Status", _FakeStatus)
@@ -336,6 +546,11 @@ def test_lazy_live_status_starts_on_first_update(monkeypatch) -> None:
 
 
 def test_live_status_starts_immediately_and_updates(monkeypatch) -> None:
+    """Verifies that live status starts immediately and updates.
+
+    Args:
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     _FakeStatus.instances.clear()
     monkeypatch.setattr(common_module, "err_console", _TerminalConsole())
     monkeypatch.setattr(common_module, "Status", _FakeStatus)
@@ -353,6 +568,11 @@ def test_live_status_starts_immediately_and_updates(monkeypatch) -> None:
 
 
 def test_emit_json_outputs_valid_json(capsys) -> None:
+    """Verifies that emit json outputs valid json.
+
+    Args:
+        capsys: Capsys value used by the operation.
+    """
     import json
 
     emit_json({"key": "value", "count": 42})

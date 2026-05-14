@@ -21,6 +21,12 @@ _MD_PARSER = MarkdownIt()
 
 @dataclass(frozen=True)
 class MarkdownDocument:
+    """Represents markdown document behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     frontmatter: dict[str, Any]
     body: str
     has_frontmatter: bool
@@ -29,23 +35,49 @@ class MarkdownDocument:
 
 @dataclass(frozen=True)
 class MarkdownHeading:
+    """Represents markdown heading behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     level: int
     title: str
 
 
 @dataclass(frozen=True)
 class MarkdownSection:
+    """Represents markdown section behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     title: str
     paragraphs: list[str]
 
 
 @dataclass(frozen=True)
 class MarkdownLink:
+    """Represents markdown link behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     text: str
     target: str
 
 
 def normalize_newlines(contents: str) -> str:
+    """Normalize newlines.
+
+    Args:
+        contents: Contents value used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     return contents.replace("\r\n", "\n").replace("\r", "\n")
 
 
@@ -75,16 +107,40 @@ def parse_document(contents: str) -> MarkdownDocument:
 
 
 def parse_frontmatter(contents: str) -> dict[str, Any]:
+    """Parse frontmatter.
+
+    Args:
+        contents: Contents value used by the operation.
+
+    Returns:
+        dict[str, Any] produced by the operation.
+    """
     document = parse_document(contents)
     return document.frontmatter if document.valid_frontmatter else {}
 
 
 def strip_frontmatter(contents: str) -> str:
+    """Strip frontmatter.
+
+    Args:
+        contents: Contents value used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     document = parse_document(contents)
     return document.body if document.valid_frontmatter else normalize_newlines(contents)
 
 
 def inline_text(token: Token) -> str:
+    """Inline text.
+
+    Args:
+        token: Token value used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     if not token.children:
         return token.content or ""
 
@@ -104,6 +160,14 @@ def inline_text(token: Token) -> str:
 
 
 def is_link_only_inline(token: Token) -> bool:
+    """Is link only inline.
+
+    Args:
+        token: Token value used by the operation.
+
+    Returns:
+        bool produced by the operation.
+    """
     if token.type != "inline" or not token.children:
         return False
 
@@ -129,6 +193,14 @@ def is_link_only_inline(token: Token) -> bool:
 
 
 def is_content_paragraph(paragraph: str) -> bool:
+    """Is content paragraph.
+
+    Args:
+        paragraph: Paragraph value used by the operation.
+
+    Returns:
+        bool produced by the operation.
+    """
     tokens = _MD_PARSER.parse(paragraph)
     inline_tokens = [token for token in tokens if token.type == "inline"]
     if inline_tokens and all(is_link_only_inline(token) for token in inline_tokens):
@@ -159,6 +231,16 @@ def paragraphs(
     content_only: bool = True,
     trim_leading_boilerplate: bool = True,
 ) -> list[str]:
+    """Paragraphs.
+
+    Args:
+        contents: Contents value used by the operation.
+        content_only: Content only value used by the operation.
+        trim_leading_boilerplate: Trim leading boilerplate value used by the operation.
+
+    Returns:
+        list[str] produced by the operation.
+    """
     body = strip_frontmatter(contents)
     tokens = _MD_PARSER.parse(body)
     extracted: list[str] = []
@@ -184,6 +266,14 @@ def paragraphs(
 
 
 def plain_text(contents: str) -> str:
+    """Plain text.
+
+    Args:
+        contents: Contents value used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     body = strip_frontmatter(contents)
     tokens = _MD_PARSER.parse(body)
     lines: list[str] = []
@@ -219,6 +309,14 @@ def plain_text(contents: str) -> str:
 
 
 def headings(contents: str) -> list[MarkdownHeading]:
+    """Headings.
+
+    Args:
+        contents: Contents value used by the operation.
+
+    Returns:
+        list[MarkdownHeading] produced by the operation.
+    """
     body = strip_frontmatter(contents)
     tokens = _MD_PARSER.parse(body)
     extracted: list[MarkdownHeading] = []
@@ -241,6 +339,15 @@ def headings(contents: str) -> list[MarkdownHeading]:
 
 
 def sections(contents: str, *, default_title: str = "content") -> list[MarkdownSection]:
+    """Sections.
+
+    Args:
+        contents: Contents value used by the operation.
+        default_title: Default title value used by the operation.
+
+    Returns:
+        list[MarkdownSection] produced by the operation.
+    """
     body = strip_frontmatter(contents)
     tokens = _MD_PARSER.parse(body)
     current_title = default_title
@@ -248,6 +355,7 @@ def sections(contents: str, *, default_title: str = "content") -> list[MarkdownS
     extracted: list[MarkdownSection] = []
 
     def flush() -> None:
+        """Flush."""
         nonlocal current_paragraphs
         if current_paragraphs:
             extracted.append(MarkdownSection(current_title, current_paragraphs))
@@ -287,6 +395,16 @@ def section_paragraphs(
     *,
     content_only: bool = True,
 ) -> list[str]:
+    """Section paragraphs.
+
+    Args:
+        contents: Contents value used by the operation.
+        heading_title: Heading title value used by the operation.
+        content_only: Content only value used by the operation.
+
+    Returns:
+        list[str] produced by the operation.
+    """
     target = heading_title.strip().casefold()
     matching: list[str] = []
     for section in sections(contents, default_title="content"):
@@ -299,6 +417,14 @@ def section_paragraphs(
 
 
 def without_fenced_code_blocks(contents: str) -> str:
+    """Without fenced code blocks.
+
+    Args:
+        contents: Contents value used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     body = normalize_newlines(contents)
     tokens = _MD_PARSER.parse(body)
     lines = body.splitlines()
@@ -314,6 +440,14 @@ def without_fenced_code_blocks(contents: str) -> str:
 
 
 def markdown_links(contents: str) -> list[MarkdownLink]:
+    """Markdown links.
+
+    Args:
+        contents: Contents value used by the operation.
+
+    Returns:
+        list[MarkdownLink] produced by the operation.
+    """
     tokens = _MD_PARSER.parse(normalize_newlines(contents))
     links: list[MarkdownLink] = []
 

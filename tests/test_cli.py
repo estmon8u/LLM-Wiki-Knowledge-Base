@@ -1,3 +1,11 @@
+"""Tests for test cli.
+
+This module belongs to `tests.test_cli` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import json
@@ -24,9 +32,23 @@ def _set_provider_config() -> None:
 
 
 class _CliFakeProvider(TextProvider):
+    """Represents cli fake provider behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     name = "cli-fake"
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        """Generate.
+
+        Args:
+            request: Request value used by the operation.
+
+        Returns:
+            ProviderResponse produced by the operation.
+        """
         if request.response_schema_name == "kb_review_report":
             return ProviderResponse(text='{"issues": []}', model_name="cli-fake-v1")
         if request.response_schema_name == "kb_query_answer":
@@ -55,12 +77,27 @@ class _CliFakeProvider(TextProvider):
 
 
 class _CliResumeProvider(TextProvider):
+    """Represents cli resume provider behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     name = "cli-resume"
 
     def __init__(self) -> None:
+        """Initializes the instance."""
         self.calls = 0
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        """Generate.
+
+        Args:
+            request: Request value used by the operation.
+
+        Returns:
+            ProviderResponse produced by the operation.
+        """
         self.calls += 1
         if self.calls == 2:
             raise RuntimeError("resume summary failure")
@@ -71,6 +108,16 @@ class _CliResumeProvider(TextProvider):
 
 
 def _compiled_page(title: str, body: str, *, summary: str = "Summary") -> str:
+    """Handles compiled page.
+
+    Args:
+        title: Title value used by the operation.
+        body: Body value used by the operation.
+        summary: Summary value used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     return (
         "---\n"
         f"title: {title}\n"
@@ -86,6 +133,7 @@ def _compiled_page(title: str, body: str, *, summary: str = "Summary") -> str:
 
 
 def test_init_creates_expected_project_files() -> None:
+    """Verifies that init creates expected project files."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         result = runner.invoke(main, ["init"])
@@ -99,6 +147,7 @@ def test_init_creates_expected_project_files() -> None:
 
 
 def test_init_is_idempotent() -> None:
+    """Verifies that init is idempotent."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -110,6 +159,7 @@ def test_init_is_idempotent() -> None:
 
 
 def test_help_lists_core_commands() -> None:
+    """Verifies that help lists core commands."""
     runner = CliRunner()
 
     result = runner.invoke(main, ["--help"])
@@ -131,6 +181,7 @@ def test_help_lists_core_commands() -> None:
 
 
 def test_running_cli_without_subcommand_prints_help() -> None:
+    """Verifies that running cli without subcommand prints help."""
     runner = CliRunner()
 
     result = runner.invoke(main, [])
@@ -140,6 +191,7 @@ def test_running_cli_without_subcommand_prints_help() -> None:
 
 
 def test_status_before_init_shows_uninitialized_state() -> None:
+    """Verifies that status before init shows uninitialized state."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         result = runner.invoke(main, ["status"])
@@ -149,6 +201,7 @@ def test_status_before_init_shows_uninitialized_state() -> None:
 
 
 def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
+    """Verifies that end to end cli flow for local markdown source."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("sample.md").write_text(
@@ -198,6 +251,7 @@ def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
 
 
 def test_end_to_end_cli_flow_for_local_html_source() -> None:
+    """Verifies that end to end cli flow for local html source."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("sample.html").write_text(
@@ -225,6 +279,7 @@ def test_end_to_end_cli_flow_for_local_html_source() -> None:
 
 
 def test_legacy_search_empty_and_top_level_retrieval_guides_to_legacy() -> None:
+    """Verifies that legacy search empty and top level retrieval guides to legacy."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -243,6 +298,7 @@ def test_legacy_search_empty_and_top_level_retrieval_guides_to_legacy() -> None:
 
 
 def test_find_and_ask_require_terms() -> None:
+    """Verifies that find and ask require terms."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -263,6 +319,7 @@ def test_find_and_ask_require_terms() -> None:
 
 
 def test_ingest_reports_click_error_for_unsupported_file_type() -> None:
+    """Verifies that ingest reports click error for unsupported file type."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("sample.bin").write_text("not a supported source", encoding="utf-8")
@@ -275,6 +332,7 @@ def test_ingest_reports_click_error_for_unsupported_file_type() -> None:
 
 
 def test_add_alias_ingests_source_file() -> None:
+    """Verifies that add alias ingests source file."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("sample.md").write_text(
@@ -292,6 +350,7 @@ def test_add_alias_ingests_source_file() -> None:
 
 
 def test_add_alias_recursively_ingests_directory_by_default() -> None:
+    """Verifies that add alias recursively ingests directory by default."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -308,6 +367,7 @@ def test_add_alias_recursively_ingests_directory_by_default() -> None:
 
 
 def test_add_alias_recursively_ingests_supported_directory_files() -> None:
+    """Verifies that add alias recursively ingests supported directory files."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -333,6 +393,7 @@ def test_add_alias_recursively_ingests_supported_directory_files() -> None:
 
 
 def test_add_alias_recursive_directory_reports_duplicates() -> None:
+    """Verifies that add alias recursive directory reports duplicates."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -351,6 +412,7 @@ def test_add_alias_recursive_directory_reports_duplicates() -> None:
 
 
 def test_add_accepts_multiple_source_paths() -> None:
+    """Verifies that add accepts multiple source paths."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("a.md").write_text("# Alpha\n\nAlpha body.\n", encoding="utf-8")
@@ -367,6 +429,11 @@ def test_add_accepts_multiple_source_paths() -> None:
 
 
 def test_echo_directory_result_ignores_missing_source_entries(capsys) -> None:
+    """Verifies that echo directory result ignores missing source entries.
+
+    Args:
+        capsys: Capsys value used by the operation.
+    """
     result = IngestDirectoryResult(
         directory_path=Path("bulk"),
         scanned_file_count=2,
@@ -391,6 +458,7 @@ def test_echo_directory_result_ignores_missing_source_entries(capsys) -> None:
 
 
 def test_lint_returns_nonzero_when_errors_exist() -> None:
+    """Verifies that lint returns nonzero when errors exist."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -407,6 +475,7 @@ def test_lint_returns_nonzero_when_errors_exist() -> None:
 
 
 def test_lint_reports_markdown_link_and_heading_errors_at_cli() -> None:
+    """Verifies that lint reports markdown link and heading errors at cli."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -437,6 +506,7 @@ def test_lint_reports_markdown_link_and_heading_errors_at_cli() -> None:
 
 
 def test_lint_reports_frontmatter_type_and_empty_page_at_cli() -> None:
+    """Verifies that lint reports frontmatter type and empty page at cli."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -463,6 +533,7 @@ def test_lint_reports_frontmatter_type_and_empty_page_at_cli() -> None:
 
 
 def test_diff_requires_initialization() -> None:
+    """Verifies that diff requires initialization."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         result = runner.invoke(main, ["status", "--changed"])
@@ -472,6 +543,7 @@ def test_diff_requires_initialization() -> None:
 
 
 def test_diff_end_to_end_new_then_compiled() -> None:
+    """Verifies that diff end to end new then compiled."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("sample.md").write_text(
@@ -500,6 +572,11 @@ def test_diff_end_to_end_new_then_compiled() -> None:
 
 
 def test_cli_supports_explicit_project_root_option(tmp_path: Path) -> None:
+    """Verifies that cli supports explicit project root option.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     runner = CliRunner()
     source_path = tmp_path / "external.md"
     source_path.write_text(
@@ -519,6 +596,7 @@ def test_cli_supports_explicit_project_root_option(tmp_path: Path) -> None:
 
 
 def test_ask_save_flag_creates_analysis_page() -> None:
+    """Verifies that ask save flag creates analysis page."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("sample.md").write_text(
@@ -556,6 +634,7 @@ def test_ask_save_flag_creates_analysis_page() -> None:
 
 
 def test_review_command_requires_provider() -> None:
+    """Verifies that review command requires provider."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -567,6 +646,7 @@ def test_review_command_requires_provider() -> None:
 
 
 def test_review_command_reports_overlapping_topics_requires_provider() -> None:
+    """Verifies that review command reports overlapping topics requires provider."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -587,6 +667,7 @@ def test_review_command_reports_overlapping_topics_requires_provider() -> None:
 
 
 def test_review_requires_initialization() -> None:
+    """Verifies that review requires initialization."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         result = runner.invoke(main, ["review"])
@@ -599,6 +680,7 @@ def test_review_requires_initialization() -> None:
 
 
 def test_lint_verbose_flag_does_not_crash() -> None:
+    """Verifies that lint verbose flag does not crash."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -610,6 +692,7 @@ def test_lint_verbose_flag_does_not_crash() -> None:
 
 
 def test_query_piped_input_does_not_save_without_flag() -> None:
+    """Verifies that query piped input does not save without flag."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("sample.md").write_text(
@@ -633,6 +716,7 @@ def test_query_piped_input_does_not_save_without_flag() -> None:
 
 
 def test_ingest_recursively_ingests_directory_by_default() -> None:
+    """Verifies that ingest recursively ingests directory by default."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -649,6 +733,7 @@ def test_ingest_recursively_ingests_directory_by_default() -> None:
 
 
 def test_ingest_recursive_directory_requires_supported_files() -> None:
+    """Verifies that ingest recursive directory requires supported files."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -662,6 +747,7 @@ def test_ingest_recursive_directory_requires_supported_files() -> None:
 
 
 def test_export_on_empty_wiki_succeeds() -> None:
+    """Verifies that export on empty wiki succeeds."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -674,6 +760,7 @@ def test_export_on_empty_wiki_succeeds() -> None:
 
 
 def test_unknown_command_shows_error() -> None:
+    """Verifies that unknown command shows error."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -684,6 +771,7 @@ def test_unknown_command_shows_error() -> None:
 
 
 def test_provider_override_flag_switches_provider() -> None:
+    """Verifies that provider override flag switches provider."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -708,6 +796,7 @@ def test_provider_override_flag_switches_provider() -> None:
 
 
 def test_provider_override_flag_rejects_invalid_name() -> None:
+    """Verifies that provider override flag rejects invalid name."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -732,6 +821,12 @@ def test_provider_override_clears_tier_and_api_key_env() -> None:
         captured_provider: dict[str, str] = {}
 
         def _capture_provider_config(runtime_config, provider_catalog=None):
+            """Handles capture provider config.
+
+            Args:
+                runtime_config: Runtime config value used by the operation.
+                provider_catalog: Provider catalog value used by the operation.
+            """
             captured_provider.clear()
             captured_provider.update(runtime_config.get("provider", {}))
             return _CliFakeProvider()
@@ -747,6 +842,7 @@ def test_provider_override_clears_tier_and_api_key_env() -> None:
 
 
 def test_cli_fails_clearly_for_malformed_provider_settings() -> None:
+    """Verifies that cli fails clearly for malformed provider settings."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -765,6 +861,7 @@ def test_cli_fails_clearly_for_malformed_provider_settings() -> None:
 
 
 def test_update_compiles_and_generates_concepts() -> None:
+    """Verifies that update compiles and generates concepts."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("sample.md").write_text(
@@ -784,6 +881,7 @@ def test_update_compiles_and_generates_concepts() -> None:
 
 
 def test_update_with_paths_adds_then_compiles() -> None:
+    """Verifies that update with paths adds then compiles."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("note.md").write_text(
@@ -802,6 +900,7 @@ def test_update_with_paths_adds_then_compiles() -> None:
 
 
 def test_find_command_works() -> None:
+    """Verifies that find command works."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -813,6 +912,7 @@ def test_find_command_works() -> None:
 
 
 def test_flat_status_shows_knowledge_base_overview() -> None:
+    """Verifies that flat status shows knowledge base overview."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -827,6 +927,7 @@ def test_flat_status_shows_knowledge_base_overview() -> None:
 
 
 def test_status_changed_flag_shows_diff() -> None:
+    """Verifies that status changed flag shows diff."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("sample.md").write_text(
@@ -844,6 +945,7 @@ def test_status_changed_flag_shows_diff() -> None:
 
 
 def test_flat_export_defaults_to_vault() -> None:
+    """Verifies that flat export defaults to vault."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -856,6 +958,7 @@ def test_flat_export_defaults_to_vault() -> None:
 
 
 def test_config_command_shows_config() -> None:
+    """Verifies that config command shows config."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -868,6 +971,7 @@ def test_config_command_shows_config() -> None:
 
 
 def test_sources_list_shows_empty() -> None:
+    """Verifies that sources list shows empty."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -879,6 +983,7 @@ def test_sources_list_shows_empty() -> None:
 
 
 def test_sources_list_shows_ingested_sources() -> None:
+    """Verifies that sources list shows ingested sources."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("sample.md").write_text("# Sample\n\nBody.\n", encoding="utf-8")
@@ -894,6 +999,7 @@ def test_sources_list_shows_ingested_sources() -> None:
 
 
 def test_review_successful_run_shows_no_issues() -> None:
+    """Verifies that review successful run shows no issues."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -913,6 +1019,7 @@ def test_review_successful_run_shows_no_issues() -> None:
 
 
 def test_review_successful_run_shows_issues() -> None:
+    """Verifies that review successful run shows issues."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -938,6 +1045,7 @@ def test_review_successful_run_shows_issues() -> None:
 
 
 def test_sources_show_displays_details() -> None:
+    """Verifies that sources show displays details."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("sample.md").write_text("# Sample\n\nBody.\n", encoding="utf-8")
@@ -955,6 +1063,7 @@ def test_sources_show_displays_details() -> None:
 
 
 def test_sources_show_missing_slug_fails() -> None:
+    """Verifies that sources show missing slug fails."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -966,6 +1075,7 @@ def test_sources_show_missing_slug_fails() -> None:
 
 
 def test_ask_show_evidence_flag() -> None:
+    """Verifies that ask show evidence flag."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("sample.md").write_text(
@@ -997,6 +1107,7 @@ def test_ask_show_evidence_flag() -> None:
 
 
 def test_status_shows_stale_sources_needing_compile() -> None:
+    """Verifies that status shows stale sources needing compile."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("sample.md").write_text(
@@ -1013,6 +1124,7 @@ def test_status_shows_stale_sources_needing_compile() -> None:
 
 
 def test_status_shows_current_after_compile() -> None:
+    """Verifies that status shows current after compile."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("sample.md").write_text(
@@ -1031,6 +1143,7 @@ def test_status_shows_current_after_compile() -> None:
 
 
 def test_update_with_directory_path_adds_then_compiles() -> None:
+    """Verifies that update with directory path adds then compiles."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("docs").mkdir()
@@ -1049,6 +1162,7 @@ def test_update_with_directory_path_adds_then_compiles() -> None:
 
 
 def test_update_with_already_present_file() -> None:
+    """Verifies that update with already present file."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("note.md").write_text("# Note\n\nNote body.\n", encoding="utf-8")
@@ -1065,6 +1179,7 @@ def test_update_with_already_present_file() -> None:
 
 
 def test_update_resume_rejects_force_combination() -> None:
+    """Verifies that update resume rejects force combination."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -1081,6 +1196,7 @@ def test_update_resume_rejects_force_combination() -> None:
 
 
 def test_update_fails_without_provider_config() -> None:
+    """Verifies that update fails without provider config."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -1093,6 +1209,7 @@ def test_update_fails_without_provider_config() -> None:
 
 
 def test_update_generic_service_error_becomes_click_exception() -> None:
+    """Verifies that update generic service error becomes click exception."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("note.md").write_text("# Note\n\nBody.\n", encoding="utf-8")
@@ -1118,6 +1235,7 @@ def test_update_generic_service_error_becomes_click_exception() -> None:
 
 
 def test_config_show_subcommand() -> None:
+    """Verifies that config show subcommand."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -1129,6 +1247,7 @@ def test_config_show_subcommand() -> None:
 
 
 def test_config_provider_set_and_clear() -> None:
+    """Verifies that config provider set and clear."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -1159,6 +1278,7 @@ def test_config_provider_set_and_clear() -> None:
 
 
 def test_config_provider_set_switching_clears_stale() -> None:
+    """Verifies that config provider set switching clears stale."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -1179,6 +1299,7 @@ def test_config_provider_set_switching_clears_stale() -> None:
 
 
 def test_config_provider_set_rejects_unknown_name() -> None:
+    """Verifies that config provider set rejects unknown name."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -1199,6 +1320,7 @@ import json
 
 
 def test_doctor_json_output() -> None:
+    """Verifies that doctor json output."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -1213,6 +1335,7 @@ def test_doctor_json_output() -> None:
 
 
 def test_find_json_output() -> None:
+    """Verifies that find json output."""
     runner = CliRunner(mix_stderr=False)
     with runner.isolated_filesystem():
         Path("sample.md").write_text(
@@ -1241,6 +1364,7 @@ def test_find_json_output() -> None:
 
 
 def test_find_json_empty_results() -> None:
+    """Verifies that find json empty results."""
     runner = CliRunner(mix_stderr=False)
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -1256,6 +1380,7 @@ def test_find_json_empty_results() -> None:
 
 
 def test_status_json_output() -> None:
+    """Verifies that status json output."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("sample.md").write_text(
@@ -1273,6 +1398,7 @@ def test_status_json_output() -> None:
 
 
 def test_status_changed_json_output() -> None:
+    """Verifies that status changed json output."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("sample.md").write_text(
@@ -1290,6 +1416,7 @@ def test_status_changed_json_output() -> None:
 
 
 def test_sources_list_json_output() -> None:
+    """Verifies that sources list json output."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("sample.md").write_text("# Sample\n\nBody.\n", encoding="utf-8")
@@ -1306,6 +1433,7 @@ def test_sources_list_json_output() -> None:
 
 
 def test_sources_list_json_empty() -> None:
+    """Verifies that sources list json empty."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -1348,6 +1476,7 @@ def test_doctor_json_failure_exits_nonzero() -> None:
 
 
 def test_clean_citation_refs_strips_inline_citation_refs() -> None:
+    """Verifies that clean citation refs strips inline citation refs."""
     from src.services.citation_cleanup import clean_citation_refs
 
     raw = (

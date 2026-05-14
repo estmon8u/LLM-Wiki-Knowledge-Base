@@ -1,3 +1,11 @@
+"""Command-line entry point for the knowledge-base CLI.
+
+This module belongs to `src.cli` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -23,6 +31,16 @@ def build_runtime_context(
     verbose: bool,
     provider_override: Optional[str] = None,
 ) -> CommandContext:
+    """Builds runtime context.
+
+    Args:
+        project_root: Project root used to resolve knowledge-base paths.
+        verbose: Whether to emit verbose command output.
+        provider_override: Optional provider name overriding the configured provider.
+
+    Returns:
+        CommandContext produced by the operation.
+    """
     paths = build_project_paths(project_root)
     config_service = ConfigService(paths)
     try:
@@ -61,9 +79,26 @@ class KBGroup(click.Group):
     """Lazy-loading group that discovers commands from the registry."""
 
     def list_commands(self, ctx: click.Context) -> list[str]:
+        """List commands.
+
+        Args:
+            ctx: Click context carrying command invocation state.
+
+        Returns:
+            list[str] produced by the operation.
+        """
         return list_command_names()
 
     def get_command(self, ctx: click.Context, cmd_name: str) -> Optional[click.Command]:
+        """Get command.
+
+        Args:
+            ctx: Click context carrying command invocation state.
+            cmd_name: Cmd name value used by the operation.
+
+        Returns:
+            Optional[click.Command] produced by the operation.
+        """
         return get_click_command(cmd_name)
 
 
@@ -93,6 +128,14 @@ def main(
     verbose: bool,
     provider_override: Optional[str],
 ) -> None:
+    """Runs the command-line entry point.
+
+    Args:
+        ctx: Click context carrying command invocation state.
+        project_root: Project root used to resolve knowledge-base paths.
+        verbose: Whether to emit verbose command output.
+        provider_override: Optional provider name overriding the configured provider.
+    """
     root = discover_project_root(project_root or Path.cwd())
     ctx.obj = build_runtime_context(
         root,

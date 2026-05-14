@@ -1,3 +1,11 @@
+"""Click command implementation for the kb status command.
+
+This module belongs to `src.commands.status` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import click
@@ -17,6 +25,14 @@ SUMMARY = "Show what exists, what changed, what is stale, and what to do next."
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
+    """Builds the command registry specification for this module.
+
+    Args:
+        _: Value value used by the operation.
+
+    Returns:
+        CommandSpec produced by the operation.
+    """
     return CommandSpec(name="status", summary=SUMMARY)
 
 
@@ -26,6 +42,17 @@ def create_command(
     help_text: str = SUMMARY,
     short_help: str = "Show project status.",
 ) -> click.Command:
+    """Creates the Click command exposed by this module.
+
+    Args:
+        name: Name value used for lookup or display.
+        help_text: Help text value used by the operation.
+        short_help: Short help value used by the operation.
+
+    Returns:
+        click.Command produced by the operation.
+    """
+
     @click.command(name=name, help=help_text, short_help=short_help)
     @click.option(
         "--changed",
@@ -35,6 +62,13 @@ def create_command(
     @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
     @click.pass_obj
     def command(command_context: CommandContext, changed: bool, as_json: bool) -> None:
+        """Command.
+
+        Args:
+            command_context: Command context value used by the operation.
+            changed: Changed value used by the operation.
+            as_json: As json value used by the operation.
+        """
         project_service = command_context.services["project"]
         status_service = command_context.services["status"]
         snapshot = status_service.snapshot(initialized=project_service.is_initialized())

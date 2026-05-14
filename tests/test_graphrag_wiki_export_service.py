@@ -1,3 +1,11 @@
+"""Tests for test graphrag wiki export service.
+
+This module belongs to `tests.test_graphrag_wiki_export_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import json
@@ -28,6 +36,11 @@ from src.services.graphrag_wiki_export_service import (
 
 
 def _write_graph_tables(test_project) -> None:
+    """Handles write graph tables.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
     test_project.write_file(
         "graph/graphrag/input/sources.json",
@@ -104,6 +117,14 @@ def _write_graph_tables(test_project) -> None:
 
 
 def _build_service(test_project) -> GraphRAGWikiExportService:
+    """Handles build service.
+
+    Args:
+        test_project: Test project value used by the operation.
+
+    Returns:
+        GraphRAGWikiExportService produced by the operation.
+    """
     return GraphRAGWikiExportService(
         test_project.paths,
         GraphRAGStatusService(test_project.paths),
@@ -115,6 +136,11 @@ def _build_service(test_project) -> GraphRAGWikiExportService:
 def test_export_wiki_writes_graph_pages_and_preserves_legacy_concepts(
     test_project,
 ) -> None:
+    """Verifies that export wiki writes graph pages and preserves legacy concepts.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     _write_graph_tables(test_project)
     legacy_concept = test_project.write_file(
         "wiki/concepts/legacy-concept.md",
@@ -167,6 +193,11 @@ def test_export_wiki_writes_graph_pages_and_preserves_legacy_concepts(
 
 
 def test_export_wiki_requires_graph_output(test_project) -> None:
+    """Verifies that export wiki requires graph output.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
     service = _build_service(test_project)
 
@@ -175,6 +206,11 @@ def test_export_wiki_requires_graph_output(test_project) -> None:
 
 
 def test_export_wiki_requires_initialized_workspace(test_project) -> None:
+    """Verifies that export wiki requires initialized workspace.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     output_dir = test_project.paths.graph_dir / "graphrag" / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
     pd.DataFrame([{"id": "entity-1", "title": "RAG"}]).to_parquet(
@@ -189,6 +225,11 @@ def test_export_wiki_requires_initialized_workspace(test_project) -> None:
 def test_export_wiki_reports_missing_tables_and_finds_nested_outputs(
     test_project,
 ) -> None:
+    """Verifies that export wiki reports missing tables and finds nested outputs.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
     output_dir = test_project.paths.graph_dir / "graphrag" / "output" / "artifacts"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -217,6 +258,11 @@ def test_export_wiki_reports_missing_tables_and_finds_nested_outputs(
 def test_export_wiki_handles_realistic_create_final_parquet_shapes(
     test_project,
 ) -> None:
+    """Verifies that export wiki handles realistic create final parquet shapes.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
     test_project.write_file(
         "graph/graphrag/input/sources.json",
@@ -354,6 +400,11 @@ def test_export_wiki_handles_realistic_create_final_parquet_shapes(
 
 
 def test_export_wiki_caps_relationship_pages_and_entity_tables(test_project) -> None:
+    """Verifies that export wiki caps relationship pages and entity tables.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
     test_project.write_file(
         "graph/graphrag/input/sources.json",
@@ -427,6 +478,11 @@ def test_export_wiki_caps_relationship_pages_and_entity_tables(test_project) -> 
 
 
 def test_export_wiki_fences_raw_document_and_text_unit_markdown(test_project) -> None:
+    """Verifies that export wiki fences raw document and text unit markdown.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
     test_project.write_file(
         "graph/graphrag/input/sources.json",
@@ -476,8 +532,17 @@ def test_export_wiki_fences_raw_document_and_text_unit_markdown(test_project) ->
 
 
 def test_graph_wiki_export_helpers_handle_sparse_values() -> None:
+    """Verifies that graph wiki export helpers handle sparse values."""
+
     class ArrayLike:
+        """Represents array like behavior and data.
+
+        Attributes:
+            See annotated class attributes for stored values.
+        """
+
         def tolist(self):
+            """Tolist."""
             return [1, float("nan"), {"value": float("nan")}]
 
     assert _clean_value(ArrayLike()) == [1, None, {"value": None}]

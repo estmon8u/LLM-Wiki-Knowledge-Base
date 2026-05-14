@@ -1,3 +1,11 @@
+"""Provider integration helpers for base.
+
+This module belongs to `src.providers.base` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,6 +14,12 @@ from typing import Any
 
 @dataclass
 class ProviderRequest:
+    """Represents provider request behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     prompt: str
     system_prompt: str = ""
     max_tokens: int = 1024
@@ -16,6 +30,12 @@ class ProviderRequest:
 
 @dataclass
 class ProviderResponse:
+    """Represents provider response behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     text: str
     model_name: str
     provider: str = ""

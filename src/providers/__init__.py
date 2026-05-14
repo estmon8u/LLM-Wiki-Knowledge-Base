@@ -25,6 +25,12 @@ class ProviderExecutionError(ProviderError):
 
 
 class UnavailableProvider(TextProvider):
+    """Represents unavailable provider behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     name = "unavailable"
 
     def __init__(self, message: str, *, provider_name: str = "unavailable") -> None:
@@ -32,9 +38,18 @@ class UnavailableProvider(TextProvider):
         self._message = message
 
     def ensure_available(self) -> None:
+        """Ensure available."""
         raise ProviderConfigurationError(self._message)
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        """Generate.
+
+        Args:
+            request: Request value used by the operation.
+
+        Returns:
+            ProviderResponse produced by the operation.
+        """
         self.ensure_available()
 
 
@@ -60,6 +75,14 @@ _FALLBACK_PROVIDER_CATALOG = {
 def supported_provider_names(
     provider_catalog: ProviderCatalog | None = None,
 ) -> tuple[str, ...]:
+    """Supported provider names.
+
+    Args:
+        provider_catalog: Provider catalog value used by the operation.
+
+    Returns:
+        tuple[str, ...] produced by the operation.
+    """
     catalog = provider_catalog or _FALLBACK_PROVIDER_CATALOG
     return tuple(sorted(catalog))
 
@@ -67,6 +90,14 @@ def supported_provider_names(
 def describe_supported_providers(
     provider_catalog: ProviderCatalog | None = None,
 ) -> str:
+    """Describe supported providers.
+
+    Args:
+        provider_catalog: Provider catalog value used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     return ", ".join(supported_provider_names(provider_catalog))
 
 
@@ -74,6 +105,15 @@ def validate_provider_name(
     name: str,
     provider_catalog: ProviderCatalog | None = None,
 ) -> str:
+    """Validate provider name.
+
+    Args:
+        name: Name value used for lookup or display.
+        provider_catalog: Provider catalog value used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     normalized_name = str(name).strip().lower()
     if normalized_name not in supported_provider_names(provider_catalog):
         raise ValueError(
@@ -87,6 +127,15 @@ def resolve_provider_settings(
     config: dict[str, Any],
     provider_catalog: ProviderCatalog | None = None,
 ) -> tuple[str, dict[str, Any]] | None:
+    """Resolve provider settings.
+
+    Args:
+        config: Loaded knowledge-base configuration mapping.
+        provider_catalog: Provider catalog value used by the operation.
+
+    Returns:
+        tuple[str, dict[str, Any]] | None produced by the operation.
+    """
     provider_cfg = config.get("provider") or {}
     name = provider_cfg.get("name", "")
     normalized_name = str(name).strip().lower()

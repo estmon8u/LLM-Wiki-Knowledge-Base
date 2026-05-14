@@ -1,3 +1,11 @@
+"""Config service service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.config_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -31,6 +39,12 @@ CURRENT_CONFIG_VERSION = 6
 
 @dataclass(frozen=True)
 class GraphRAGRuntimeConfig:
+    """Stores graph ragruntime config data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     provider: str
     model: str
     embedding_provider: str
@@ -188,10 +202,21 @@ def schema_excerpt(schema_text: str, headings: list[str]) -> str:
 
 
 class ConfigService:
+    """Coordinates config operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(self, paths: ProjectPaths) -> None:
         self.paths = paths
 
     def load(self) -> dict[str, Any]:
+        """Load.
+
+        Returns:
+            dict[str, Any] produced by the operation.
+        """
         if not self.paths.config_file.exists():
             return deepcopy(DEFAULT_CONFIG)
         with self.paths.config_file.open("r", encoding="utf-8") as handle:
@@ -209,6 +234,11 @@ class ConfigService:
         return _validate_config(merged)
 
     def load_schema(self) -> str:
+        """Loads schema.
+
+        Returns:
+            str produced by the operation.
+        """
         if not self.paths.schema_file.exists():
             return DEFAULT_SCHEMA
         return self.paths.schema_file.read_text(encoding="utf-8")
@@ -221,6 +251,11 @@ class ConfigService:
         )
 
     def ensure_files(self) -> list[str]:
+        """Ensure files.
+
+        Returns:
+            list[str] produced by the operation.
+        """
         created: list[str] = []
         if not self.paths.config_file.exists():
             atomic_write_text(
@@ -383,14 +418,32 @@ def _migrate_v5_to_v6(config: dict[str, Any]) -> dict[str, Any]:
 
 
 class _StrictConfigModel(BaseModel):
+    """Represents strict config model behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
 
 class _ProviderSelection(_StrictConfigModel):
+    """Represents provider selection behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     name: StrictStr | None = None
 
 
 class _OpenAIProviderConfig(_StrictConfigModel):
+    """Stores open aiprovider config data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     model: StrictStr
     api_key_env: StrictStr
     reasoning_effort: StrictStr
@@ -404,6 +457,12 @@ class _OpenAIProviderConfig(_StrictConfigModel):
 
 
 class _AnthropicProviderConfig(_StrictConfigModel):
+    """Stores anthropic provider config data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     model: StrictStr
     api_key_env: StrictStr
     thinking_budget: StrictInt = Field(ge=0)
@@ -417,16 +476,34 @@ class _AnthropicProviderConfig(_StrictConfigModel):
 
 
 class _GeminiProviderConfig(_OpenAIProviderConfig):
+    """Stores gemini provider config data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     pass
 
 
 class _ProvidersConfig(_StrictConfigModel):
+    """Stores providers config data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     openai: _OpenAIProviderConfig
     anthropic: _AnthropicProviderConfig
     gemini: _GeminiProviderConfig
 
 
 class _GraphConfig(_StrictConfigModel):
+    """Stores graph config data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     provider: StrictStr
     model: StrictStr
     embedding_provider: StrictStr | None = None
@@ -450,6 +527,12 @@ class _GraphConfig(_StrictConfigModel):
 
 
 class _MistralOcrConfig(_StrictConfigModel):
+    """Stores mistral ocr config data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     model: StrictStr
     api_key_env: StrictStr
     table_format: Literal["markdown", "html"]
@@ -463,6 +546,12 @@ class _MistralOcrConfig(_StrictConfigModel):
 
 
 class _HtmlConversionConfig(_StrictConfigModel):
+    """Stores html conversion config data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     renderer: Literal["wkhtmltopdf"]
     wkhtmltopdf_path: StrictStr | None = None
 
@@ -475,6 +564,12 @@ class _HtmlConversionConfig(_StrictConfigModel):
 
 
 class _FallbacksConfig(_StrictConfigModel):
+    """Stores fallbacks config data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     pdf: Literal["docling"]
     docx: Literal["markitdown"]
     pptx: Literal["markitdown"]
@@ -482,12 +577,24 @@ class _FallbacksConfig(_StrictConfigModel):
 
 
 class _ConversionConfig(_StrictConfigModel):
+    """Stores conversion config data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     mistral_ocr: _MistralOcrConfig
     html: _HtmlConversionConfig
     fallbacks: _FallbacksConfig
 
 
 class _KbConfigModel(BaseModel):
+    """Represents kb config model behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     model_config = ConfigDict(extra="allow")
 
     version: StrictInt = Field(ge=1)
@@ -502,6 +609,14 @@ class _KbConfigModel(BaseModel):
 
 
 def resolve_graph_config(config: dict[str, Any]) -> GraphRAGRuntimeConfig:
+    """Resolve graph config.
+
+    Args:
+        config: Loaded knowledge-base configuration mapping.
+
+    Returns:
+        GraphRAGRuntimeConfig produced by the operation.
+    """
     graph = config.get("graph", DEFAULT_CONFIG["graph"])
     try:
         validated = _GraphConfig.model_validate(graph).model_dump(mode="python")

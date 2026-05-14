@@ -1,3 +1,11 @@
+"""Graphrag input sync service service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.graphrag_input_sync_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -35,6 +43,12 @@ class GraphRAGInputSyncError(ValueError):
 
 @dataclass(frozen=True)
 class GraphRAGInputSyncResult:
+    """Stores graph raginput sync result data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     source_count: int
     output_path: Path
     settings_path: Path
@@ -43,6 +57,12 @@ class GraphRAGInputSyncResult:
 
 
 class GraphRAGInputSyncService:
+    """Coordinates graph raginput sync operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(
         self,
         paths: ProjectPaths,
@@ -53,21 +73,46 @@ class GraphRAGInputSyncService:
 
     @property
     def workspace_dir(self) -> Path:
+        """Workspace dir.
+
+        Returns:
+            Path produced by the operation.
+        """
         return self.paths.graph_dir / "graphrag"
 
     @property
     def input_dir(self) -> Path:
+        """Input dir.
+
+        Returns:
+            Path produced by the operation.
+        """
         return self.workspace_dir / "input"
 
     @property
     def input_file(self) -> Path:
+        """Input file.
+
+        Returns:
+            Path produced by the operation.
+        """
         return self.input_dir / "sources.json"
 
     @property
     def settings_file(self) -> Path:
+        """Settings file.
+
+        Returns:
+            Path produced by the operation.
+        """
         return self.workspace_dir / "settings.yaml"
 
     def sync(self) -> GraphRAGInputSyncResult:
+        """Sync.
+
+        Returns:
+            GraphRAGInputSyncResult produced by the operation.
+        """
         sources = self.manifest_service.list_sources()
         self._reject_duplicate_source_ids(sources)
 
@@ -89,6 +134,11 @@ class GraphRAGInputSyncService:
         )
 
     def configure_settings(self) -> bool:
+        """Configure settings.
+
+        Returns:
+            bool produced by the operation.
+        """
         if not self.settings_file.exists():
             relative = self._relative(self.settings_file)
             raise GraphRAGInputSyncError(

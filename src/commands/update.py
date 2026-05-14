@@ -1,3 +1,11 @@
+"""Click command implementation for the kb update command.
+
+This module belongs to `src.commands.update` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -28,6 +36,14 @@ SUMMARY = (
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
+    """Builds the command registry specification for this module.
+
+    Args:
+        _: Value value used by the operation.
+
+    Returns:
+        CommandSpec produced by the operation.
+    """
     return CommandSpec(
         name="update",
         summary=SUMMARY,
@@ -50,6 +66,12 @@ def _get_update_service(command_context: CommandContext) -> UpdateService:
 
 
 def create_command() -> click.Command:
+    """Creates the Click command exposed by this module.
+
+    Returns:
+        click.Command produced by the operation.
+    """
+
     @click.command(
         name="update",
         help=SUMMARY,
@@ -83,6 +105,15 @@ def create_command() -> click.Command:
         resume: bool,
         no_graph: bool,
     ) -> None:
+        """Command.
+
+        Args:
+            command_context: Command context value used by the operation.
+            source_paths: Source paths value used by the operation.
+            force: Force value used by the operation.
+            resume: Resume value used by the operation.
+            no_graph: No graph value used by the operation.
+        """
         require_initialized(command_context)
         service = _get_update_service(command_context)
 

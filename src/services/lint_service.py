@@ -1,3 +1,11 @@
+"""Lint service service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.lint_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from collections import Counter
@@ -68,6 +76,12 @@ _FIELD_TYPE_SPEC: Dict[str, str] = {
 
 @dataclass
 class _PageState:
+    """Represents page state behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     file_path: Path
     relative_path: str
     frontmatter: Optional[Dict[str, Any]]
@@ -79,6 +93,12 @@ class _PageState:
 
 
 class LintService:
+    """Coordinates lint operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(
         self,
         paths: ProjectPaths,
@@ -92,6 +112,11 @@ class LintService:
         self.graphrag_status_service = graphrag_status_service
 
     def lint(self) -> LintReport:
+        """Lint.
+
+        Returns:
+            LintReport produced by the operation.
+        """
         issues: list[LintIssue] = []
         source_records = self.manifest_service.list_sources()
         source_records_by_slug = {source.slug: source for source in source_records}

@@ -1,3 +1,11 @@
+"""Shared presentation and validation helpers for CLI commands.
+
+This module belongs to `src.commands.common` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import json as _json
@@ -41,25 +49,52 @@ def emit_json(data: Any) -> None:
 
 
 def require_initialized(command_context: CommandContext) -> None:
+    """Require initialized.
+
+    Args:
+        command_context: Command context value used by the operation.
+    """
     project_service = command_context.services["project"]
     if not project_service.is_initialized():
         raise click.ClickException("Project not initialized. Run 'kb init' first.")
 
 
 def echo_section(title: str) -> None:
+    """Echo section.
+
+    Args:
+        title: Title value used by the operation.
+    """
     console.print(f"\n[bold]{title}[/bold]")
     console.print("=" * len(title))
 
 
 def echo_bullet(text: str) -> None:
+    """Echo bullet.
+
+    Args:
+        text: Text content being processed.
+    """
     console.print(f"  \u2022 {_esc(text)}")
 
 
 def echo_status_line(label: str, text: str) -> None:
+    """Echo status line.
+
+    Args:
+        label: Label value used by the operation.
+        text: Text content being processed.
+    """
     console.print(f"[bold]\\[{_esc(label)}][/bold] {_esc(text)}")
 
 
 def echo_kv(label: str, value: Optional[Union[str, int]]) -> None:
+    """Echo kv.
+
+    Args:
+        label: Label value used by the operation.
+        value: Input value being normalized, validated, or serialized.
+    """
     display = value if value is not None else "n/a"
     console.print(f"[dim]{_esc(str(label))}:[/dim] {_esc(str(display))}")
 
@@ -86,6 +121,16 @@ def progress_report(
     length: int,
     item_label: str,
 ) -> Iterator[ProgressAdvance]:
+    """Progress report.
+
+    Args:
+        label: Label value used by the operation.
+        length: Length value used by the operation.
+        item_label: Item label value used by the operation.
+
+    Returns:
+        Iterator[ProgressAdvance] produced by the operation.
+    """
     if length <= 0:
         yield lambda *_args, **_kwargs: None
         return
@@ -99,6 +144,12 @@ def progress_report(
         task = progress.add_task(label, total=length)
 
         def advance(*_args, **_kwargs) -> None:
+            """Advance.
+
+            Args:
+                _args: Args value used by the operation.
+                _kwargs: Kwargs value used by the operation.
+            """
             progress.advance(task)
 
         yield advance
@@ -130,6 +181,11 @@ def lazy_live_status(
     status: Status | None = None
 
     def update(message: str) -> None:
+        """Update.
+
+        Args:
+            message: Message value used by the operation.
+        """
         nonlocal status
         cleaned = message.strip()
         display = f"{label} - {cleaned}" if cleaned else label

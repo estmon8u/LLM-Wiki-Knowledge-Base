@@ -1,3 +1,11 @@
+"""Graph ask controller service service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.graph_ask_controller_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import os
@@ -16,10 +24,22 @@ from src.services.query_router_service import QueryRouterService
 
 
 class GraphAskControllerError(RuntimeError):
+    """Error raised for graph ask controller failures.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     pass
 
 
 class GraphAskControllerService:
+    """Coordinates graph ask controller operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(
         self,
         paths: ProjectPaths,
@@ -48,6 +68,21 @@ class GraphAskControllerService:
         save: bool = False,
         save_as: str | None = None,
     ) -> GraphRAGQueryAnswer:
+        """Ask.
+
+        Args:
+            question: User question to answer from available evidence.
+            method: Method value used by the operation.
+            community_level: Community level value used by the operation.
+            dynamic_community_selection: Dynamic community selection value used by the operation.
+            response_type: Response type value used by the operation.
+            verbose: Whether to emit verbose command output.
+            save: Save value used by the operation.
+            save_as: Save as value used by the operation.
+
+        Returns:
+            GraphRAGQueryAnswer produced by the operation.
+        """
         graph_config = self._resolve_graph_config()
         status = self.status_service.status()
         if _graph_ready_for_query(status):

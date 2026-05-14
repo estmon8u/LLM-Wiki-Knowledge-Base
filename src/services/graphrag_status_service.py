@@ -1,3 +1,11 @@
+"""Graphrag status service service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.graphrag_status_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -22,6 +30,12 @@ GRAPH_OUTPUT_TABLES: dict[str, tuple[str, ...]] = {
 
 @dataclass(frozen=True)
 class GraphRAGIndexRun:
+    """Represents graph ragindex run behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     run_id: str
     created_at: str
     method: str
@@ -39,6 +53,11 @@ class GraphRAGIndexRun:
     output_state: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        """Serializes this value to a dictionary.
+
+        Returns:
+            dict[str, Any] produced by the operation.
+        """
         payload = asdict(self)
         payload["command"] = list(self.command)
         return payload
@@ -46,6 +65,12 @@ class GraphRAGIndexRun:
 
 @dataclass(frozen=True)
 class GraphRAGStatus:
+    """Represents graph ragstatus behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     workspace_dir: Path
     settings_path: Path
     input_path: Path
@@ -82,6 +107,14 @@ class GraphRAGStatus:
     community_report_count: int | None = None
 
     def to_dict(self, project_root: Path) -> dict[str, Any]:
+        """Serializes this value to a dictionary.
+
+        Args:
+            project_root: Project root used to resolve knowledge-base paths.
+
+        Returns:
+            dict[str, Any] produced by the operation.
+        """
         payload = asdict(self)
         for key in ("workspace_dir", "settings_path", "input_path", "output_dir"):
             payload[key] = self._relative_to_project(payload[key], project_root)
@@ -96,6 +129,12 @@ class GraphRAGStatus:
 
 
 class GraphRAGStatusService:
+    """Coordinates graph ragstatus operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(self, paths: ProjectPaths) -> None:
         self.paths = paths
         self.workspace_dir = paths.graph_dir / "graphrag"
@@ -105,6 +144,11 @@ class GraphRAGStatusService:
         self.runs_file = paths.graph_dir / "runs" / "graph_index_runs.json"
 
     def status(self) -> GraphRAGStatus:
+        """Status.
+
+        Returns:
+            GraphRAGStatus produced by the operation.
+        """
         runs = self._load_runs()
         last_run = runs[-1] if runs else None
         table_paths = {
@@ -182,6 +226,21 @@ class GraphRAGStatusService:
         source_hashes: dict[str, str] | None = None,
         output_state: str | None = None,
     ) -> GraphRAGIndexRun:
+        """Record index run.
+
+        Args:
+            method: Method value used by the operation.
+            dry_run: Dry run value used by the operation.
+            result: Result value used by the operation.
+            input_digest: Input digest value used by the operation.
+            config_digest: Config digest value used by the operation.
+            input_source_count: Input source count value used by the operation.
+            source_hashes: Source hashes value used by the operation.
+            output_state: Output state value used by the operation.
+
+        Returns:
+            GraphRAGIndexRun produced by the operation.
+        """
         created_at = utc_now_iso()
         record = GraphRAGIndexRun(
             run_id=created_at.replace(":", "").replace("+", "Z"),
@@ -209,6 +268,11 @@ class GraphRAGStatusService:
         return record
 
     def last_successful_index_run(self) -> dict[str, Any] | None:
+        """Last successful index run.
+
+        Returns:
+            dict[str, Any] | None produced by the operation.
+        """
         for run in reversed(self._load_runs()):
             if run.get("success") is True and run.get("dry_run") is False:
                 return run

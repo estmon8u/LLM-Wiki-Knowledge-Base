@@ -1,3 +1,11 @@
+"""Ingest service service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.ingest_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -23,6 +31,12 @@ from src.services.project_service import (
 
 @dataclass
 class IngestResult:
+    """Stores ingest result data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     created: bool
     source: Optional[RawSourceRecord]
     message: str
@@ -31,28 +45,60 @@ class IngestResult:
 
 @dataclass
 class IngestDirectoryResult:
+    """Stores ingest directory result data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     directory_path: Path
     scanned_file_count: int
     results: tuple[IngestResult, ...]
 
     @property
     def created_results(self) -> tuple[IngestResult, ...]:
+        """Created results.
+
+        Returns:
+            tuple[IngestResult, ...] produced by the operation.
+        """
         return tuple(result for result in self.results if result.created)
 
     @property
     def duplicate_results(self) -> tuple[IngestResult, ...]:
+        """Duplicate results.
+
+        Returns:
+            tuple[IngestResult, ...] produced by the operation.
+        """
         return tuple(result for result in self.results if not result.created)
 
     @property
     def created_count(self) -> int:
+        """Created count.
+
+        Returns:
+            int produced by the operation.
+        """
         return len(self.created_results)
 
     @property
     def duplicate_count(self) -> int:
+        """Duplicate count.
+
+        Returns:
+            int produced by the operation.
+        """
         return len(self.duplicate_results)
 
 
 class IngestService:
+    """Coordinates ingest operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(
         self,
         paths: ProjectPaths,
@@ -67,6 +113,14 @@ class IngestService:
         )
 
     def ingest_path(self, raw_input_path: Path) -> IngestResult:
+        """Ingest path.
+
+        Args:
+            raw_input_path: Raw input path value used by the operation.
+
+        Returns:
+            IngestResult produced by the operation.
+        """
         source_path = raw_input_path.resolve()
         if not source_path.exists():
             raise FileNotFoundError(f"Source file not found: {source_path}")
@@ -129,6 +183,14 @@ class IngestService:
         )
 
     def discover_source_paths(self, raw_input_path: Path) -> tuple[Path, ...]:
+        """Discover source paths.
+
+        Args:
+            raw_input_path: Raw input path value used by the operation.
+
+        Returns:
+            tuple[Path, ...] produced by the operation.
+        """
         directory_path = raw_input_path.resolve()
         if not directory_path.exists():
             raise FileNotFoundError(f"Source directory not found: {directory_path}")
@@ -142,6 +204,15 @@ class IngestService:
         raw_input_path: Path,
         progress_callback: Optional[Callable[[Path], None]] = None,
     ) -> IngestDirectoryResult:
+        """Ingest directory.
+
+        Args:
+            raw_input_path: Raw input path value used by the operation.
+            progress_callback: Progress callback value used by the operation.
+
+        Returns:
+            IngestDirectoryResult produced by the operation.
+        """
         directory_path = raw_input_path.resolve()
         candidate_paths = self.discover_source_paths(directory_path)
 

@@ -1,3 +1,11 @@
+"""Tests for test graphrag input sync service.
+
+This module belongs to `tests.test_graphrag_input_sync_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import json
@@ -18,6 +26,11 @@ from src.services.graphrag_input_sync_service import (
 
 
 def _write_graphrag_settings(test_project) -> None:
+    """Handles write graphrag settings.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "graph/graphrag/settings.yaml",
         "input:\n"
@@ -38,6 +51,15 @@ def _source_record(
     source_id: str = "src-1",
     normalized_path: str | None = "raw/normalized/rag.md",
 ) -> RawSourceRecord:
+    """Handles source record.
+
+    Args:
+        source_id: Source id value used by the operation.
+        normalized_path: Normalized path value used by the operation.
+
+    Returns:
+        RawSourceRecord produced by the operation.
+    """
     return RawSourceRecord(
         source_id=source_id,
         slug="rag",
@@ -58,6 +80,11 @@ def _source_record(
 
 
 def test_sync_writes_json_records_and_preserves_provenance(test_project) -> None:
+    """Verifies that sync writes json records and preserves provenance.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     _write_graphrag_settings(test_project)
     test_project.write_file(
         "raw/normalized/rag.md",
@@ -106,6 +133,11 @@ def test_sync_writes_json_records_and_preserves_provenance(test_project) -> None
 
 
 def test_sync_configures_json_input_and_metadata_prepending(test_project) -> None:
+    """Verifies that sync configures json input and metadata prepending.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     _write_graphrag_settings(test_project)
 
     service = GraphRAGInputSyncService(
@@ -131,6 +163,11 @@ def test_sync_configures_json_input_and_metadata_prepending(test_project) -> Non
 
 
 def test_sync_reports_missing_normalized_artifact(test_project) -> None:
+    """Verifies that sync reports missing normalized artifact.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     _write_graphrag_settings(test_project)
     test_project.services["manifest"].save_source(_source_record())
 
@@ -144,6 +181,11 @@ def test_sync_reports_missing_normalized_artifact(test_project) -> None:
 
 
 def test_sync_reports_missing_normalized_path(test_project) -> None:
+    """Verifies that sync reports missing normalized path.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     _write_graphrag_settings(test_project)
     test_project.services["manifest"].save_source(_source_record(normalized_path=None))
 
@@ -157,6 +199,11 @@ def test_sync_reports_missing_normalized_path(test_project) -> None:
 
 
 def test_sync_rejects_duplicate_source_ids(test_project) -> None:
+    """Verifies that sync rejects duplicate source ids.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     _write_graphrag_settings(test_project)
     source = _source_record().to_dict()
     payload = {
@@ -180,6 +227,11 @@ def test_sync_rejects_duplicate_source_ids(test_project) -> None:
 
 
 def test_sync_reports_missing_graphrag_settings(test_project) -> None:
+    """Verifies that sync reports missing graphrag settings.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     service = GraphRAGInputSyncService(
         test_project.paths,
         test_project.services["manifest"],
@@ -196,6 +248,11 @@ def test_sync_reports_missing_graphrag_settings(test_project) -> None:
 
 
 def test_sync_reports_invalid_graphrag_settings(test_project) -> None:
+    """Verifies that sync reports invalid graphrag settings.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("graph/graphrag/settings.yaml", "- not\n- a mapping\n")
     service = GraphRAGInputSyncService(
         test_project.paths,

@@ -1,3 +1,11 @@
+"""Tests for test graphrag command service.
+
+This module belongs to `tests.test_graphrag_command_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import io
@@ -13,9 +21,22 @@ from src.services.graphrag_command_service import (
 
 
 def test_index_builds_python_module_command(test_project) -> None:
+    """Verifies that index builds python module command.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     calls = []
 
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         calls.append(
             {
                 "command": command,
@@ -54,9 +75,20 @@ def test_index_builds_python_module_command(test_project) -> None:
 
 
 def test_default_runner_sets_utf8_encoding(monkeypatch) -> None:
+    """Verifies that default runner sets utf8 encoding.
+
+    Args:
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     calls = {}
 
     def fake_run(command, **kwargs):
+        """Fake run.
+
+        Args:
+            command: Command value used by the operation.
+            kwargs: Kwargs value used by the operation.
+        """
         calls["command"] = command
         calls["kwargs"] = kwargs
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
@@ -73,9 +105,22 @@ def test_default_runner_sets_utf8_encoding(monkeypatch) -> None:
 
 
 def test_query_builds_full_option_command(test_project) -> None:
+    """Verifies that query builds full option command.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     calls = []
 
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         calls.append(command)
         return subprocess.CompletedProcess(command, 0, stdout="answer\n", stderr="")
 
@@ -107,9 +152,21 @@ def test_query_builds_full_option_command(test_project) -> None:
 def test_streaming_index_sets_unbuffered_env_and_reports_progress(
     monkeypatch, test_project
 ) -> None:
+    """Verifies that streaming index sets unbuffered env and reports progress.
+
+    Args:
+        monkeypatch: Monkeypatch value used by the operation.
+        test_project: Test project value used by the operation.
+    """
     call = {}
 
     class FakePopen:
+        """Represents fake popen behavior and data.
+
+        Attributes:
+            See annotated class attributes for stored values.
+        """
+
         def __init__(
             self,
             command,
@@ -123,6 +180,19 @@ def test_streaming_index_sets_unbuffered_env_and_reports_progress(
             bufsize=None,
             env=None,
         ):
+            """Initializes the instance.
+
+            Args:
+                command: Command value used by the operation.
+                cwd: Cwd value used by the operation.
+                stdout: Stdout value used by the operation.
+                stderr: Stderr value used by the operation.
+                text: Text content being processed.
+                encoding: Encoding value used by the operation.
+                errors: Errors value used by the operation.
+                bufsize: Bufsize value used by the operation.
+                env: Env value used by the operation.
+            """
             call.update(
                 {
                     "command": command,
@@ -143,6 +213,7 @@ def test_streaming_index_sets_unbuffered_env_and_reports_progress(
             )
 
         def wait(self):
+            """Wait."""
             return self.returncode
 
     monkeypatch.setattr(
@@ -178,7 +249,20 @@ def test_streaming_index_sets_unbuffered_env_and_reports_progress(
 def test_streaming_index_missing_python_raises_clear_error(
     monkeypatch, test_project
 ) -> None:
+    """Verifies that streaming index missing python raises clear error.
+
+    Args:
+        monkeypatch: Monkeypatch value used by the operation.
+        test_project: Test project value used by the operation.
+    """
+
     def raise_missing_python(*_args, **_kwargs):
+        """Raise missing python.
+
+        Args:
+            _args: Args value used by the operation.
+            _kwargs: Kwargs value used by the operation.
+        """
         raise FileNotFoundError("python")
 
     monkeypatch.setattr(
@@ -200,13 +284,33 @@ def test_streaming_index_missing_python_raises_clear_error(
 def test_streaming_index_failure_raises_with_stderr_detail(
     monkeypatch, test_project
 ) -> None:
+    """Verifies that streaming index failure raises with stderr detail.
+
+    Args:
+        monkeypatch: Monkeypatch value used by the operation.
+        test_project: Test project value used by the operation.
+    """
+
     class FailedPopen:
+        """Represents failed popen behavior and data.
+
+        Attributes:
+            See annotated class attributes for stored values.
+        """
+
         def __init__(self, *_args, **_kwargs):
+            """Initializes the instance.
+
+            Args:
+                _args: Args value used by the operation.
+                _kwargs: Kwargs value used by the operation.
+            """
             self.returncode = 2
             self.stdout = io.StringIO("")
             self.stderr = io.StringIO("warning\nfatal index error\n")
 
         def wait(self):
+            """Wait."""
             return self.returncode
 
     monkeypatch.setattr(
@@ -232,13 +336,27 @@ def test_streaming_index_failure_raises_with_stderr_detail(
 
 
 def test_extract_progress_label_suppresses_noisy_warning() -> None:
+    """Verifies that extract progress label suppresses noisy warning."""
     assert _extract_progress_label("Warning: noisy dependency output") == ""
 
 
 def test_init_builds_command_without_force_when_disabled(test_project) -> None:
+    """Verifies that init builds command without force when disabled.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     calls = []
 
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         calls.append(command)
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
@@ -254,7 +372,21 @@ def test_init_builds_command_without_force_when_disabled(test_project) -> None:
 
 
 def test_failed_command_raises_with_stderr_detail(test_project) -> None:
+    """Verifies that failed command raises with stderr detail.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         return subprocess.CompletedProcess(
             command,
             2,
@@ -277,6 +409,11 @@ def test_failed_command_raises_with_stderr_detail(test_project) -> None:
 
 
 def test_successful_dry_run_filters_known_graphrag_logging_error(test_project) -> None:
+    """Verifies that successful dry run filters known graphrag logging error.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     logging_error = (
         "--- Logging error ---\n"
         "Traceback (most recent call last):\n"
@@ -287,6 +424,14 @@ def test_successful_dry_run_filters_known_graphrag_logging_error(test_project) -
     )
 
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         return subprocess.CompletedProcess(command, 0, stdout="", stderr=logging_error)
 
     service = GraphRAGCommandService(test_project.paths, runner=runner)
@@ -302,7 +447,21 @@ def test_successful_dry_run_filters_known_graphrag_logging_error(test_project) -
 
 
 def test_non_dry_run_keeps_stderr(test_project) -> None:
+    """Verifies that non dry run keeps stderr.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="warning\n")
 
     service = GraphRAGCommandService(test_project.paths, runner=runner)
@@ -318,7 +477,21 @@ def test_non_dry_run_keeps_stderr(test_project) -> None:
 
 
 def test_failed_command_without_output_uses_generic_message(test_project) -> None:
+    """Verifies that failed command without output uses generic message.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         return subprocess.CompletedProcess(command, 2, stdout="", stderr="")
 
     service = GraphRAGCommandService(test_project.paths, runner=runner)
@@ -333,7 +506,21 @@ def test_failed_command_without_output_uses_generic_message(test_project) -> Non
 
 
 def test_missing_python_executable_raises_clear_error(test_project) -> None:
+    """Verifies that missing python executable raises clear error.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         raise FileNotFoundError("python")
 
     service = GraphRAGCommandService(test_project.paths, runner=runner)

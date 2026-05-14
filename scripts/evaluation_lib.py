@@ -1,3 +1,11 @@
+"""Command-line script for evaluation lib.
+
+This module belongs to `scripts.evaluation_lib` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -58,6 +66,12 @@ ANSWER_COLUMNS = (
 
 @dataclass(frozen=True)
 class BenchmarkQuestion:
+    """Represents benchmark question behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     id: str
     question: str
     intent: str
@@ -69,6 +83,14 @@ class BenchmarkQuestion:
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "BenchmarkQuestion":
+        """Builds an instance from a dictionary payload.
+
+        Args:
+            payload: Structured payload being parsed or serialized.
+
+        Returns:
+            "BenchmarkQuestion" produced by the operation.
+        """
         return cls(
             id=str(payload["id"]),
             question=str(payload["question"]),
@@ -87,6 +109,12 @@ class BenchmarkQuestion:
 
 @dataclass(frozen=True)
 class Benchmark:
+    """Represents benchmark behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     path: Path
     version: int
     name: str
@@ -97,11 +125,22 @@ class Benchmark:
 
     @property
     def root(self) -> Path:
+        """Root.
+
+        Returns:
+            Path produced by the operation.
+        """
         return self.path.parent.parent
 
 
 @dataclass(frozen=True)
 class CommandRun:
+    """Represents command run behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     command: tuple[str, ...]
     returncode: int
     stdout: str
@@ -110,9 +149,19 @@ class CommandRun:
 
     @property
     def ok(self) -> bool:
+        """Ok.
+
+        Returns:
+            bool produced by the operation.
+        """
         return self.returncode == 0
 
     def to_dict(self) -> dict[str, object]:
+        """Serializes this value to a dictionary.
+
+        Returns:
+            dict[str, object] produced by the operation.
+        """
         return {
             "command": list(self.command),
             "returncode": self.returncode,
@@ -124,6 +173,12 @@ class CommandRun:
 
 @dataclass(frozen=True)
 class EvaluationConfig:
+    """Stores evaluation config data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     benchmark_path: Path
     project_root: Path | None
     results_dir: Path
@@ -136,6 +191,12 @@ class EvaluationConfig:
 
 @dataclass(frozen=True)
 class EvaluationResult:
+    """Stores evaluation result data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     benchmark: Benchmark
     project_root: Path | None
     generated_at: str
@@ -144,6 +205,14 @@ class EvaluationResult:
 
 
 def load_benchmark(path: Path) -> Benchmark:
+    """Loads benchmark.
+
+    Args:
+        path: Filesystem path used by the operation.
+
+    Returns:
+        Benchmark produced by the operation.
+    """
     resolved_path = path.resolve()
     payload = yaml.safe_load(resolved_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
@@ -169,6 +238,15 @@ def load_benchmark(path: Path) -> Benchmark:
 def resolve_project_root(
     benchmark: Benchmark, explicit_project_root: Path | None
 ) -> Path | None:
+    """Resolve project root.
+
+    Args:
+        benchmark: Benchmark value used by the operation.
+        explicit_project_root: Explicit project root value used by the operation.
+
+    Returns:
+        Path | None produced by the operation.
+    """
     if explicit_project_root is not None:
         return explicit_project_root.resolve()
     if not benchmark.source_project:
@@ -188,6 +266,14 @@ def resolve_project_root(
 
 
 def run_graph_modes_evaluation(config: EvaluationConfig) -> EvaluationResult:
+    """Run graph modes evaluation.
+
+    Args:
+        config: Loaded knowledge-base configuration mapping.
+
+    Returns:
+        EvaluationResult produced by the operation.
+    """
     benchmark = load_benchmark(config.benchmark_path)
     project_root = resolve_project_root(benchmark, config.project_root)
     command_cwd = benchmark.root
@@ -245,6 +331,15 @@ def run_graph_modes_evaluation(config: EvaluationConfig) -> EvaluationResult:
 def evaluate_auto_route(
     question: BenchmarkQuestion, *, project_root: Path | None
 ) -> dict[str, object]:
+    """Evaluate auto route.
+
+    Args:
+        question: User question to answer from available evidence.
+        project_root: Project root used to resolve knowledge-base paths.
+
+    Returns:
+        dict[str, object] produced by the operation.
+    """
     expected_method = question.expected_method or ""
     try:
         status_service = (
@@ -289,6 +384,19 @@ def evaluate_legacy_find(
     limit: int,
     timeout_seconds: int,
 ) -> dict[str, object]:
+    """Evaluate legacy find.
+
+    Args:
+        question: User question to answer from available evidence.
+        project_root: Project root used to resolve knowledge-base paths.
+        command_cwd: Command cwd value used by the operation.
+        results_dir: Results dir value used by the operation.
+        limit: Maximum number of results to return or process.
+        timeout_seconds: Timeout seconds value used by the operation.
+
+    Returns:
+        dict[str, object] produced by the operation.
+    """
     if project_root is None:
         return _skipped_retrieval_row(
             question,
@@ -371,6 +479,19 @@ def evaluate_legacy_ask(
     allow_provider_calls: bool,
     timeout_seconds: int,
 ) -> dict[str, object]:
+    """Evaluate legacy ask.
+
+    Args:
+        question: User question to answer from available evidence.
+        project_root: Project root used to resolve knowledge-base paths.
+        command_cwd: Command cwd value used by the operation.
+        results_dir: Results dir value used by the operation.
+        allow_provider_calls: Allow provider calls value used by the operation.
+        timeout_seconds: Timeout seconds value used by the operation.
+
+    Returns:
+        dict[str, object] produced by the operation.
+    """
     if not allow_provider_calls:
         return _skipped_answer_row(
             question,
@@ -426,6 +547,20 @@ def evaluate_graph_method(
     timeout_seconds: int,
     command_cwd: Path | None = None,
 ) -> dict[str, object]:
+    """Evaluate graph method.
+
+    Args:
+        question: User question to answer from available evidence.
+        method: Method value used by the operation.
+        project_root: Project root used to resolve knowledge-base paths.
+        results_dir: Results dir value used by the operation.
+        allow_provider_calls: Allow provider calls value used by the operation.
+        timeout_seconds: Timeout seconds value used by the operation.
+        command_cwd: Command cwd value used by the operation.
+
+    Returns:
+        dict[str, object] produced by the operation.
+    """
     if method not in GRAPH_QUERY_METHODS:
         raise ValueError(f"Unsupported GraphRAG method: {method}")
     if not allow_provider_calls:
@@ -496,6 +631,16 @@ def evaluate_graph_method(
 def run_command(
     command: Sequence[str], *, cwd: Path, timeout_seconds: int
 ) -> CommandRun:
+    """Run command.
+
+    Args:
+        command: Command value used by the operation.
+        cwd: Cwd value used by the operation.
+        timeout_seconds: Timeout seconds value used by the operation.
+
+    Returns:
+        CommandRun produced by the operation.
+    """
     started = time.perf_counter()
     completed = subprocess.run(
         list(command),
@@ -517,6 +662,15 @@ def run_command(
 def score_expected_source_coverage(
     expected_sources: Sequence[str], result_payloads: Sequence[object]
 ) -> dict[str, object]:
+    """Score expected source coverage.
+
+    Args:
+        expected_sources: Expected sources value used by the operation.
+        result_payloads: Result payloads value used by the operation.
+
+    Returns:
+        dict[str, object] produced by the operation.
+    """
     expected = [_normalize_identifier(value) for value in expected_sources if value]
     if not expected:
         return {
@@ -553,6 +707,22 @@ def score_answer_row(
     artifact_path: str,
     error: str,
 ) -> dict[str, object]:
+    """Score answer row.
+
+    Args:
+        question: User question to answer from available evidence.
+        retriever: Retriever value used by the operation.
+        method: Method value used by the operation.
+        status: Status value used by the operation.
+        answer_text: Answer text value used by the operation.
+        claim_support: Claim support value used by the operation.
+        latency_seconds: Latency seconds value used by the operation.
+        artifact_path: Artifact path value used by the operation.
+        error: Error value used by the operation.
+
+    Returns:
+        dict[str, object] produced by the operation.
+    """
     expected_insufficient = "insufficient_evidence" in question.expected_behaviors
     observed_insufficient = _mentions_insufficient_evidence(answer_text)
     expected_coverage = score_expected_source_coverage(
@@ -584,6 +754,13 @@ def score_answer_row(
 def write_results(
     result: EvaluationResult, results_dir: Path, *, allow_provider_calls: bool
 ) -> None:
+    """Writes results.
+
+    Args:
+        result: Result value used by the operation.
+        results_dir: Results dir value used by the operation.
+        allow_provider_calls: Allow provider calls value used by the operation.
+    """
     results_dir.mkdir(parents=True, exist_ok=True)
     write_csv(
         results_dir / "retrieval_metrics.csv", RETRIEVAL_COLUMNS, result.retrieval_rows
@@ -598,6 +775,13 @@ def write_results(
 def write_csv(
     path: Path, columns: Sequence[str], rows: Sequence[dict[str, object]]
 ) -> None:
+    """Writes csv.
+
+    Args:
+        path: Filesystem path used by the operation.
+        columns: Columns value used by the operation.
+        rows: Rows value used by the operation.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(columns))
@@ -609,6 +793,17 @@ def write_csv(
 def write_artifact(
     results_dir: Path, question_id: str, filename: str, payload: dict[str, object]
 ) -> str:
+    """Writes artifact.
+
+    Args:
+        results_dir: Results dir value used by the operation.
+        question_id: Question id value used by the operation.
+        filename: Filename value used by the operation.
+        payload: Structured payload being parsed or serialized.
+
+    Returns:
+        str produced by the operation.
+    """
     artifact_path = results_dir / ARTIFACTS_DIR / question_id / filename
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     artifact_path.write_text(
@@ -622,6 +817,15 @@ def write_artifact(
 
 
 def render_summary(result: EvaluationResult, *, allow_provider_calls: bool) -> str:
+    """Render summary.
+
+    Args:
+        result: Result value used by the operation.
+        allow_provider_calls: Allow provider calls value used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     retrieval_status = _status_counts(result.retrieval_rows)
     answer_status = _status_counts(result.answer_rows)
     average_recall = _average_numeric(
@@ -666,6 +870,15 @@ def render_summary(result: EvaluationResult, *, allow_provider_calls: bool) -> s
 
 
 def _kb_command(project_root: Path, *parts: str) -> tuple[str, ...]:
+    """Handles kb command.
+
+    Args:
+        project_root: Project root used to resolve knowledge-base paths.
+        parts: Parts value used by the operation.
+
+    Returns:
+        tuple[str, ...] produced by the operation.
+    """
     return (
         sys.executable,
         "-m",
@@ -686,6 +899,20 @@ def _retrieval_row_for_run(
     artifact_path: str,
     error: str,
 ) -> dict[str, object]:
+    """Handles retrieval row for run.
+
+    Args:
+        question: User question to answer from available evidence.
+        retriever: Retriever value used by the operation.
+        method: Method value used by the operation.
+        status: Status value used by the operation.
+        run: Run value used by the operation.
+        artifact_path: Artifact path value used by the operation.
+        error: Error value used by the operation.
+
+    Returns:
+        dict[str, object] produced by the operation.
+    """
     return _retrieval_row(
         question,
         retriever=retriever,
@@ -714,6 +941,20 @@ def _answer_row_for_run(
     artifact_path: str,
     error: str,
 ) -> dict[str, object]:
+    """Handles answer row for run.
+
+    Args:
+        question: User question to answer from available evidence.
+        retriever: Retriever value used by the operation.
+        method: Method value used by the operation.
+        status: Status value used by the operation.
+        run: Run value used by the operation.
+        artifact_path: Artifact path value used by the operation.
+        error: Error value used by the operation.
+
+    Returns:
+        dict[str, object] produced by the operation.
+    """
     return _answer_row(
         question,
         retriever=retriever,
@@ -737,6 +978,17 @@ def _answer_row_for_run(
 def _skipped_retrieval_row(
     question: BenchmarkQuestion, *, retriever: str, method: str, status: str
 ) -> dict[str, object]:
+    """Handles skipped retrieval row.
+
+    Args:
+        question: User question to answer from available evidence.
+        retriever: Retriever value used by the operation.
+        method: Method value used by the operation.
+        status: Status value used by the operation.
+
+    Returns:
+        dict[str, object] produced by the operation.
+    """
     return _retrieval_row(
         question,
         retriever=retriever,
@@ -758,6 +1010,17 @@ def _skipped_retrieval_row(
 def _skipped_answer_row(
     question: BenchmarkQuestion, *, retriever: str, method: str, status: str
 ) -> dict[str, object]:
+    """Handles skipped answer row.
+
+    Args:
+        question: User question to answer from available evidence.
+        retriever: Retriever value used by the operation.
+        method: Method value used by the operation.
+        status: Status value used by the operation.
+
+    Returns:
+        dict[str, object] produced by the operation.
+    """
     return _answer_row(
         question,
         retriever=retriever,
@@ -795,6 +1058,27 @@ def _retrieval_row(
     artifact_path: str,
     error: str,
 ) -> dict[str, object]:
+    """Handles retrieval row.
+
+    Args:
+        question: User question to answer from available evidence.
+        retriever: Retriever value used by the operation.
+        method: Method value used by the operation.
+        status: Status value used by the operation.
+        expected_method: Expected method value used by the operation.
+        routed_method: Routed method value used by the operation.
+        method_fit: Method fit value used by the operation.
+        expected_source_count: Expected source count value used by the operation.
+        matched_source_count: Matched source count value used by the operation.
+        recall_at_5: Recall at 5 value used by the operation.
+        multi_source_coverage: Multi source coverage value used by the operation.
+        latency_seconds: Latency seconds value used by the operation.
+        artifact_path: Artifact path value used by the operation.
+        error: Error value used by the operation.
+
+    Returns:
+        dict[str, object] produced by the operation.
+    """
     return {
         "question_id": question.id,
         "question": question.question,
@@ -831,6 +1115,27 @@ def _answer_row(
     artifact_path: str,
     error: str,
 ) -> dict[str, object]:
+    """Handles answer row.
+
+    Args:
+        question: User question to answer from available evidence.
+        retriever: Retriever value used by the operation.
+        method: Method value used by the operation.
+        status: Status value used by the operation.
+        claim_support: Claim support value used by the operation.
+        claim_support_rate: Claim support rate value used by the operation.
+        insufficient_evidence_expected: Insufficient evidence expected value used by the operation.
+        insufficient_evidence_observed: Insufficient evidence observed value used by the operation.
+        insufficient_evidence_behavior: Insufficient evidence behavior value used by the operation.
+        comprehensiveness: Comprehensiveness value used by the operation.
+        diversity: Diversity value used by the operation.
+        latency_seconds: Latency seconds value used by the operation.
+        artifact_path: Artifact path value used by the operation.
+        error: Error value used by the operation.
+
+    Returns:
+        dict[str, object] produced by the operation.
+    """
     return {
         "question_id": question.id,
         "question": question.question,
@@ -851,6 +1156,14 @@ def _answer_row(
 
 
 def _json_from_stdout(stdout: str) -> object:
+    """Handles json from stdout.
+
+    Args:
+        stdout: Stdout value used by the operation.
+
+    Returns:
+        object produced by the operation.
+    """
     text = stdout.strip()
     if not text:
         return None
@@ -868,12 +1181,26 @@ def _json_from_stdout(stdout: str) -> object:
 
 
 def _searchable_text(payload: object) -> str:
+    """Handles searchable text.
+
+    Args:
+        payload: Structured payload being parsed or serialized.
+
+    Returns:
+        str produced by the operation.
+    """
     values: list[str] = []
     _collect_strings(payload, values)
     return _normalize_identifier(" ".join(values))
 
 
 def _collect_strings(payload: object, values: list[str]) -> None:
+    """Handles collect strings.
+
+    Args:
+        payload: Structured payload being parsed or serialized.
+        values: Values value used by the operation.
+    """
     if isinstance(payload, dict):
         for value in payload.values():
             _collect_strings(value, values)
@@ -885,12 +1212,28 @@ def _collect_strings(payload: object, values: list[str]) -> None:
 
 
 def _normalize_identifier(value: str) -> str:
+    """Handles normalize identifier.
+
+    Args:
+        value: Input value being normalized, validated, or serialized.
+
+    Returns:
+        str produced by the operation.
+    """
     lowered = value.casefold()
     normalized = re.sub(r"[^a-z0-9]+", " ", lowered)
     return " ".join(normalized.split())
 
 
 def _mentions_insufficient_evidence(answer_text: str) -> bool:
+    """Handles mentions insufficient evidence.
+
+    Args:
+        answer_text: Answer text value used by the operation.
+
+    Returns:
+        bool produced by the operation.
+    """
     normalized = answer_text.casefold()
     markers = (
         "insufficient evidence",
@@ -904,6 +1247,14 @@ def _mentions_insufficient_evidence(answer_text: str) -> bool:
 
 
 def _claim_support_rate(claim_support: str) -> object:
+    """Handles claim support rate.
+
+    Args:
+        claim_support: Claim support value used by the operation.
+
+    Returns:
+        object produced by the operation.
+    """
     normalized = claim_support.casefold()
     if not normalized:
         return ""
@@ -917,6 +1268,14 @@ def _claim_support_rate(claim_support: str) -> object:
 
 
 def _comprehensiveness_score(answer_text: str) -> object:
+    """Handles comprehensiveness score.
+
+    Args:
+        answer_text: Answer text value used by the operation.
+
+    Returns:
+        object produced by the operation.
+    """
     words = re.findall(r"\w+", answer_text)
     if not words:
         return 0.0
@@ -924,6 +1283,14 @@ def _comprehensiveness_score(answer_text: str) -> object:
 
 
 def _status_counts(rows: Iterable[dict[str, object]]) -> str:
+    """Handles status counts.
+
+    Args:
+        rows: Rows value used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     counts: dict[str, int] = {}
     for row in rows:
         status = str(row.get("status") or "unknown")
@@ -932,6 +1299,14 @@ def _status_counts(rows: Iterable[dict[str, object]]) -> str:
 
 
 def _average_numeric(values: Iterable[object]) -> float | None:
+    """Handles average numeric.
+
+    Args:
+        values: Values value used by the operation.
+
+    Returns:
+        float | None produced by the operation.
+    """
     numeric_values: list[float] = []
     for value in values:
         if value == "" or value is None:
@@ -946,12 +1321,29 @@ def _average_numeric(values: Iterable[object]) -> float | None:
 
 
 def _metric_text(value: float | None) -> str:
+    """Handles metric text.
+
+    Args:
+        value: Input value being normalized, validated, or serialized.
+
+    Returns:
+        str produced by the operation.
+    """
     if value is None:
         return "n/a"
     return f"{value:.3f}"
 
 
 def _display_path(path: Path, repo_root: Path) -> str:
+    """Handles display path.
+
+    Args:
+        path: Filesystem path used by the operation.
+        repo_root: Repo root value used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     resolved = path.resolve()
     try:
         return resolved.relative_to(repo_root.resolve()).as_posix()
@@ -964,10 +1356,26 @@ def _display_path(path: Path, repo_root: Path) -> str:
 
 
 def _bool_metric(value: bool) -> int:
+    """Handles bool metric.
+
+    Args:
+        value: Input value being normalized, validated, or serialized.
+
+    Returns:
+        int produced by the operation.
+    """
     return 1 if value else 0
 
 
 def _round_latency(value: object) -> object:
+    """Handles round latency.
+
+    Args:
+        value: Input value being normalized, validated, or serialized.
+
+    Returns:
+        object produced by the operation.
+    """
     if value == "" or value is None:
         return ""
     try:
@@ -977,6 +1385,14 @@ def _round_latency(value: object) -> object:
 
 
 def _optional_str(value: object) -> str | None:
+    """Handles optional str.
+
+    Args:
+        value: Input value being normalized, validated, or serialized.
+
+    Returns:
+        str | None produced by the operation.
+    """
     if value is None:
         return None
     text = str(value).strip()
@@ -984,8 +1400,24 @@ def _optional_str(value: object) -> str | None:
 
 
 def _command_error(run: CommandRun) -> str:
+    """Handles command error.
+
+    Args:
+        run: Run value used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     return (run.stderr.strip() or run.stdout.strip())[:1000]
 
 
 def _short_error(exc: Exception) -> str:
+    """Handles short error.
+
+    Args:
+        exc: Exc value used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     return str(exc)[:1000]

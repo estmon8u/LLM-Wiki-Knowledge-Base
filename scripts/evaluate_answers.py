@@ -1,3 +1,11 @@
+"""Command-line script for evaluate answers.
+
+This module belongs to `scripts.evaluate_answers` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import argparse
@@ -20,6 +28,11 @@ from scripts.evaluation_lib import (
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Builds the command-line argument parser.
+
+    Returns:
+        argparse.ArgumentParser produced by the operation.
+    """
     parser = argparse.ArgumentParser(
         description=(
             "Run answer-focused Phase 8 metrics for GraphRAG modes and optional "
@@ -71,6 +84,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Runs the command-line entry point.
+
+    Args:
+        argv: Optional argument vector. Uses process arguments when omitted.
+
+    Returns:
+        int produced by the operation.
+    """
     args = build_parser().parse_args(argv)
     result = run_graph_modes_evaluation(
         EvaluationConfig(

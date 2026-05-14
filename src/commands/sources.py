@@ -1,3 +1,11 @@
+"""Click command implementation for the kb sources command.
+
+This module belongs to `src.commands.sources` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import click
@@ -17,10 +25,24 @@ SUMMARY = "Manage source inventory."
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
+    """Builds the command registry specification for this module.
+
+    Args:
+        _: Value value used by the operation.
+
+    Returns:
+        CommandSpec produced by the operation.
+    """
     return CommandSpec(name="sources", summary=SUMMARY)
 
 
 def create_command() -> click.Command:
+    """Creates the Click command exposed by this module.
+
+    Returns:
+        click.Command produced by the operation.
+    """
+
     @click.group(
         name="sources",
         help=SUMMARY,
@@ -29,6 +51,11 @@ def create_command() -> click.Command:
     )
     @click.pass_context
     def sources_group(ctx: click.Context) -> None:
+        """Sources group.
+
+        Args:
+            ctx: Click context carrying command invocation state.
+        """
         if ctx.invoked_subcommand is None:
             ctx.invoke(sources_list)
 

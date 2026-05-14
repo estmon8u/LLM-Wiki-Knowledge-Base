@@ -55,6 +55,12 @@ class SearchIndexUnavailable(RuntimeError):
 
 @dataclass(frozen=True)
 class IndexedFileState:
+    """Represents indexed file state behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     page_path: str
     mtime_ns: int
     size_bytes: int
@@ -62,6 +68,12 @@ class IndexedFileState:
 
 @dataclass(frozen=True)
 class IndexedChunk:
+    """Represents indexed chunk behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     page_path: str
     page_type: str
     title: str
@@ -73,6 +85,12 @@ class IndexedChunk:
 
 @dataclass(frozen=True)
 class SearchHit:
+    """Represents search hit behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     page_path: str
     page_type: str
     title: str
@@ -89,6 +107,11 @@ class SearchIndexStore:
         self.db_path = db_path
 
     def load_indexed_files(self) -> dict[str, tuple[int, int]]:
+        """Loads indexed files.
+
+        Returns:
+            dict[str, tuple[int, int]] produced by the operation.
+        """
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT page_path, mtime_ns, size_bytes FROM indexed_files"
@@ -96,6 +119,14 @@ class SearchIndexStore:
         return {row[0]: (row[1], row[2]) for row in rows}
 
     def load_meta(self, key: str) -> str | None:
+        """Loads meta.
+
+        Args:
+            key: Key value used by the operation.
+
+        Returns:
+            str | None produced by the operation.
+        """
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT value FROM search_index_meta WHERE key = ?", (key,)
@@ -114,6 +145,12 @@ class SearchIndexStore:
         file_states: list[IndexedFileState],
         chunks: list[IndexedChunk],
     ) -> None:
+        """Rebuild.
+
+        Args:
+            file_states: File states value used by the operation.
+            chunks: Chunks value used by the operation.
+        """
         with self._connect() as conn:
             conn.execute("DELETE FROM indexed_files")
             conn.execute("DELETE FROM page_chunks")
@@ -222,6 +259,15 @@ class SearchIndexStore:
         return len(stale)
 
     def search(self, match_query: str, *, limit: int) -> list[SearchHit]:
+        """Search.
+
+        Args:
+            match_query: Match query value used by the operation.
+            limit: Maximum number of results to return or process.
+
+        Returns:
+            list[SearchHit] produced by the operation.
+        """
         with self._connect() as conn:
             rows = conn.execute(
                 """

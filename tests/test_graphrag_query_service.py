@@ -1,3 +1,11 @@
+"""Tests for test graphrag query service.
+
+This module belongs to `tests.test_graphrag_query_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import hashlib
@@ -19,6 +27,12 @@ from src.services.graphrag_status_service import GraphRAGStatusService
 
 
 def _write_ready_graph(test_project, *, index_success: bool = True) -> None:
+    """Handles write ready graph.
+
+    Args:
+        test_project: Test project value used by the operation.
+        index_success: Index success value used by the operation.
+    """
     test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
     test_project.write_file(
         "graph/graphrag/input/sources.json",
@@ -39,6 +53,12 @@ def _write_ready_graph(test_project, *, index_success: bool = True) -> None:
 
 
 def _build_query_service(test_project, runner):
+    """Handles build query service.
+
+    Args:
+        test_project: Test project value used by the operation.
+        runner: Runner value used by the operation.
+    """
     command_service = GraphRAGCommandService(test_project.paths, runner=runner)
     status_service = GraphRAGStatusService(test_project.paths)
     return GraphRAGQueryService(
@@ -51,10 +71,23 @@ def _build_query_service(test_project, runner):
 
 
 def test_graph_query_runs_explicit_method_and_options(test_project) -> None:
+    """Verifies that graph query runs explicit method and options.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     _write_ready_graph(test_project)
     calls = []
 
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         calls.append(command)
         return subprocess.CompletedProcess(
             command,
@@ -105,9 +138,22 @@ def test_graph_query_runs_explicit_method_and_options(test_project) -> None:
 def test_graph_query_raw_output_prefers_stdout_over_progress_stderr(
     test_project,
 ) -> None:
+    """Verifies that graph query raw output prefers stdout over progress stderr.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     _write_ready_graph(test_project)
 
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         return subprocess.CompletedProcess(
             command,
             0,
@@ -135,9 +181,22 @@ def test_graph_query_raw_output_prefers_stdout_over_progress_stderr(
 def test_graph_query_save_writes_analysis_page_and_refreshes_index(
     test_project,
 ) -> None:
+    """Verifies that graph query save writes analysis page and refreshes index.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     _write_ready_graph(test_project)
 
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         return subprocess.CompletedProcess(
             command,
             0,
@@ -198,6 +257,11 @@ def test_graph_query_save_writes_analysis_page_and_refreshes_index(
 
 
 def test_graph_query_requires_index_output(test_project) -> None:
+    """Verifies that graph query requires index output.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
     test_project.write_file(
         "graph/graphrag/input/sources.json",
@@ -214,6 +278,11 @@ def test_graph_query_requires_index_output(test_project) -> None:
 
 
 def test_graph_query_rejects_failed_last_index_run(test_project) -> None:
+    """Verifies that graph query rejects failed last index run.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     _write_ready_graph(test_project, index_success=False)
 
     service = _build_query_service(
@@ -226,9 +295,22 @@ def test_graph_query_rejects_failed_last_index_run(test_project) -> None:
 
 
 def test_graph_query_surfaces_command_failure(test_project) -> None:
+    """Verifies that graph query surfaces command failure.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     _write_ready_graph(test_project)
 
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         return subprocess.CompletedProcess(
             command,
             2,

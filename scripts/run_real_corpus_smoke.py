@@ -1,3 +1,11 @@
+"""Command-line script for run real corpus smoke.
+
+This module belongs to `scripts.run_real_corpus_smoke` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import argparse
@@ -28,12 +36,26 @@ SUPPORTED_SUFFIXES = {
 
 @dataclass
 class CommandRun:
+    """Represents command run behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     args: list[str]
     exit_code: int
     output: str
 
 
 def discover_supported_sources(raw_root: Path) -> list[Path]:
+    """Discover supported sources.
+
+    Args:
+        raw_root: Raw root value used by the operation.
+
+    Returns:
+        list[Path] produced by the operation.
+    """
     return sorted(
         path
         for path in raw_root.rglob("*")
@@ -42,6 +64,14 @@ def discover_supported_sources(raw_root: Path) -> list[Path]:
 
 
 def find_unsupported_probe(raw_root: Path) -> Path | None:
+    """Find unsupported probe.
+
+    Args:
+        raw_root: Raw root value used by the operation.
+
+    Returns:
+        Path | None produced by the operation.
+    """
     unsupported = sorted(
         path
         for path in raw_root.rglob("*")
@@ -55,6 +85,16 @@ def run_cli_command(
     log_path: Path,
     args: list[str],
 ) -> CommandRun:
+    """Run cli command.
+
+    Args:
+        repo_root: Repo root value used by the operation.
+        log_path: Log path value used by the operation.
+        args: Parsed or forwarded command arguments.
+
+    Returns:
+        CommandRun produced by the operation.
+    """
     command_display = "python -m src.cli " + " ".join(args)
     header = f"\n=== {command_display} ===\n"
     print(header, end="")
@@ -87,6 +127,11 @@ def run_cli_command(
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Builds the command-line argument parser.
+
+    Returns:
+        argparse.ArgumentParser produced by the operation.
+    """
     parser = argparse.ArgumentParser(
         description="Run a disposable end-to-end CLI smoke test against a raw corpus."
     )
@@ -102,6 +147,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Runs the command-line entry point.
+
+    Args:
+        argv: Optional argument vector. Uses process arguments when omitted.
+
+    Returns:
+        int produced by the operation.
+    """
     parser = build_parser()
     args = parser.parse_args(argv)
 

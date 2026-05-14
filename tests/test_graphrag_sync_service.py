@@ -1,3 +1,11 @@
+"""Tests for test graphrag sync service.
+
+This module belongs to `tests.test_graphrag_sync_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import subprocess
@@ -26,6 +34,15 @@ def _source_record(
     content_hash: str = "hash-1",
     text_name: str = "rag.md",
 ) -> RawSourceRecord:
+    """Handles source record.
+
+    Args:
+        content_hash: Content hash value used by the operation.
+        text_name: Text name value used by the operation.
+
+    Returns:
+        RawSourceRecord produced by the operation.
+    """
     return RawSourceRecord(
         source_id="src-1",
         slug="rag",
@@ -42,6 +59,11 @@ def _source_record(
 
 
 def _write_settings(test_project) -> None:
+    """Handles write settings.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "graph/graphrag/settings.yaml",
         "input:\n"
@@ -55,6 +77,12 @@ def _write_settings(test_project) -> None:
 
 
 def _write_source(test_project, *, content_hash: str = "hash-1") -> None:
+    """Handles write source.
+
+    Args:
+        test_project: Test project value used by the operation.
+        content_hash: Content hash value used by the operation.
+    """
     test_project.write_file(
         "raw/normalized/rag.md",
         "# Retrieval-Augmented Generation\n\nRAG combines retrieval and generation.\n",
@@ -65,6 +93,11 @@ def _write_source(test_project, *, content_hash: str = "hash-1") -> None:
 
 
 def _write_complete_output(test_project) -> None:
+    """Handles write complete output.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     for table in (
         "documents",
         "text_units",
@@ -77,6 +110,15 @@ def _write_complete_output(test_project) -> None:
 
 
 def _build_service(test_project, runner) -> GraphRAGSyncService:
+    """Handles build service.
+
+    Args:
+        test_project: Test project value used by the operation.
+        runner: Runner value used by the operation.
+
+    Returns:
+        GraphRAGSyncService produced by the operation.
+    """
     command_service = GraphRAGCommandService(test_project.paths, runner=runner)
     workspace_service = GraphRAGWorkspaceService(
         test_project.paths,
@@ -103,6 +145,13 @@ def _record_successful_run(
     input_digest: str,
     config_digest: str,
 ) -> None:
+    """Handles record successful run.
+
+    Args:
+        service: Service value used by the operation.
+        input_digest: Input digest value used by the operation.
+        config_digest: Config digest value used by the operation.
+    """
     input_path = service.status_service.input_path
     service.status_service.record_index_run(
         method="fast",
@@ -123,7 +172,19 @@ def _record_successful_run(
 
 
 def test_sync_skips_when_sources_config_and_complete_output_match(test_project) -> None:
+    """Verifies that sync skips when sources config and complete output match.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+
     def fail_runner(command, **kwargs):
+        """Fail runner.
+
+        Args:
+            command: Command value used by the operation.
+            kwargs: Kwargs value used by the operation.
+        """
         raise AssertionError("index should not run")
 
     _write_settings(test_project)
@@ -145,9 +206,22 @@ def test_sync_skips_when_sources_config_and_complete_output_match(test_project) 
 
 
 def test_sync_uses_incremental_update_when_source_hash_changes(test_project) -> None:
+    """Verifies that sync uses incremental update when source hash changes.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     calls = []
 
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         calls.append(command)
         return subprocess.CompletedProcess(command, 0, stdout="updated\n", stderr="")
 
@@ -172,9 +246,22 @@ def test_sync_uses_incremental_update_when_source_hash_changes(test_project) -> 
 
 
 def test_sync_rebuilds_when_graph_runtime_config_changes(test_project) -> None:
+    """Verifies that sync rebuilds when graph runtime config changes.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     calls = []
 
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         calls.append(command)
         return subprocess.CompletedProcess(command, 0, stdout="rebuilt\n", stderr="")
 
@@ -202,9 +289,22 @@ def test_sync_rebuilds_when_graph_runtime_config_changes(test_project) -> None:
 def test_sync_rebuilds_partial_output_instead_of_incremental_update(
     test_project,
 ) -> None:
+    """Verifies that sync rebuilds partial output instead of incremental update.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     calls = []
 
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         calls.append(command)
         return subprocess.CompletedProcess(command, 0, stdout="rebuilt\n", stderr="")
 
@@ -223,7 +323,19 @@ def test_sync_rebuilds_partial_output_instead_of_incremental_update(
 
 
 def test_sync_skips_index_when_synced_input_has_no_documents(test_project) -> None:
+    """Verifies that sync skips index when synced input has no documents.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+
     def fail_runner(command, **kwargs):
+        """Fail runner.
+
+        Args:
+            command: Command value used by the operation.
+            kwargs: Kwargs value used by the operation.
+        """
         raise AssertionError("index should not run")
 
     _write_settings(test_project)
@@ -237,9 +349,22 @@ def test_sync_skips_index_when_synced_input_has_no_documents(test_project) -> No
 
 
 def test_sync_force_coerces_update_method_to_full_rebuild(test_project) -> None:
+    """Verifies that sync force coerces update method to full rebuild.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     calls = []
 
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         calls.append(command)
         return subprocess.CompletedProcess(command, 0, stdout="rebuilt\n", stderr="")
 
@@ -263,9 +388,22 @@ def test_sync_force_coerces_update_method_to_full_rebuild(test_project) -> None:
 
 
 def test_sync_respects_explicit_method_override(test_project) -> None:
+    """Verifies that sync respects explicit method override.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     calls = []
 
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         calls.append(command)
         return subprocess.CompletedProcess(command, 0, stdout="updated\n", stderr="")
 
@@ -284,9 +422,22 @@ def test_sync_respects_explicit_method_override(test_project) -> None:
 
 
 def test_sync_rebuilds_complete_output_when_metadata_is_missing(test_project) -> None:
+    """Verifies that sync rebuilds complete output when metadata is missing.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     calls = []
 
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         calls.append(command)
         return subprocess.CompletedProcess(command, 0, stdout="rebuilt\n", stderr="")
 
@@ -307,7 +458,21 @@ def test_sync_rebuilds_complete_output_when_metadata_is_missing(test_project) ->
 
 
 def test_sync_records_failed_index_run_before_reraising(test_project) -> None:
+    """Verifies that sync records failed index run before reraising.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+
     def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
         return subprocess.CompletedProcess(
             command,
             2,
@@ -332,6 +497,11 @@ def test_sync_records_failed_index_run_before_reraising(test_project) -> None:
 
 
 def test_graph_runtime_digest_includes_prompt_files(test_project) -> None:
+    """Verifies that graph runtime digest includes prompt files.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     _write_settings(test_project)
     before = graph_runtime_digest(test_project.paths.graph_dir / "graphrag")
     test_project.write_file("graph/graphrag/prompts/entity_extraction.txt", "Prompt A")
@@ -344,6 +514,11 @@ def test_graph_runtime_digest_includes_prompt_files(test_project) -> None:
 def test_graph_input_source_hashes_supports_object_payload_and_ignores_bad_records(
     test_project,
 ) -> None:
+    """Verifies that graph input source hashes supports object payload and ignores bad records.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "graph/graphrag/input/sources.json",
         (
@@ -361,4 +536,5 @@ def test_graph_input_source_hashes_supports_object_payload_and_ignores_bad_recor
 
 
 def test_count_source_hash_changes_handles_missing_previous_snapshot() -> None:
+    """Verifies that count source hash changes handles missing previous snapshot."""
     assert count_source_hash_changes(None, {"src-1": "hash-1"}) is None

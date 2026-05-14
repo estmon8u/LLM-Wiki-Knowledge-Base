@@ -17,6 +17,12 @@ from src.services.project_service import ProjectPaths
 
 @dataclass
 class DoctorCheck:
+    """Represents doctor check behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     name: str
     ok: bool
     detail: str
@@ -25,26 +31,58 @@ class DoctorCheck:
 
 @dataclass
 class DoctorReport:
+    """Stores doctor report data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     checks: list[DoctorCheck] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
+        """Ok.
+
+        Returns:
+            bool produced by the operation.
+        """
         return all(c.severity != "error" for c in self.checks)
 
     @property
     def passed_count(self) -> int:
+        """Passed count.
+
+        Returns:
+            int produced by the operation.
+        """
         return sum(1 for c in self.checks if c.severity == "ok")
 
     @property
     def warning_count(self) -> int:
+        """Warning count.
+
+        Returns:
+            int produced by the operation.
+        """
         return sum(1 for c in self.checks if c.severity == "warning")
 
     @property
     def failed_count(self) -> int:
+        """Failed count.
+
+        Returns:
+            int produced by the operation.
+        """
         return sum(1 for c in self.checks if c.severity == "error")
 
 
 class DoctorService:
+    """Coordinates doctor operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(
         self,
         paths: ProjectPaths,
@@ -58,6 +96,14 @@ class DoctorService:
         self.graphrag_status_service = graphrag_status_service
 
     def diagnose(self, *, strict: bool = False) -> DoctorReport:
+        """Diagnose.
+
+        Args:
+            strict: Strict value used by the operation.
+
+        Returns:
+            DoctorReport produced by the operation.
+        """
         checks: list[DoctorCheck] = []
         checks.append(self._check_project_structure())
         checks.append(self._check_config_file())

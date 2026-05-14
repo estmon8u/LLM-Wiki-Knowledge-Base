@@ -1,3 +1,11 @@
+"""Graphrag sync service service behavior for the knowledge-base workflow.
+
+This module belongs to `src.services.graphrag_sync_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -40,6 +48,12 @@ class GraphRAGSyncError(ValueError):
 
 @dataclass(frozen=True)
 class GraphRAGSyncDecision:
+    """Represents graph ragsync decision behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     action: str
     method: str | None
     reason: str
@@ -53,11 +67,22 @@ class GraphRAGSyncDecision:
     stale_metadata: bool = False
 
     def to_dict(self) -> dict[str, Any]:
+        """Serializes this value to a dictionary.
+
+        Returns:
+            dict[str, Any] produced by the operation.
+        """
         return asdict(self)
 
 
 @dataclass(frozen=True)
 class GraphRAGSyncResult:
+    """Stores graph ragsync result data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     input_sync: GraphRAGInputSyncResult
     decision: GraphRAGSyncDecision
     index_run: GraphRAGIndexRun | None = None
@@ -65,6 +90,12 @@ class GraphRAGSyncResult:
 
 
 class GraphRAGSyncService:
+    """Coordinates graph ragsync operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     def __init__(
         self,
         paths: ProjectPaths,
@@ -93,6 +124,22 @@ class GraphRAGSyncService:
         preview_only: bool = False,
         status_callback: Any | None = None,
     ) -> GraphRAGSyncResult:
+        """Sync.
+
+        Args:
+            method: Method value used by the operation.
+            force: Force value used by the operation.
+            dry_run: Dry run value used by the operation.
+            cache: Cache value used by the operation.
+            skip_validation: Skip validation value used by the operation.
+            verbose: Whether to emit verbose command output.
+            run_index: Run index value used by the operation.
+            preview_only: Preview only value used by the operation.
+            status_callback: Status callback value used by the operation.
+
+        Returns:
+            GraphRAGSyncResult produced by the operation.
+        """
         if self.workspace_service.is_initialized():
             self.workspace_service.sync_settings()
 
@@ -350,6 +397,14 @@ class GraphRAGSyncService:
 
 
 def graph_output_state(status: GraphRAGStatus) -> str:
+    """Graph output state.
+
+    Args:
+        status: Status value used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     if not status.output_present:
         return "missing"
     required_tables = (
@@ -366,12 +421,28 @@ def graph_output_state(status: GraphRAGStatus) -> str:
 
 
 def file_digest(path: Path) -> str:
+    """File digest.
+
+    Args:
+        path: Filesystem path used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     digest = hashlib.sha256()
     digest.update(path.read_bytes())
     return digest.hexdigest()
 
 
 def graph_runtime_digest(workspace_dir: Path) -> str:
+    """Graph runtime digest.
+
+    Args:
+        workspace_dir: Workspace dir value used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     digest = hashlib.sha256()
     _digest_file(digest, workspace_dir / "settings.yaml", "settings.yaml")
     prompt_dir = workspace_dir / "prompts"
@@ -382,6 +453,14 @@ def graph_runtime_digest(workspace_dir: Path) -> str:
 
 
 def graph_input_source_hashes(input_path: Path) -> dict[str, str]:
+    """Graph input source hashes.
+
+    Args:
+        input_path: Input path value used by the operation.
+
+    Returns:
+        dict[str, str] produced by the operation.
+    """
     payload = json.loads(input_path.read_text(encoding="utf-8"))
     records: list[Any]
     if isinstance(payload, list):
@@ -410,6 +489,15 @@ def count_source_hash_changes(
     previous: dict[str, str] | None,
     current: dict[str, str],
 ) -> int | None:
+    """Count source hash changes.
+
+    Args:
+        previous: Previous value used by the operation.
+        current: Current value used by the operation.
+
+    Returns:
+        int | None produced by the operation.
+    """
     if previous is None:
         return None
     changed = 0
@@ -421,6 +509,14 @@ def count_source_hash_changes(
 
 
 def cost_warning(method: str) -> str:
+    """Cost warning.
+
+    Args:
+        method: Method value used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     if method in UPDATE_METHODS:
         return "Incremental GraphRAG update can incur provider costs."
     return "Full GraphRAG rebuild can incur model and embedding provider costs."

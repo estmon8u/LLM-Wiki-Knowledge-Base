@@ -1,3 +1,11 @@
+"""Provider integration helpers for openai provider.
+
+This module belongs to `src.providers.openai_provider` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import os
@@ -31,6 +39,14 @@ class OpenAIProvider(TextProvider):
 
     @provider_retry()
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        """Generate.
+
+        Args:
+            request: Request value used by the operation.
+
+        Returns:
+            ProviderResponse produced by the operation.
+        """
         messages: list[dict[str, str]] = []
         if request.system_prompt:
             messages.append({"role": "developer", "content": request.system_prompt})

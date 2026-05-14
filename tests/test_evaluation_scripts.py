@@ -1,3 +1,11 @@
+"""Tests for test evaluation scripts.
+
+This module belongs to `tests.test_evaluation_scripts` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+
 from __future__ import annotations
 
 import csv
@@ -9,6 +17,7 @@ from scripts.evaluation_lib import CommandRun, EvaluationConfig
 
 
 def test_score_expected_source_coverage_matches_nested_payloads() -> None:
+    """Verifies that score expected source coverage matches nested payloads."""
     score = evaluation_lib.score_expected_source_coverage(
         ["REALM", "RAG"],
         [
@@ -34,6 +43,11 @@ def test_score_expected_source_coverage_matches_nested_payloads() -> None:
 
 
 def test_benchmark_source_project_resolves_from_repo_sibling(tmp_path: Path) -> None:
+    """Verifies that benchmark source project resolves from repo sibling.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     repo_root = tmp_path / "repo"
     benchmark_path = repo_root / "eval" / "benchmark.yaml"
     benchmark_path.parent.mkdir(parents=True)
@@ -62,6 +76,13 @@ questions:
 def test_graph_modes_evaluation_writes_safe_baseline_outputs(
     tmp_path: Path, test_project, monkeypatch
 ) -> None:
+    """Verifies that graph modes evaluation writes safe baseline outputs.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+        test_project: Test project value used by the operation.
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     benchmark_path = tmp_path / "benchmark.yaml"
     benchmark_path.write_text(
         """
@@ -85,6 +106,13 @@ questions:
     )
 
     def fake_run_command(command, *, cwd, timeout_seconds):
+        """Fake run command.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            timeout_seconds: Timeout seconds value used by the operation.
+        """
         return CommandRun(
             command=tuple(command),
             returncode=0,
@@ -142,6 +170,13 @@ questions:
 def test_graph_method_provider_payload_scores_claim_support(
     tmp_path: Path, test_project, monkeypatch
 ) -> None:
+    """Verifies that graph method provider payload scores claim support.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+        test_project: Test project value used by the operation.
+        monkeypatch: Monkeypatch value used by the operation.
+    """
     question = evaluation_lib.BenchmarkQuestion(
         id="realm_vs_rag",
         question="How does REALM differ from RAG?",
@@ -153,6 +188,13 @@ def test_graph_method_provider_payload_scores_claim_support(
     )
 
     def fake_run_command(command, *, cwd, timeout_seconds):
+        """Fake run command.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            timeout_seconds: Timeout seconds value used by the operation.
+        """
         return CommandRun(
             command=tuple(command),
             returncode=0,
