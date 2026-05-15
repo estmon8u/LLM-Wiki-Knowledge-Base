@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import click
 
-from src.commands.common import console, emit_json, require_initialized
+from src.commands.common import SEVERITY_STYLE, console, emit_json, require_initialized
 from src.models.command_models import CommandContext, CommandSpec
 from src.providers import ProviderError
 from rich.markup import escape as _esc
@@ -19,12 +19,6 @@ SUMMARY = (
     "Run semantic review checks for contradictions and terminology drift "
     "(requires a configured provider)."
 )
-
-_SEVERITY_STYLE = {
-    "error": "red",
-    "warning": "yellow",
-    "suggestion": "dim",
-}
 
 _SEVERITY_RANK = {"suggestion": 0, "warning": 1, "error": 2}
 
@@ -111,7 +105,7 @@ def create_command() -> click.Command:
             pages = ", ".join(issue.pages)
             sev_label = _esc(issue.severity.upper())
             body = f"{_esc(issue.code)}: {_esc(issue.message)} ({_esc(pages)})"
-            style = _SEVERITY_STYLE.get(issue.severity)
+            style = SEVERITY_STYLE.get(issue.severity)
             if style:
                 console.print(f"[{style}]\\[{sev_label}][/{style}] {body}")
             else:

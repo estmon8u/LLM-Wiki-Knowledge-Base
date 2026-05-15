@@ -1463,6 +1463,7 @@ def test_status_changed_json_output() -> None:
         data = json.loads(result.output)
         assert "entries" in data
         assert data["new"] >= 1
+        assert "missing" in data
 
 
 def test_sources_list_json_output() -> None:

@@ -47,3 +47,12 @@ def test_parse_model_payload_raises_for_schema_mismatch() -> None:
     """Verifies that parse model payload raises for schema mismatch."""
     with pytest.raises(StructuredOutputError, match="structured JSON schema"):
         parse_model_payload('{"missing": true}', _StructuredPayload)
+
+
+def test_parse_model_payload_skips_prior_json_with_wrong_schema() -> None:
+    """Verifies model parsing skips earlier JSON candidates with wrong schema."""
+    raw = 'Diagnostic: {"note": "not the payload"} Final: {"ok": true}'
+
+    payload = parse_model_payload(raw, _StructuredPayload)
+
+    assert payload.ok is True

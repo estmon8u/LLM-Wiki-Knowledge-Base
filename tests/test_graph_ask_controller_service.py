@@ -97,7 +97,6 @@ def _build_controller(test_project, runner) -> GraphAskControllerService:
         status_service,
         router,
         query_service,
-        manifest_service=test_project.services["manifest"],
     )
 
 

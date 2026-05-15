@@ -16,8 +16,11 @@ from src.services.graphrag_query_service import (
     GraphRAGQueryAnswer,
     GraphRAGQueryService,
 )
-from src.services.graphrag_status_service import GraphRAGStatus, GraphRAGStatusService
-from src.services.manifest_service import ManifestService
+from src.services.graphrag_status_service import (
+    GraphRAGStatus,
+    GraphRAGStatusService,
+    iso_timestamp_after,
+)
 from src.services.project_service import ProjectPaths
 from src.services.query_router_service import QueryRouterService
 
@@ -46,14 +49,12 @@ class GraphAskControllerService:
         status_service: GraphRAGStatusService,
         router_service: QueryRouterService,
         query_service: GraphRAGQueryService,
-        manifest_service: ManifestService | None = None,
     ) -> None:
         self.paths = paths
         self.config = config
         self.status_service = status_service
         self.router_service = router_service
         self.query_service = query_service
-        self.manifest_service = manifest_service
 
     def ask(
         self,
@@ -136,14 +137,10 @@ class GraphAskControllerService:
         """Return human-readable staleness warnings (empty = fresh)."""
         warnings: list[str] = []
         manifest_mtime = self._manifest_mtime()
-        if manifest_mtime is not None and status.input_updated_at:
-            if manifest_mtime > status.input_updated_at:
-                warnings.append("Manifest is newer than graph input. Run `kb update`.")
-        if status.input_updated_at and status.output_updated_at:
-            if status.input_updated_at > status.output_updated_at:
-                warnings.append(
-                    "Graph input is newer than index output. Run `kb update`."
-                )
+        if iso_timestamp_after(manifest_mtime, status.input_updated_at):
+            warnings.append("Manifest is newer than graph input. Run `kb update`.")
+        if iso_timestamp_after(status.input_updated_at, status.output_updated_at):
+            warnings.append("Graph input is newer than index output. Run `kb update`.")
         return warnings
 
     def _manifest_mtime(self) -> str | None:

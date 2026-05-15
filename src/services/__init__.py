@@ -120,7 +120,6 @@ def build_services(
             graphrag_status_service,
             query_router_service,
             graphrag_query_service,
-            manifest_service=manifest_service,
         ),
         "graphrag_wiki_export": GraphRAGWikiExportService(
             paths,

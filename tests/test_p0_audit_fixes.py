@@ -573,11 +573,11 @@ def test_doctor_detects_missing_converters(test_project) -> None:
     assert "Docling" in conv_check.detail
 
 
-# ── Diff/Status: hash fallback when file is missing ─────────────────
+# ── Diff/Status: missing normalized source detection ─────────────────
 
 
-def test_diff_falls_back_to_manifest_hash_when_file_missing(test_project) -> None:
-    """Verifies that diff falls back to manifest hash when file missing.
+def test_diff_reports_missing_when_normalized_file_is_deleted(test_project) -> None:
+    """Verifies that diff reports missing normalized source files.
 
     Args:
         test_project: Test project value used by the operation.
@@ -586,18 +586,21 @@ def test_diff_falls_back_to_manifest_hash_when_file_missing(test_project) -> Non
     test_project.services["ingest"].ingest_path(source_path)
     test_project.services["compile"].compile()
 
-    # Delete the normalized file
     sources = test_project.services["manifest"].list_sources()
     norm_path = test_project.root / (sources[0].normalized_path or sources[0].raw_path)
     norm_path.unlink()
 
-    # Should still report up_to_date since fallback uses manifest hash
     report = test_project.services["diff"].diff()
-    assert report.up_to_date_count == 1
+    assert report.missing_count == 1
+    assert report.up_to_date_count == 0
+    assert report.entries[0].status == "missing"
+    assert "missing" in report.entries[0].details
 
 
-def test_status_falls_back_to_manifest_hash_when_file_missing(test_project) -> None:
-    """Verifies that status falls back to manifest hash when file missing.
+def test_status_does_not_count_deleted_normalized_file_as_compiled(
+    test_project,
+) -> None:
+    """Verifies that status does not count deleted normalized sources as compiled.
 
     Args:
         test_project: Test project value used by the operation.
@@ -611,7 +614,7 @@ def test_status_falls_back_to_manifest_hash_when_file_missing(test_project) -> N
     norm_path.unlink()
 
     snap = test_project.services["status"].snapshot(initialized=True)
-    assert snap.compiled_source_count == 1
+    assert snap.compiled_source_count == 0
 
 
 # ── Doctor CLI ───────────────────────────────────────────────────────

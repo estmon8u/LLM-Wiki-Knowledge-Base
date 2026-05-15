@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+from pathlib import Path
 from typing import Any
 
 from src.providers import resolve_provider_settings
@@ -137,11 +138,11 @@ class StatusService:
                     return "stale"
         return "current"
 
-    def _current_content_hash(self, source) -> str:
+    def _current_content_hash(self, source) -> str | None:
         norm_path = source.normalized_path or source.raw_path
-        full_path = self.paths.root / norm_path
+        full_path = self.paths.root / Path(norm_path)
         try:
             text = full_path.read_text(encoding="utf-8")
             return hashlib.sha256(text.encode("utf-8")).hexdigest()
         except OSError:
-            return source.content_hash
+            return None

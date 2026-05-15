@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import click
 
-from src.commands.common import console, emit_json, require_initialized
+from src.commands.common import SEVERITY_STYLE, console, emit_json, require_initialized
 from src.models.command_models import CommandContext, CommandSpec
 from rich.markup import escape as _esc
 
@@ -27,13 +27,6 @@ def build_spec(_: CommandContext = None) -> CommandSpec:
         CommandSpec produced by the operation.
     """
     return CommandSpec(name="lint", summary=SUMMARY)
-
-
-_SEVERITY_STYLE = {
-    "error": "red",
-    "warning": "yellow",
-    "suggestion": "dim",
-}
 
 
 def create_command() -> click.Command:
@@ -87,7 +80,7 @@ def create_command() -> click.Command:
             scoped = [issue for issue in report.issues if issue.severity == severity]
             if not scoped:
                 continue
-            style = _SEVERITY_STYLE.get(severity)
+            style = SEVERITY_STYLE.get(severity)
             if style:
                 console.print(
                     f"[{style}]{severity.upper()}S ({len(scoped)}):[/{style}]"

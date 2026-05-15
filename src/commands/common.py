@@ -41,6 +41,18 @@ err_console = Console(stderr=True)
 
 ProgressAdvance = Callable[..., None]
 
+SEVERITY_STYLE = {
+    "error": "red",
+    "warning": "yellow",
+    "suggestion": "dim",
+}
+
+CHECK_SEVERITY_LABEL = {
+    "ok": "[green]OK[/green]",
+    "warning": "[yellow]WARNING[/yellow]",
+    "error": "[red]FAIL[/red]",
+}
+
 
 def emit_json(data: Any) -> None:
     """Print *data* as indented JSON to stdout and return."""

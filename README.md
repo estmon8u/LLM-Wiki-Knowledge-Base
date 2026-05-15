@@ -439,10 +439,10 @@ poetry run kb status --changed
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--changed` | off | Show a preview of new, changed, and up-to-date sources. |
+| `--changed` | off | Show a preview of new, changed, missing, and up-to-date sources. |
 | `--json` | off | Output results as JSON for scripting. |
 
-Default view shows a Knowledge Base overview with source and wiki counts, the last update timestamp, and a suggestion for what to do next. With `--changed`, shows each source with a status tag (`[NEW]`, `[CHANGED]`, `[OK]`) followed by a summary section with counts.
+Default view shows a Knowledge Base overview with source and wiki counts, the last update timestamp, and a suggestion for what to do next. With `--changed`, shows each source with a status tag (`[NEW]`, `[CHANGED]`, `[MISSING]`, `[OK]`) followed by a summary section with counts.
 
 ### `kb review`
 

@@ -9,7 +9,13 @@ from __future__ import annotations
 
 import click
 
-from src.commands.common import console, emit_json, echo_section, make_table
+from src.commands.common import (
+    CHECK_SEVERITY_LABEL,
+    console,
+    emit_json,
+    echo_section,
+    make_table,
+)
 from src.models.command_models import CommandContext, CommandSpec
 
 
@@ -79,14 +85,9 @@ def create_command() -> click.Command:
                 raise SystemExit(1)
             return
 
-        _SEVERITY_STYLE = {
-            "ok": "[green]OK[/green]",
-            "warning": "[yellow]WARNING[/yellow]",
-            "error": "[red]FAIL[/red]",
-        }
         rows = []
         for check in report.checks:
-            status = _SEVERITY_STYLE.get(check.severity, "[red]FAIL[/red]")
+            status = CHECK_SEVERITY_LABEL.get(check.severity, "[red]FAIL[/red]")
             rows.append((check.name, status, check.detail))
 
         table = make_table(

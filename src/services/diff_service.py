@@ -8,6 +8,7 @@ surface that uses it.
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path
 
 from src.models.wiki_models import DiffEntry, DiffReport
 from src.services.manifest_service import ManifestService
@@ -52,6 +53,18 @@ class DiffService:
             else:
                 # Recompute hash from actual normalized file on disk.
                 current_hash = self._current_content_hash(source)
+                if current_hash is None:
+                    entries.append(
+                        DiffEntry(
+                            source_id=source.source_id,
+                            slug=source.slug,
+                            title=source.title,
+                            status="missing",
+                            raw_path=source.raw_path,
+                            details="normalized source file missing on disk",
+                        )
+                    )
+                    continue
                 if current_hash != source.compiled_from_hash:
                     reason = (
                         "source changed since last compile"
@@ -80,16 +93,16 @@ class DiffService:
                     )
         return DiffReport(entries=entries)
 
-    def _current_content_hash(self, source) -> str:
+    def _current_content_hash(self, source) -> str | None:
         """Compute the actual SHA-256 of the normalized file on disk.
 
-        Falls back to the manifest ``content_hash`` if the normalized file
-        cannot be read (e.g. deleted).
+        Returns ``None`` when the normalized file cannot be read so callers can
+        report that missing file explicitly instead of hiding data loss.
         """
         norm_path = source.normalized_path or source.raw_path
-        full_path = self.paths.root / norm_path
+        full_path = self.paths.root / Path(norm_path)
         try:
             text = full_path.read_text(encoding="utf-8")
             return hashlib.sha256(text.encode("utf-8")).hexdigest()
         except OSError:
-            return source.content_hash
+            return None

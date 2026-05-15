@@ -23,7 +23,7 @@ from src.providers import (
     UnavailableProvider,
 )
 from src.providers.base import ProviderRequest, TextProvider
-from src.providers.structured import StructuredOutputError, parse_json_payload
+from src.providers.structured import StructuredOutputError, iter_json_payloads
 from src.services.markdown_document import (
     parse_frontmatter as markdown_parse_frontmatter,
     sections as markdown_sections,
@@ -308,20 +308,38 @@ class ReviewService:
             return []
 
         try:
-            payload = parse_json_payload(stripped, label="Provider review response")
-            if isinstance(payload, list):
-                payload = {"issues": payload}
-            report = _ProviderReviewReport.model_validate(payload)
-            return [
-                ReviewIssue(
-                    severity=issue.severity,
-                    code=issue.code.strip() or "provider-issue",
-                    pages=[page.strip() for page in issue.pages if page.strip()],
-                    message=issue.message.strip(),
-                )
-                for issue in report.issues
-                if issue.message.strip()
-            ]
+            last_error: Exception | None = None
+            for payload in iter_json_payloads(
+                stripped,
+                label="Provider review response",
+            ):
+                if isinstance(payload, list):
+                    payload = {"issues": payload}
+                elif not (isinstance(payload, dict) and "issues" in payload):
+                    continue
+                try:
+                    report = _ProviderReviewReport.model_validate(payload)
+                except (TypeError, ValueError) as exc:
+                    last_error = exc
+                    continue
+                return [
+                    ReviewIssue(
+                        severity=issue.severity,
+                        code=issue.code.strip() or "provider-issue",
+                        pages=[page.strip() for page in issue.pages if page.strip()],
+                        message=issue.message.strip(),
+                    )
+                    for issue in report.issues
+                    if issue.message.strip()
+                ]
+            if last_error is not None:
+                raise StructuredOutputError(
+                    "Provider review response did not match the structured JSON "
+                    "schema."
+                ) from last_error
+            raise StructuredOutputError(
+                "Provider review response did not contain JSON."
+            )
         except (StructuredOutputError, TypeError, ValueError) as exc:
             raise ValueError(
                 "Provider review response did not match the structured JSON schema."

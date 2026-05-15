@@ -2036,6 +2036,31 @@ def test_diff_service_reports_changed_after_source_modification(test_project) ->
     assert report.entries[0].status == "changed"
 
 
+def test_diff_service_reports_missing_after_normalized_file_delete(
+    test_project,
+) -> None:
+    """Verifies that diff service reports missing normalized files explicitly.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+    source_path = test_project.write_file("notes/missing.md", "# Missing\n\nBody\n")
+    test_project.services["ingest"].ingest_path(source_path)
+    test_project.services["compile"].compile()
+
+    record = test_project.services["manifest"].list_sources()[0]
+    norm_path = test_project.root / (record.normalized_path or record.raw_path)
+    norm_path.unlink()
+
+    report = test_project.services["diff"].diff()
+
+    assert report.new_count == 0
+    assert report.changed_count == 0
+    assert report.missing_count == 1
+    assert report.up_to_date_count == 0
+    assert report.entries[0].status == "missing"
+
+
 def test_diff_service_handles_empty_manifest(test_project) -> None:
     """Verifies that diff service handles empty manifest.
 

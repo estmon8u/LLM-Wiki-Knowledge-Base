@@ -989,20 +989,22 @@ def test_lint_report_zero_issues_all_counts_zero() -> None:
     assert report.suggestion_count == 0
 
 
-def test_diff_report_all_three_states_simultaneously() -> None:
-    """Verifies that diff report all three states simultaneously."""
+def test_diff_report_counts_all_states_simultaneously() -> None:
+    """Verifies that diff report counts all states simultaneously."""
     from src.models.wiki_models import DiffEntry, DiffReport
 
     report = DiffReport(
         entries=[
             DiffEntry("id-1", "a", "A", "new", "raw/a.md", "not yet compiled"),
             DiffEntry("id-2", "b", "B", "changed", "raw/b.md", "source changed"),
-            DiffEntry("id-3", "c", "C", "up_to_date", "raw/c.md"),
+            DiffEntry("id-3", "c", "C", "missing", "raw/c.md"),
+            DiffEntry("id-4", "d", "D", "up_to_date", "raw/d.md"),
         ]
     )
 
     assert report.new_count == 1
     assert report.changed_count == 1
+    assert report.missing_count == 1
     assert report.up_to_date_count == 1
 
 

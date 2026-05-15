@@ -152,7 +152,7 @@ class GraphRAGQueryService:
         return GraphRAGQueryAnswer(
             question=question,
             answer=answer,
-            raw_output=_raw_output(result),
+            raw_output=answer,
             method=method,
             created_at=utc_now_iso(),
             index_run_id=status.last_index_run_id,
@@ -323,10 +323,6 @@ class GraphRAGQueryService:
 
 
 def _answer_from_result(result: GraphRAGCommandResult) -> str:
-    return result.stdout.strip() or result.stderr.strip()
-
-
-def _raw_output(result: GraphRAGCommandResult) -> str:
     return result.stdout.strip() or result.stderr.strip()
 
 

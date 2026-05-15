@@ -129,9 +129,8 @@ class GraphRAGStatus:
             return "missing"
         if not self.output_complete:
             return "partial"
-        if self.input_updated_at and self.output_updated_at:
-            if self.input_updated_at > self.output_updated_at:
-                return "stale"
+        if iso_timestamp_after(self.input_updated_at, self.output_updated_at):
+            return "stale"
         return "complete"
 
     @property
@@ -411,9 +410,6 @@ class GraphRAGStatusService:
                 return path
         return None
 
-    def _table_present(self, *tokens: str) -> bool:
-        return self._table_path(self._active_output_dir(), *tokens) is not None
-
     @staticmethod
     def _table_row_count(path: Path) -> int | None:
         try:
@@ -495,3 +491,29 @@ def _timestamp_iso(timestamp: float | None) -> str | None:
         .replace(microsecond=0)
         .isoformat()
     )
+
+
+def iso_timestamp_after(left: str | None, right: str | None) -> bool:
+    """Return whether ISO timestamp *left* is after *right*."""
+    if not left or not right:
+        return False
+    left_dt = _parse_iso_timestamp(left)
+    right_dt = _parse_iso_timestamp(right)
+    if left_dt is None or right_dt is None:
+        return False
+    return left_dt > right_dt
+
+
+def _parse_iso_timestamp(value: str) -> datetime | None:
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if normalized.endswith("Z"):
+        normalized = f"{normalized[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed

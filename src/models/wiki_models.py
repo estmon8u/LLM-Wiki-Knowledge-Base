@@ -156,7 +156,7 @@ class DiffEntry:
     source_id: str
     slug: str
     title: str
-    status: str  # "new", "changed", or "up_to_date"
+    status: str  # "new", "changed", "missing", or "up_to_date"
     raw_path: str
     details: str = ""
 
@@ -188,6 +188,15 @@ class DiffReport:
             int produced by the operation.
         """
         return sum(1 for e in self.entries if e.status == "changed")
+
+    @property
+    def missing_count(self) -> int:
+        """Missing count.
+
+        Returns:
+            int produced by the operation.
+        """
+        return sum(1 for e in self.entries if e.status == "missing")
 
     @property
     def up_to_date_count(self) -> int:

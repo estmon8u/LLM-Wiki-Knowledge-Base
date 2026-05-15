@@ -56,7 +56,10 @@ def create_command(
     @click.option(
         "--changed",
         is_flag=True,
-        help="Show a pre-compile preview of new, changed, and up-to-date sources.",
+        help=(
+            "Show a pre-compile preview of new, changed, missing, and up-to-date "
+            "sources."
+        ),
     )
     @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
     @click.pass_obj
@@ -82,6 +85,7 @@ def create_command(
                     {
                         "new": report.new_count,
                         "changed": report.changed_count,
+                        "missing": report.missing_count,
                         "up_to_date": report.up_to_date_count,
                         "entries": [
                             {
@@ -98,9 +102,12 @@ def create_command(
 
             echo_section("Source Diff")
             for entry in report.entries:
-                label = {"new": "NEW", "changed": "CHANGED", "up_to_date": "OK"}[
-                    entry.status
-                ]
+                label = {
+                    "new": "NEW",
+                    "changed": "CHANGED",
+                    "missing": "MISSING",
+                    "up_to_date": "OK",
+                }[entry.status]
                 suffix = f"  ({entry.details})" if entry.details else ""
                 echo_status_line(label, f"{entry.title} — {entry.raw_path}{suffix}")
 
@@ -108,6 +115,7 @@ def create_command(
             echo_section("Summary")
             echo_kv("new", report.new_count)
             echo_kv("changed", report.changed_count)
+            echo_kv("missing", report.missing_count)
             echo_kv("up_to_date", report.up_to_date_count)
             return
 

@@ -530,6 +530,20 @@ def test_review_service_parse_provider_issues_reads_structured_json() -> None:
     assert issues[1].code == "term-drift"
 
 
+def test_review_service_parse_provider_issues_skips_prior_json_note() -> None:
+    """Verifies provider review parsing skips earlier JSON with the wrong schema."""
+    raw = (
+        'Diagnostic: {"note": "summary only"}\n'
+        'Payload: {"issues": [{"severity": "warning", "code": "term-drift", '
+        '"pages": ["d.md"], "message": "Term mismatch"}]}'
+    )
+
+    issues = ReviewService._parse_provider_issues(raw)
+
+    assert len(issues) == 1
+    assert issues[0].code == "term-drift"
+
+
 def test_review_service_provider_review_raises_on_provider_failure(
     test_project,
 ) -> None:

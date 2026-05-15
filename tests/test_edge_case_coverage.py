@@ -19,12 +19,10 @@ from src.services.config_service import (
 from src.services.graphrag_status_service import (
     GraphRAGStatus,
     GraphRAGStatusService,
+    iso_timestamp_after,
     _timestamp_iso,
 )
-from src.services.graphrag_wiki_export_service import (
-    GraphRAGWikiExportService,
-    _is_generated_graph_page,
-)
+from src.services.graphrag_wiki_export_service import _is_generated_graph_page
 from src.services.normalization_service import (
     Xhtml2pdfRenderer,
     _extract_title,
@@ -111,26 +109,6 @@ def test_generated_graph_page_detection_handles_bad_frontmatter(tmp_path) -> Non
     generated = tmp_path / "generated.md"
     generated.write_text("---\ngenerated: true\n---\n\n# Generated\n", encoding="utf-8")
     assert _is_generated_graph_page(generated) is True
-
-
-def test_graph_wiki_export_table_discovery_edges(tmp_path) -> None:
-    paths = build_project_paths(tmp_path)
-    service = GraphRAGWikiExportService(paths, GraphRAGStatusService(paths), None)
-
-    assert service._find_table_path("entities") is None
-
-    output_dir = paths.graph_dir / "graphrag" / "output"
-    output_dir.mkdir(parents=True)
-    exact = output_dir / "entities.parquet"
-    exact.write_text("not parquet", encoding="utf-8")
-    assert service._find_table_path("entities") == exact
-
-    exact.unlink()
-    nested = output_dir / "artifacts" / "create_final_entities.parquet"
-    nested.parent.mkdir(parents=True)
-    nested.write_text("not parquet", encoding="utf-8")
-    assert service._find_table_path("entities") == nested
-    assert service._find_table_path("not-a-table") is None
 
 
 def test_compile_run_store_recovers_corrupt_and_non_mapping_state(tmp_path) -> None:
@@ -324,6 +302,11 @@ def test_graphrag_status_edge_cases(tmp_path) -> None:
     }
     assert GraphRAGStatus(**{**base, "last_index_success": False}).state == "failed"
     assert GraphRAGStatus(**{**base, "relationships_present": False}).state == "partial"
+    assert iso_timestamp_after(
+        "2026-05-11T00:00:02Z",
+        "2026-05-11T00:00:01+00:00",
+    )
+    assert not iso_timestamp_after("not-a-date", "2026-05-11T00:00:01+00:00")
     assert (
         GraphRAGStatus(
             **{
@@ -339,7 +322,6 @@ def test_graphrag_status_edge_cases(tmp_path) -> None:
     table = service.output_dir / "create_final_entities.parquet"
     table.write_text("not parquet", encoding="utf-8")
     assert service._table_path(service.output_dir, "entities") == table
-    assert service._table_present("entities") is True
     assert _timestamp_iso(None) is None
 
 

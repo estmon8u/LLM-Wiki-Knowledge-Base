@@ -186,21 +186,6 @@ class GraphRAGWikiExportService:
             tables[table_name] = _read_parquet_records(table_path)
         return tables, missing
 
-    def _find_table_path(self, *tokens: str) -> Path | None:
-        output_dir = self.status_service.output_dir
-        if not output_dir.exists():
-            return None
-        for token in tokens:
-            exact = output_dir / f"{token}.parquet"
-            if exact.exists():
-                return exact
-        lowered = tuple(token.lower() for token in tokens)
-        for path in sorted(output_dir.rglob("*.parquet")):
-            stem = path.stem.lower()
-            if any(stem == token or token in stem for token in lowered):
-                return path
-        return None
-
     def _clear_graph_wiki_dir(self) -> None:
         if not self.graph_wiki_dir.exists():
             return
