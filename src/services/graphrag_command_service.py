@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 import io
 from pathlib import Path
@@ -198,9 +198,10 @@ class GraphRAGApiBackend:
         )
         if status_callback is not None:
             status_callback("starting graph index")
-        stdout = io.StringIO()
+        stdout = _ProgressCapture(status_callback)
+        stderr = _ProgressCapture(status_callback)
         try:
-            with redirect_stdout(stdout):
+            with redirect_stdout(stdout), redirect_stderr(stderr):
                 _run_index_entrypoint(
                     workspace_dir=workspace_dir,
                     method=method,
@@ -210,17 +211,38 @@ class GraphRAGApiBackend:
                     verbose=verbose,
                 )
         except SystemExit as exc:
+            stdout.flush()
+            stderr.flush()
             returncode = _system_exit_code(exc)
+            stderr_text = stderr.getvalue()
+            if returncode and not stderr_text:
+                stderr_text = str(exc)
             return _api_result(
                 command,
                 self.paths.root,
                 returncode=returncode,
                 stdout=stdout.getvalue(),
-                stderr=str(exc) if returncode else "",
+                stderr=stderr_text,
             )
         except Exception as exc:  # noqa: BLE001
-            return _api_result(command, self.paths.root, returncode=1, stderr=str(exc))
-        return _api_result(command, self.paths.root, stdout=stdout.getvalue())
+            stdout.flush()
+            stderr.flush()
+            stderr_text = _append_error(stderr.getvalue(), str(exc))
+            return _api_result(
+                command,
+                self.paths.root,
+                returncode=1,
+                stdout=stdout.getvalue(),
+                stderr=stderr_text,
+            )
+        stdout.flush()
+        stderr.flush()
+        return _api_result(
+            command,
+            self.paths.root,
+            stdout=stdout.getvalue(),
+            stderr=stderr.getvalue(),
+        )
 
     def query(
         self,
@@ -247,8 +269,9 @@ class GraphRAGApiBackend:
             verbose=verbose,
         )
         stdout = io.StringIO()
+        stderr = io.StringIO()
         try:
-            with redirect_stdout(stdout):
+            with redirect_stdout(stdout), redirect_stderr(stderr):
                 _run_query_entrypoint(
                     workspace_dir=workspace_dir,
                     data_dir=data_dir,
@@ -261,8 +284,20 @@ class GraphRAGApiBackend:
                     verbose=verbose,
                 )
         except Exception as exc:  # noqa: BLE001
-            return _api_result(command, self.paths.root, returncode=1, stderr=str(exc))
-        return _api_result(command, self.paths.root, stdout=stdout.getvalue())
+            stderr_text = _append_error(stderr.getvalue(), str(exc))
+            return _api_result(
+                command,
+                self.paths.root,
+                returncode=1,
+                stdout=stdout.getvalue(),
+                stderr=stderr_text,
+            )
+        return _api_result(
+            command,
+            self.paths.root,
+            stdout=stdout.getvalue(),
+            stderr=stderr.getvalue(),
+        )
 
 
 class _RunnerGraphRAGApiBackend:
@@ -316,6 +351,8 @@ class _RunnerGraphRAGApiBackend:
             capture_output=True,
             text=True,
         )
+        _emit_progress_lines(completed.stdout or "", status_callback)
+        _emit_progress_lines(completed.stderr or "", status_callback)
         return _completed_process_result(command, self.paths.root, completed)
 
     def query(
@@ -479,6 +516,65 @@ def _completed_process_result(
         stdout=completed.stdout or "",
         stderr=completed.stderr or "",
     )
+
+
+class _ProgressCapture(io.StringIO):
+    """Capture GraphRAG output and surface status-worthy lines as callbacks."""
+
+    def __init__(self, status_callback: StatusCallback = None) -> None:
+        super().__init__()
+        self.status_callback = status_callback
+        self._pending_line = ""
+
+    def write(self, value: str) -> int:
+        written = super().write(value)
+        if self.status_callback is not None:
+            self._pending_line = _emit_progress_chunks(
+                self._pending_line,
+                value,
+                self.status_callback,
+            )
+        return written
+
+    def flush(self) -> None:
+        if self.status_callback is not None and self._pending_line.strip():
+            _emit_progress_line(self._pending_line, self.status_callback)
+            self._pending_line = ""
+        super().flush()
+
+
+def _emit_progress_lines(value: str, status_callback: StatusCallback) -> None:
+    if status_callback is None:
+        return
+    pending_line = _emit_progress_chunks("", value, status_callback)
+    if pending_line.strip():
+        _emit_progress_line(pending_line, status_callback)
+
+
+def _emit_progress_chunks(
+    pending_line: str,
+    value: str,
+    status_callback: Callable[[str], None],
+) -> str:
+    buffer = pending_line + value.replace("\r", "\n")
+    while "\n" in buffer:
+        line, buffer = buffer.split("\n", 1)
+        _emit_progress_line(line, status_callback)
+    return buffer
+
+
+def _emit_progress_line(line: str, status_callback: Callable[[str], None]) -> None:
+    label = _extract_progress_label(line)
+    if label:
+        status_callback(label)
+
+
+def _append_error(stderr: str, detail: str) -> str:
+    if not stderr:
+        return detail
+    if not detail:
+        return stderr
+    return f"{stderr.rstrip()}\n{detail}"
 
 
 def _init_command(

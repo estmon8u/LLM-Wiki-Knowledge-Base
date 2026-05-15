@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 
 import pytest
 
+from src.services import graphrag_command_service as command_module
 from src.services.graphrag_command_service import (
+    GraphRAGApiBackend,
     GraphRAGCommandError,
     GraphRAGCommandResult,
     GraphRAGCommandService,
@@ -168,6 +171,46 @@ def test_api_backend_failure_without_output_uses_generic_message(test_project) -
             cache=True,
             skip_validation=False,
         )
+
+
+def test_api_backend_index_reports_progress_from_entrypoint_output(
+    monkeypatch, test_project
+) -> None:
+    """Verifies Python entrypoint output updates live graph index status."""
+
+    def fake_run_index_entrypoint(**_kwargs):
+        print("Running workflow: extract_graph")
+        print("Warning: noisy dependency output")
+        print("Progress: 50%", file=sys.stderr)
+        print("Running step: summarize", file=sys.stderr)
+
+    monkeypatch.setattr(
+        command_module,
+        "_run_index_entrypoint",
+        fake_run_index_entrypoint,
+    )
+    backend = GraphRAGApiBackend(test_project.paths)
+    labels: list[str] = []
+
+    result = backend.index(
+        workspace_dir=test_project.paths.graph_dir / "graphrag",
+        method="fast",
+        dry_run=False,
+        cache=True,
+        skip_validation=False,
+        verbose=False,
+        status_callback=labels.append,
+    )
+
+    assert result.returncode == 0
+    assert "Running workflow: extract_graph" in result.stdout
+    assert "Progress: 50%" in result.stderr
+    assert labels == [
+        "starting graph index",
+        "Running workflow: extract_graph",
+        "Progress: 50%",
+        "Running step: summarize",
+    ]
 
 
 def test_default_runner_sets_utf8_encoding(monkeypatch) -> None:

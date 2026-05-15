@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import math
 from pathlib import Path
 import re
@@ -14,6 +15,7 @@ from src.services.project_service import ProjectPaths, slugify
 
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 _GRAPH_FIND_TABLES = ("entities", "relationships")
+logger = logging.getLogger(__name__)
 
 
 class GraphRAGFindService:
@@ -100,12 +102,29 @@ def _read_parquet_records(path: Path) -> list[dict[str, Any]]:
     try:
         import pyarrow.lib as arrow_lib
         import pyarrow.parquet as parquet
-    except ImportError:
+    except ImportError as exc:
+        logger.debug(
+            "PyArrow is unavailable; skipping GraphRAG artifact search for %s",
+            path,
+            exc_info=True,
+        )
         return []
 
     try:
         table = parquet.read_table(path)
-    except (OSError, TypeError, ValueError, RuntimeError, arrow_lib.ArrowException):
+    except (
+        OSError,
+        TypeError,
+        ValueError,
+        RuntimeError,
+        arrow_lib.ArrowException,
+    ) as exc:
+        logger.debug(
+            "Unable to read GraphRAG parquet table %s for kb find: %s",
+            path,
+            exc,
+            exc_info=True,
+        )
         return []
     return [
         {str(key): _clean_value(value) for key, value in row.items()}
