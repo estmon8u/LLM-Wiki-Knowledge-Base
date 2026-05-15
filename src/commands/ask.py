@@ -150,7 +150,7 @@ def create_command() -> click.Command:
                 "--show-source-trace.[/yellow]"
             )
         question = " ".join(question_terms).strip()
-        controller = command_context.services["graph_ask_controller"]
+        controller = command_context.services.graph_ask_controller
 
         try:
             with live_status("Querying GraphRAG"):

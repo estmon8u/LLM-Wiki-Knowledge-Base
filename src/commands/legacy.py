@@ -85,7 +85,7 @@ def create_command() -> click.Command:
         if not as_json:
             _warn_legacy()
 
-        search_service = command_context.services["search"]
+        search_service = command_context.services.search
         query = " ".join(query_terms)
         results = search_service.search(
             query,
@@ -176,7 +176,7 @@ def create_command() -> click.Command:
             raise click.ClickException("Provide a question to answer.")
         _warn_legacy()
 
-        query_service = command_context.services["query"]
+        query_service = command_context.services.query
         question = " ".join(question_terms)
         try:
             answer = query_service.answer_question(

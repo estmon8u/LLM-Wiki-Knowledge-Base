@@ -21,6 +21,7 @@ import pytest
 from src.models.command_models import CommandContext
 from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
 from src.services import build_services
+from src.services.container import ServiceContainer
 from src.services.config_service import ConfigService
 from src.services.manifest_service import ManifestService
 from src.services.project_service import (
@@ -42,7 +43,7 @@ class TestProject:
     paths: ProjectPaths
     config: dict[str, Any]
     schema_text: str
-    services: dict[str, Any]
+    services: ServiceContainer
     command_context: CommandContext
 
     def write_file(self, relative_path: str, content: str) -> Path:

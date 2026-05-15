@@ -71,8 +71,8 @@ def create_command(
             changed: Changed value used by the operation.
             as_json: As json value used by the operation.
         """
-        project_service = command_context.services["project"]
-        status_service = command_context.services["status"]
+        project_service = command_context.services.project
+        status_service = command_context.services.status
         snapshot = status_service.snapshot(initialized=project_service.is_initialized())
         graph_status = (
             snapshot.graph_status if isinstance(snapshot.graph_status, dict) else {}
@@ -80,7 +80,7 @@ def create_command(
 
         if changed:
             require_initialized(command_context)
-            diff_service = command_context.services["diff"]
+            diff_service = command_context.services.diff
             report = diff_service.diff()
 
             if as_json:

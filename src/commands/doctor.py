@@ -61,7 +61,7 @@ def create_command() -> click.Command:
             strict: Strict value used by the operation.
             as_json: As json value used by the operation.
         """
-        doctor_service = command_context.services["doctor"]
+        doctor_service = command_context.services.doctor
         report = doctor_service.diagnose(strict=strict)
 
         if as_json:

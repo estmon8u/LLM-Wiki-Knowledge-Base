@@ -9,7 +9,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence
+
+if TYPE_CHECKING:
+    from src.services.container import ServiceContainer
 
 
 @dataclass
@@ -24,7 +27,7 @@ class CommandContext:
     cwd: Path
     config: dict[str, Any]
     schema_text: str
-    services: dict[str, Any]
+    services: ServiceContainer
     verbose: bool = False
 
 

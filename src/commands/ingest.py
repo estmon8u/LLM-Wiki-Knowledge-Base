@@ -80,7 +80,7 @@ def create_command(
             recursive: Recursive value used by the operation.
         """
         require_initialized(command_context)
-        ingest_service = command_context.services["ingest"]
+        ingest_service = command_context.services.ingest
         for source_path in source_paths:
             try:
                 if source_path.is_dir():

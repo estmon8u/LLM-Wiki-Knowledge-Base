@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import subprocess
 from unittest.mock import patch
 
 from click.testing import CliRunner
@@ -231,6 +230,23 @@ def test_ask_json_outputs_graph_answer_payload() -> None:
         assert payload["command"] == ["python", "-m", "graphrag", "query"]
 
 
+def test_find_json_searches_direct_graph_artifacts() -> None:
+    """Verifies top-level find searches GraphRAG parquet entities/relationships."""
+    runner = CliRunner(mix_stderr=False)
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        _write_graph_tables(Path.cwd())
+
+        result = runner.invoke(main, ["find", "--json", "REALM"])
+
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        assert payload["retriever"] == "graph-and-wiki-index"
+        assert payload["results"][0]["retriever"] == "graphrag-artifacts"
+        assert payload["results"][0]["path"] == "graph://relationships/rel-1"
+        assert payload["results"][0]["section"] == "GraphRAG Relationship"
+
+
 def test_ask_streaming_is_rejected_until_live_streaming_is_supported() -> None:
     """Verifies captured query output is not advertised as user-visible streaming."""
     runner = CliRunner()
@@ -356,72 +372,40 @@ def test_update_runs_graph_sync_index_and_export(monkeypatch) -> None:
     """
     calls = []
 
-    def fake_run(command, *, cwd, capture_output, text, **kwargs):
-        """Fake run.
+    def fake_init(self, *, workspace_dir, model, embedding, force):
+        """Simulate GraphRAG Python API workspace initialization."""
+        calls.append(("init", workspace_dir, model, embedding, force))
+        settings_path = self.paths.root / "graph" / "graphrag" / "settings.yaml"
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
+        settings_path.write_text("input:\n  type: text\n", encoding="utf-8")
+        return GraphRAGCommandResult(
+            command=("graphrag.api", "initialize_project_at"),
+            cwd=self.paths.root,
+            returncode=0,
+            stdout="initialized\n",
+            stderr="",
+        )
 
-        Args:
-            command: Command value used by the operation.
-            cwd: Cwd value used by the operation.
-            capture_output: Capture output value used by the operation.
-            text: Text content being processed.
-        """
-        calls.append(command)
-        if "init" in command:
-            settings_path = Path(cwd) / "graph" / "graphrag" / "settings.yaml"
-            settings_path.parent.mkdir(parents=True, exist_ok=True)
-            settings_path.write_text("input:\n  type: text\n", encoding="utf-8")
-        _write_graph_tables(Path(cwd))
-        return subprocess.CompletedProcess(command, 0, stdout="indexed\n", stderr="")
-
-    class FakePopen:
-        """Simulate subprocess.Popen for the streaming path."""
-
-        def __init__(
-            self,
-            command,
-            *,
-            cwd,
-            stdout,
-            stderr,
-            text,
-            encoding=None,
-            errors=None,
-            bufsize=None,
-            env=None,
-        ):
-            """Initializes the instance.
-
-            Args:
-                command: Command value used by the operation.
-                cwd: Cwd value used by the operation.
-                stdout: Stdout value used by the operation.
-                stderr: Stderr value used by the operation.
-                text: Text content being processed.
-                encoding: Encoding value used by the operation.
-                errors: Errors value used by the operation.
-                bufsize: Bufsize value used by the operation.
-                env: Env value used by the operation.
-            """
-            calls.append(command)
-            _write_graph_tables(Path(cwd))
-            self.returncode = 0
-            import io
-
-            self.stdout = io.StringIO("indexed\n")
-            self.stderr = io.StringIO("")
-
-        def wait(self):
-            """Wait."""
-            pass
+    def fake_index(self, *, workspace_dir, method, **kwargs):
+        """Simulate GraphRAG Python API indexing and output artifacts."""
+        calls.append(("index", workspace_dir, method))
+        _write_graph_tables(self.paths.root)
+        return GraphRAGCommandResult(
+            command=("graphrag.api", "build_index", "--method", method),
+            cwd=self.paths.root,
+            returncode=0,
+            stdout="indexed\n",
+            stderr="",
+        )
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr(
-        "src.services.graphrag_command_service.subprocess.run",
-        fake_run,
+        "src.services.graphrag_command_service.GraphRAGApiBackend.init_workspace",
+        fake_init,
     )
     monkeypatch.setattr(
-        "src.services.graphrag_command_service.subprocess.Popen",
-        FakePopen,
+        "src.services.graphrag_command_service.GraphRAGApiBackend.index",
+        fake_index,
     )
     runner = CliRunner()
     with runner.isolated_filesystem():
@@ -440,7 +424,7 @@ def test_update_runs_graph_sync_index_and_export(monkeypatch) -> None:
         assert "Graph wiki export:" in result.output
         assert Path("graph/graphrag/input/sources.json").exists()
         assert Path("wiki/graph/index.md").exists()
-        assert any(call[1:4] == ("-m", "graphrag", "index") for call in calls)
+        assert any(call[0] == "index" for call in calls)
 
 
 def test_update_no_graph_flag_skips_graph(monkeypatch) -> None:
@@ -465,7 +449,7 @@ def test_update_no_graph_flag_skips_graph(monkeypatch) -> None:
         Path("sample.md").write_text("# Sample\n\nNo graph body.\n", encoding="utf-8")
         assert runner.invoke(main, ["init"]).exit_code == 0
         monkeypatch.setattr(
-            "src.services.graphrag_command_service.subprocess.run",
+            "src.services.graphrag_command_service.GraphRAGApiBackend.index",
             fail_run,
         )
         _set_provider_config()

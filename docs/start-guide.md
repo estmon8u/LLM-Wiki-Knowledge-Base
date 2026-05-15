@@ -157,12 +157,13 @@ Check readiness after update:
 poetry run kb --project-root $projectRoot status
 ```
 
-Real GraphRAG index actions call the configured GraphRAG model and embedding
-provider, so set the provider API key such as `OPENAI_API_KEY`, or put the same
-variable in the local GraphRAG `.env` file, before running graph indexing,
-`kb ask`, or `kb update --graph-only`. A normal `kb update` without GraphRAG
-credentials still compiles the wiki and reports graph indexing as skipped.
-Interactive terminals show a live indexing status spinner while GraphRAG runs.
+Real GraphRAG index actions call GraphRAG's installed Python entrypoints and
+use the configured GraphRAG model and embedding provider, so set the provider
+API key such as `OPENAI_API_KEY`, or put the same variable in the local GraphRAG
+`.env` file, before running graph indexing, `kb ask`, or `kb update
+--graph-only`. A normal `kb update` without GraphRAG credentials still compiles
+the wiki and reports graph indexing as skipped. Interactive terminals show a
+live indexing status spinner while GraphRAG runs.
 Use `kb update --force` for a full source-page and GraphRAG rebuild after
 model/prompt changes or suspected corrupt output. Use `kb update --no-graph`
 only when you want to refresh the wiki and legacy index without touching
@@ -170,8 +171,8 @@ GraphRAG.
 
 ## 7. Search and ask
 
-Search the maintained wiki index for source, analysis, concept, and generated
-graph pages:
+Search direct GraphRAG entity/relationship artifacts plus the maintained wiki
+index for source, analysis, concept, and generated graph pages:
 
 ```powershell
 poetry run kb --project-root $projectRoot find "citation grounding"
@@ -231,8 +232,8 @@ poetry run kb --project-root $projectRoot legacy ask --save-as update-pipeline "
 ```
 
 Saved analysis pages are searchable with top-level `kb find`, but `kb legacy
-find` and later legacy ask runs stay source-only so saved answers or generated
-concept pages are not treated as primary evidence.
+find` and later legacy ask runs stay source-only so saved answers, generated
+concept pages, and direct graph artifacts are not treated as primary evidence.
 
 ## 8. Check and export
 

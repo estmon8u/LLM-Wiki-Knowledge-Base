@@ -797,6 +797,7 @@ def test_build_services_returns_expected_keys(test_project) -> None:
         "graphrag_status",
         "graphrag_sync",
         "graphrag_query",
+        "graphrag_find",
         "graphrag_wiki_export",
         "query_router",
         "graph_ask_controller",

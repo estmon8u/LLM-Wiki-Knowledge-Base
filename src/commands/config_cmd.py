@@ -61,9 +61,7 @@ def create_command() -> click.BaseCommand:
             command_context: Command context value used by the operation.
         """
         require_initialized(command_context)
-        config_service = command_context.services.get("config")
-        if config_service is None:
-            raise click.ClickException("Config service unavailable.")
+        config_service = command_context.services.config
         persisted = config_service.load()
         visible = {k: v for k, v in persisted.items() if not k.startswith("_")}
         echo_section("Configuration")
@@ -93,9 +91,7 @@ def create_command() -> click.BaseCommand:
             model: Model value used by the operation.
         """
         require_initialized(command_context)
-        config_service = command_context.services.get("config")
-        if config_service is None:
-            raise click.ClickException("Config service unavailable.")
+        config_service = command_context.services.config
         try:
             config = config_service.load()
             validated_name = validate_provider_name(
@@ -134,9 +130,7 @@ def create_command() -> click.BaseCommand:
             command_context: Command context value used by the operation.
         """
         require_initialized(command_context)
-        config_service = command_context.services.get("config")
-        if config_service is None:
-            raise click.ClickException("Config service unavailable.")
+        config_service = command_context.services.config
         config = config_service.load()
         config["provider"] = {}
         config_service.save(config)

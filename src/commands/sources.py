@@ -64,7 +64,7 @@ def create_command() -> click.Command:
     def sources_list(command_context: CommandContext, as_json: bool) -> None:
         """List all ingested sources."""
         require_initialized(command_context)
-        manifest_service = command_context.services["manifest"]
+        manifest_service = command_context.services.manifest
         sources = manifest_service.list_sources()
         if not sources:
             if as_json:
@@ -111,7 +111,7 @@ def create_command() -> click.Command:
     def sources_show(command_context: CommandContext, slug: str) -> None:
         """Show details for a single source."""
         require_initialized(command_context)
-        manifest_service = command_context.services["manifest"]
+        manifest_service = command_context.services.manifest
         sources = manifest_service.list_sources()
         match = [s for s in sources if s.slug == slug]
         if not match:

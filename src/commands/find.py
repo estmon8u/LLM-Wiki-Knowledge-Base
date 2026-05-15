@@ -8,7 +8,7 @@ from src.commands.common import console, emit_json, make_table, require_initiali
 from src.models.command_models import CommandContext, CommandSpec
 
 
-SUMMARY = "Search the maintained wiki index, including generated graph pages."
+SUMMARY = "Search direct GraphRAG artifacts plus the maintained wiki index."
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
@@ -30,7 +30,7 @@ def create_command() -> click.Command:
         click.Command produced by the operation.
     """
 
-    @click.command(name="find", help=SUMMARY, short_help="Search the wiki index.")
+    @click.command(name="find", help=SUMMARY, short_help="Search graph and wiki.")
     @click.argument("query_terms", nargs=-1)
     @click.option("--limit", default=5, show_default=True, type=int)
     @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
@@ -52,14 +52,17 @@ def create_command() -> click.Command:
         require_initialized(command_context)
         if not query_terms:
             raise click.ClickException("Provide at least one search term.")
-        search_service = command_context.services["search"]
+        search_service = command_context.services.search
+        graph_find_service = command_context.services.graphrag_find
         query = " ".join(query_terms)
-        results = search_service.search(query, limit=limit, include_concepts=True)
+        graph_results = graph_find_service.search(query, limit=limit)
+        wiki_results = search_service.search(query, limit=limit, include_concepts=True)
+        results = _merge_results(graph_results, wiki_results, limit=limit)
 
         if as_json:
             emit_json(
                 {
-                    "retriever": "wiki-index",
+                    "retriever": "graph-and-wiki-index",
                     "query": query,
                     "results": [_search_result_payload(result) for result in results],
                 }
@@ -67,7 +70,7 @@ def create_command() -> click.Command:
             return
 
         if not results:
-            console.print("No wiki pages matched that query.")
+            console.print("No graph artifacts or wiki pages matched that query.")
             return
 
         table = make_table(
@@ -81,7 +84,7 @@ def create_command() -> click.Command:
                 (result.title, result.path, f"{result.score:.2f}", result.snippet)
                 for result in results
             ],
-            title="Wiki Search Results",
+            title="Graph and Wiki Search Results",
         )
         console.print(table)
 
@@ -89,8 +92,13 @@ def create_command() -> click.Command:
 
 
 def _search_result_payload(result: object) -> dict[str, object]:
+    retriever = (
+        "graphrag-artifacts"
+        if str(result.path).startswith("graph://")
+        else "wiki-index"
+    )
     return {
-        "retriever": "wiki-index",
+        "retriever": retriever,
         "title": result.title,
         "path": result.path,
         "score": result.score,
@@ -98,3 +106,22 @@ def _search_result_payload(result: object) -> dict[str, object]:
         "section": result.section,
         "chunk_index": result.chunk_index,
     }
+
+
+def _merge_results(
+    graph_results: list[object],
+    wiki_results: list[object],
+    *,
+    limit: int,
+) -> list[object]:
+    merged: list[object] = []
+    seen: set[tuple[str, str]] = set()
+    for result in [*graph_results, *wiki_results]:
+        key = (str(result.title).casefold(), str(result.section).casefold())
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(result)
+        if len(merged) >= limit:
+            break
+    return merged

@@ -67,7 +67,7 @@ def create_command() -> click.Command:
             fail_on: Failure threshold severity.
         """
         require_initialized(command_context)
-        review_service = command_context.services["review"]
+        review_service = command_context.services.review
         try:
             report = review_service.review()
         except ProviderError as exc:

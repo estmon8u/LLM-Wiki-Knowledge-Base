@@ -338,7 +338,9 @@ def test_legacy_search_empty_and_top_level_find_searches_wiki() -> None:
         assert search_result.exit_code == 0
         assert "No wiki pages matched that query." in search_result.output
         assert find_result.exit_code == 0
-        assert "No wiki pages matched that query." in find_result.output
+        assert (
+            "No graph artifacts or wiki pages matched that query." in find_result.output
+        )
         assert ask_result.exit_code != 0
         assert "kb update" in ask_result.output
         assert "kb legacy ask" not in ask_result.output
@@ -975,7 +977,7 @@ def test_find_command_works() -> None:
         result = runner.invoke(main, ["find", "missing-topic"])
 
         assert result.exit_code == 0
-        assert "No wiki pages matched that query." in result.output
+        assert "No graph artifacts or wiki pages matched that query." in result.output
 
 
 def test_flat_status_shows_knowledge_base_overview() -> None:
@@ -1451,7 +1453,7 @@ def test_find_json_output() -> None:
         assert result.exit_code == 0
         assert result.stderr == ""
         data = json.loads(result.output)
-        assert data["retriever"] == "wiki-index"
+        assert data["retriever"] == "graph-and-wiki-index"
         assert isinstance(data["results"], list)
         assert len(data["results"]) > 0
         assert data["results"][0]["retriever"] == "wiki-index"
@@ -1471,7 +1473,7 @@ def test_find_json_empty_results() -> None:
         assert result.exit_code == 0
         assert result.stderr == ""
         data = json.loads(result.output)
-        assert data["retriever"] == "wiki-index"
+        assert data["retriever"] == "graph-and-wiki-index"
         assert data["results"] == []
 
 

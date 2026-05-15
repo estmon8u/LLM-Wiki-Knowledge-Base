@@ -4,7 +4,7 @@ A CLI-first GraphRAG research-memory system for ingesting technical documents, b
 
 The wiki is not the retrieval engine. The wiki is the human-readable artifact layer. GraphRAG is the retrieval and synthesis engine.
 
-This branch is in the GraphRAG pivot. GraphRAG is the target default retrieval and synthesis path. The existing SQLite FTS5 search and source-grounded ask workflow is now explicit source-page-only legacy behavior under `kb legacy find` and `kb legacy ask` with deprecation warnings. Top-level `kb ask` is a GraphRAG-aware answer controller that checks graph readiness, chooses a query mode with deterministic routing by default, calls GraphRAG, and can save analysis pages with graph metadata and source trace. Top-level `kb find` is a non-generative search over the maintained wiki index, including generated graph pages when they exist. GraphRAG setup and maintenance are folded into the main command surface: `kb init` creates the graph workspace, `kb update` syncs input, indexes when needed, and exports graph wiki pages from complete graph output even when indexing is skipped as current, `kb status` reports graph health, and `kb export` refreshes graph inspection pages when complete graph output exists. The old `kb graph` command group has been removed. See [docs/graphrag-pivot.md](docs/graphrag-pivot.md) for the pivot rationale and target architecture.
+This branch is in the GraphRAG pivot. GraphRAG is the target default retrieval and synthesis path. The existing SQLite FTS5 search and source-grounded ask workflow is now explicit source-page-only legacy behavior under `kb legacy find` and `kb legacy ask` with deprecation warnings. Top-level `kb ask` is a GraphRAG-aware answer controller that checks graph readiness, chooses a query mode with deterministic routing by default, calls GraphRAG, and can save analysis pages with graph metadata and source trace. Top-level `kb find` is a non-generative search over direct GraphRAG entity/relationship artifacts plus the maintained wiki index, including generated graph pages when they exist. GraphRAG setup and maintenance are folded into the main command surface: `kb init` creates the graph workspace, `kb update` syncs input, indexes when needed, and exports graph wiki pages from complete graph output even when indexing is skipped as current, `kb status` reports graph health, and `kb export` refreshes graph inspection pages when complete graph output exists. The old `kb graph` command group has been removed. See [docs/graphrag-pivot.md](docs/graphrag-pivot.md) for the pivot rationale and target architecture.
 
 ## Requirements
 
@@ -32,11 +32,11 @@ poetry run kb init
 poetry run kb update
 ```
 
-GraphRAG runtime defaults live in the `graph` section of `kb.config.yaml`. `kb init` asks the installed GraphRAG CLI to initialize the workspace, then syncs the selected completion provider, embedding provider, models, JSON input settings, prompt paths, and resolved API-key environment variables into `graph/graphrag/settings.yaml`. The CLI owns those managed fields, but it preserves user-owned GraphRAG settings such as chunking, cache, vector-store, and search tuning when it rewrites the file. Bundled prompt templates under `graph/graphrag/prompts/` are project-managed and refreshed when the repository templates change. By default, GraphRAG reuses the OpenAI provider entry and references `OPENAI_API_KEY`, so a separate `GRAPHRAG_API_KEY` is not required unless you explicitly set a graph-specific override.
+GraphRAG runtime defaults live in the `graph` section of `kb.config.yaml`. `kb init` calls the installed GraphRAG Python initialization entrypoint to create the workspace, then syncs the selected completion provider, embedding provider, models, JSON input settings, prompt paths, and resolved API-key environment variables into `graph/graphrag/settings.yaml`. The CLI owns those managed fields, but it preserves user-owned GraphRAG settings such as chunking, cache, vector-store, and search tuning when it rewrites the file. Bundled prompt templates under `graph/graphrag/prompts/` are project-managed and refreshed when the repository templates change. By default, GraphRAG reuses the OpenAI provider entry and references `OPENAI_API_KEY`, so a separate `GRAPHRAG_API_KEY` is not required unless you explicitly set a graph-specific override. The standalone `graphrag` command is still available for diagnostics, but `kb` invokes GraphRAG through Python entrypoints instead of spawning `python -m graphrag`.
 
 `kb update` uses the existing knowledge-base corpus as the source of truth. It reads `raw/_manifest.json` plus the normalized artifacts in `raw/normalized/`, writes `graph/graphrag/input/sources.json`, configures GraphRAG for JSON input with metadata prepended into chunks, and then auto-decides whether to run a full index, incremental update, retry after a failed latest attempt, or skip because the graph is already current. The preflight decision path plans those settings and input changes without mutating `settings.yaml` or `input/sources.json`, so skipped or credential-blocked graph runs do not leave partial workspace state behind. Successful index runs record the source digest, source hashes, runtime settings/prompt digest, selected method, active output directory, and command result under ignored run metadata for reproducibility. If GraphRAG credentials are missing during a normal `kb update`, the wiki compile still completes and graph indexing is skipped with a warning; `kb update --graph-only` fails clearly because the requested graph-only operation cannot run. Use `kb update --no-graph` when you intentionally want the legacy wiki compile/index refresh without touching the graph.
 
-`kb status` checks whether settings, synced input, the active complete GraphRAG output tables, vector store, and last recorded index run are present. It prefers the active output directory recorded by the latest successful run when that directory is still complete, rather than trusting the newest output folder blindly. `kb ask --method auto|basic|local|global|drift` wraps GraphRAG query modes, passes the active output directory explicitly to GraphRAG, and can save GraphRAG answers as analysis pages with support-level and source-trace metadata. `kb export` reads GraphRAG Parquet tables and writes human-readable documents, entities, relationships, communities, and text units under `wiki/graph/` when graph output exists.
+`kb status` checks whether settings, synced input, the active complete GraphRAG output tables, vector store, and last recorded index run are present. It prefers the active output directory recorded by the latest successful run when that directory is still complete, rather than trusting the newest output folder blindly. `kb ask --method auto|basic|local|global|drift` calls GraphRAG query entrypoints, passes the active output directory explicitly to GraphRAG, and can save GraphRAG answers as analysis pages with support-level and source-trace metadata. `kb export` reads GraphRAG Parquet tables and writes human-readable documents, entities, relationships, communities, and text units under `wiki/graph/` when graph output exists.
 
 ## Evaluation Harness
 
@@ -173,7 +173,7 @@ accept source paths as a shortcut when you want add-and-refresh in one command.
 | `init` | Create project folders, config, schema, manifest, and GraphRAG workspace |
 | `add` | Add and normalize source files or folders without running the full update |
 | `update` | Build wiki pages, refresh the legacy comparator index, sync/index GraphRAG, and export graph pages |
-| `find` | Search the maintained wiki index, including generated graph pages |
+| `find` | Search direct graph artifacts plus the maintained wiki index |
 | `ask` | GraphRAG-aware answer controller with deterministic auto-routing |
 | `legacy` | Deprecated SQLite FTS5 search and ask commands for comparison |
 | `status` | Show project state and what to do next |
@@ -282,7 +282,7 @@ The `kb graph` command group has been removed. GraphRAG setup, input sync, index
 
 | Main command | GraphRAG behavior |
 | --- | --- |
-| `kb init` | Initializes `graph/graphrag/` through the GraphRAG CLI, then syncs project input, prompt, provider, model, and key-env settings. |
+| `kb init` | Initializes `graph/graphrag/` through GraphRAG's Python initialization entrypoint, then syncs project input, prompt, provider, model, and key-env settings. |
 | `kb update` | Syncs normalized sources, auto-selects the graph index action, runs GraphRAG indexing when credentials are present, records run metadata, and exports graph wiki pages from complete output even when indexing is skipped. |
 | `kb update --force` | Rebuilds source pages and forces a full GraphRAG rebuild. |
 | `kb update --no-graph` | Updates the wiki and legacy index without syncing or indexing GraphRAG. |
@@ -324,9 +324,10 @@ Troubleshooting paths:
 
 ### `kb find <terms>`
 
-Searches the maintained wiki index, including GraphRAG export pages when they
-exist. Use `kb legacy find` only when you specifically need the deprecated FTS5
-comparator path.
+Searches direct GraphRAG entity and relationship artifacts first, then the
+maintained wiki index including GraphRAG export pages when they exist. Use
+`kb legacy find` only when you specifically need the deprecated source-page-only
+FTS5 comparator path.
 
 ```bash
 poetry run kb find "traceability citation"

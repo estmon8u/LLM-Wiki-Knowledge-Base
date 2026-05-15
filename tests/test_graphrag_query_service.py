@@ -131,7 +131,7 @@ def test_graph_query_runs_explicit_method_and_options(test_project) -> None:
     )
 
     command = calls[0]
-    assert command[1:4] == ("-m", "graphrag", "query")
+    assert command[:2] == ("graphrag.api", "local_search")
     assert "--method" in command
     assert "local" in command
     assert "--data" in command

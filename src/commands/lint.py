@@ -47,7 +47,7 @@ def create_command() -> click.Command:
             as_json: As json value used by the operation.
         """
         require_initialized(command_context)
-        lint_service = command_context.services["lint"]
+        lint_service = command_context.services.lint
         report = lint_service.lint()
 
         if as_json:

@@ -65,7 +65,7 @@ def require_initialized(command_context: CommandContext) -> None:
     Args:
         command_context: Command context value used by the operation.
     """
-    project_service = command_context.services["project"]
+    project_service = command_context.services.project
     if not project_service.is_initialized():
         raise click.ClickException("Project not initialized. Run 'kb init' first.")
 

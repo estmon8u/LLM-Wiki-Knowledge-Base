@@ -51,16 +51,14 @@ def build_spec(_: CommandContext = None) -> CommandSpec:
 
 def _get_update_service(command_context: CommandContext) -> UpdateService:
     return UpdateService(
-        ingest_service=command_context.services["ingest"],
-        compile_service=command_context.services["compile"],
-        concept_service=command_context.services["concepts"],
-        search_service=command_context.services["search"],
+        ingest_service=command_context.services.ingest,
+        compile_service=command_context.services.compile,
+        concept_service=command_context.services.concepts,
+        search_service=command_context.services.search,
         config=command_context.config,
-        graphrag_workspace_service=command_context.services.get("graphrag_workspace"),
-        graphrag_sync_service=command_context.services.get("graphrag_sync"),
-        graphrag_wiki_export_service=command_context.services.get(
-            "graphrag_wiki_export"
-        ),
+        graphrag_workspace_service=command_context.services.graphrag_workspace,
+        graphrag_sync_service=command_context.services.graphrag_sync,
+        graphrag_wiki_export_service=command_context.services.graphrag_wiki_export,
     )
 
 

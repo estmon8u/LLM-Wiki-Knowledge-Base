@@ -52,7 +52,7 @@ def test_workspace_service_reports_initialization_state(test_project) -> None:
 
     assert result.workspace_dir == test_project.paths.graph_dir / "graphrag"
     assert result.settings_path.exists()
-    assert result.result.command[1:4] == ("-m", "graphrag", "init")
+    assert result.result.command[:2] == ("graphrag.api", "initialize_project_at")
     assert result.model == "chat-model"
     assert result.embedding_provider == "openai"
     assert result.embedding_model == "embed-model"
