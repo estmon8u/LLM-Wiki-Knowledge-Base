@@ -116,6 +116,7 @@ class GraphRAGQueryService:
         community_level: int | None = None,
         dynamic_community_selection: bool | None = None,
         response_type: str | None = None,
+        streaming: bool | None = None,
         verbose: bool = False,
     ) -> GraphRAGQueryAnswer:
         """Ask.
@@ -126,6 +127,7 @@ class GraphRAGQueryService:
             community_level: Community level value used by the operation.
             dynamic_community_selection: Dynamic community selection value used by the operation.
             response_type: Response type value used by the operation.
+            streaming: GraphRAG streaming flag forwarded to the query CLI.
             verbose: Whether to emit verbose command output.
 
         Returns:
@@ -141,6 +143,7 @@ class GraphRAGQueryService:
                 community_level=community_level,
                 dynamic_community_selection=dynamic_community_selection,
                 response_type=response_type,
+                streaming=streaming,
                 verbose=verbose,
             )
         except GraphRAGCommandError as exc:
@@ -300,6 +303,10 @@ class GraphRAGQueryService:
         if not status.output_present:
             raise GraphRAGQueryError(
                 "GraphRAG index output not found. Run `kb update`."
+            )
+        if not status.output_complete:
+            raise GraphRAGQueryError(
+                "GraphRAG index output is incomplete. Run `kb update` to rebuild it."
             )
         if status.last_index_success is False:
             raise GraphRAGQueryError(

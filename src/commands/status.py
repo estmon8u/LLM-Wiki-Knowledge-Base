@@ -170,7 +170,12 @@ def create_command(
             workspace = (
                 "initialized" if graph.get("workspace_initialized") else "missing"
             )
-            output = "present" if graph.get("output_present") else "missing"
+            if graph.get("output_complete"):
+                output = "complete"
+            elif graph.get("output_present"):
+                output = "partial"
+            else:
+                output = "missing"
             console.print(f"  Workspace: {workspace}")
             console.print(f"  Input documents: {graph.get('input_document_count', 0)}")
             console.print(f"  Index output: {output}")

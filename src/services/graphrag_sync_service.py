@@ -407,15 +407,7 @@ def graph_output_state(status: GraphRAGStatus) -> str:
     """
     if not status.output_present:
         return "missing"
-    required_tables = (
-        status.documents_present,
-        status.text_units_present,
-        status.entities_present,
-        status.relationships_present,
-        status.communities_present,
-        status.community_reports_present,
-    )
-    if all(required_tables):
+    if status.output_complete:
         return "complete"
     return "partial"
 

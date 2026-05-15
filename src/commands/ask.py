@@ -68,6 +68,11 @@ def create_command() -> click.Command:
         "--response-type",
         help="Forward GraphRAG's response type option.",
     )
+    @click.option(
+        "--streaming/--no-streaming",
+        default=None,
+        help="Forward GraphRAG's query streaming flag.",
+    )
     @click.option("--limit", default=3, type=int, help="Deprecated; ignored.")
     @click.option(
         "--save",
@@ -97,6 +102,7 @@ def create_command() -> click.Command:
         community_level: int | None,
         dynamic_community_selection: bool | None,
         response_type: str | None,
+        streaming: bool | None,
         limit: int,
         save_answer: bool,
         save_as_name: Optional[str],
@@ -113,6 +119,7 @@ def create_command() -> click.Command:
             community_level: Community level value used by the operation.
             dynamic_community_selection: Dynamic community selection value used by the operation.
             response_type: Response type value used by the operation.
+            streaming: Streaming value used by the operation.
             limit: Maximum number of results to return or process.
             save_answer: Save answer value used by the operation.
             save_as_name: Save as name value used by the operation.
@@ -135,6 +142,7 @@ def create_command() -> click.Command:
                     community_level=community_level,
                     dynamic_community_selection=dynamic_community_selection,
                     response_type=response_type,
+                    streaming=streaming,
                     verbose=verbose,
                     save=save_answer,
                     save_as=save_as_name,

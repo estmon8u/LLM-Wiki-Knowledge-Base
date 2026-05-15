@@ -1,25 +1,15 @@
-"""Click command implementation for the kb find command.
-
-This module belongs to `src.commands.find` and keeps related behavior
-close to the command, service, model, provider, storage, script, or test
-surface that uses it.
-"""
+"""Click command implementation for the kb find command."""
 
 
 from __future__ import annotations
 
 import click
 
-from src.commands.common import require_initialized
+from src.commands.common import console, emit_json, make_table, require_initialized
 from src.models.command_models import CommandContext, CommandSpec
 
 
-SUMMARY = "GraphRAG search entry point. Legacy FTS search lives under kb legacy find."
-GRAPH_SEARCH_PENDING = (
-    "GraphRAG search is the default target path, but graph search is not wired yet. "
-    "The old SQLite FTS5 path is deprecated and only available as "
-    "'kb legacy find ...' for comparison or exact lexical lookup."
-)
+SUMMARY = "Search maintained wiki pages, including GraphRAG export pages when present."
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
@@ -41,7 +31,7 @@ def create_command() -> click.Command:
         click.Command produced by the operation.
     """
 
-    @click.command(name="find", help=SUMMARY, short_help="GraphRAG search placeholder.")
+    @click.command(name="find", help=SUMMARY, short_help="Search the maintained wiki.")
     @click.argument("query_terms", nargs=-1)
     @click.option("--limit", default=5, show_default=True, type=int)
     @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
@@ -63,7 +53,50 @@ def create_command() -> click.Command:
         require_initialized(command_context)
         if not query_terms:
             raise click.ClickException("Provide at least one search term.")
-        _ = (limit, as_json)
-        raise click.ClickException(GRAPH_SEARCH_PENDING)
+        query = " ".join(query_terms)
+        search_service = command_context.services["search"]
+        results = search_service.search(query, limit=limit)
+
+        if as_json:
+            emit_json(
+                {
+                    "retriever": "local-index",
+                    "query": query,
+                    "results": [_search_result_payload(result) for result in results],
+                }
+            )
+            return
+
+        if not results:
+            console.print("No wiki pages matched that query.")
+            return
+
+        rows = [
+            (result.title, result.path, f"{result.score:.2f}", result.snippet)
+            for result in results
+        ]
+        table = make_table(
+            columns=[
+                ("Title", {"style": "bold"}),
+                ("Path", {}),
+                ("Score", {"justify": "right"}),
+                ("Snippet", {"style": "dim"}),
+            ],
+            rows=rows,
+            title="Wiki Search Results",
+        )
+        console.print(table)
 
     return command
+
+
+def _search_result_payload(result: object) -> dict[str, object]:
+    return {
+        "retriever": "local-index",
+        "title": result.title,
+        "path": result.path,
+        "score": result.score,
+        "snippet": result.snippet,
+        "section": result.section,
+        "chunk_index": result.chunk_index,
+    }

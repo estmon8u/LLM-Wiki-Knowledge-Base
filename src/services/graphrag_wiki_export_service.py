@@ -169,12 +169,17 @@ class GraphRAGWikiExportService:
                 "GraphRAG index output not found. Run `kb update` before exporting "
                 "graph wiki pages."
             )
+        if not status.output_complete:
+            raise GraphRAGWikiExportError(
+                "GraphRAG index output is incomplete. Run `kb update` before "
+                "exporting graph wiki pages."
+            )
 
     def _load_tables(self) -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
         tables: dict[str, list[dict[str, Any]]] = {}
         missing: list[str] = []
-        for table_name, tokens in GRAPH_OUTPUT_TABLES.items():
-            table_path = self._find_table_path(*tokens)
+        for table_name in GRAPH_OUTPUT_TABLES:
+            table_path = self.status_service.table_path(table_name)
             if table_path is None:
                 missing.append(table_name)
                 tables[table_name] = []
@@ -589,7 +594,7 @@ def _field_list(record: dict[str, Any], *, exclude: set[str] | None = None) -> s
     for key, value in sorted(record.items()):
         if key in excluded or value in (None, "", []):
             continue
-        lines.append(f"- `{key}`: {_format_value(value)}")
+        lines.append(f"- `{key}`: {_markdown_inline(_format_value(value))}")
     return "\n".join(lines) if lines else "No additional metadata."
 
 
@@ -602,7 +607,7 @@ def _format_value(value: Any) -> str:
 def _bullet_values(value: Any, *, empty: str) -> str:
     if not isinstance(value, (list, tuple, set)) or not value:
         return empty
-    return "\n".join(f"- `{item}`" for item in value)
+    return "\n".join(f"- `{_markdown_inline(str(item))}`" for item in value)
 
 
 def _fenced_text(text: str) -> str:
@@ -662,7 +667,8 @@ def _relationship_table(relationships: list[dict[str, Any]]) -> str:
         source = _first_text(relationship, "source", "source_title")
         target = _first_text(relationship, "target", "target_title")
         description = _first_text(relationship, "description", default="related")
-        lines.append(f"| {source} -> {target} | {description} |")
+        pair = f"{_markdown_table_cell(source)} -> {_markdown_table_cell(target)}"
+        lines.append(f"| {pair} | {_markdown_table_cell(description)} |")
     return "\n".join(lines)
 
 
@@ -674,12 +680,22 @@ def _findings_markdown(record: dict[str, Any]) -> str:
             if isinstance(finding, dict):
                 summary = _first_text(finding, "summary", "explanation", "text")
                 if summary:
-                    lines.append(f"- {summary}")
+                    lines.append(f"- {_markdown_inline(summary)}")
             elif str(finding).strip():
-                lines.append(f"- {finding}")
+                lines.append(f"- {_markdown_inline(str(finding))}")
         if lines:
             return "\n".join(lines)
     return "No key findings exported by GraphRAG."
+
+
+def _markdown_inline(value: str) -> str:
+    text = value.replace("\r\n", "\n").replace("\r", "\n")
+    text = " ".join(part.strip() for part in text.split("\n") if part.strip())
+    return text.replace("|", r"\|")
+
+
+def _markdown_table_cell(value: str) -> str:
+    return _markdown_inline(value)
 
 
 def _unique_slug(base_slug: str, used: set[str], *, prefix: str) -> str:

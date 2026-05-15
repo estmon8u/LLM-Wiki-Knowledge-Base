@@ -17,6 +17,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
     StrictInt,
     StrictStr,
     ValidationError,
@@ -68,6 +69,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "compile": {
         "excerpt_character_limit": 900,
+    },
+    "concepts": {
+        "enabled": False,
+        "provider_backed": False,
     },
     "lint": {
         "required_frontmatter_fields": [
@@ -148,6 +153,7 @@ Operational rules for building and maintaining this knowledge base.
 - Concept pages synthesize across multiple source pages.
 - Only create a concept page when two or more sources support the topic.
 - Use explicit backlinks to source pages with wiki-link syntax.
+- Concept page generation is opt-in. GraphRAG is the default cross-document retrieval layer.
 
 ## Analysis Pages
 
@@ -169,8 +175,9 @@ Operational rules for building and maintaining this knowledge base.
 
 ## Query Behavior
 
-- Search the compiled wiki first using the local index.
-- Answer from wiki evidence only; cite each claim with [Source Title].
+- Use GraphRAG for top-level `kb ask` when graph output is complete.
+- Use the local wiki index for `kb find` and deprecated legacy comparators.
+- Answer from grounded evidence only; cite each claim with [Source Title] or graph-backed references.
 - If the evidence is insufficient, say so explicitly.
 - Saved answers compound into the wiki as analysis pages.
 
@@ -526,6 +533,13 @@ class _GraphConfig(_StrictConfigModel):
         return value
 
 
+class _ConceptsConfig(_StrictConfigModel):
+    """Configuration for legacy LLM-wiki concept page generation."""
+
+    enabled: StrictBool = False
+    provider_backed: StrictBool = False
+
+
 class _MistralOcrConfig(_StrictConfigModel):
     """Stores mistral ocr config data.
 
@@ -601,6 +615,7 @@ class _KbConfigModel(BaseModel):
     project: dict[str, Any]
     storage: dict[str, Any]
     compile: dict[str, Any]
+    concepts: _ConceptsConfig = Field(default_factory=_ConceptsConfig)
     lint: dict[str, Any]
     provider: _ProviderSelection = Field(default_factory=_ProviderSelection)
     graph: _GraphConfig
@@ -630,6 +645,20 @@ def resolve_graph_config(config: dict[str, Any]) -> GraphRAGRuntimeConfig:
         explicit_api_key_env=explicit_api_key_env,
         field_name="api_key_env",
     )
+
+
+def concept_generation_enabled(config: dict[str, Any]) -> bool:
+    concepts = config.get("concepts", DEFAULT_CONFIG["concepts"])
+    if not isinstance(concepts, dict):
+        return False
+    return bool(concepts.get("enabled", False))
+
+
+def concept_provider_backed_enabled(config: dict[str, Any]) -> bool:
+    concepts = config.get("concepts", DEFAULT_CONFIG["concepts"])
+    if not isinstance(concepts, dict):
+        return False
+    return bool(concepts.get("provider_backed", False))
     embedding_provider = _optional_str(validated.get("embedding_provider")) or provider
     explicit_embedding_api_key_env = _optional_str(
         validated.get("embedding_api_key_env")

@@ -64,6 +64,7 @@ class GraphAskControllerService:
         community_level: int | None = None,
         dynamic_community_selection: bool | None = None,
         response_type: str | None = None,
+        streaming: bool | None = None,
         verbose: bool = False,
         save: bool = False,
         save_as: str | None = None,
@@ -76,6 +77,7 @@ class GraphAskControllerService:
             community_level: Community level value used by the operation.
             dynamic_community_selection: Dynamic community selection value used by the operation.
             response_type: Response type value used by the operation.
+            streaming: GraphRAG streaming flag forwarded to the query CLI.
             verbose: Whether to emit verbose command output.
             save: Save value used by the operation.
             save_as: Save as value used by the operation.
@@ -97,6 +99,7 @@ class GraphAskControllerService:
             community_level=community_level,
             dynamic_community_selection=dynamic_community_selection,
             response_type=response_type,
+            streaming=streaming,
             verbose=verbose,
         )
         answer.retriever = "graph"
@@ -167,6 +170,7 @@ def _graph_ready_for_query(status: GraphRAGStatus) -> bool:
         and status.input_exists
         and status.input_document_count > 0
         and status.output_present
+        and status.output_complete
         and status.last_index_success is not False
     )
 

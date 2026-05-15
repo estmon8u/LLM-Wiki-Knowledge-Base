@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Mapping, Optional
+from typing import Any, Callable, Mapping, Optional
 
 from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
 
@@ -51,6 +51,38 @@ class UnavailableProvider(TextProvider):
             ProviderResponse produced by the operation.
         """
         self.ensure_available()
+
+
+class LazyProvider(TextProvider):
+    """Build a concrete provider only when a provider-backed command needs it."""
+
+    def __init__(
+        self,
+        factory: Callable[[], Optional[TextProvider]],
+        *,
+        provider_name: str,
+    ) -> None:
+        self._factory = factory
+        self._provider: Optional[TextProvider] = None
+        self.name = provider_name
+
+    def _resolve(self) -> TextProvider:
+        if self._provider is None:
+            provider = self._factory()
+            if provider is None:
+                raise ProviderConfigurationError("Provider is not configured.")
+            self._provider = provider
+            self.name = provider.name
+        return self._provider
+
+    def ensure_available(self) -> None:
+        provider = self._resolve()
+        ensure_available = getattr(provider, "ensure_available", None)
+        if callable(ensure_available):
+            ensure_available()
+
+    def generate(self, request: ProviderRequest) -> ProviderResponse:
+        return self._resolve().generate(request)
 
 
 _FALLBACK_PROVIDER_CATALOG = {
@@ -208,3 +240,18 @@ def build_provider(
     except ValueError as exc:
         logger.warning("Provider %r unavailable: %s", name, exc)
         return UnavailableProvider(str(exc), provider_name=name)
+
+
+def build_lazy_provider(
+    config: dict[str, Any],
+    provider_catalog: ProviderCatalog | None = None,
+) -> Optional[TextProvider]:
+    """Return a provider proxy without importing SDKs or checking env eagerly."""
+    resolved = resolve_provider_settings(config, provider_catalog=provider_catalog)
+    if resolved is None:
+        return None
+    name, _ = resolved
+    return LazyProvider(
+        lambda: build_provider(config, provider_catalog=provider_catalog),
+        provider_name=name,
+    )

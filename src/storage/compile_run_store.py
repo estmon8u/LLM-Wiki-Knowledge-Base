@@ -259,7 +259,16 @@ class CompileRunStore:
     def _read_payload(self) -> dict[str, Any]:
         if not self.state_file.exists():
             return _default_payload()
-        return json.loads(self.state_file.read_text(encoding="utf-8"))
+        try:
+            payload = json.loads(self.state_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return _default_payload()
+        if not isinstance(payload, dict):
+            return _default_payload()
+        default = _default_payload()
+        for key, value in default.items():
+            payload.setdefault(key, value)
+        return payload
 
     def _write_payload(self, payload: dict[str, Any]) -> None:
         self.state_file.parent.mkdir(parents=True, exist_ok=True)

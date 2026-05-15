@@ -579,7 +579,6 @@ def evaluate_graph_method(
         )
     command = _kb_command(
         project_root,
-        "graph",
         "ask",
         "--method",
         method,

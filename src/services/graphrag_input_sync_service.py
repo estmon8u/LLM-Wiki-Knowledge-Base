@@ -18,6 +18,8 @@ import yaml
 
 from src.models.source_models import RawSourceRecord
 from src.services.graphrag_defaults import (
+    DEFAULT_GRAPHRAG_CHUNK_OVERLAP,
+    DEFAULT_GRAPHRAG_CHUNK_SIZE,
     DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
     DEFAULT_GRAPHRAG_MODEL,
 )
@@ -177,8 +179,8 @@ class GraphRAGInputSyncService:
 
         chunking = dict(settings.get("chunking") or {})
         chunking.setdefault("type", "tokens")
-        chunking.setdefault("size", 100)
-        chunking.setdefault("overlap", 25)
+        chunking.setdefault("size", DEFAULT_GRAPHRAG_CHUNK_SIZE)
+        chunking.setdefault("overlap", DEFAULT_GRAPHRAG_CHUNK_OVERLAP)
         chunking.setdefault("encoding_model", "o200k_base")
         chunking["prepend_metadata"] = list(GRAPH_INPUT_METADATA_FIELDS)
         settings["chunking"] = chunking

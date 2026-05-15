@@ -76,7 +76,7 @@ def create_command() -> click.Command:
         if graph_status_service is None or graph_export_service is None:
             return
         graph_status = graph_status_service.status()
-        if not graph_status.workspace_initialized or not graph_status.output_present:
+        if not graph_status.workspace_initialized or not graph_status.output_complete:
             return
         try:
             graph_result = graph_export_service.export_wiki()

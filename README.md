@@ -123,7 +123,7 @@ kb add
 kb update
   - optionally add sources passed on the command line
   - compile source pages with provenance
-  - generate legacy concept pages and FTS comparator index
+  - optionally refresh legacy concept pages and FTS comparator index
   - sync GraphRAG JSON input
   - auto-select full index, incremental update, or skip
   - export graph tables to wiki/graph/
@@ -252,7 +252,7 @@ Interactive terminals show directory-ingest progress; non-interactive runs print
 
 ### `kb update [SOURCE_PATHS...]`
 
-Bring the knowledge base current. Optionally add new sources first, then build wiki pages, generate concepts, and refresh indexes.
+Bring the knowledge base current. Optionally add new sources first, then build wiki pages, sync GraphRAG, and refresh indexes.
 
 ```bash
 poetry run kb update
@@ -266,9 +266,10 @@ poetry run kb update --resume
 | `--force` | off | Rebuild every source page even if nothing changed. |
 | `--resume` | off | Resume the most recent failed or interrupted update run. Cannot be combined with `--force`. |
 | `--no-graph` | off | Skip GraphRAG input sync, index refresh, and graph wiki export. |
+| `--concepts` / `--no-concepts` | config | Opt in or out of legacy concept page generation for this run. |
 
-When source paths are provided, the command adds them first. Always generates concept pages and refreshes the search index after building.
-Compile summaries request structured provider output (`summary`, `key_points`, `open_questions`, and `title_suggestion`) and persist the extra fields when returned. Concept clustering uses the configured provider when available, parses direct, fenced, or prefaced JSON through the shared structured-output parser, caches valid cluster output by source-page digest, and falls back to deterministic collocation-based grouping if provider clustering fails.
+When source paths are provided, the command adds them first. Legacy concept pages are skipped by default now that GraphRAG is the default cross-document retrieval layer; pass `--concepts` or set `concepts.enabled: true` in `kb.config.yaml` to refresh them.
+Compile summaries request structured provider output (`summary`, `key_points`, `open_questions`, and `title_suggestion`) and persist the extra fields when returned. When concept generation is enabled, concept clustering uses deterministic collocation-based grouping by default. Set `concepts.provider_backed: true` to let the configured provider propose clusters; provider output is parsed through the shared structured-output parser, cached by source-page digest, and falls back to deterministic grouping if provider clustering fails.
 
 `kb update` also owns routine GraphRAG maintenance. It creates the graph workspace if needed, syncs normalized artifacts into `graph/graphrag/input/sources.json`, checks the current GraphRAG output and run metadata, selects a full `fast` build, `fast-update`, or skip, runs the selected index when graph credentials are available, and exports graph inspection pages under `wiki/graph/`. Graph indexing is skipped with an explicit warning when provider credentials are missing; the compile/wiki update still completes.
 
@@ -305,13 +306,13 @@ Graph wiki export reads standard GraphRAG tables such as `documents`, `text_unit
 - `wiki/graph/communities/*.md`
 - `wiki/graph/text-units/*.md`
 
-Generated graph pages use frontmatter types such as `graph_entity`, `graph_relationship`, `graph_community`, `graph_text_unit`, and `graph_document`. Document and text-unit pages render raw GraphRAG text in fenced code blocks so paper-internal markdown links and headings remain inspectable without becoming wiki lint targets. Large relationship tables are counted in `wiki/graph/index.md`, but only the strongest 500 relationship pages are materialized and entity pages show a bounded relationship table. Existing `wiki/concepts/` pages are not deleted; they are now legacy LLM-wiki concept pages beside the GraphRAG-derived `wiki/graph/` layer.
+Generated graph pages use frontmatter types such as `graph_entity`, `graph_relationship`, `graph_community`, `graph_text_unit`, and `graph_document`. Document and text-unit pages render raw GraphRAG text in fenced code blocks so paper-internal markdown links and headings remain inspectable without becoming wiki lint targets. Large relationship tables are counted in `wiki/graph/index.md`, but only the strongest 500 relationship pages are materialized and entity pages show a bounded relationship table. Existing `wiki/concepts/` pages are not deleted; they are now legacy LLM-wiki concept pages beside the GraphRAG-derived `wiki/graph/` layer and are refreshed only when legacy concept generation is explicitly enabled.
 
 ### `kb find <terms>`
 
-Reserved GraphRAG search entry point. Until a default GraphRAG search controller
-lands, this command fails with guidance to use `kb legacy find` for deprecated
-FTS5 lookup.
+Searches the maintained wiki index, including GraphRAG export pages when they
+exist. Use `kb legacy find` only when you specifically need the deprecated FTS5
+comparator path.
 
 ### `kb legacy find <terms>`
 

@@ -8,16 +8,16 @@ retrievers:
     deprecated: true
     purpose: Historical comparator and exact lexical lookup only.
   graphrag_basic:
-    command: kb graph ask --method basic
+    command: kb ask --method basic
     purpose: Baseline vector-style GraphRAG query mode for direct questions.
   graphrag_local:
-    command: kb graph ask --method local
+    command: kb ask --method local
     purpose: Entity, method, or document-specific questions.
   graphrag_global:
-    command: kb graph ask --method global
+    command: kb ask --method global
     purpose: Whole-corpus themes and community-summary questions.
   graphrag_drift:
-    command: kb graph ask --method drift
+    command: kb ask --method drift
     purpose: Comparison questions that need global context plus local grounding.
 metrics:
   retrieval:

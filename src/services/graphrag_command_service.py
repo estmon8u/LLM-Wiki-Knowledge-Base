@@ -155,6 +155,7 @@ class GraphRAGCommandService:
         community_level: int | None = None,
         dynamic_community_selection: bool | None = None,
         response_type: str | None = None,
+        streaming: bool | None = None,
         verbose: bool = False,
     ) -> GraphRAGCommandResult:
         """Query.
@@ -165,6 +166,7 @@ class GraphRAGCommandService:
             community_level: Community level value used by the operation.
             dynamic_community_selection: Dynamic community selection value used by the operation.
             response_type: Response type value used by the operation.
+            streaming: GraphRAG streaming flag forwarded to the query CLI.
             verbose: Whether to emit verbose command output.
 
         Returns:
@@ -185,6 +187,10 @@ class GraphRAGCommandService:
             args.append("--no-dynamic-selection")
         if response_type:
             args.extend(["--response-type", response_type])
+        if streaming is True:
+            args.append("--streaming")
+        elif streaming is False:
+            args.append("--no-streaming")
         if verbose:
             args.append("--verbose")
         args.append(question)

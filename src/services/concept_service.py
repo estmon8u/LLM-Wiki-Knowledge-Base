@@ -183,14 +183,14 @@ class ConceptService:
         self.paths = paths
         self.provider = provider
 
-    def generate(self) -> ConceptGenerationResult:
+    def generate(self, *, use_provider: bool = True) -> ConceptGenerationResult:
         """Generate.
 
         Returns:
             ConceptGenerationResult produced by the operation.
         """
         source_pages = self._load_source_pages()
-        drafts = self._build_concept_drafts(source_pages)
+        drafts = self._build_concept_drafts(source_pages, use_provider=use_provider)
         managed_pages = self._list_managed_pages()
 
         concept_paths: list[str] = []
@@ -242,12 +242,15 @@ class ConceptService:
         return pages
 
     def _build_concept_drafts(
-        self, source_pages: list[_SourcePage]
+        self,
+        source_pages: list[_SourcePage],
+        *,
+        use_provider: bool,
     ) -> list[_ConceptDraft]:
         if len(source_pages) < _MIN_SOURCE_PAGES:
             return []
 
-        if self.provider is not None:
+        if use_provider and self.provider is not None:
             provider_drafts = self._provider_concept_drafts(source_pages)
             if provider_drafts is not None:
                 return provider_drafts

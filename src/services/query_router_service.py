@@ -16,10 +16,7 @@ from typing import Iterable
 import pandas as pd
 
 from src.services.graphrag_query_service import GRAPH_QUERY_METHODS
-from src.services.graphrag_status_service import (
-    GRAPH_OUTPUT_TABLES,
-    GraphRAGStatusService,
-)
+from src.services.graphrag_status_service import GraphRAGStatusService
 
 
 GRAPH_ASK_METHODS = ("auto", *GRAPH_QUERY_METHODS)
@@ -31,8 +28,6 @@ GLOBAL_KEYWORDS = (
     "patterns",
     "landscape",
     "whole corpus",
-    "corpus",
-    "dataset",
 )
 DRIFT_KEYWORDS = (
     "compare",
@@ -45,6 +40,40 @@ DRIFT_KEYWORDS = (
     " vs ",
     "contrast",
 )
+DIRECT_LOOKUP_KEYWORDS = (
+    "where is",
+    "where are",
+    "configured",
+    "configuration",
+    "config",
+    "stale",
+    "freshness",
+    "what should happen",
+)
+LOCAL_ENTITY_KEYWORDS = (
+    "dense passage retrieval",
+    "fusion-in-decoder",
+    "self-rag",
+    "realm",
+    "fid",
+    "dpr",
+)
+GENERIC_GRAPH_TERMS = {
+    "answer",
+    "answers",
+    "corpus",
+    "data",
+    "document",
+    "documents",
+    "generation",
+    "model",
+    "models",
+    "query",
+    "rag",
+    "retrieval",
+    "source",
+    "sources",
+}
 
 
 class QueryRouterError(ValueError):
@@ -79,6 +108,7 @@ class QueryRouterService:
 
     def __init__(self, status_service: GraphRAGStatusService | None = None) -> None:
         self.status_service = status_service
+        self._known_terms_cache: tuple[str, ...] | None = None
 
     def route(self, question: str, *, method: str = "auto") -> QueryRoute:
         """Route.
@@ -107,6 +137,10 @@ class QueryRouterService:
             return QueryRoute(method="global", reason="global corpus keyword")
         if any(keyword in text for keyword in DRIFT_KEYWORDS):
             return QueryRoute(method="drift", reason="comparison keyword")
+        if any(keyword in text for keyword in DIRECT_LOOKUP_KEYWORDS):
+            return QueryRoute(method="basic", reason="direct lookup or maintenance keyword")
+        if any(keyword in text for keyword in LOCAL_ENTITY_KEYWORDS):
+            return QueryRoute(method="local", reason="known retrieval system keyword")
         if self._mentions_known_graph_term(text):
             return QueryRoute(method="local", reason="known graph entity or document")
         return QueryRoute(method="basic", reason="basic vector baseline fallback")
@@ -120,33 +154,25 @@ class QueryRouterService:
         return False
 
     def _known_graph_terms(self) -> Iterable[str]:
-        output_dir = self.status_service.output_dir
+        if self._known_terms_cache is not None:
+            return self._known_terms_cache
+        terms: list[str] = []
         for table_name in ("entities", "documents"):
-            table_path = _find_table_path(output_dir, *GRAPH_OUTPUT_TABLES[table_name])
+            table_path = self.status_service.table_path(table_name)
             if table_path is None:
                 continue
-            yield from _read_term_columns(table_path)
-
-
-def _find_table_path(output_dir: Path, *tokens: str) -> Path | None:
-    if not output_dir.exists():
-        return None
-    lowered = tuple(token.casefold() for token in tokens)
-    for path in sorted(output_dir.rglob("*.parquet")):
-        stem = path.stem.casefold()
-        if any(stem == token or token in stem for token in lowered):
-            return path
-    return None
-
+            terms.extend(_read_term_columns(table_path))
+        self._known_terms_cache = tuple(dict.fromkeys(_usable_term(term) for term in terms if _usable_term(term)))
+        return self._known_terms_cache
 
 def _read_term_columns(path: Path) -> Iterable[str]:
+    columns = _available_term_columns(path)
+    if not columns:
+        return []
     try:
-        frame = pd.read_parquet(path, columns=None)
+        frame = pd.read_parquet(path, columns=columns)
     except Exception:
         return []
-    columns = [
-        name for name in ("title", "name", "human_readable_id", "id") if name in frame
-    ]
     terms: list[str] = []
     for column in columns:
         for value in frame[column].dropna().tolist():
@@ -154,6 +180,28 @@ def _read_term_columns(path: Path) -> Iterable[str]:
             if len(text) >= 3:
                 terms.append(text)
     return terms
+
+
+def _available_term_columns(path: Path) -> list[str]:
+    candidates = ("title", "name", "human_readable_id", "id")
+    try:
+        import pyarrow.parquet as parquet
+
+        available = set(parquet.read_schema(path).names)
+    except Exception:
+        try:
+            frame = pd.read_parquet(path, columns=None)
+        except Exception:
+            return []
+        available = set(frame.columns)
+    return [name for name in candidates if name in available]
+
+
+def _usable_term(term: str) -> str:
+    normalized = term.casefold().strip()
+    if len(normalized) < 3 or normalized in GENERIC_GRAPH_TERMS:
+        return ""
+    return term.strip()
 
 
 def _term_in_question(term: str, normalized_question: str) -> bool:

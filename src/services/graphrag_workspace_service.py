@@ -1,9 +1,4 @@
-"""Graphrag workspace service service behavior for the knowledge-base workflow.
-
-This module belongs to `src.services.graphrag_workspace_service` and keeps related behavior
-close to the command, service, model, provider, storage, script, or test
-surface that uses it.
-"""
+"""Project-managed GraphRAG workspace setup and settings synchronization."""
 
 
 from __future__ import annotations
@@ -113,12 +108,12 @@ class GraphRAGWorkspaceService:
         graph_config = resolve_graph_config(self.config)
         model_name = model or graph_config.model
         embedding_model = embedding or graph_config.embedding_model
-        self.workspace_dir.mkdir(parents=True, exist_ok=True)
-        result = self.command_service.init_workspace(
-            model=model_name,
-            embedding=embedding_model,
-            force=force,
-        )
+        if force and self.settings_path.exists():
+            atomic_write_text(
+                self.settings_path,
+                yaml.safe_dump(_default_settings(), sort_keys=False),
+            )
+        created = self.ensure_workspace()
         self.sync_settings(
             GraphRAGRuntimeConfig(
                 provider=graph_config.provider,
@@ -128,6 +123,13 @@ class GraphRAGWorkspaceService:
                 api_key_env=graph_config.api_key_env,
                 embedding_api_key_env=graph_config.embedding_api_key_env,
             )
+        )
+        result = GraphRAGCommandResult(
+            command=("kb", "internal", "graphrag", "init"),
+            cwd=self.paths.root,
+            returncode=0,
+            stdout="\n".join(created),
+            stderr="",
         )
         return GraphRAGWorkspaceInitResult(
             workspace_dir=self.workspace_dir,

@@ -14,7 +14,11 @@ import os
 from pathlib import Path
 from typing import Any, Callable, Iterator, Optional
 
-from src.services.config_service import resolve_graph_config
+from src.services.config_service import (
+    concept_generation_enabled,
+    concept_provider_backed_enabled,
+    resolve_graph_config,
+)
 from src.services.compile_service import CompileResult, CompileService
 from src.services.concept_service import ConceptGenerationResult, ConceptService
 from src.services.graphrag_defaults import env_file_has_key
@@ -36,6 +40,7 @@ class UpdateOptions:
     force: bool = False
     resume: bool = False
     no_graph: bool = False
+    concepts: bool | None = None
 
 
 @dataclass
@@ -63,6 +68,8 @@ class UpdateResult:
     ingest_summaries: list[IngestSummary] = field(default_factory=list)
     compile_result: Optional[CompileResult] = None
     concept_result: Optional[ConceptGenerationResult] = None
+    concepts_skipped: bool = False
+    concepts_skip_reason: str = ""
     search_refreshed: bool = False
     graph_result: Optional["GraphUpdateResult"] = None
 
@@ -185,12 +192,21 @@ class UpdateService:
                 progress_callback=compile_progress,
             )
 
-        # Concepts phase
-        result.concept_result = self._concepts.generate()
-
-        # Compile writes the index before concepts are regenerated. Refresh it here so
-        # wiki/index.md and wiki/_index.json reflect the current concept set.
-        self._compile.refresh_index()
+        # Legacy LLM-wiki concept pages are opt-in now that GraphRAG is the
+        # default cross-document retrieval layer.
+        if self._should_generate_concepts(options):
+            result.concept_result = self._concepts.generate(
+                use_provider=concept_provider_backed_enabled(self._config)
+            )
+            # Compile writes the index before concepts are regenerated. Refresh it
+            # here so wiki/index.md and wiki/_index.json reflect the current set.
+            self._compile.refresh_index()
+        else:
+            result.concepts_skipped = True
+            result.concepts_skip_reason = (
+                "disabled by default; set concepts.enabled: true or pass "
+                "--concepts to refresh legacy concept pages"
+            )
 
         # Search refresh
         self._search.refresh(force=True)
@@ -203,6 +219,11 @@ class UpdateService:
         return result
 
     # ------------------------------------------------------------------
+
+    def _should_generate_concepts(self, options: UpdateOptions) -> bool:
+        if options.concepts is not None:
+            return options.concepts
+        return concept_generation_enabled(self._config)
 
     def _ingest_one(
         self,

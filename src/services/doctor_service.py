@@ -416,15 +416,15 @@ class DoctorService:
                 severity="ok" if input_ok else sev,
             )
         )
-        index_ok = bool(status and status.output_present)
+        index_ok = bool(status and status.output_complete)
         checks.append(
             DoctorCheck(
                 name="graphrag_index",
                 ok=index_ok,
                 detail=(
-                    "GraphRAG index output is present."
+                    "GraphRAG index output is complete."
                     if index_ok
-                    else "GraphRAG index output is missing. Run `kb update`."
+                    else _graphrag_index_detail(status)
                 ),
                 severity="ok" if index_ok else sev,
             )
@@ -443,7 +443,6 @@ class DoctorService:
             )
         )
         return checks
-
     def _check_graphrag_api_key(self, *, strict: bool = False) -> DoctorCheck:
         sev = "error" if strict else "warning"
         try:
@@ -480,3 +479,9 @@ class DoctorService:
             ),
             severity=sev,
         )
+
+
+def _graphrag_index_detail(status: Any | None) -> str:
+    if status is not None and getattr(status, "output_present", False):
+        return "GraphRAG index output is incomplete. Run `kb update`."
+    return "GraphRAG index output is missing. Run `kb update`."

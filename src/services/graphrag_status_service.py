@@ -1,9 +1,4 @@
-"""Graphrag status service service behavior for the knowledge-base workflow.
-
-This module belongs to `src.services.graphrag_status_service` and keeps related behavior
-close to the command, service, model, provider, storage, script, or test
-surface that uses it.
-"""
+"""GraphRAG status tracking for the knowledge-base workflow."""
 
 
 from __future__ import annotations
@@ -106,6 +101,19 @@ class GraphRAGStatus:
     community_count: int | None = None
     community_report_count: int | None = None
 
+    @property
+    def output_complete(self) -> bool:
+        """Return True only when all required GraphRAG output tables are present."""
+        return (
+            self.output_present
+            and self.documents_present
+            and self.text_units_present
+            and self.entities_present
+            and self.relationships_present
+            and self.communities_present
+            and self.community_reports_present
+        )
+
     def to_dict(self, project_root: Path) -> dict[str, Any]:
         """Serializes this value to a dictionary.
 
@@ -118,6 +126,7 @@ class GraphRAGStatus:
         payload = asdict(self)
         for key in ("workspace_dir", "settings_path", "input_path", "output_dir"):
             payload[key] = self._relative_to_project(payload[key], project_root)
+        payload["output_complete"] = self.output_complete
         return payload
 
     @staticmethod
@@ -151,18 +160,18 @@ class GraphRAGStatusService:
         """
         runs = self._load_runs()
         last_run = runs[-1] if runs else None
+        active_output_dir = self._active_output_dir()
         table_paths = {
-            name: self._table_path(*patterns)
+            name: self._table_path(active_output_dir, *patterns)
             for name, patterns in GRAPH_OUTPUT_TABLES.items()
         }
         tables = {name: path is not None for name, path in table_paths.items()}
+        output_complete = all(tables.values())
         table_counts = {
             name: self._table_row_count(path) if path is not None else None
             for name, path in table_paths.items()
         }
-        output_present = self.output_dir.exists() and any(
-            self.output_dir.rglob("*.parquet")
-        )
+        output_present = active_output_dir is not None
         input_document_count = self._input_document_count()
         workspace_initialized = self.settings_path.exists()
         input_exists = self.input_path.exists()
@@ -191,6 +200,7 @@ class GraphRAGStatusService:
                 input_exists=input_exists,
                 input_document_count=input_document_count,
                 output_present=output_present,
+                output_complete=output_complete,
                 last_run=last_run,
             ),
             last_index_input_digest=last_run.get("input_digest") if last_run else None,
@@ -278,6 +288,13 @@ class GraphRAGStatusService:
                 return run
         return None
 
+    def table_path(self, table_name: str) -> Path | None:
+        """Return the active output table path for a known GraphRAG table name."""
+        tokens = GRAPH_OUTPUT_TABLES.get(table_name)
+        if tokens is None:
+            return None
+        return self._table_path(self._active_output_dir(), *tokens)
+
     def _input_document_count(self) -> int:
         if not self.input_path.exists():
             return 0
@@ -294,18 +311,39 @@ class GraphRAGStatusService:
                     return len(value)
         return 0
 
-    def _table_path(self, *tokens: str) -> Path | None:
+    def _active_output_dir(self) -> Path | None:
         if not self.output_dir.exists():
             return None
-        normalized_tokens = tuple(token.lower() for token in tokens)
+        latest_by_parent: dict[Path, float] = {}
         for path in self.output_dir.rglob("*.parquet"):
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                continue
+            parent = path.parent
+            latest_by_parent[parent] = max(latest_by_parent.get(parent, 0.0), mtime)
+        if not latest_by_parent:
+            return None
+        return max(latest_by_parent.items(), key=lambda item: (item[1], str(item[0])))[
+            0
+        ]
+
+    def _table_path(self, output_dir: Path | None, *tokens: str) -> Path | None:
+        if output_dir is None or not output_dir.exists():
+            return None
+        for token in tokens:
+            exact = output_dir / f"{token}.parquet"
+            if exact.exists():
+                return exact
+        normalized_tokens = tuple(token.lower() for token in tokens)
+        for path in sorted(output_dir.glob("*.parquet")):
             stem = path.stem.lower()
             if any(stem == token or token in stem for token in normalized_tokens):
                 return path
         return None
 
     def _table_present(self, *tokens: str) -> bool:
-        return self._table_path(*tokens) is not None
+        return self._table_path(self._active_output_dir(), *tokens) is not None
 
     @staticmethod
     def _table_row_count(path: Path) -> int | None:
@@ -352,6 +390,7 @@ class GraphRAGStatusService:
         input_exists: bool,
         input_document_count: int,
         output_present: bool,
+        output_complete: bool,
         last_run: dict[str, Any] | None,
     ) -> str:
         if not workspace_initialized:
@@ -366,6 +405,8 @@ class GraphRAGStatusService:
             if last_run and last_run.get("dry_run") is True:
                 return "Run `kb update` to build the graph index."
             return "Run `kb update` to sync and build the graph index."
+        if not output_complete:
+            return "Run `kb update` to rebuild incomplete graph index output."
         return 'Run `kb ask --method drift "..."` or `kb export`.'
 
 

@@ -39,7 +39,7 @@ Most commands are flat top-level verbs. The GraphRAG pivot keeps the deprecated 
 | Stage | Input | Output |
 | --- | --- | --- |
 | Ingest | canonical markdown/plain-text files, Mistral OCR-routed native documents and images, rendered HTML-to-PDF OCR, and a bounded MarkItDown subset | raw source copy, normalized artifact, and manifest metadata |
-| Compile | normalized canonical text plus manifest metadata | source pages with provider-generated summaries, wiki index, and compile log; provider-clustered concept pages with deterministic fallback and source-page backlinks |
+| Compile | normalized canonical text plus manifest metadata | source pages with provider-generated summaries, wiki index, and compile log; optional legacy concept pages with deterministic fallback and source-page backlinks when concept generation is explicitly enabled |
 | Diff | manifest metadata plus compile state | pre-compile source status preview |
 | Legacy search | compiled wiki artifacts | ranked page matches from source pages, generated concept pages, and saved analysis pages, derived from indexed chunks that skip wiki bookkeeping sections |
 | Legacy ask | user question plus source-page evidence, excluding generated concept pages and saved analysis pages | cited provider answer validated for parseability, non-empty content, and grounded citation refs; optionally saved as a non-blank analysis page |
