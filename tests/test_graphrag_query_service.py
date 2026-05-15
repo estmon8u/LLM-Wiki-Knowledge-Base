@@ -15,15 +15,15 @@ import pandas as pd
 import pytest
 import yaml
 
-from src.services.graphrag_command_service import (
+from graphwiki_kb.services.graphrag_command_service import (
     GraphRAGCommandResult,
     GraphRAGCommandService,
 )
-from src.services.graphrag_query_service import (
+from graphwiki_kb.services.graphrag_query_service import (
     GraphRAGQueryError,
     GraphRAGQueryService,
 )
-from src.services.graphrag_status_service import GraphRAGStatusService
+from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
 
 
 def _write_ready_graph(test_project, *, index_success: bool = True) -> None:
@@ -223,6 +223,36 @@ def test_graph_query_does_not_treat_stderr_as_answer(test_project) -> None:
     assert answer.answer == ""
     assert answer.raw_output == ""
     assert "progress-only" in answer.stderr
+
+
+def test_graph_query_filters_noisy_stdout_before_saved_answer(test_project) -> None:
+    """Regression: stdout progress/log lines are not saved as answer prose."""
+    _write_ready_graph(test_project)
+
+    def runner(command, *, cwd, capture_output, text):
+        """Runner."""
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=(
+                "INFO: loading GraphRAG output\n"
+                "Running workflow: query\n"
+                "Search Response:\n"
+                "GraphRAG answer after logs.\n"
+            ),
+            stderr="",
+        )
+
+    service = _build_query_service(test_project, runner)
+
+    answer = service.ask("What is RAG?", method="basic")
+    saved_path = service.save_answer(answer)
+    saved_text = (test_project.root / saved_path).read_text(encoding="utf-8")
+
+    assert answer.answer == "GraphRAG answer after logs."
+    assert answer.raw_output == "GraphRAG answer after logs."
+    assert "INFO: loading" not in saved_text
+    assert "Running workflow" not in saved_text
 
 
 def test_graph_query_save_writes_analysis_page_and_refreshes_index(

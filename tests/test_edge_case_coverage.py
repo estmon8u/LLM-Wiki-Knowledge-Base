@@ -9,33 +9,36 @@ import types
 
 import pytest
 
-from src.services.config_service import DEFAULT_CONFIG, resolve_graph_config
-from src.services.config_service import (
+from graphwiki_kb.services.config_service import DEFAULT_CONFIG, resolve_graph_config
+from graphwiki_kb.services.config_service import (
     _optional_str,
     _provider_catalog_api_key_env,
     concept_generation_enabled,
     concept_provider_backed_enabled,
 )
-from src.services.graphrag_status_service import (
+from graphwiki_kb.services.graphrag_status_service import (
     GraphRAGStatus,
     GraphRAGStatusService,
     iso_timestamp_after,
     _timestamp_iso,
 )
-from src.services.graphrag_wiki_export_service import _is_generated_graph_page
-from src.services.normalization_service import (
+from graphwiki_kb.services.graphrag_wiki_export_service import _is_generated_graph_page
+from graphwiki_kb.services.normalization_service import (
     Xhtml2pdfRenderer,
     _extract_title,
     _is_probable_title,
 )
-from src.services.project_service import build_project_paths
-from src.services.query_router_service import (
+from graphwiki_kb.services.project_service import build_project_paths
+from graphwiki_kb.services.query_router_service import (
     QueryRouterService,
     _read_term_columns,
     _term_in_question,
 )
-from src.services.stopwords import _load_stopwords
-from src.storage.compile_run_store import CompileRunStore, MAX_COMPILE_RUN_HISTORY
+from graphwiki_kb.services.stopwords import _load_stopwords
+from graphwiki_kb.storage.compile_run_store import (
+    CompileRunStore,
+    MAX_COMPILE_RUN_HISTORY,
+)
 
 
 class _FakePdfStatus:
@@ -174,7 +177,7 @@ def test_config_helper_edge_cases() -> None:
 
 
 def test_query_router_helper_edge_cases(tmp_path) -> None:
-    router = QueryRouterService()
+    router = QueryRouterService(routing_aliases={"dense passage retrieval": ["dpr"]})
 
     assert router.route("Where is the graph config?").method == "basic"
     assert router.route("Explain Dense Passage Retrieval.").method == "local"

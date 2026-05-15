@@ -16,15 +16,15 @@ from unittest.mock import patch
 
 import pytest
 
-from src.models.wiki_models import SearchResult
-from src.providers import (
+from graphwiki_kb.models.wiki_models import SearchResult
+from graphwiki_kb.providers import (
     ProviderConfigurationError,
     ProviderExecutionError,
     UnavailableProvider,
 )
-from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
-from src.services.query_service import QueryService
-from src.services.search_service import _extract_snippet
+from graphwiki_kb.providers.base import ProviderRequest, ProviderResponse, TextProvider
+from graphwiki_kb.services.query_service import QueryService
+from graphwiki_kb.services.search_service import _extract_snippet
 
 
 class SequencedProvider(TextProvider):
@@ -201,7 +201,7 @@ def test_extract_snippet_uses_matching_window_and_fallback() -> None:
 
 def test_extract_frontmatter_handles_invalid_yaml_and_non_mapping_payload() -> None:
     """Verifies that extract frontmatter handles invalid yaml and non mapping payload."""
-    from src.services.search_service import _extract_frontmatter
+    from graphwiki_kb.services.search_service import _extract_frontmatter
 
     assert _extract_frontmatter("---\ntitle: [oops\n---\n") == {}
     assert _extract_frontmatter("---\n- item\n---\n") == {}
@@ -209,7 +209,10 @@ def test_extract_frontmatter_handles_invalid_yaml_and_non_mapping_payload() -> N
 
 def test_frontmatter_value_and_text_helpers_cover_scalar_and_nested_values() -> None:
     """Verifies that frontmatter value and text helpers cover scalar and nested values."""
-    from src.services.search_service import _frontmatter_text, _frontmatter_value
+    from graphwiki_kb.services.search_service import (
+        _frontmatter_text,
+        _frontmatter_value,
+    )
 
     frontmatter = {
         "title": " Example Title ",
@@ -230,7 +233,7 @@ def test_frontmatter_value_and_text_helpers_cover_scalar_and_nested_values() -> 
 
 def test_page_title_falls_back_to_heading_and_filename() -> None:
     """Verifies that page title falls back to heading and filename."""
-    from src.services.search_service import _page_title
+    from graphwiki_kb.services.search_service import _page_title
 
     heading_title = _page_title(
         Path("wiki/sources/example.md"),
@@ -249,7 +252,7 @@ def test_page_title_falls_back_to_heading_and_filename() -> None:
 
 def test_chunk_markdown_body_handles_blank_and_long_sections() -> None:
     """Verifies that chunk markdown body handles blank and long sections."""
-    from src.services.search_service import _chunk_markdown_body
+    from graphwiki_kb.services.search_service import _chunk_markdown_body
 
     assert _chunk_markdown_body("---\ntitle: Empty\n---\n", "Empty") == []
 
@@ -267,7 +270,7 @@ def test_chunk_markdown_body_handles_blank_and_long_sections() -> None:
 
 def test_paragraphs_skip_blank_and_heading_lines() -> None:
     """Verifies that paragraphs skip blank and heading lines."""
-    from src.services.search_service import _paragraphs
+    from graphwiki_kb.services.search_service import _paragraphs
 
     paragraphs = _paragraphs(
         "# Heading\n\nFirst line\nSecond line\n\n## Next\n\nThird line\n"
@@ -332,7 +335,7 @@ def test_search_service_refresh_marks_fts_unavailable_on_store_error(
         monkeypatch: Monkeypatch value used by the operation.
         test_project: Test project value used by the operation.
     """
-    from src.storage.search_index_store import SearchIndexUnavailable
+    from graphwiki_kb.storage.search_index_store import SearchIndexUnavailable
 
     service = test_project.services["search"]
 
@@ -359,7 +362,7 @@ def test_search_service_search_falls_back_when_index_query_fails(
         monkeypatch: Monkeypatch value used by the operation.
         test_project: Test project value used by the operation.
     """
-    from src.storage.search_index_store import SearchIndexUnavailable
+    from graphwiki_kb.storage.search_index_store import SearchIndexUnavailable
 
     test_project.write_file("wiki/sources/fallback.md", "traceability body")
     service = test_project.services["search"]
@@ -792,7 +795,7 @@ def test_save_answer_formats_claims_without_refs(test_project) -> None:
     Args:
         test_project: Test project value used by the operation.
     """
-    from src.services.query_service import QueryAnswer, QueryClaim
+    from graphwiki_kb.services.query_service import QueryAnswer, QueryClaim
 
     answer = QueryAnswer(
         answer="Traceability stays grounded.",
@@ -936,7 +939,7 @@ def test_save_answer_deduplicates_repeated_log_headings(test_project) -> None:
     )
 
     with patch(
-        "src.services.query_service.utc_now_iso",
+        "graphwiki_kb.services.query_service.utc_now_iso",
         return_value="2026-04-24T00:00:00+00:00",
     ):
         first_answer = query_service.answer_question("traceability")
@@ -990,7 +993,7 @@ def test_query_prompt_includes_schema_excerpt(test_project) -> None:
     Args:
         test_project: Test project value used by the operation.
     """
-    from src.services.config_service import DEFAULT_SCHEMA
+    from graphwiki_kb.services.config_service import DEFAULT_SCHEMA
 
     provider = SequencedProvider([_structured_query_response()])
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
@@ -1018,7 +1021,7 @@ def test_save_answer_sanitizes_log_question_text(test_project) -> None:
     Args:
         test_project: Test project value used by the operation.
     """
-    from src.services.query_service import QueryAnswer
+    from graphwiki_kb.services.query_service import QueryAnswer
 
     answer = QueryAnswer(
         answer="Traceability stays grounded.", citations=[], mode="test"
@@ -1042,7 +1045,10 @@ def test_save_answer_sanitizes_log_question_text(test_project) -> None:
 
 def test_save_answer_with_explicit_slug_and_long_question(test_project) -> None:
     """Covers: save_answer slug kwarg, log-file no-trailing-newline, long question truncation."""
-    from src.services.query_service import QueryAnswer, _parse_provider_query_answer
+    from graphwiki_kb.services.query_service import (
+        QueryAnswer,
+        _parse_provider_query_answer,
+    )
 
     with pytest.raises(ValueError, match="was empty"):
         _parse_provider_query_answer("")
@@ -1212,7 +1218,7 @@ def test_save_answer_refreshes_search_index_for_analysis_pages(test_project) -> 
     Args:
         test_project: Test project value used by the operation.
     """
-    from src.services.query_service import QueryAnswer
+    from graphwiki_kb.services.query_service import QueryAnswer
 
     answer = QueryAnswer(
         answer="Persistent traceability analysis lives in the wiki.",
@@ -1286,7 +1292,10 @@ def test_search_index_store_wraps_sqlite_operational_errors(
         monkeypatch: Monkeypatch value used by the operation.
         tmp_path: Tmp path value used by the operation.
     """
-    from src.storage.search_index_store import SearchIndexStore, SearchIndexUnavailable
+    from graphwiki_kb.storage.search_index_store import (
+        SearchIndexStore,
+        SearchIndexUnavailable,
+    )
 
     class BrokenConnection:
         """Represents broken connection behavior and data.
@@ -1538,7 +1547,7 @@ def test_search_refresh_force_retries_after_fts_unavailable(
     test_project,
 ) -> None:
     """Verifies a transient FTS failure does not disable forced rebuilds forever."""
-    from src.storage.search_index_store import SearchIndexUnavailable
+    from graphwiki_kb.storage.search_index_store import SearchIndexUnavailable
 
     test_project.write_file("wiki/sources/retry.md", "retryable fts content")
     service = test_project.services["search"]
@@ -1604,7 +1613,7 @@ def test_refresh_file_upserts_single_file_without_full_rebuild(
 
 def test_search_index_store_upsert_replaces_stale_chunks(test_project) -> None:
     """upsert_file must replace old chunks so stale terms are no longer searchable."""
-    from src.storage.search_index_store import (
+    from graphwiki_kb.storage.search_index_store import (
         IndexedChunk,
         IndexedFileState,
         SearchIndexStore,
@@ -1645,7 +1654,7 @@ def test_search_index_store_upsert_replaces_stale_chunks(test_project) -> None:
 
 def test_search_index_store_delete_missing_files(test_project) -> None:
     """delete_missing_files must remove pages no longer in the given path set."""
-    from src.storage.search_index_store import IndexedChunk, IndexedFileState
+    from graphwiki_kb.storage.search_index_store import IndexedChunk, IndexedFileState
 
     store = test_project.services["search"].index_store
     for slug in ("keep", "remove"):
@@ -1738,7 +1747,7 @@ def test_refresh_file_marks_fts_unavailable_on_upsert_error(
     monkeypatch, test_project
 ) -> None:
     """refresh_file() must disable FTS when upsert_file raises SearchIndexUnavailable."""
-    from src.storage.search_index_store import SearchIndexUnavailable
+    from graphwiki_kb.storage.search_index_store import SearchIndexUnavailable
 
     path = test_project.write_file("wiki/sources/upsert-fail.md", "content")
     service = test_project.services["search"]
@@ -1790,7 +1799,7 @@ def test_status_provider_summary_configured(test_project) -> None:
     Args:
         test_project: Test project value used by the operation.
     """
-    from src.services.status_service import StatusService
+    from graphwiki_kb.services.status_service import StatusService
 
     service = StatusService(
         test_project.paths,
@@ -1808,7 +1817,7 @@ def test_status_provider_summary_uses_catalog_defaults(test_project) -> None:
     Args:
         test_project: Test project value used by the operation.
     """
-    from src.services.status_service import StatusService
+    from graphwiki_kb.services.status_service import StatusService
 
     service = StatusService(
         test_project.paths,
@@ -1906,7 +1915,7 @@ def test_status_counts_analysis_pages_in_analysis_dir(test_project) -> None:
 
 def test_search_index_returns_empty_snippet_fallback(test_project) -> None:
     """When a FTS hit has no snippet text, the section/title must be used instead."""
-    from src.storage.search_index_store import SearchHit
+    from graphwiki_kb.storage.search_index_store import SearchHit
 
     test_project.write_file("wiki/sources/snippetless.md", "sparse relevant body")
     service = test_project.services["search"]
@@ -1984,7 +1993,7 @@ def test_indexable_chunks_fallback_for_empty_body_page(test_project) -> None:
 def test_chunk_markdown_body_handles_non_paragraph_section(test_project) -> None:
     """A section with only a run of consecutive non-blank lines (no blank-line separators)
     is returned as one paragraph by _paragraphs; the chunk must still be non-empty."""
-    from src.services.search_service import _chunk_markdown_body
+    from graphwiki_kb.services.search_service import _chunk_markdown_body
 
     text = "## Tight Section\n\nline one\nline two\nline three\n"
     chunks = _chunk_markdown_body(text, "Tight Section")
@@ -1994,7 +2003,7 @@ def test_chunk_markdown_body_handles_non_paragraph_section(test_project) -> None
 
 def test_chunk_markdown_body_skips_blank_normalized_paragraphs() -> None:
     """Normalized empty paragraph strings must be silently skipped."""
-    from src.services.search_service import _chunk_markdown_body
+    from graphwiki_kb.services.search_service import _chunk_markdown_body
 
     text = "# Title\n\n   \n\nReal paragraph content here\n"
     chunks = _chunk_markdown_body(text, "Title")
@@ -2005,7 +2014,7 @@ def test_chunk_markdown_body_skips_blank_normalized_paragraphs() -> None:
 
 def test_chunk_markdown_body_skips_non_evidence_sections() -> None:
     """Verifies that chunk markdown body skips non evidence sections."""
-    from src.services.search_service import _chunk_markdown_body
+    from graphwiki_kb.services.search_service import _chunk_markdown_body
 
     text = (
         "# Paper\n\n"
@@ -2028,7 +2037,7 @@ def test_chunk_markdown_body_skips_non_evidence_sections() -> None:
 
 def test_clean_search_snippet_removes_wiki_markup() -> None:
     """Verifies that clean search snippet removes wiki markup."""
-    from src.services.search_service import _clean_search_snippet
+    from graphwiki_kb.services.search_service import _clean_search_snippet
 
     assert _clean_search_snippet("[[target|Readable Title]] `path.md`") == (
         "Readable Title path.md"
@@ -2466,7 +2475,7 @@ def test_save_answer_summary_fallback_for_empty_answer(test_project) -> None:
     Args:
         test_project: Test project value used by the operation.
     """
-    from src.services.query_service import QueryAnswer
+    from graphwiki_kb.services.query_service import QueryAnswer
 
     query_service = test_project.services["query"]
     answer = QueryAnswer(answer="", citations=[], mode="test")

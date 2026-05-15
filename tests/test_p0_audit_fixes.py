@@ -9,11 +9,11 @@ from unittest.mock import patch
 
 from click.testing import CliRunner
 
-from src.cli import main
-from src.services.doctor_service import DoctorService
-from src.services.export_service import ExportService
-from src.services.graphrag_status_service import GraphRAGStatusService
-from src.services.search_service import (
+from graphwiki_kb.cli import main
+from graphwiki_kb.services.doctor_service import DoctorService
+from graphwiki_kb.services.export_service import ExportService
+from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
+from graphwiki_kb.services.search_service import (
     _extract_frontmatter_type,
     _is_generated_concept_page,
 )
@@ -180,7 +180,7 @@ def test_extract_frontmatter_type_handles_unclosed_frontmatter() -> None:
 
 def test_strip_frontmatter_handles_unclosed_frontmatter() -> None:
     """Verifies that strip frontmatter handles unclosed frontmatter."""
-    from src.services.search_service import _strip_frontmatter
+    from graphwiki_kb.services.search_service import _strip_frontmatter
 
     text = "---\ntitle: Foo\n"
     assert _strip_frontmatter(text) == text
@@ -525,7 +525,7 @@ def test_doctor_uses_catalog_default_model_when_override_missing(test_project) -
 
 def test_doctor_report_ok_property() -> None:
     """Verifies that doctor report ok property."""
-    from src.services.doctor_service import DoctorCheck, DoctorReport
+    from graphwiki_kb.services.doctor_service import DoctorCheck, DoctorReport
 
     report = DoctorReport(
         checks=[
@@ -690,6 +690,6 @@ def test_export_clean_cli_flag(tmp_path) -> None:
 def test_kb_group_is_click_group_not_multi_command() -> None:
     """Verifies that kb group is click group not multi command."""
     import click
-    from src.cli import KBGroup
+    from graphwiki_kb.cli import KBGroup
 
     assert issubclass(KBGroup, click.Group)

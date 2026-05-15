@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.providers.base import ProviderRequest, ProviderResponse
-from src.providers.retry import TRANSIENT_EXCEPTIONS, provider_retry
+from graphwiki_kb.providers.base import ProviderRequest, ProviderResponse
+from graphwiki_kb.providers.retry import TRANSIENT_EXCEPTIONS, provider_retry
 
 
 # ---------------------------------------------------------------------------

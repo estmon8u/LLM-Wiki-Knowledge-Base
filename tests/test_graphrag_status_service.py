@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.services.graphrag_command_service import GraphRAGCommandResult
-from src.services.graphrag_status_service import GraphRAGStatus
-from src.services.graphrag_status_service import GraphRAGStatusService
+from graphwiki_kb.services.graphrag_command_service import GraphRAGCommandResult
+from graphwiki_kb.services.graphrag_status_service import GraphRAGStatus
+from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
 
 
 def test_status_reports_workspace_input_outputs_and_last_run(test_project) -> None:

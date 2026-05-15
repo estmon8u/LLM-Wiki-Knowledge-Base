@@ -9,13 +9,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import src.services.compile_service as compile_mod
-import src.services.concept_service as concept_mod
-import src.services.query_service as query_mod
-from src.models.source_models import RawSourceRecord
-from src.models.wiki_models import SearchResult
-from src.services.concept_service import _ConceptDraft, _SourcePage
-from src.services.query_service import QueryAnswer
+import graphwiki_kb.services.compile_service as compile_mod
+import graphwiki_kb.services.concept_service as concept_mod
+import graphwiki_kb.services.query_service as query_mod
+from graphwiki_kb.models.source_models import RawSourceRecord
+from graphwiki_kb.models.wiki_models import SearchResult
+from graphwiki_kb.services.concept_service import _ConceptDraft, _SourcePage
+from graphwiki_kb.services.query_service import QueryAnswer
 
 
 _FIXED_TIMESTAMP = "2026-04-20T12:00:00+00:00"

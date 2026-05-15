@@ -12,13 +12,13 @@ import json
 import pytest
 import yaml
 
-from src.models.source_models import RawSourceRecord
-from src.services.graphrag_defaults import (
+from graphwiki_kb.models.source_models import RawSourceRecord
+from graphwiki_kb.services.graphrag_defaults import (
     DEFAULT_GRAPHRAG_ENCODING_MODEL,
     DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
     DEFAULT_GRAPHRAG_MODEL,
 )
-from src.services.graphrag_input_sync_service import (
+from graphwiki_kb.services.graphrag_input_sync_service import (
     GRAPH_INPUT_METADATA_FIELDS,
     GraphRAGInputSyncError,
     GraphRAGInputSyncService,

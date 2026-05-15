@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 from pydantic import BaseModel
 
-from src.providers.structured import (
+from graphwiki_kb.providers.structured import (
     StructuredOutputError,
     parse_json_payload,
     parse_model_payload,

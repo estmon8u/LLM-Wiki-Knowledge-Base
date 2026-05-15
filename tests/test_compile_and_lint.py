@@ -13,10 +13,10 @@ from pathlib import Path
 
 import pytest
 
-from src.models.wiki_models import LintIssue, LintReport
-from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
-from src.services.graphrag_command_service import GraphRAGCommandResult
-from src.services.compile_service import (
+from graphwiki_kb.models.wiki_models import LintIssue, LintReport
+from graphwiki_kb.providers.base import ProviderRequest, ProviderResponse, TextProvider
+from graphwiki_kb.services.graphrag_command_service import GraphRAGCommandResult
+from graphwiki_kb.services.compile_service import (
     SOURCE_PAGE_CONTRACT_VERSION,
     _abstract_paragraphs,
     _deterministic_summary,
@@ -34,8 +34,8 @@ from src.services.compile_service import (
     _strip_frontmatter,
     _truncate_with_boundary,
 )
-from src.services.update_service import UpdateOptions, UpdateService
-from src.services.lint_service import (
+from graphwiki_kb.services.update_service import UpdateOptions, UpdateService
+from graphwiki_kb.services.lint_service import (
     _split_frontmatter,
     _split_markdown_target,
     _strip_excerpt_section,
@@ -928,7 +928,7 @@ def test_lint_ignores_links_inside_fenced_code_blocks(test_project) -> None:
 
 def test_lint_ignores_image_links() -> None:
     """Verifies that lint ignores image links."""
-    from src.services.lint_service import MARKDOWN_LINK_PATTERN
+    from graphwiki_kb.services.lint_service import MARKDOWN_LINK_PATTERN
 
     image = "![alt text](image.png)"
     assert MARKDOWN_LINK_PATTERN.search(image) is None
@@ -1141,7 +1141,7 @@ def test_compile_requires_provider(test_project) -> None:
     Args:
         test_project: Test project value used by the operation.
     """
-    from src.providers import ProviderConfigurationError
+    from graphwiki_kb.providers import ProviderConfigurationError
 
     test_project.services["compile"].provider = None
     _ingest_source(
@@ -1566,7 +1566,7 @@ def test_safe_int_enforces_minimum() -> None:
 
 def test_sorted_sources_deterministic_order() -> None:
     """Verifies that sorted sources deterministic order."""
-    from src.models.source_models import RawSourceRecord
+    from graphwiki_kb.models.source_models import RawSourceRecord
 
     sources = [
         RawSourceRecord(
@@ -1750,7 +1750,7 @@ def test_compile_provider_empty_content_returns_no_content_message(
     Args:
         test_project: Test project value used by the operation.
     """
-    from src.services.compile_service import CompileService
+    from graphwiki_kb.services.compile_service import CompileService
 
     service = test_project.services["compile"]
     summary = service._extract_summary("")
@@ -1764,7 +1764,11 @@ def test_compile_provider_structured_summary_fields(test_project) -> None:
     Args:
         test_project: Test project value used by the operation.
     """
-    from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
+    from graphwiki_kb.providers.base import (
+        ProviderRequest,
+        ProviderResponse,
+        TextProvider,
+    )
 
     class StructuredSummaryProvider(TextProvider):
         """Represents structured summary provider behavior and data.
@@ -1818,7 +1822,11 @@ def test_compile_provider_empty_response_falls_back(test_project) -> None:
     Args:
         test_project: Test project value used by the operation.
     """
-    from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
+    from graphwiki_kb.providers.base import (
+        ProviderRequest,
+        ProviderResponse,
+        TextProvider,
+    )
 
     class EmptyProvider(TextProvider):
         """Represents empty provider behavior and data.
@@ -1860,7 +1868,11 @@ def test_compile_provider_error_falls_back_to_deterministic_summary(
     Args:
         test_project: Test project value used by the operation.
     """
-    from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
+    from graphwiki_kb.providers.base import (
+        ProviderRequest,
+        ProviderResponse,
+        TextProvider,
+    )
 
     class ErrorProvider(TextProvider):
         """Represents error provider behavior and data.
@@ -1901,7 +1913,11 @@ def test_compile_prompt_echo_summary_falls_back_to_deterministic_summary(
     Args:
         test_project: Test project value used by the operation.
     """
-    from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
+    from graphwiki_kb.providers.base import (
+        ProviderRequest,
+        ProviderResponse,
+        TextProvider,
+    )
 
     class EchoProvider(TextProvider):
         """Represents echo provider behavior and data.
@@ -1955,7 +1971,7 @@ def test_compile_unavailable_provider_raises_configuration_error(
     Args:
         test_project: Test project value used by the operation.
     """
-    from src.providers import ProviderConfigurationError, UnavailableProvider
+    from graphwiki_kb.providers import ProviderConfigurationError, UnavailableProvider
 
     test_project.services["compile"].provider = UnavailableProvider(
         "No API key set", provider_name="test"
@@ -2315,7 +2331,7 @@ def test_compile_prompt_includes_schema_excerpt(test_project) -> None:
     Args:
         test_project: Test project value used by the operation.
     """
-    from src.services.config_service import DEFAULT_SCHEMA
+    from graphwiki_kb.services.config_service import DEFAULT_SCHEMA
 
     provider = _RecordingSummaryProvider()
     compile_service = test_project.services["compile"]

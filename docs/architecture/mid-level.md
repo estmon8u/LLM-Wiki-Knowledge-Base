@@ -4,13 +4,13 @@
 
 | Package | Responsibility |
 | --- | --- |
-| `src/cli.py` | CLI entrypoint and application bootstrap |
-| `src/commands/` | Thin user-facing command wrappers |
-| `src/services/` | Deterministic normalization, ingest, compile, concept, diff, lint, review, search, query (legacy ask), export, status, config, manifest, file-locking, GraphRAG workspace/input/index/status/query/export services, plus the default graph ask controller and router |
-| `src/models/` | Shared command, source, and wiki dataclasses |
-| `src/engine/` | Command registry boundary |
-| `src/providers/` | Provider abstraction layer with OpenAI, Anthropic, and Gemini implementations; shared structured-output parser, Tenacity retry decorator for transient failures, per-request reasoning/output controls, diagnostics on provider responses, adaptive Anthropic thinking, Gemini schema adaptation with warnings, and catalog-backed provider resolution |
-| `src/storage/` | Lock-protected compile-run state persistence and SQLite FTS5 chunk-index storage |
+| `src/graphwiki_kb/cli.py` | CLI entrypoint and application bootstrap |
+| `src/graphwiki_kb/commands/` | Thin user-facing command wrappers |
+| `src/graphwiki_kb/services/` | Deterministic normalization, ingest, compile, concept, diff, lint, review, search, query (legacy ask), export, status, config, manifest, file-locking, GraphRAG workspace/input/index/status/query/export services, plus the default graph ask controller and router |
+| `src/graphwiki_kb/models/` | Shared command, source, and wiki dataclasses |
+| `src/graphwiki_kb/engine/` | Command registry boundary |
+| `src/graphwiki_kb/providers/` | Provider abstraction layer with OpenAI Responses API plus Chat Completions fallback, Anthropic, and Gemini implementations; shared structured-output parser, Tenacity retry decorator for transient failures, per-request reasoning/output controls, diagnostics on provider responses, adaptive Anthropic thinking, Gemini schema adaptation with warnings, and catalog-backed provider resolution |
+| `src/graphwiki_kb/storage/` | Lock-protected compile-run state persistence and SQLite FTS5 chunk-index storage |
 | `scripts/` | Operational scripts, including Phase 8 evaluation runners for retrieval and answer-mode comparison |
 | `eval/` | Benchmark definitions, legacy captures, and generated evaluation reports |
 
@@ -20,19 +20,19 @@ Most commands are flat top-level verbs. The GraphRAG pivot keeps the deprecated 
 
 | Click Name | Command Wrapper | Main Service |
 | --- | --- | --- |
-| `init` | `src/commands/init.py` | `src/services/project_service.py`, `src/services/config_service.py`, and `src/services/graphrag_workspace_service.py` |
-| `add` | `src/commands/add.py` | `src/services/ingest_service.py`, `src/services/normalization_service.py`, and `src/services/manifest_service.py` |
-| `update` | `src/commands/update.py` | `src/services/compile_service.py`, `src/services/concept_service.py`, `src/services/search_service.py`, `src/services/graphrag_sync_service.py`, and `src/services/graphrag_wiki_export_service.py` |
-| `find` | `src/commands/find.py` | `src/services/graphrag_find_service.py` for direct graph artifacts plus `src/services/search_service.py` for non-generative maintained-wiki navigation |
-| `ask` | `src/commands/ask.py` | `src/services/graph_ask_controller_service.py` and `src/services/query_router_service.py` |
-| `legacy find` / `legacy ask` | `src/commands/legacy.py` | `src/services/search_service.py` and `src/services/query_service.py` |
-| `lint` | `src/commands/lint.py` | `src/services/lint_service.py` and `src/services/graphrag_status_service.py` |
-| `review` | `src/commands/review.py` | `src/services/review_service.py` |
-| `status` | `src/commands/status.py` | `src/services/status_service.py`, `src/services/graphrag_status_service.py`, and `src/services/diff_service.py` (with `--changed`) |
-| `export` | `src/commands/export_cmd.py` | `src/services/export_service.py` and `src/services/graphrag_wiki_export_service.py` |
-| `doctor` | `src/commands/doctor.py` | `src/services/doctor_service.py` and `src/services/graphrag_status_service.py` |
-| `config` | `src/commands/config_cmd.py` | `src/services/config_service.py` |
-| `sources` | `src/commands/sources.py` | `src/services/manifest_service.py` |
+| `init` | `src/graphwiki_kb/commands/init.py` | `src/graphwiki_kb/services/project_service.py`, `src/graphwiki_kb/services/config_service.py`, and `src/graphwiki_kb/services/graphrag_workspace_service.py` |
+| `add` | `src/graphwiki_kb/commands/add.py` | `src/graphwiki_kb/services/ingest_service.py`, `src/graphwiki_kb/services/normalization_service.py`, and `src/graphwiki_kb/services/manifest_service.py` |
+| `update` | `src/graphwiki_kb/commands/update.py` | `src/graphwiki_kb/services/compile_service.py`, `src/graphwiki_kb/services/concept_service.py`, `src/graphwiki_kb/services/search_service.py`, `src/graphwiki_kb/services/graphrag_sync_service.py`, and `src/graphwiki_kb/services/graphrag_wiki_export_service.py` |
+| `find` | `src/graphwiki_kb/commands/find.py` | `src/graphwiki_kb/services/graphrag_find_service.py` for direct graph artifacts plus `src/graphwiki_kb/services/search_service.py` for non-generative maintained-wiki navigation, deduped and globally ranked after both candidate sets are collected |
+| `ask` | `src/graphwiki_kb/commands/ask.py` | `src/graphwiki_kb/services/graph_ask_controller_service.py` and `src/graphwiki_kb/services/query_router_service.py` |
+| `legacy find` / `legacy ask` | `src/graphwiki_kb/commands/legacy.py` | `src/graphwiki_kb/services/search_service.py` and `src/graphwiki_kb/services/query_service.py` |
+| `lint` | `src/graphwiki_kb/commands/lint.py` | `src/graphwiki_kb/services/lint_service.py` and `src/graphwiki_kb/services/graphrag_status_service.py` |
+| `review` | `src/graphwiki_kb/commands/review.py` | `src/graphwiki_kb/services/review_service.py` |
+| `status` | `src/graphwiki_kb/commands/status.py` | `src/graphwiki_kb/services/status_service.py`, `src/graphwiki_kb/services/graphrag_status_service.py`, and `src/graphwiki_kb/services/diff_service.py` (with `--changed`) |
+| `export` | `src/graphwiki_kb/commands/export_cmd.py` | `src/graphwiki_kb/services/export_service.py` and `src/graphwiki_kb/services/graphrag_wiki_export_service.py` |
+| `doctor` | `src/graphwiki_kb/commands/doctor.py` | `src/graphwiki_kb/services/doctor_service.py` and `src/graphwiki_kb/services/graphrag_status_service.py` |
+| `config` | `src/graphwiki_kb/commands/config_cmd.py` | `src/graphwiki_kb/services/config_service.py` |
+| `sources` | `src/graphwiki_kb/commands/sources.py` | `src/graphwiki_kb/services/manifest_service.py` |
 
 ## Data Flow
 
@@ -56,7 +56,7 @@ Most commands are flat top-level verbs. The GraphRAG pivot keeps the deprecated 
 ## Current Ingest Scope
 
 - The current implementation adds `.md`, `.markdown`, and `.txt` files directly; routes `.pdf`, `.docx`, `.pptx`, `.png`, `.jpg`, `.jpeg`, and `.avif` through Mistral OCR first; renders `.html` / `.htm` to PDF with `wkhtmltopdf` first and pure-Python `xhtml2pdf` as fallback before OCR; and uses MarkItDown for the remaining bounded born-digital subset such as CSV, notebooks, EPUB, and Excel files.
-- `kb add` is the primary ingestion command; `src/commands/ingest.py` provides the shared implementation.
+- `kb add` is the primary ingestion command; `src/graphwiki_kb/commands/ingest.py` provides the shared implementation.
 - Directory inputs for `kb add` walk recursively by default, add only supported source files, and leave unsupported files untouched.
 - Conversion quality gates reject empty, implausibly short, or suspiciously truncated outputs before `raw/normalized/` artifacts are written. PDF, DOCX, PPTX, and HTML routes then fall back explicitly to Docling or MarkItDown based on config.
 
@@ -66,7 +66,7 @@ Most commands are flat top-level verbs. The GraphRAG pivot keeps the deprecated 
 - The command layer owns terminal-only concerns such as section headings, list formatting, progress bars, and lazy status spinners via Rich (`Console`, `Table`, `Progress`, `Status`); long-running services expose callback-friendly hooks instead of writing directly to the terminal. User-supplied content is markup-escaped via `rich.markup.escape`.
 - Services should remain deterministic unless the feature explicitly requires model-backed synthesis.
 - GraphRAG orchestration should wrap the official `graphrag` Python entrypoints/library instead of reimplementing graph indexing or query modes.
-- Shared parsing belongs in `src/services/markdown_document.py`: services should consume parser-backed markdown/frontmatter helpers instead of adding new ad hoc regex stacks.
+- Shared parsing belongs in `src/graphwiki_kb/services/markdown_document.py`: services should consume parser-backed markdown/frontmatter helpers instead of adding new ad hoc regex stacks.
 - Config validation belongs in Pydantic models inside `ConfigService`, with compatibility wrappers preserved for tests and callers.
 - Concept clustering is semantic and provider-backed when possible; keep deterministic clustering only as fallback and keep page writing/backlink maintenance deterministic.
 - `kb lint` checks links, fragments, headings, titles, and metadata deterministically; `kb review` prepends deterministic overlap checks to a required provider-backed single-pass review.

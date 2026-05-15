@@ -12,13 +12,16 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.models.source_models import RawSourceRecord
-from src.services.ingest_service import IngestService
-from src.services.manifest_service import ManifestError
-from src.services.normalization_service import NormalizationService, _ConvertedText
-from src.services.normalization_service import _extract_title
-from src.services.normalization_service import is_supported_source_path
-from src.services.project_service import utc_now_iso
+from graphwiki_kb.models.source_models import RawSourceRecord
+from graphwiki_kb.services.ingest_service import IngestService
+from graphwiki_kb.services.manifest_service import ManifestError
+from graphwiki_kb.services.normalization_service import (
+    NormalizationService,
+    _ConvertedText,
+)
+from graphwiki_kb.services.normalization_service import _extract_title
+from graphwiki_kb.services.normalization_service import is_supported_source_path
+from graphwiki_kb.services.project_service import utc_now_iso
 
 
 class FakePdfConverter:

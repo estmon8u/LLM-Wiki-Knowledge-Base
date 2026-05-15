@@ -209,8 +209,8 @@ Creates:
 - `wiki/sources/` — directory for compiled source pages
 - `vault/obsidian/` — directory for vault export
 
-Running `init` again is safe — it skips files that already exist.
-The scaffold writes `kb.config.yaml` at config version 6. Older configs are migrated in place on load so deprecated fields are removed and newer sections such as `providers`, `conversion`, `graph`, and `storage.raw_normalized_dir` are persisted automatically.
+Running `init` again is safe — it skips files that already exist. If an existing config file is malformed, `init` writes a timestamped `kb.config.yaml.bak.*` copy before regenerating the default file.
+The scaffold writes `kb.config.yaml` at config version 7. Older configs are migrated in place on load so deprecated fields are removed and newer sections such as `providers`, `conversion`, `graph.routing`, `conversion.html.allow_local_file_access`, and `storage.raw_normalized_dir` are persisted automatically.
 
 ### `kb doctor`
 
@@ -298,7 +298,7 @@ GraphRAG indexing uses the same decision table that powered the former graph syn
 | Output exists but required tables or vector store are incomplete | Full rebuild with `fast` |
 | Source hashes changed since the last successful index | Incremental update with `fast-update` |
 | Latest index attempt failed after an older success | Retry with `fast-update` when complete output exists, otherwise `fast` |
-| Graph runtime settings or prompts changed | Full rebuild with `fast` |
+| Graph runtime settings, prompts, GraphRAG package version, or managed schema version changed | Full rebuild with `fast` |
 | Sources and runtime config match the last successful index | Skip indexing |
 
 Graph wiki export reads standard GraphRAG tables such as `documents`, `text_units`, `entities`, `relationships`, `communities`, and `community_reports` from the active complete output directory under `graph/graphrag/output/`. A complete output directory means those tables and the configured vector store are present. It writes:
@@ -324,8 +324,9 @@ Troubleshooting paths:
 
 ### `kb find <terms>`
 
-Searches direct GraphRAG entity and relationship artifacts first, then the
-maintained wiki index including GraphRAG export pages when they exist. Use
+Searches direct GraphRAG entity and relationship artifacts and the maintained
+wiki index, then deduplicates and ranks all candidates together so weak graph
+hits do not hide stronger wiki pages. Use
 `kb legacy find` only when you specifically need the deprecated source-page-only
 FTS5 comparator path.
 
@@ -585,7 +586,7 @@ Provider configuration lives entirely in `kb.config.yaml`. The top-level
 the built-in settings for `openai`, `anthropic`, and `gemini`:
 
 ```yaml
-version: 6
+version: 7
 provider:
   name: openai
 providers:
@@ -593,6 +594,7 @@ providers:
     model: gpt-5.4-nano
     api_key_env: OPENAI_API_KEY
     reasoning_effort: high
+    api: responses
   anthropic:
     model: claude-sonnet-4-6
     api_key_env: ANTHROPIC_API_KEY
@@ -609,6 +611,7 @@ conversion:
   html:
     renderer: wkhtmltopdf
     wkhtmltopdf_path: null
+    allow_local_file_access: false
   fallbacks:
     pdf: docling
     docx: markitdown
@@ -621,6 +624,8 @@ graph:
   embedding_model: text-embedding-3-small
   api_key_env: null
   embedding_api_key_env: null
+  routing:
+    aliases: {}
 ```
 
 To customize a provider, edit its entry under `providers`:
@@ -643,12 +648,15 @@ uses model-sensitive thinking configuration: Gemini 2.5 receives a
 `thinking_budget`, while Gemini 3.x receives a `thinking_level`.
 The adaptive-thinking detector is version-pattern based for Claude 4.6 and
 newer Sonnet/Opus model identifiers rather than locked to a single model name.
+OpenAI uses the Responses API by default for reasoning controls and structured
+JSON output; set `providers.openai.api: chat_completions` only when you need the
+legacy fallback path.
 
 The `graph` section controls GraphRAG runtime setup independently from the text-provider section used by `kb update`, `kb review`, and `kb legacy ask`, but it does not duplicate API keys by default. `api_key_env: null` means "resolve this from `providers.<graph.provider>.api_key_env`"; `embedding_api_key_env: null` does the same for `providers.<graph.embedding_provider>.api_key_env`. Run `kb init` after editing it to refresh the managed provider/model/API-key fields in `graph/graphrag/settings.yaml`; `kb update` also syncs those managed fields before deciding whether model or prompt changes require a rebuild while preserving unrelated GraphRAG tuning in the workspace settings file.
 
 OpenAI and Google Gemini both expose embedding models that can be configured for GraphRAG. Anthropic does not currently provide its own embedding model; Anthropic's embedding guidance points users to Voyage AI instead. GraphRAG uses LiteLLM underneath and supports non-OpenAI providers, but its own docs say OpenAI GPT-4-series models remain the most thoroughly tested path.
 
-`kb.config.yaml` is versioned. The current schema version is 6, and the CLI automatically migrates older files when it loads project configuration.
+`kb.config.yaml` is versioned. The current schema version is 7, and the CLI automatically migrates older files when it loads project configuration.
 
 You can also override the provider per-invocation without editing the config file:
 
@@ -730,6 +738,9 @@ Default routing is:
 If a Mistral-first conversion fails quality checks, the configured fallback
 converter is tried before the file is rejected. Image inputs currently have no
 local fallback and fail cleanly if Mistral OCR cannot process them.
+HTML rendering disables `wkhtmltopdf` local-file access by default; set
+`conversion.html.allow_local_file_access: true` only for trusted local HTML that
+must load adjacent local assets.
 
 ## Environment Variables
 
@@ -759,6 +770,7 @@ conversion:
     api_key_env: MY_CUSTOM_MISTRAL_KEY
   html:
     wkhtmltopdf_path: C:/Program Files/wkhtmltopdf/bin/wkhtmltopdf.exe
+    allow_local_file_access: false
 ```
 
 ## Project Layout

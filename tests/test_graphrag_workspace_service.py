@@ -13,9 +13,9 @@ import tomllib
 
 import yaml
 
-from src.services.graphrag_command_service import GraphRAGCommandService
-from src.services.graphrag_defaults import DEFAULT_GRAPHRAG_ENCODING_MODEL
-from src.services.graphrag_workspace_service import GraphRAGWorkspaceService
+from graphwiki_kb.services.graphrag_command_service import GraphRAGCommandService
+from graphwiki_kb.services.graphrag_defaults import DEFAULT_GRAPHRAG_ENCODING_MODEL
+from graphwiki_kb.services.graphrag_workspace_service import GraphRAGWorkspaceService
 
 
 def test_workspace_service_reports_initialization_state(test_project) -> None:

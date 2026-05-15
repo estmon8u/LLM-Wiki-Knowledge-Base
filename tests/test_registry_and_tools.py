@@ -12,9 +12,9 @@ import types
 import click
 import pytest
 
-from src.commands import common as common_module
-from src.cli import _extract_project_root, build_runtime_context
-from src.commands.common import (
+from graphwiki_kb.commands import common as common_module
+from graphwiki_kb.cli import _extract_project_root, build_runtime_context
+from graphwiki_kb.commands.common import (
     echo_bullet,
     echo_kv,
     echo_section,
@@ -25,12 +25,12 @@ from src.commands.common import (
     progress_report,
     require_initialized,
 )
-from src.engine.command_registry import (
+from graphwiki_kb.engine.command_registry import (
     build_command_specs,
     get_click_command,
     list_command_names,
 )
-from src.services.config_service import CURRENT_CONFIG_VERSION
+from graphwiki_kb.services.config_service import CURRENT_CONFIG_VERSION
 
 
 class _FakeStream:

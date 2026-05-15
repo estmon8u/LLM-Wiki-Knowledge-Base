@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from src.models.source_models import RawSourceRecord
-from src.storage.compile_run_store import CompileRunStore
-from src.services.project_service import utc_now_iso
+from graphwiki_kb.models.source_models import RawSourceRecord
+from graphwiki_kb.storage.compile_run_store import CompileRunStore
+from graphwiki_kb.services.project_service import utc_now_iso
 
 
 def _source(slug: str) -> RawSourceRecord:

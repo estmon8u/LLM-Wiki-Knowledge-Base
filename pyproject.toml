@@ -1,10 +1,10 @@
 [tool.poetry]
-name = "capstone-kb"
+name = "graphwiki-kb"
 version = "0.1.0"
 description = "CLI-first knowledge-base prototype for the CSC 675 capstone"
 authors = ["Esteban Montelongo"]
-packages = [{ include = "src" }]
-include = ["graph/graphrag/prompts/*.txt"]
+packages = [{ include = "graphwiki_kb", from = "src" }]
+include = ["graph/graphrag/prompts/*.txt", "src/graphwiki_kb/data/*.txt"]
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.14"
@@ -35,11 +35,15 @@ pytest-cov = ">=4.1,<5.0"
 black = ">=24.10,<26.0"
 
 [tool.poetry.scripts]
-kb = "src.cli:main"
+kb = "graphwiki_kb.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=95"
+pythonpath = ["src"]
+addopts = "--cov=graphwiki_kb --cov-report=term-missing --cov-report=xml --cov-fail-under=95"
+markers = [
+	"graphrag_integration: opt-in GraphRAG provider-backed integration smoke tests",
+]
 
 [tool.black]
 line-length = 88

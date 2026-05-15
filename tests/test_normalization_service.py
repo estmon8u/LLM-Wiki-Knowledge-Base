@@ -13,8 +13,8 @@ from types import SimpleNamespace
 import pytest
 from markitdown import MarkItDownException
 
-import src.services.normalization_service as normalization_service_module
-from src.services.normalization_service import (
+import graphwiki_kb.services.normalization_service as normalization_service_module
+from graphwiki_kb.services.normalization_service import (
     HTML_FALLBACK_ROUTE,
     HTML_RENDERED_OCR_ROUTE,
     HTML_XHTML2PDF_OCR_ROUTE,
@@ -1246,6 +1246,43 @@ def test_wkhtmltopdf_renderer_accepts_string_pdf_output(
     assert pdf_bytes.startswith(b"%PDF-1.4")
 
 
+def test_wkhtmltopdf_renderer_disables_local_file_access_by_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verifies wkhtmltopdf local-file access is trusted-source opt-in."""
+    source_path = tmp_path / "sample.html"
+    source_path.write_text("<p>hello</p>", encoding="utf-8")
+    binary = tmp_path / "wkhtmltopdf.exe"
+    binary.write_text("binary", encoding="utf-8")
+    captured_options: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        normalization_service_module.pdfkit,
+        "configuration",
+        lambda wkhtmltopdf: object(),
+    )
+
+    def fake_from_file(*args, **kwargs):
+        captured_options.update(kwargs["options"])
+        return b"%PDF-1.4\nfake\n"
+
+    monkeypatch.setattr(
+        normalization_service_module.pdfkit,
+        "from_file",
+        fake_from_file,
+    )
+
+    WkhtmltopdfRenderer(str(binary)).render_file(source_path)
+    assert "enable-local-file-access" not in captured_options
+
+    captured_options.clear()
+    WkhtmltopdfRenderer(
+        str(binary),
+        allow_local_file_access=True,
+    ).render_file(source_path)
+    assert "enable-local-file-access" in captured_options
+
+
 def test_wkhtmltopdf_renderer_rejects_empty_pdf_output(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1341,7 +1378,7 @@ def test_normalization_service_html_falls_back_when_wkhtmltopdf_missing(
 
     # Ensure xhtml2pdf fallback is also skipped so we reach MarkItDown fallback.
     monkeypatch.setattr(
-        "src.services.normalization_service.Xhtml2pdfRenderer.available",
+        "graphwiki_kb.services.normalization_service.Xhtml2pdfRenderer.available",
         staticmethod(lambda: False),
     )
 
@@ -1439,11 +1476,11 @@ def test_html_falls_back_to_xhtml2pdf_when_wkhtmltopdf_fails(
 
     # Patch Xhtml2pdfRenderer.available to return True and render_file to succeed
     monkeypatch.setattr(
-        "src.services.normalization_service.Xhtml2pdfRenderer.available",
+        "graphwiki_kb.services.normalization_service.Xhtml2pdfRenderer.available",
         staticmethod(lambda: True),
     )
     monkeypatch.setattr(
-        "src.services.normalization_service.Xhtml2pdfRenderer.render_file",
+        "graphwiki_kb.services.normalization_service.Xhtml2pdfRenderer.render_file",
         lambda self, path: b"%PDF-1.4\nxhtml2pdf-fake\n",
     )
 

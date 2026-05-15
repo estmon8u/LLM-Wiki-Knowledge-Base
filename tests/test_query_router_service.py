@@ -10,8 +10,8 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from src.services.graphrag_status_service import GraphRAGStatusService
-from src.services.query_router_service import (
+from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
+from graphwiki_kb.services.query_router_service import (
     QueryRouterError,
     QueryRouterService,
     _read_term_columns,
@@ -28,6 +28,7 @@ def test_router_routes_global_drift_and_basic_without_graph_terms() -> None:
     )
     assert router.route("How does REALM differ from RAG?").method == "drift"
     assert router.route("What is retrieval used for?").method == "basic"
+    assert router.route("What is REALM?").method == "basic"
 
 
 def test_router_uses_explicit_method_override() -> None:
@@ -66,6 +67,18 @@ def test_router_routes_known_entity_questions_to_local(test_project) -> None:
 
     assert router.route("What is REALM?").method == "local"
     assert router.route("Explain dense passage retrieval.").method == "local"
+
+
+def test_router_uses_configured_aliases_for_local_routing() -> None:
+    """Verifies corpus aliases are explicit config, not hard-coded benchmark terms."""
+    router = QueryRouterService(
+        routing_aliases={"dense passage retrieval": ["dpr", "dual encoder"]}
+    )
+
+    route = router.route("What does DPR retrieve?")
+
+    assert route.method == "local"
+    assert route.reason == "configured graph routing alias"
 
 
 def test_router_helpers_handle_missing_invalid_and_empty_terms(tmp_path) -> None:

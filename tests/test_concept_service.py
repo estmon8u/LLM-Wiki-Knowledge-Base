@@ -11,7 +11,7 @@ from pathlib import Path
 
 import yaml
 
-from src.services.concept_service import (
+from graphwiki_kb.services.concept_service import (
     ConceptService,
     _derive_topic_terms,
     _drafts_from_provider_report,
@@ -542,8 +542,12 @@ def test_compile_with_concepts_flag_cli() -> None:
     """Verifies that compile with concepts flag cli."""
     from click.testing import CliRunner
     from unittest.mock import patch
-    from src.cli import main
-    from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
+    from graphwiki_kb.cli import main
+    from graphwiki_kb.providers.base import (
+        ProviderRequest,
+        ProviderResponse,
+        TextProvider,
+    )
 
     class _FakeProvider(TextProvider):
         """Represents fake provider behavior and data.
@@ -592,7 +596,9 @@ def test_compile_with_concepts_flag_cli() -> None:
             yaml.safe_dump(config, sort_keys=False), encoding="utf-8"
         )
 
-        with patch("src.services.build_provider", return_value=_FakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_FakeProvider()
+        ):
             result = runner.invoke(main, ["update", "--concepts", "--no-graph"])
 
         assert result.exit_code == 0
@@ -689,7 +695,7 @@ def test_resolve_destination_stops_after_slug_attempt_limit(
 ) -> None:
     """Verifies concept slug allocation cannot loop forever."""
     import pytest
-    import src.services.concept_service as concept_module
+    import graphwiki_kb.services.concept_service as concept_module
 
     monkeypatch.setattr(concept_module, "_MAX_CONCEPT_SLUG_ATTEMPTS", 3)
     test_project.paths.wiki_concepts_dir.mkdir(parents=True, exist_ok=True)
@@ -1070,7 +1076,7 @@ class _StubConceptProvider:
         Args:
             request: Request value used by the operation.
         """
-        from src.providers.base import ProviderResponse
+        from graphwiki_kb.providers.base import ProviderResponse
         import json
 
         source_pages = []

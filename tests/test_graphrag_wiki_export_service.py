@@ -13,9 +13,9 @@ import pandas as pd
 import pytest
 import yaml
 
-from src.services.graphrag_command_service import GraphRAGCommandResult
-from src.services.graphrag_status_service import GraphRAGStatusService
-from src.services.graphrag_wiki_export_service import (
+from graphwiki_kb.services.graphrag_command_service import GraphRAGCommandResult
+from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
+from graphwiki_kb.services.graphrag_wiki_export_service import (
     GraphRAGWikiExportError,
     GraphRAGWikiExportService,
     MAX_ENTITY_RELATIONSHIP_ROWS,

@@ -19,10 +19,10 @@ from typing import Any, Iterable, Sequence
 
 import yaml
 
-from src.services.graphrag_query_service import GRAPH_QUERY_METHODS
-from src.services.graphrag_status_service import GraphRAGStatusService
-from src.services.project_service import build_project_paths, utc_now_iso
-from src.services.query_router_service import QueryRouterService
+from graphwiki_kb.services.graphrag_query_service import GRAPH_QUERY_METHODS
+from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
+from graphwiki_kb.services.project_service import build_project_paths, utc_now_iso
+from graphwiki_kb.services.query_router_service import QueryRouterService
 
 
 RESULTS_DIR = Path("eval") / "results"
@@ -893,7 +893,7 @@ def _kb_command(project_root: Path, *parts: str) -> tuple[str, ...]:
     return (
         sys.executable,
         "-m",
-        "src.cli",
+        "graphwiki_kb.cli",
         "--project-root",
         str(project_root),
         *parts,

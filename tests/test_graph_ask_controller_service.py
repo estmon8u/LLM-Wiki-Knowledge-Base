@@ -13,18 +13,18 @@ import subprocess
 import pandas as pd
 import pytest
 
-from src.services.graph_ask_controller_service import (
+from graphwiki_kb.services.graph_ask_controller_service import (
     GraphAskControllerError,
     GraphAskControllerService,
 )
-from src.services.graphrag_defaults import env_file_has_key
-from src.services.graphrag_command_service import (
+from graphwiki_kb.services.graphrag_defaults import env_file_has_key
+from graphwiki_kb.services.graphrag_command_service import (
     GraphRAGCommandResult,
     GraphRAGCommandService,
 )
-from src.services.graphrag_query_service import GraphRAGQueryService
-from src.services.graphrag_status_service import GraphRAGStatusService
-from src.services.query_router_service import QueryRouterService
+from graphwiki_kb.services.graphrag_query_service import GraphRAGQueryService
+from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
+from graphwiki_kb.services.query_router_service import QueryRouterService
 
 
 def _write_ready_graph(test_project) -> None:

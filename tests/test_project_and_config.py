@@ -12,8 +12,8 @@ from pathlib import Path
 import click
 import pytest
 
-from src.services import build_services
-from src.services.config_service import (
+from graphwiki_kb.services import build_services
+from graphwiki_kb.services.config_service import (
     CURRENT_CONFIG_VERSION,
     ConfigService,
     DEFAULT_CONFIG,
@@ -23,12 +23,12 @@ from src.services.config_service import (
     _deep_merge,
     resolve_graph_config,
 )
-from src.services.graphrag_defaults import (
+from graphwiki_kb.services.graphrag_defaults import (
     DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
     DEFAULT_GRAPHRAG_MODEL,
     DEFAULT_GRAPHRAG_PROVIDER,
 )
-from src.services.project_service import (
+from graphwiki_kb.services.project_service import (
     ProjectService,
     _replace_with_retry,
     atomic_copy_file,
@@ -155,8 +155,12 @@ def test_replace_with_retry_retries_transient_permission_error(monkeypatch) -> N
         if len(calls) < 2:
             raise PermissionError("locked")
 
-    monkeypatch.setattr("src.services.project_service.os.replace", fake_replace)
-    monkeypatch.setattr("src.services.project_service.time.sleep", lambda _secs: None)
+    monkeypatch.setattr(
+        "graphwiki_kb.services.project_service.os.replace", fake_replace
+    )
+    monkeypatch.setattr(
+        "graphwiki_kb.services.project_service.time.sleep", lambda _secs: None
+    )
 
     _replace_with_retry(Path("source.tmp"), Path("dest.txt"))
 
@@ -184,8 +188,12 @@ def test_replace_with_retry_raises_last_permission_error(monkeypatch) -> None:
         calls.append((source, destination))
         raise PermissionError("still locked")
 
-    monkeypatch.setattr("src.services.project_service.os.replace", fake_replace)
-    monkeypatch.setattr("src.services.project_service.time.sleep", lambda _secs: None)
+    monkeypatch.setattr(
+        "graphwiki_kb.services.project_service.os.replace", fake_replace
+    )
+    monkeypatch.setattr(
+        "graphwiki_kb.services.project_service.time.sleep", lambda _secs: None
+    )
 
     with pytest.raises(PermissionError, match="still locked"):
         _replace_with_retry(Path("source.tmp"), Path("dest.txt"))
@@ -235,6 +243,11 @@ def test_config_service_loads_defaults_and_creates_files(uninitialized_project) 
     assert graph["embedding_model"] == DEFAULT_GRAPHRAG_EMBEDDING_MODEL
     assert graph["api_key_env"] is None
     assert graph["embedding_api_key_env"] is None
+    assert graph["routing"] == {"aliases": {}}
+    assert config_service.load()["providers"]["openai"]["api"] == "responses"
+    assert (
+        config_service.load()["conversion"]["html"]["allow_local_file_access"] is False
+    )
     assert resolve_graph_config(config_service.load()).api_key_env == "OPENAI_API_KEY"
     assert config_service.load_schema() == DEFAULT_SCHEMA
 
@@ -655,6 +668,35 @@ def test_config_service_migrates_legacy_graph_api_key_env(test_project) -> None:
     assert graph_config.embedding_api_key_env == "OPENAI_API_KEY"
 
 
+def test_config_service_migrates_version_six_runtime_options(test_project) -> None:
+    """Verifies version 7 adds runtime API/routing/security defaults."""
+    test_project.paths.config_file.write_text(
+        "version: 6\n"
+        "providers:\n"
+        "  openai:\n"
+        "    model: gpt-5.4-nano\n"
+        "    api_key_env: OPENAI_API_KEY\n"
+        "    reasoning_effort: high\n"
+        "graph:\n"
+        "  provider: openai\n"
+        "  model: gpt-5.4-nano\n"
+        "  embedding_provider: openai\n"
+        "  embedding_model: text-embedding-3-small\n"
+        "conversion:\n"
+        "  html:\n"
+        "    renderer: wkhtmltopdf\n"
+        "    wkhtmltopdf_path:\n",
+        encoding="utf-8",
+    )
+
+    loaded = ConfigService(test_project.paths).load()
+
+    assert loaded["version"] == CURRENT_CONFIG_VERSION
+    assert loaded["providers"]["openai"]["api"] == "responses"
+    assert loaded["graph"]["routing"] == {"aliases": {}}
+    assert loaded["conversion"]["html"]["allow_local_file_access"] is False
+
+
 def test_config_service_rejects_invalid_graph_config(test_project) -> None:
     """Verifies that config service rejects invalid graph config.
 
@@ -954,7 +996,7 @@ def test_ensure_structure_seeds_wiki_log_file(uninitialized_project) -> None:
 
 def test_schema_excerpt_extracts_matching_section() -> None:
     """Verifies that schema excerpt extracts matching section."""
-    from src.services.config_service import DEFAULT_SCHEMA, schema_excerpt
+    from graphwiki_kb.services.config_service import DEFAULT_SCHEMA, schema_excerpt
 
     result = schema_excerpt(DEFAULT_SCHEMA, ["Source Pages"])
     assert "## Source Pages" in result
@@ -964,7 +1006,7 @@ def test_schema_excerpt_extracts_matching_section() -> None:
 
 def test_schema_excerpt_returns_multiple_sections() -> None:
     """Verifies that schema excerpt returns multiple sections."""
-    from src.services.config_service import DEFAULT_SCHEMA, schema_excerpt
+    from graphwiki_kb.services.config_service import DEFAULT_SCHEMA, schema_excerpt
 
     result = schema_excerpt(DEFAULT_SCHEMA, ["Source Pages", "Query Behavior"])
     assert "## Source Pages" in result
@@ -973,7 +1015,7 @@ def test_schema_excerpt_returns_multiple_sections() -> None:
 
 def test_schema_excerpt_missing_heading_returns_empty() -> None:
     """Verifies that schema excerpt missing heading returns empty."""
-    from src.services.config_service import schema_excerpt
+    from graphwiki_kb.services.config_service import schema_excerpt
 
     result = schema_excerpt("# Just a title\n\nNo sections.\n", ["Missing Heading"])
     assert result == ""
@@ -981,7 +1023,7 @@ def test_schema_excerpt_missing_heading_returns_empty() -> None:
 
 def test_schema_excerpt_empty_schema_returns_empty() -> None:
     """Verifies that schema excerpt empty schema returns empty."""
-    from src.services.config_service import schema_excerpt
+    from graphwiki_kb.services.config_service import schema_excerpt
 
     assert schema_excerpt("", ["Source Pages"]) == ""
 
@@ -998,7 +1040,7 @@ def test_slugify_all_special_characters() -> None:
 
 def test_lint_report_zero_issues_all_counts_zero() -> None:
     """Verifies that lint report zero issues all counts zero."""
-    from src.models.wiki_models import LintReport
+    from graphwiki_kb.models.wiki_models import LintReport
 
     report = LintReport(issues=[])
 
@@ -1009,7 +1051,7 @@ def test_lint_report_zero_issues_all_counts_zero() -> None:
 
 def test_diff_report_counts_all_states_simultaneously() -> None:
     """Verifies that diff report counts all states simultaneously."""
-    from src.models.wiki_models import DiffEntry, DiffReport
+    from graphwiki_kb.models.wiki_models import DiffEntry, DiffReport
 
     report = DiffReport(
         entries=[
@@ -1028,7 +1070,7 @@ def test_diff_report_counts_all_states_simultaneously() -> None:
 
 def test_review_report_issue_count_matches_len() -> None:
     """Verifies that review report issue count matches len."""
-    from src.models.wiki_models import ReviewIssue, ReviewReport
+    from graphwiki_kb.models.wiki_models import ReviewIssue, ReviewReport
 
     issues = [
         ReviewIssue("suggestion", "overlapping-topics", ["a.md", "b.md"], "msg1"),
@@ -1042,7 +1084,7 @@ def test_review_report_issue_count_matches_len() -> None:
 
 def test_raw_source_record_from_dict_missing_optional_fields() -> None:
     """Verifies that raw source record from dict missing optional fields."""
-    from src.models.source_models import RawSourceRecord
+    from graphwiki_kb.models.source_models import RawSourceRecord
 
     minimal = {
         "source_id": "id-1",
@@ -1066,7 +1108,7 @@ def test_raw_source_record_from_dict_missing_optional_fields() -> None:
 def test_status_snapshot_none_compile_prints_na() -> None:
     """Verifies that status snapshot none compile prints na."""
     from click.testing import CliRunner
-    from src.cli import main
+    from graphwiki_kb.cli import main
 
     runner = CliRunner()
     with runner.isolated_filesystem():

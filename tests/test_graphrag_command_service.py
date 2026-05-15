@@ -7,8 +7,8 @@ import sys
 
 import pytest
 
-from src.services import graphrag_command_service as command_module
-from src.services.graphrag_command_service import (
+from graphwiki_kb.services import graphrag_command_service as command_module
+from graphwiki_kb.services.graphrag_command_service import (
     GraphRAGApiBackend,
     GraphRAGCommandError,
     GraphRAGCommandResult,
@@ -223,7 +223,7 @@ def test_default_runner_sets_utf8_encoding(monkeypatch) -> None:
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
     monkeypatch.setattr(
-        "src.services.graphrag_command_service.subprocess.run",
+        "graphwiki_kb.services.graphrag_command_service.subprocess.run",
         fake_run,
     )
 

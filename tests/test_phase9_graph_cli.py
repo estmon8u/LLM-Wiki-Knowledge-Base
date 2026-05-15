@@ -15,19 +15,28 @@ from click.testing import CliRunner
 import pandas as pd
 import yaml
 
-from src.cli import main
-from src.services.compile_service import CompileResult
-from src.services.concept_service import ConceptGenerationResult
-from src.services.graphrag_command_service import GraphRAGCommandResult
-from src.services.graphrag_input_sync_service import GraphRAGInputSyncResult
-from src.services.graphrag_query_service import GraphRAGQueryAnswer
-from src.services.graphrag_status_service import GraphRAGIndexRun
-from src.services.graphrag_status_service import GraphRAGStatusService
-from src.services.graphrag_sync_service import GraphRAGSyncDecision, GraphRAGSyncResult
-from src.services.graphrag_wiki_export_service import GraphRAGWikiExportResult
-from src.services.lint_service import _file_sha256, _input_manifest_hash
-from src.services.project_service import build_project_paths
-from src.services.update_service import GraphUpdateResult, IngestSummary, UpdateResult
+from graphwiki_kb.cli import main
+from graphwiki_kb.commands.find import _merge_results
+from graphwiki_kb.models.wiki_models import SearchResult
+from graphwiki_kb.services.compile_service import CompileResult
+from graphwiki_kb.services.concept_service import ConceptGenerationResult
+from graphwiki_kb.services.graphrag_command_service import GraphRAGCommandResult
+from graphwiki_kb.services.graphrag_input_sync_service import GraphRAGInputSyncResult
+from graphwiki_kb.services.graphrag_query_service import GraphRAGQueryAnswer
+from graphwiki_kb.services.graphrag_status_service import GraphRAGIndexRun
+from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
+from graphwiki_kb.services.graphrag_sync_service import (
+    GraphRAGSyncDecision,
+    GraphRAGSyncResult,
+)
+from graphwiki_kb.services.graphrag_wiki_export_service import GraphRAGWikiExportResult
+from graphwiki_kb.services.lint_service import _file_sha256, _input_manifest_hash
+from graphwiki_kb.services.project_service import build_project_paths
+from graphwiki_kb.services.update_service import (
+    GraphUpdateResult,
+    IngestSummary,
+    UpdateResult,
+)
 from tests.test_cli import _CliFakeProvider, _set_provider_config
 
 
@@ -193,7 +202,7 @@ def test_ask_prints_graph_answer_metadata_and_source_trace() -> None:
         assert runner.invoke(main, ["init"]).exit_code == 0
 
         with patch(
-            "src.services.graph_ask_controller_service.GraphAskControllerService.ask",
+            "graphwiki_kb.services.graph_ask_controller_service.GraphAskControllerService.ask",
             return_value=_graph_answer(saved_path="wiki/analysis/question.md"),
         ):
             result = runner.invoke(
@@ -218,7 +227,7 @@ def test_ask_json_outputs_graph_answer_payload() -> None:
         assert runner.invoke(main, ["init"]).exit_code == 0
 
         with patch(
-            "src.services.graph_ask_controller_service.GraphAskControllerService.ask",
+            "graphwiki_kb.services.graph_ask_controller_service.GraphAskControllerService.ask",
             return_value=_graph_answer(),
         ):
             result = runner.invoke(main, ["ask", "--json", "What", "changed?"])
@@ -247,8 +256,30 @@ def test_find_json_searches_direct_graph_artifacts() -> None:
         assert payload["results"][0]["section"] == "GraphRAG Relationship"
 
 
-def test_ask_streaming_is_rejected_until_live_streaming_is_supported() -> None:
-    """Verifies captured query output is not advertised as user-visible streaming."""
+def test_find_merges_graph_and_wiki_before_global_ranking() -> None:
+    """Verifies weak graph hits do not starve stronger wiki candidates."""
+    graph_result = SearchResult(
+        title="REALM",
+        path="graph://entities/realm",
+        score=1.0,
+        snippet="Weak graph mention.",
+        section="GraphRAG Entity",
+    )
+    wiki_result = SearchResult(
+        title="REALM source page",
+        path="wiki/sources/realm.md",
+        score=35.0,
+        snippet="Strong wiki match.",
+        section="Overview",
+    )
+
+    results = _merge_results([graph_result], [wiki_result], limit=1)
+
+    assert results == [wiki_result]
+
+
+def test_ask_streaming_option_is_removed() -> None:
+    """Verifies the hidden unsupported streaming option is no longer wired."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -256,7 +287,7 @@ def test_ask_streaming_is_rejected_until_live_streaming_is_supported() -> None:
         result = runner.invoke(main, ["ask", "--streaming", "What", "changed?"])
 
         assert result.exit_code != 0
-        assert "--streaming is not supported by kb ask yet" in result.output
+        assert "No such option: --streaming" in result.output
 
 
 def test_ask_limit_is_rejected_for_graphrag_queries() -> None:
@@ -309,7 +340,8 @@ def test_update_output_renders_resume_removed_concepts_and_graph_details() -> No
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
         with patch(
-            "src.services.update_service.UpdateService.run", return_value=update_result
+            "graphwiki_kb.services.update_service.UpdateService.run",
+            return_value=update_result,
         ):
             result = runner.invoke(main, ["update"])
 
@@ -348,7 +380,7 @@ def test_update_output_renders_non_index_graph_decision() -> None:
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
         with patch(
-            "src.services.update_service.UpdateService.run",
+            "graphwiki_kb.services.update_service.UpdateService.run",
             return_value=update_result,
         ):
             result = runner.invoke(main, ["update"])
@@ -416,11 +448,11 @@ def test_update_runs_graph_sync_index_and_export(monkeypatch) -> None:
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr(
-        "src.services.graphrag_command_service.GraphRAGApiBackend.init_workspace",
+        "graphwiki_kb.services.graphrag_command_service.GraphRAGApiBackend.init_workspace",
         fake_init,
     )
     monkeypatch.setattr(
-        "src.services.graphrag_command_service.GraphRAGApiBackend.index",
+        "graphwiki_kb.services.graphrag_command_service.GraphRAGApiBackend.index",
         fake_index,
     )
     runner = CliRunner()
@@ -431,7 +463,9 @@ def test_update_runs_graph_sync_index_and_export(monkeypatch) -> None:
         assert runner.invoke(main, ["init"]).exit_code == 0
         _set_provider_config()
 
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+        ):
             result = runner.invoke(main, ["update", "sample.md"])
 
         assert result.exit_code == 0
@@ -465,12 +499,14 @@ def test_update_no_graph_flag_skips_graph(monkeypatch) -> None:
         Path("sample.md").write_text("# Sample\n\nNo graph body.\n", encoding="utf-8")
         assert runner.invoke(main, ["init"]).exit_code == 0
         monkeypatch.setattr(
-            "src.services.graphrag_command_service.GraphRAGApiBackend.index",
+            "graphwiki_kb.services.graphrag_command_service.GraphRAGApiBackend.index",
             fail_run,
         )
         _set_provider_config()
 
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+        ):
             result = runner.invoke(main, ["update", "--no-graph", "sample.md"])
 
         assert result.exit_code == 0
@@ -632,7 +668,7 @@ def _update_service_for_graph(test_project, *, workspace, sync, export=None):
         sync: Sync value used by the operation.
         export: Export value used by the operation.
     """
-    from src.services.update_service import UpdateService
+    from graphwiki_kb.services.update_service import UpdateService
 
     return UpdateService(
         ingest_service=None,
@@ -654,7 +690,7 @@ def test_update_service_skips_graph_when_services_or_config_are_missing(
     Args:
         test_project: Test project value used by the operation.
     """
-    from src.services.update_service import UpdateOptions, UpdateService
+    from graphwiki_kb.services.update_service import UpdateOptions, UpdateService
 
     missing_services = UpdateService(
         ingest_service=None,
@@ -686,7 +722,7 @@ def test_update_service_initializes_and_skips_when_preflight_skips(
     Args:
         test_project: Test project value used by the operation.
     """
-    from src.services.update_service import UpdateOptions
+    from graphwiki_kb.services.update_service import UpdateOptions
 
     workspace = _FakeWorkspace(initialized=False)
     sync = _FakeGraphSync(
@@ -712,7 +748,7 @@ def test_update_service_exports_graph_wiki_when_index_skips_with_complete_output
     test_project,
 ) -> None:
     """Verifies that a current GraphRAG index still refreshes graph wiki pages."""
-    from src.services.update_service import UpdateOptions
+    from graphwiki_kb.services.update_service import UpdateOptions
 
     graph_export = _FakeGraphExport()
     service = _update_service_for_graph(
@@ -744,7 +780,7 @@ def test_update_service_reports_preflight_failure(test_project) -> None:
     Args:
         test_project: Test project value used by the operation.
     """
-    from src.services.update_service import UpdateOptions
+    from graphwiki_kb.services.update_service import UpdateOptions
 
     service = _update_service_for_graph(
         test_project,
@@ -767,7 +803,7 @@ def test_update_service_reports_missing_graph_credentials(
         test_project: Test project value used by the operation.
         monkeypatch: Monkeypatch value used by the operation.
     """
-    from src.services.update_service import UpdateOptions
+    from graphwiki_kb.services.update_service import UpdateOptions
 
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     service = _update_service_for_graph(
@@ -786,7 +822,7 @@ def test_update_service_graph_only_requires_graph_credentials(
     test_project, monkeypatch
 ) -> None:
     """Verifies that graph-only updates fail clearly when graph credentials are absent."""
-    from src.services.update_service import UpdateOptions
+    from graphwiki_kb.services.update_service import UpdateOptions
 
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     service = _update_service_for_graph(
@@ -810,7 +846,7 @@ def test_update_service_reports_invalid_graph_config(test_project) -> None:
     Args:
         test_project: Test project value used by the operation.
     """
-    from src.services.update_service import UpdateOptions
+    from graphwiki_kb.services.update_service import UpdateOptions
 
     config = dict(test_project.command_context.config)
     config["graph"] = {
@@ -842,7 +878,7 @@ def test_update_service_reports_index_or_export_failure(
         test_project: Test project value used by the operation.
         monkeypatch: Monkeypatch value used by the operation.
     """
-    from src.services.update_service import UpdateOptions
+    from graphwiki_kb.services.update_service import UpdateOptions
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     sync = _FakeGraphSync(
@@ -869,7 +905,7 @@ def test_update_service_fails_graph_errors_unless_partial_allowed(
     test_project,
 ) -> None:
     """Verifies that graph failures are hard failures by default."""
-    from src.services.update_service import UpdateOptions
+    from graphwiki_kb.services.update_service import UpdateOptions
 
     service = _update_service_for_graph(
         test_project,
@@ -889,7 +925,7 @@ def test_update_graph_only_skips_legacy_provider_preflight(
     test_project, monkeypatch
 ) -> None:
     """Verifies that graph-only update skips legacy compile/provider work."""
-    from src.services.update_service import UpdateOptions
+    from graphwiki_kb.services.update_service import UpdateOptions
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     sync = _FakeGraphSync(

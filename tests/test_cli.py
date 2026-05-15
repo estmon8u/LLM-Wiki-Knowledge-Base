@@ -15,10 +15,10 @@ from unittest.mock import patch
 import yaml
 from click.testing import CliRunner
 
-from src.cli import main
-from src.commands.ingest import _echo_directory_result
-from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
-from src.services.ingest_service import IngestDirectoryResult, IngestResult
+from graphwiki_kb.cli import main
+from graphwiki_kb.commands.ingest import _echo_directory_result
+from graphwiki_kb.providers.base import ProviderRequest, ProviderResponse, TextProvider
+from graphwiki_kb.services.ingest_service import IngestDirectoryResult, IngestResult
 
 
 def _set_provider_config() -> None:
@@ -167,7 +167,9 @@ def test_init_regenerates_malformed_config() -> None:
         result = runner.invoke(main, ["init"])
 
         assert result.exit_code == 0
-        assert "kb.config.yaml (regenerated)" in result.output
+        assert "kb.config.yaml (regenerated" in result.output
+        assert "backup: kb.config.yaml.bak." in result.output
+        assert list(Path(".").glob("kb.config.yaml.bak.*"))
         assert isinstance(
             yaml.safe_load(Path("kb.config.yaml").read_text(encoding="utf-8")),
             dict,
@@ -248,7 +250,9 @@ def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
         assert "Ingested Sample Research Note" in ingest_result.output
 
         _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+        ):
             update_result = runner.invoke(main, ["update", "--no-graph"])
         assert update_result.exit_code == 0
         assert "Update Summary" in update_result.output
@@ -265,7 +269,9 @@ def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
         assert Path("graph/exports/search_index.sqlite3").exists()
 
         _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+        ):
             query_result = runner.invoke(
                 main, ["legacy", "ask", "traceability", "knowledge"]
             )
@@ -300,7 +306,9 @@ def test_end_to_end_cli_flow_for_local_html_source() -> None:
         assert "raw/normalized/html-research-note.md" in ingest_result.output
 
         _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+        ):
             update_result = runner.invoke(main, ["update", "--no-graph"])
         assert update_result.exit_code == 0
         assert "Mode: wiki-only" in update_result.output
@@ -630,7 +638,9 @@ def test_diff_end_to_end_new_then_compiled() -> None:
         assert "new: 1" in diff_before.output
 
         _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+        ):
             assert runner.invoke(main, ["update", "--no-graph"]).exit_code == 0
 
         diff_after = runner.invoke(main, ["status", "--changed"])
@@ -675,11 +685,15 @@ def test_ask_save_flag_creates_analysis_page() -> None:
         assert runner.invoke(main, ["init"]).exit_code == 0
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
         _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+        ):
             assert runner.invoke(main, ["update", "--no-graph"]).exit_code == 0
 
         _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+        ):
             result = runner.invoke(
                 main,
                 [
@@ -770,11 +784,15 @@ def test_query_piped_input_does_not_save_without_flag() -> None:
         assert runner.invoke(main, ["init"]).exit_code == 0
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
         _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+        ):
             assert runner.invoke(main, ["update", "--no-graph"]).exit_code == 0
 
         _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+        ):
             result = runner.invoke(
                 main,
                 ["legacy", "ask", "traceability"],
@@ -850,11 +868,15 @@ def test_provider_override_flag_switches_provider() -> None:
         )
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
         _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+        ):
             assert runner.invoke(main, ["update", "--no-graph"]).exit_code == 0
 
         _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+        ):
             result = runner.invoke(
                 main,
                 ["--provider", "openai", "legacy", "ask", "traceability"],
@@ -900,7 +922,9 @@ def test_provider_override_clears_tier_and_api_key_env() -> None:
             captured_provider.update(runtime_config.get("provider", {}))
             return _CliFakeProvider()
 
-        with patch("src.services.build_provider", side_effect=_capture_provider_config):
+        with patch(
+            "graphwiki_kb.services.build_provider", side_effect=_capture_provider_config
+        ):
             result = runner.invoke(
                 main,
                 ["--provider", "anthropic", "update", "--no-graph"],
@@ -940,7 +964,9 @@ def test_update_compiles_and_generates_concepts() -> None:
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
         _set_provider_config()
 
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+        ):
             result = runner.invoke(main, ["update", "--no-graph"])
 
         assert result.exit_code == 0
@@ -959,7 +985,9 @@ def test_update_with_paths_adds_then_compiles() -> None:
         assert runner.invoke(main, ["init"]).exit_code == 0
         _set_provider_config()
 
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+        ):
             result = runner.invoke(main, ["update", "--no-graph", "note.md"])
 
         assert result.exit_code == 0
@@ -1079,7 +1107,9 @@ def test_review_successful_run_shows_no_issues() -> None:
         )
 
         _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+        ):
             result = runner.invoke(main, ["review"])
 
         assert result.exit_code == 0
@@ -1105,7 +1135,9 @@ def test_review_successful_run_shows_issues() -> None:
         )
 
         _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+        ):
             result = runner.invoke(main, ["review"])
 
         assert result.exit_code == 0
@@ -1131,7 +1163,9 @@ def test_review_json_and_fail_on_warning() -> None:
         )
 
         _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+        ):
             result = runner.invoke(
                 main, ["review", "--json", "--fail-on", "suggestion"]
             )
@@ -1184,7 +1218,9 @@ def test_ask_show_evidence_flag() -> None:
         assert runner.invoke(main, ["init"]).exit_code == 0
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
         _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+        ):
             assert runner.invoke(main, ["update", "--no-graph"]).exit_code == 0
 
             result = runner.invoke(
@@ -1232,7 +1268,9 @@ def test_status_shows_current_after_compile() -> None:
         assert runner.invoke(main, ["init"]).exit_code == 0
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
         _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+        ):
             assert runner.invoke(main, ["update", "--no-graph"]).exit_code == 0
 
         result = runner.invoke(main, ["status"])
@@ -1251,7 +1289,9 @@ def test_update_with_directory_path_adds_then_compiles() -> None:
         assert runner.invoke(main, ["init"]).exit_code == 0
         _set_provider_config()
 
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+        ):
             result = runner.invoke(main, ["update", "--no-graph", "docs"])
 
         assert result.exit_code == 0
@@ -1269,7 +1309,9 @@ def test_update_with_already_present_file() -> None:
         assert runner.invoke(main, ["add", "note.md"]).exit_code == 0
         _set_provider_config()
 
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+        ):
             result = runner.invoke(main, ["update", "--no-graph", "note.md"])
 
         assert result.exit_code == 0
@@ -1300,7 +1342,9 @@ def test_update_fails_without_provider_config() -> None:
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+        ):
             result = runner.invoke(main, ["update", "--no-graph"])
 
         assert result.exit_code != 0
@@ -1317,9 +1361,11 @@ def test_update_generic_service_error_propagates_unexpected_exception() -> None:
         _set_provider_config()
 
         with (
-            patch("src.services.build_provider", return_value=_CliFakeProvider()),
             patch(
-                "src.services.update_service.UpdateService.run",
+                "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+            ),
+            patch(
+                "graphwiki_kb.services.update_service.UpdateService.run",
                 side_effect=RuntimeError("boom"),
             ),
         ):
@@ -1445,7 +1491,9 @@ def test_find_json_output() -> None:
         assert runner.invoke(main, ["init"]).exit_code == 0
         assert runner.invoke(main, ["add", "sample.md"]).exit_code == 0
         _set_provider_config()
-        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+        with patch(
+            "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
+        ):
             assert runner.invoke(main, ["update", "--no-graph"]).exit_code == 0
 
         result = runner.invoke(main, ["find", "--json", "traceability"])
@@ -1576,7 +1624,7 @@ def test_doctor_json_failure_exits_nonzero() -> None:
 
 def test_clean_citation_refs_strips_inline_citation_refs() -> None:
     """Verifies that clean citation refs strips inline citation refs."""
-    from src.services.citation_cleanup import clean_citation_refs
+    from graphwiki_kb.services.citation_cleanup import clean_citation_refs
 
     raw = (
         "Traceability is preserved [wiki/sources/alpha.md#chunk-0] "

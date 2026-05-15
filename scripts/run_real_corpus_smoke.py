@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import locale
+import os
 import shutil
 import subprocess
 import sys
@@ -94,15 +95,24 @@ def run_cli_command(
     Returns:
         CommandRun produced by the operation.
     """
-    command_display = "python -m src.cli " + " ".join(args)
+    command_display = "python -m graphwiki_kb.cli " + " ".join(args)
     header = f"\n=== {command_display} ===\n"
     print(header, end="")
     with log_path.open("a", encoding="utf-8") as handle:
         handle.write(header)
 
+    env = os.environ.copy()
+    src_path = str(repo_root / "src")
+    existing_pythonpath = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (
+        src_path
+        if not existing_pythonpath
+        else src_path + os.pathsep + existing_pythonpath
+    )
     result = subprocess.run(
-        [sys.executable, "-m", "src.cli", *args],
+        [sys.executable, "-m", "graphwiki_kb.cli", *args],
         cwd=repo_root,
+        env=env,
         capture_output=True,
         text=True,
         encoding=locale.getpreferredencoding(False),

@@ -11,21 +11,22 @@ import subprocess
 
 import pytest
 
-from src.models.source_models import RawSourceRecord
-from src.services.graphrag_command_service import (
+from graphwiki_kb.models.source_models import RawSourceRecord
+from graphwiki_kb.services.graphrag_command_service import (
     GraphRAGCommandError,
     GraphRAGCommandResult,
     GraphRAGCommandService,
 )
-from src.services.graphrag_input_sync_service import GraphRAGInputSyncService
-from src.services.graphrag_status_service import GraphRAGStatusService
-from src.services.graphrag_sync_service import (
+from graphwiki_kb.services.graphrag_input_sync_service import GraphRAGInputSyncService
+from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
+from graphwiki_kb.services import graphrag_runtime
+from graphwiki_kb.services.graphrag_sync_service import (
     GraphRAGSyncService,
     count_source_hash_changes,
     graph_input_source_hashes,
     graph_runtime_digest,
 )
-from src.services.graphrag_workspace_service import GraphRAGWorkspaceService
+from graphwiki_kb.services.graphrag_workspace_service import GraphRAGWorkspaceService
 
 
 def _source_record(
@@ -360,7 +361,10 @@ def test_sync_rebuilds_when_graph_runtime_config_changes(test_project) -> None:
     assert result.decision.action == "index"
     assert result.decision.method == "fast"
     assert result.decision.config_changed is True
-    assert result.decision.reason == "Graph runtime settings or prompts changed."
+    assert (
+        result.decision.reason
+        == "Graph runtime settings, prompts, GraphRAG version, or schema changed."
+    )
     assert calls[0][calls[0].index("--method") + 1] == "fast"
 
 
@@ -607,6 +611,29 @@ def test_graph_runtime_digest_includes_prompt_files(test_project) -> None:
     before = graph_runtime_digest(test_project.paths.graph_dir / "graphrag")
     test_project.write_file("graph/graphrag/prompts/entity_extraction.txt", "Prompt A")
 
+    after = graph_runtime_digest(test_project.paths.graph_dir / "graphrag")
+
+    assert after != before
+
+
+def test_graph_runtime_digest_includes_graphrag_version(
+    test_project,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verifies GraphRAG package upgrades invalidate runtime digest."""
+    _write_settings(test_project)
+    monkeypatch.setattr(
+        graphrag_runtime,
+        "installed_graphrag_version",
+        lambda: "3.0.9",
+    )
+    before = graph_runtime_digest(test_project.paths.graph_dir / "graphrag")
+
+    monkeypatch.setattr(
+        graphrag_runtime,
+        "installed_graphrag_version",
+        lambda: "3.0.10",
+    )
     after = graph_runtime_digest(test_project.paths.graph_dir / "graphrag")
 
     assert after != before

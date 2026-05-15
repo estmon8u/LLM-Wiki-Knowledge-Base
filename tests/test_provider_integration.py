@@ -10,14 +10,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.providers import (
+from graphwiki_kb.providers import (
     ProviderConfigurationError,
     ProviderExecutionError,
     build_provider,
 )
-from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
-from src.services.query_service import QueryAnswer, QueryService
-from src.services.review_service import ReviewService
+from graphwiki_kb.providers.base import ProviderRequest, ProviderResponse, TextProvider
+from graphwiki_kb.services.query_service import QueryAnswer, QueryService
+from graphwiki_kb.services.review_service import ReviewService
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +105,7 @@ def test_build_provider_returns_unavailable_provider_when_api_key_missing() -> N
 def test_build_provider_creates_openai_provider() -> None:
     """Verifies that build provider creates openai provider."""
     with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key-123"}):
-        with patch("src.providers.openai_provider.OpenAI"):
+        with patch("graphwiki_kb.providers.openai_provider.OpenAI"):
             provider = build_provider({"provider": {"name": "openai"}})
     assert provider is not None
     assert provider.name == "openai"
@@ -136,7 +136,7 @@ def test_build_provider_uses_catalog_defaults_for_openai() -> None:
     }
 
     with patch.dict("os.environ", {"OPENAI_ALT_KEY": "test-key"}):
-        with patch("src.providers.openai_provider.OpenAI"):
+        with patch("graphwiki_kb.providers.openai_provider.OpenAI"):
             provider = build_provider(config)
 
     assert provider is not None
@@ -147,7 +147,7 @@ def test_build_provider_uses_catalog_defaults_for_openai() -> None:
 def test_build_provider_creates_openai_provider_with_custom_model() -> None:
     """Verifies that build provider creates openai provider with custom model."""
     with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}):
-        with patch("src.providers.openai_provider.OpenAI"):
+        with patch("graphwiki_kb.providers.openai_provider.OpenAI"):
             provider = build_provider(
                 {"provider": {"name": "openai", "model": "gpt-5.4"}}
             )
@@ -158,7 +158,7 @@ def test_build_provider_creates_openai_provider_with_custom_model() -> None:
 def test_build_provider_creates_anthropic_provider() -> None:
     """Verifies that build provider creates anthropic provider."""
     with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key-456"}):
-        with patch("src.providers.anthropic_provider.Anthropic"):
+        with patch("graphwiki_kb.providers.anthropic_provider.Anthropic"):
             provider = build_provider({"provider": {"name": "anthropic"}})
     assert provider is not None
     assert provider.name == "anthropic"
@@ -189,7 +189,7 @@ def test_build_provider_uses_catalog_thinking_budget_for_anthropic() -> None:
     }
 
     with patch.dict("os.environ", {"ANTHROPIC_ALT_KEY": "test-key"}):
-        with patch("src.providers.anthropic_provider.Anthropic"):
+        with patch("graphwiki_kb.providers.anthropic_provider.Anthropic"):
             provider = build_provider(config)
 
     assert provider is not None
@@ -200,7 +200,7 @@ def test_build_provider_uses_catalog_thinking_budget_for_anthropic() -> None:
 def test_build_provider_creates_anthropic_provider_with_custom_model() -> None:
     """Verifies that build provider creates anthropic provider with custom model."""
     with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
-        with patch("src.providers.anthropic_provider.Anthropic"):
+        with patch("graphwiki_kb.providers.anthropic_provider.Anthropic"):
             provider = build_provider(
                 {"provider": {"name": "anthropic", "model": "claude-opus-4-6"}}
             )
@@ -211,7 +211,7 @@ def test_build_provider_creates_anthropic_provider_with_custom_model() -> None:
 def test_build_provider_creates_gemini_provider() -> None:
     """Verifies that build provider creates gemini provider."""
     with patch.dict("os.environ", {"GEMINI_API_KEY": "test-key-789"}):
-        with patch("src.providers.gemini_provider.genai") as mock_genai:
+        with patch("graphwiki_kb.providers.gemini_provider.genai") as mock_genai:
             provider = build_provider({"provider": {"name": "gemini"}})
     assert provider is not None
     assert provider.name == "gemini"
@@ -221,7 +221,7 @@ def test_build_provider_creates_gemini_provider() -> None:
 def test_build_provider_creates_gemini_provider_with_custom_model() -> None:
     """Verifies that build provider creates gemini provider with custom model."""
     with patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}):
-        with patch("src.providers.gemini_provider.genai"):
+        with patch("graphwiki_kb.providers.gemini_provider.genai"):
             provider = build_provider(
                 {"provider": {"name": "gemini", "model": "gemini-3.1-pro-preview"}}
             )
@@ -232,7 +232,7 @@ def test_build_provider_creates_gemini_provider_with_custom_model() -> None:
 def test_build_provider_respects_custom_api_key_env() -> None:
     """Verifies that build provider respects custom api key env."""
     with patch.dict("os.environ", {"MY_KEY": "test-key-custom"}):
-        with patch("src.providers.openai_provider.OpenAI"):
+        with patch("graphwiki_kb.providers.openai_provider.OpenAI"):
             provider = build_provider(
                 {"provider": {"name": "openai", "api_key_env": "MY_KEY"}}
             )
@@ -268,7 +268,7 @@ def test_build_provider_ignores_ambiguous_active_provider_overrides_in_v3() -> N
     }
 
     with patch.dict("os.environ", {"OPENAI_RIGHT_KEY": "test-key"}):
-        with patch("src.providers.openai_provider.OpenAI"):
+        with patch("graphwiki_kb.providers.openai_provider.OpenAI"):
             provider = build_provider(config)
 
     assert provider is not None
@@ -284,16 +284,14 @@ def test_build_provider_ignores_ambiguous_active_provider_overrides_in_v3() -> N
 def test_openai_provider_generate() -> None:
     """Verifies that openai provider generate."""
     with patch.dict("os.environ", {"OPENAI_API_KEY": "test"}):
-        with patch("src.providers.openai_provider.OpenAI") as MockClient:
-            from src.providers.openai_provider import OpenAIProvider
+        with patch("graphwiki_kb.providers.openai_provider.OpenAI") as MockClient:
+            from graphwiki_kb.providers.openai_provider import OpenAIProvider
 
             provider = OpenAIProvider(model="gpt-5.4-nano")
-            mock_completion = MagicMock()
-            mock_completion.choices = [MagicMock()]
-            mock_completion.choices[0].message.content = " Hello world "
-            MockClient.return_value.chat.completions.create.return_value = (
-                mock_completion
-            )
+            mock_response = MagicMock()
+            mock_response.output_text = " Hello world "
+            mock_response.model = "gpt-5.4-nano"
+            MockClient.return_value.responses.create.return_value = mock_response
 
             result = provider.generate(
                 ProviderRequest(prompt="test", system_prompt="sys")
@@ -306,49 +304,152 @@ def test_openai_provider_generate() -> None:
 def test_openai_provider_uses_request_reasoning_effort_override() -> None:
     """Verifies that openai provider uses request reasoning effort override."""
     with patch.dict("os.environ", {"OPENAI_API_KEY": "test"}):
-        with patch("src.providers.openai_provider.OpenAI") as MockClient:
-            from src.providers.openai_provider import OpenAIProvider
+        with patch("graphwiki_kb.providers.openai_provider.OpenAI") as MockClient:
+            from graphwiki_kb.providers.openai_provider import OpenAIProvider
 
             provider = OpenAIProvider(reasoning_effort="high")
-            mock_completion = MagicMock()
-            mock_completion.choices = [MagicMock()]
-            mock_completion.choices[0].message.content = "response"
-            MockClient.return_value.chat.completions.create.return_value = (
-                mock_completion
-            )
+            mock_response = MagicMock()
+            mock_response.output_text = "response"
+            MockClient.return_value.responses.create.return_value = mock_response
 
             provider.generate(ProviderRequest(prompt="test", reasoning_effort="low"))
 
-    call_kwargs = MockClient.return_value.chat.completions.create.call_args.kwargs
-    assert call_kwargs["reasoning_effort"] == "low"
+    call_kwargs = MockClient.return_value.responses.create.call_args.kwargs
+    assert call_kwargs["reasoning"] == {"effort": "low"}
+
+
+def test_openai_provider_uses_responses_json_schema_contract() -> None:
+    """Verifies Responses API structured-output payload shape."""
+    schema = {
+        "type": "object",
+        "properties": {"answer": {"type": "string"}},
+        "required": ["answer"],
+        "additionalProperties": False,
+    }
+    with patch.dict("os.environ", {"OPENAI_API_KEY": "test"}):
+        with patch("graphwiki_kb.providers.openai_provider.OpenAI") as MockClient:
+            from graphwiki_kb.providers.openai_provider import OpenAIProvider
+
+            provider = OpenAIProvider()
+            mock_response = MagicMock()
+            mock_response.output_text = '{"answer": "ok"}'
+            MockClient.return_value.responses.create.return_value = mock_response
+
+            provider.generate(
+                ProviderRequest(
+                    prompt="test",
+                    response_schema=schema,
+                    response_schema_name="answer_payload",
+                )
+            )
+
+    call_kwargs = MockClient.return_value.responses.create.call_args.kwargs
+    assert call_kwargs["text"] == {
+        "format": {
+            "type": "json_schema",
+            "name": "answer_payload",
+            "schema": schema,
+            "strict": True,
+        }
+    }
 
 
 def test_openai_provider_generate_without_system_prompt() -> None:
     """Verifies that openai provider generate without system prompt."""
     with patch.dict("os.environ", {"OPENAI_API_KEY": "test"}):
-        with patch("src.providers.openai_provider.OpenAI") as MockClient:
-            from src.providers.openai_provider import OpenAIProvider
+        with patch("graphwiki_kb.providers.openai_provider.OpenAI") as MockClient:
+            from graphwiki_kb.providers.openai_provider import OpenAIProvider
 
             provider = OpenAIProvider()
+            mock_response = MagicMock()
+            mock_response.output_text = "response"
+            MockClient.return_value.responses.create.return_value = mock_response
+
+            result = provider.generate(ProviderRequest(prompt="test"))
+
+    assert result.text == "response"
+    call_kwargs = MockClient.return_value.responses.create.call_args.kwargs
+    assert "instructions" not in call_kwargs
+
+
+def test_openai_responses_helpers_parse_nested_output_items() -> None:
+    """Verifies Responses API helper fallback parsing for SDK-like objects."""
+    from graphwiki_kb.providers.openai_provider import (
+        _response_finish_reason,
+        _response_output_text,
+    )
+
+    message = MagicMock()
+    message.type = "message"
+    message.content = [
+        MagicMock(text="Part one."),
+        {"text": "Part two."},
+    ]
+    response = MagicMock()
+    response.output_text = None
+    response.status = ""
+    response.output = [
+        message,
+        {"type": "message", "content": [{"text": "Part three."}]},
+    ]
+
+    assert _response_output_text(response) == "Part one.\nPart two.\nPart three."
+
+    status_response = MagicMock()
+    status_response.status = "completed"
+    status_response.output = []
+    assert _response_finish_reason(status_response) == "completed"
+
+    finish_response = MagicMock()
+    finish_response.status = None
+    finish_response.output = [{"finish_reason": "stop"}]
+    assert _response_finish_reason(finish_response) == "stop"
+
+
+def test_openai_responses_helpers_handle_direct_output_and_empty_values() -> None:
+    """Verifies Responses API helpers handle dict output and missing text."""
+    from graphwiki_kb.providers.openai_provider import (
+        _response_finish_reason,
+        _response_output_text,
+    )
+
+    direct_response = MagicMock()
+    direct_response.output_text = None
+    direct_response.output = [{"type": "output_text", "text": "Direct text."}]
+    assert _response_output_text(direct_response) == "Direct text."
+
+    empty_response = MagicMock()
+    empty_response.output_text = 123
+    empty_response.output = None
+    assert _response_output_text(empty_response) == ""
+    assert _response_finish_reason(empty_response) is None
+
+
+def test_openai_provider_keeps_chat_completions_fallback() -> None:
+    """Verifies that OpenAI can still use Chat Completions as an explicit fallback."""
+    with patch.dict("os.environ", {"OPENAI_API_KEY": "test"}):
+        with patch("graphwiki_kb.providers.openai_provider.OpenAI") as MockClient:
+            from graphwiki_kb.providers.openai_provider import OpenAIProvider
+
+            provider = OpenAIProvider(api="chat_completions")
             mock_completion = MagicMock()
             mock_completion.choices = [MagicMock()]
-            mock_completion.choices[0].message.content = "response"
+            mock_completion.choices[0].message.content = " fallback "
             MockClient.return_value.chat.completions.create.return_value = (
                 mock_completion
             )
 
             result = provider.generate(ProviderRequest(prompt="test"))
 
-    call_kwargs = MockClient.return_value.chat.completions.create.call_args
-    messages = call_kwargs.kwargs.get("messages", call_kwargs[1].get("messages", []))
-    assert all(m["role"] != "developer" for m in messages)
+    assert result.text == "fallback"
+    assert MockClient.return_value.chat.completions.create.called
 
 
 def test_openai_provider_missing_key_raises() -> None:
     """Verifies that openai provider missing key raises."""
     with patch.dict("os.environ", {}, clear=True):
         with pytest.raises(ValueError, match="OPENAI_API_KEY"):
-            from src.providers.openai_provider import OpenAIProvider
+            from graphwiki_kb.providers.openai_provider import OpenAIProvider
 
             OpenAIProvider()
 
@@ -356,8 +457,8 @@ def test_openai_provider_missing_key_raises() -> None:
 def test_anthropic_provider_generate() -> None:
     """Verifies that anthropic provider generate."""
     with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test"}):
-        with patch("src.providers.anthropic_provider.Anthropic") as MockClient:
-            from src.providers.anthropic_provider import AnthropicProvider
+        with patch("graphwiki_kb.providers.anthropic_provider.Anthropic") as MockClient:
+            from graphwiki_kb.providers.anthropic_provider import AnthropicProvider
 
             provider = AnthropicProvider(model="claude-sonnet-4-6")
             mock_message = MagicMock()
@@ -381,8 +482,8 @@ def test_anthropic_provider_generate() -> None:
 def test_anthropic_provider_adaptive_thinking_supports_new_claude_4_models() -> None:
     """Verifies future Claude 4 minor releases are not excluded by a hardcoded list."""
     with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test"}):
-        with patch("src.providers.anthropic_provider.Anthropic") as MockClient:
-            from src.providers.anthropic_provider import AnthropicProvider
+        with patch("graphwiki_kb.providers.anthropic_provider.Anthropic") as MockClient:
+            from graphwiki_kb.providers.anthropic_provider import AnthropicProvider
 
             provider = AnthropicProvider(model="claude-sonnet-4-7")
             mock_message = MagicMock()
@@ -402,8 +503,8 @@ def test_anthropic_provider_adaptive_thinking_supports_new_claude_4_models() -> 
 def test_anthropic_provider_keeps_manual_thinking_for_older_models() -> None:
     """Verifies that older Claude models retain manual thinking budgets."""
     with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test"}):
-        with patch("src.providers.anthropic_provider.Anthropic") as MockClient:
-            from src.providers.anthropic_provider import AnthropicProvider
+        with patch("graphwiki_kb.providers.anthropic_provider.Anthropic") as MockClient:
+            from graphwiki_kb.providers.anthropic_provider import AnthropicProvider
 
             provider = AnthropicProvider(
                 model="claude-3-7-sonnet-latest",
@@ -426,8 +527,8 @@ def test_anthropic_provider_keeps_manual_thinking_for_older_models() -> None:
 def test_anthropic_provider_does_not_send_adaptive_thinking_to_older_claude() -> None:
     """Verifies unsupported older Claude models do not receive adaptive thinking."""
     with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test"}):
-        with patch("src.providers.anthropic_provider.Anthropic") as MockClient:
-            from src.providers.anthropic_provider import AnthropicProvider
+        with patch("graphwiki_kb.providers.anthropic_provider.Anthropic") as MockClient:
+            from graphwiki_kb.providers.anthropic_provider import AnthropicProvider
 
             provider = AnthropicProvider(model="claude-sonnet-4-5")
             mock_message = MagicMock()
@@ -447,8 +548,8 @@ def test_anthropic_provider_does_not_send_adaptive_thinking_to_older_claude() ->
 def test_anthropic_provider_generate_without_system_prompt() -> None:
     """Verifies that anthropic provider generate without system prompt."""
     with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test"}):
-        with patch("src.providers.anthropic_provider.Anthropic") as MockClient:
-            from src.providers.anthropic_provider import AnthropicProvider
+        with patch("graphwiki_kb.providers.anthropic_provider.Anthropic") as MockClient:
+            from graphwiki_kb.providers.anthropic_provider import AnthropicProvider
 
             provider = AnthropicProvider()
             mock_message = MagicMock()
@@ -468,7 +569,7 @@ def test_anthropic_provider_missing_key_raises() -> None:
     """Verifies that anthropic provider missing key raises."""
     with patch.dict("os.environ", {}, clear=True):
         with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
-            from src.providers.anthropic_provider import AnthropicProvider
+            from graphwiki_kb.providers.anthropic_provider import AnthropicProvider
 
             AnthropicProvider()
 
@@ -476,8 +577,8 @@ def test_anthropic_provider_missing_key_raises() -> None:
 def test_gemini_provider_generate() -> None:
     """Verifies that gemini provider generate."""
     with patch.dict("os.environ", {"GEMINI_API_KEY": "test"}):
-        with patch("src.providers.gemini_provider.genai") as mock_genai:
-            from src.providers.gemini_provider import GeminiProvider
+        with patch("graphwiki_kb.providers.gemini_provider.genai") as mock_genai:
+            from graphwiki_kb.providers.gemini_provider import GeminiProvider
 
             provider = GeminiProvider(model="gemini-2.5-flash")
             mock_response = MagicMock()
@@ -502,8 +603,8 @@ def test_gemini_provider_generate() -> None:
 def test_gemini_provider_uses_thinking_level_for_gemini_3_models() -> None:
     """Verifies Gemini 3 models receive thinking_level instead of thinking_budget."""
     with patch.dict("os.environ", {"GEMINI_API_KEY": "test"}):
-        with patch("src.providers.gemini_provider.genai") as mock_genai:
-            from src.providers.gemini_provider import GeminiProvider
+        with patch("graphwiki_kb.providers.gemini_provider.genai") as mock_genai:
+            from graphwiki_kb.providers.gemini_provider import GeminiProvider
 
             provider = GeminiProvider(model="gemini-3-flash-preview")
             mock_response = MagicMock()
@@ -523,7 +624,7 @@ def test_gemini_provider_uses_thinking_level_for_gemini_3_models() -> None:
 
 def test_gemini_response_schema_removes_additional_properties() -> None:
     """Verifies that gemini response schema removes additional properties."""
-    from src.providers.gemini_provider import _gemini_response_schema
+    from graphwiki_kb.providers.gemini_provider import _gemini_response_schema
 
     schema = {
         "type": "object",
@@ -548,8 +649,8 @@ def test_gemini_response_schema_removes_additional_properties() -> None:
 def test_gemini_provider_warns_when_schema_is_downgraded(caplog) -> None:
     """Verifies Gemini schema downgrades are visible instead of silent."""
     with patch.dict("os.environ", {"GEMINI_API_KEY": "test"}):
-        with patch("src.providers.gemini_provider.genai") as mock_genai:
-            from src.providers.gemini_provider import GeminiProvider
+        with patch("graphwiki_kb.providers.gemini_provider.genai") as mock_genai:
+            from graphwiki_kb.providers.gemini_provider import GeminiProvider
 
             provider = GeminiProvider(model="gemini-2.5-flash")
             mock_response = MagicMock()
@@ -574,8 +675,8 @@ def test_gemini_provider_warns_when_schema_is_downgraded(caplog) -> None:
 def test_gemini_provider_generate_without_system_prompt() -> None:
     """Verifies that gemini provider generate without system prompt."""
     with patch.dict("os.environ", {"GEMINI_API_KEY": "test"}):
-        with patch("src.providers.gemini_provider.genai") as mock_genai:
-            from src.providers.gemini_provider import GeminiProvider
+        with patch("graphwiki_kb.providers.gemini_provider.genai") as mock_genai:
+            from graphwiki_kb.providers.gemini_provider import GeminiProvider
 
             provider = GeminiProvider()
             mock_response = MagicMock()
@@ -593,7 +694,7 @@ def test_gemini_provider_missing_key_raises() -> None:
     """Verifies that gemini provider missing key raises."""
     with patch.dict("os.environ", {}, clear=True):
         with pytest.raises(ValueError, match="GEMINI_API_KEY"):
-            from src.providers.gemini_provider import GeminiProvider
+            from graphwiki_kb.providers.gemini_provider import GeminiProvider
 
             GeminiProvider()
 
@@ -630,7 +731,7 @@ def test_query_service_uses_provider_when_available(test_project) -> None:
             }
         )
     )
-    from src.services.search_service import SearchService
+    from graphwiki_kb.services.search_service import SearchService
 
     query_service = QueryService(
         test_project.paths,
@@ -655,7 +756,7 @@ def test_query_service_raises_without_provider(test_project) -> None:
         "wiki/sources/alpha.md",
         "---\ntitle: Alpha\n---\n# Alpha\n\nKnowledge base traceability.\n",
     )
-    from src.services.search_service import SearchService
+    from graphwiki_kb.services.search_service import SearchService
 
     query_service = QueryService(
         test_project.paths,
@@ -678,7 +779,7 @@ def test_query_service_raises_on_provider_error(test_project) -> None:
         "---\ntitle: Alpha\n---\n# Alpha\n\nKnowledge base traceability.\n",
     )
     provider = FailingProvider()
-    from src.services.search_service import SearchService
+    from graphwiki_kb.services.search_service import SearchService
 
     query_service = QueryService(
         test_project.paths,
@@ -699,7 +800,7 @@ def test_query_service_no_matches_returns_fallback_regardless_of_provider(
         test_project: Test project value used by the operation.
     """
     provider = FakeProvider()
-    from src.services.search_service import SearchService
+    from graphwiki_kb.services.search_service import SearchService
 
     query_service = QueryService(
         test_project.paths,
@@ -758,7 +859,7 @@ def test_review_service_requires_provider(test_project) -> None:
     Args:
         test_project: Test project value used by the operation.
     """
-    from src.providers import ProviderConfigurationError
+    from graphwiki_kb.providers import ProviderConfigurationError
 
     test_project.write_file("wiki/sources/alpha.md", "Some content here.")
     review_service = ReviewService(test_project.paths, provider=None)

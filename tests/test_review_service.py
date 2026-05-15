@@ -12,9 +12,9 @@ import threading
 
 import pytest
 
-from src.providers import ProviderConfigurationError, ProviderExecutionError
-from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
-from src.services.review_service import ReviewService
+from graphwiki_kb.providers import ProviderConfigurationError, ProviderExecutionError
+from graphwiki_kb.providers.base import ProviderRequest, ProviderResponse, TextProvider
+from graphwiki_kb.services.review_service import ReviewService
 
 
 class SequencedReviewProvider(TextProvider):
@@ -276,7 +276,7 @@ def test_review_service_suppresses_hyphenation_only_variants(
 
 def test_review_report_properties() -> None:
     """Verifies that review report properties."""
-    from src.models.wiki_models import ReviewIssue, ReviewReport
+    from graphwiki_kb.models.wiki_models import ReviewIssue, ReviewReport
 
     report = ReviewReport(
         issues=[
@@ -614,7 +614,7 @@ def test_provider_review_filters_truncation_and_uses_curated_excerpts(
 
 def test_provider_review_caps_total_prompt_size(test_project) -> None:
     """Verifies provider review cannot build unbounded prompts."""
-    from src.services import review_service as review_module
+    from graphwiki_kb.services import review_service as review_module
 
     for index in range(80):
         test_project.write_file(

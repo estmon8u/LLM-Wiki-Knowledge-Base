@@ -46,8 +46,8 @@ def test_smoke_script_runs_clean_on_temporary_corpus(tmp_path: Path) -> None:
 
     assert result.returncode == 0
     log_text = (project_root / "command-smoke-log.txt").read_text(encoding="utf-8")
-    assert "python -m src.cli --help" in log_text
-    assert "python -m src.cli --project-root" in log_text
+    assert "python -m graphwiki_kb.cli --help" in log_text
+    assert "python -m graphwiki_kb.cli --project-root" in log_text
     assert "legacy find" in log_text
     assert "legacy ask" in log_text
     assert "export" in log_text
