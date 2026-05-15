@@ -11,6 +11,7 @@ import json
 from typing import Any, Optional
 
 from src.models.source_models import RawSourceRecord
+from src.services.file_lock import file_lock
 from src.services.project_service import ProjectPaths, atomic_write_text, utc_now_iso
 
 
@@ -34,16 +35,12 @@ class ManifestService:
         Returns:
             bool produced by the operation.
         """
-        if self.paths.raw_manifest_file.exists():
-            return False
-        payload = {
-            "version": 1,
-            "created_at": utc_now_iso(),
-            "updated_at": utc_now_iso(),
-            "sources": [],
-        }
-        self._write(payload)
-        return True
+        with file_lock(self.paths.raw_manifest_file):
+            if self.paths.raw_manifest_file.exists():
+                return False
+            payload = self._default_payload()
+            self._write_unlocked(payload)
+            return True
 
     def list_sources(self) -> list[RawSourceRecord]:
         """List sources.
@@ -88,34 +85,54 @@ class ManifestService:
         Args:
             source: Source record or path being processed.
         """
-        payload = self._read()
-        sources = [RawSourceRecord.from_dict(item) for item in payload["sources"]]
-        updated = False
-        for index, existing in enumerate(sources):
-            if existing.source_id == source.source_id:
-                sources[index] = source
-                updated = True
-                break
-        if not updated:
-            sources.append(source)
-        payload["sources"] = [item.to_dict() for item in sources]
-        payload["updated_at"] = utc_now_iso()
-        self._write(payload)
+        with file_lock(self.paths.raw_manifest_file):
+            payload = self._read_unlocked()
+            sources = [RawSourceRecord.from_dict(item) for item in payload["sources"]]
+            updated = False
+            for index, existing in enumerate(sources):
+                if existing.source_id == source.source_id:
+                    sources[index] = source
+                    updated = True
+                    break
+            if not updated:
+                sources.append(source)
+            payload["sources"] = [item.to_dict() for item in sources]
+            payload["updated_at"] = utc_now_iso()
+            self._write_unlocked(payload)
 
     def _read(self) -> dict[str, Any]:
+        with file_lock(self.paths.raw_manifest_file):
+            return self._read_unlocked()
+
+    def _read_unlocked(self) -> dict[str, Any]:
         if not self.paths.raw_manifest_file.exists():
-            self.ensure_manifest()
+            self._write_unlocked(self._default_payload())
         with self.paths.raw_manifest_file.open("r", encoding="utf-8") as handle:
             payload = json.load(handle)
         self._validate(payload)
         return payload
 
-    def _write(self, payload: dict[str, Any]) -> None:
+    def _write_unlocked(self, payload: dict[str, Any]) -> None:
+        self._validate(payload)
         self.paths.raw_manifest_file.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(
             self.paths.raw_manifest_file,
             json.dumps(payload, indent=2, sort_keys=True),
         )
+
+    @staticmethod
+    def _default_payload() -> dict[str, Any]:
+        timestamp = utc_now_iso()
+        return {
+            "version": 1,
+            "created_at": timestamp,
+            "updated_at": timestamp,
+            "sources": [],
+        }
+
+    def _write(self, payload: dict[str, Any]) -> None:
+        with file_lock(self.paths.raw_manifest_file):
+            self._write_unlocked(payload)
 
     @staticmethod
     def _validate(payload: dict[str, Any]) -> None:
@@ -128,6 +145,7 @@ class ManifestService:
             raise ManifestError("Manifest sources must be a list.")
         seen_source_ids: set[str] = set()
         seen_slugs: set[str] = set()
+        seen_content_hashes: set[str] = set()
         required_fields = {
             "source_id",
             "slug",
@@ -149,9 +167,13 @@ class ManifestService:
                 )
             source_id = str(source.get("source_id", "")).strip()
             slug = str(source.get("slug", "")).strip()
+            content_hash = str(source.get("content_hash", "")).strip()
             if source_id in seen_source_ids:
                 raise ManifestError(f"Duplicate manifest source_id: {source_id}.")
             if slug in seen_slugs:
                 raise ManifestError(f"Duplicate manifest slug: {slug}.")
+            if content_hash in seen_content_hashes:
+                raise ManifestError(f"Duplicate manifest content_hash: {content_hash}.")
             seen_source_ids.add(source_id)
             seen_slugs.add(slug)
+            seen_content_hashes.add(content_hash)

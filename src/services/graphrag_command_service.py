@@ -673,9 +673,14 @@ def _split_index_method(method: str) -> tuple[str, bool]:
 
 
 def _system_exit_code(exc: SystemExit) -> int:
-    if isinstance(exc.code, int):
-        return exc.code
-    if exc.code in (None, ""):
+    code = exc.code
+    if isinstance(code, bool):
+        return int(code)
+    if isinstance(code, int):
+        return code
+    if code is None:
+        return 0
+    if isinstance(code, str) and not code:
         return 0
     return 1
 

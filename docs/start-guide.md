@@ -142,6 +142,11 @@ without mutating workspace files. When graph work proceeds, it writes
 from `raw/_manifest.json` and `raw/normalized/`, preserving source IDs, hashes,
 paths, converter metadata, and the normalized text for GraphRAG indexing. The
 generated JSON file can contain local corpus text and stays untracked.
+During a normal update, isolated missing normalized artifacts are skipped with a
+warning instead of blocking every source from syncing into GraphRAG. Run
+`kb lint` after that warning to identify the stale manifest entry and repair or
+remove it. `kb update --graph-only` remains strict because there is no wiki-only
+work to complete.
 
 The same graph decision checks whether the GraphRAG index needs a full `fast`
 rebuild, an incremental `fast-update`, a retry after the latest failed attempt,
@@ -164,6 +169,9 @@ API key such as `OPENAI_API_KEY`, or put the same variable in the local GraphRAG
 --graph-only`. A normal `kb update` without GraphRAG credentials still compiles
 the wiki and reports graph indexing as skipped. Interactive terminals show a
 live indexing status spinner while GraphRAG runs.
+After indexing, the command prints the active GraphRAG output path; if legacy
+SQLite FTS5 refresh is unavailable, it also prints the markdown-scan fallback
+warning for `kb find`.
 Use `kb update --force` for a full source-page and GraphRAG rebuild after
 model/prompt changes or suspected corrupt output. Use `kb update --no-graph`
 only when you want to refresh the wiki and legacy index without touching
@@ -186,6 +194,10 @@ poetry run kb --project-root $projectRoot ask "What are the main retrieval desig
 poetry run kb --project-root $projectRoot ask --method global "What are the main retrieval design patterns?"
 poetry run kb --project-root $projectRoot ask --method drift --save "Compare RAG, REALM, FiD, Self-RAG, and GraphRAG."
 ```
+
+Do not use the deprecated top-level `--limit` flag with `kb ask`; GraphRAG
+answers reject it because source-page evidence limiting only applies to
+`kb legacy ask`.
 
 The default `--method auto` router uses question wording and known graph terms
 to choose Basic, Local, Global, or DRIFT. It does not fall back to FTS5 if the
@@ -263,6 +275,9 @@ poetry run kb --project-root $projectRoot export
 poetry run kb --project-root $projectRoot export --clean
 ```
 
+`--clean` deletes vault markdown only after building the current export set, so
+cleanup uses the exact destination paths exported by that run.
+
 ## Troubleshooting
 
 | Symptom | What to check |
@@ -274,6 +289,7 @@ poetry run kb --project-root $projectRoot export --clean
 | GraphRAG workspace is missing | Run `kb init`. |
 | GraphRAG input is missing | Run `kb update`. |
 | GraphRAG output or vector store is missing | Set graph provider credentials, then run `kb update`; a normal update without them only refreshes the wiki and warns. |
+| Update warns about missing normalized graph input | Run `kb lint` to identify the stale manifest entry, then re-add or remove the affected source. |
 | Generated pages look stale | Run `kb status --changed`, then `kb update --force` if needed. |
 
 ## Next Steps

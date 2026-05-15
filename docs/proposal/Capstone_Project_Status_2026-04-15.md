@@ -49,11 +49,11 @@ GraphRAG is the retrieval and synthesis engine.
   - Mistral OCR-first for `.pdf`, `.docx`, `.pptx`, `.png`, `.jpg`, `.jpeg`, `.avif`
   - `wkhtmltopdf` or `xhtml2pdf` + Mistral OCR for `.html`/`.htm`
   - MarkItDown for bounded born-digital subset with quality-gated fallbacks.
-- Update pipeline that builds source pages, updates the wiki index, generates concepts, refreshes FTS5 chunk index, writes compile-run state for resumable runs, and runs GraphRAG sync/index/export unless `--no-graph` is set.
-- Deterministic lint for links, fragments, headings, frontmatter, duplicates, empties, stale pages, GraphRAG input/index/export staleness, and maintenance signals.
+- Update pipeline that builds source pages, updates the wiki index, generates concepts, refreshes FTS5 chunk index with markdown-scan fallback warnings, writes lock-protected compile-run state for resumable runs, and runs GraphRAG sync/index/export unless `--no-graph` is set.
+- Deterministic lint for links, fragments, headings, frontmatter, duplicates, empties, manifest artifact drift, stale pages, GraphRAG input/index/export staleness, and maintenance signals.
 - Deprecated search over compiled wiki artifacts via SQLite FTS5 chunk index through `kb legacy find`, now treated as temporary legacy infrastructure rather than the future default.
 - Microsoft GraphRAG dependency and initialized workspace under `graph/graphrag/`, with tracked settings/prompts/input scaffolding and ignored local `.env`, generated input, output, cache, and logs.
-- Main-command GraphRAG input/index sync through `kb update`, which writes `graph/graphrag/input/sources.json` from `raw/_manifest.json` and `raw/normalized/`, configures JSON input and metadata prepending in `settings.yaml`, and auto-selects full `fast`, incremental `fast-update`, or skip based on output completeness plus source/runtime digests.
+- Main-command GraphRAG input/index sync through `kb update`, which writes `graph/graphrag/input/sources.json` from `raw/_manifest.json` and `raw/normalized/`, configures JSON input and metadata prepending in `settings.yaml`, warns and skips isolated missing normalized artifacts during normal updates, and auto-selects full `fast`, incremental `fast-update`, or skip based on output completeness plus source/runtime digests.
 - Main-command GraphRAG workspace/status/export through `kb init`, `kb status`, `kb doctor`, `kb lint`, `kb update`, and `kb export`.
 - GraphRAG query wrapper through `kb ask --method auto|basic|local|global|drift`, including `--save` for GraphRAG-backed analysis pages with retriever/method/index-hash metadata.
 - GraphRAG wiki export through `kb update` and `kb export`, which convert GraphRAG output tables into `wiki/graph/index.md`, documents, text units, entities, relationships, and communities while preserving legacy `wiki/concepts/` pages.

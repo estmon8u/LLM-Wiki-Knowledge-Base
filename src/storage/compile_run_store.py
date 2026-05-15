@@ -14,6 +14,7 @@ from typing import Any, Optional
 import uuid
 
 from src.models.source_models import RawSourceRecord
+from src.services.file_lock import file_lock
 from src.services.project_service import atomic_write_text, utc_now_iso
 
 
@@ -98,7 +99,8 @@ class CompileRunStore:
         Returns:
             Optional[CompileRunRecord] produced by the operation.
         """
-        payload = self._read_payload()
+        with file_lock(self.state_file):
+            payload = self._read_payload()
         resume_run = payload.get("resume_run")
         if isinstance(resume_run, dict):
             return CompileRunRecord.from_dict(resume_run)
@@ -113,7 +115,8 @@ class CompileRunStore:
         Returns:
             Optional[CompileRunRecord] produced by the operation.
         """
-        payload = self._read_payload()
+        with file_lock(self.state_file):
+            payload = self._read_payload()
         active_run = payload.get("active_run")
         if not isinstance(active_run, dict):
             return None
@@ -125,7 +128,8 @@ class CompileRunStore:
         Returns:
             list[CompileRunRecord] produced by the operation.
         """
-        payload = self._read_payload()
+        with file_lock(self.state_file):
+            payload = self._read_payload()
         return [
             CompileRunRecord.from_dict(item)
             for item in payload.get("history", [])
@@ -149,20 +153,21 @@ class CompileRunStore:
         Returns:
             CompileRunRecord produced by the operation.
         """
-        payload = self._normalize_interrupted_active(self._read_payload())
-        payload["resume_run"] = None
-        record = CompileRunRecord(
-            run_id=uuid.uuid4().hex[:12],
-            status="running",
-            started_at=utc_now_iso(),
-            force=force,
-            resumed_from_run_id=resumed_from_run_id,
-            planned_source_slugs=[source.slug for source in pending_sources],
-            pending_source_slugs=[source.slug for source in pending_sources],
-        )
-        payload["active_run"] = record.to_dict()
-        self._write_payload(payload)
-        return record
+        with file_lock(self.state_file):
+            payload = self._normalize_interrupted_active(self._read_payload())
+            payload["resume_run"] = None
+            record = CompileRunRecord(
+                run_id=uuid.uuid4().hex[:12],
+                status="running",
+                started_at=utc_now_iso(),
+                force=force,
+                resumed_from_run_id=resumed_from_run_id,
+                planned_source_slugs=[source.slug for source in pending_sources],
+                pending_source_slugs=[source.slug for source in pending_sources],
+            )
+            payload["active_run"] = record.to_dict()
+            self._write_payload(payload)
+            return record
 
     def mark_source_compiled(self, run_id: str, source: RawSourceRecord) -> None:
         """Mark source compiled.
@@ -171,15 +176,18 @@ class CompileRunStore:
             run_id: Run id value used by the operation.
             source: Source record or path being processed.
         """
-        payload = self._read_payload()
-        active_run = self._require_active(payload, run_id)
-        if source.slug not in active_run["completed_source_slugs"]:
-            active_run["completed_source_slugs"].append(source.slug)
-        active_run["pending_source_slugs"] = [
-            slug for slug in active_run["pending_source_slugs"] if slug != source.slug
-        ]
-        payload["active_run"] = active_run
-        self._write_payload(payload)
+        with file_lock(self.state_file):
+            payload = self._read_payload()
+            active_run = self._require_active(payload, run_id)
+            if source.slug not in active_run["completed_source_slugs"]:
+                active_run["completed_source_slugs"].append(source.slug)
+            active_run["pending_source_slugs"] = [
+                slug
+                for slug in active_run["pending_source_slugs"]
+                if slug != source.slug
+            ]
+            payload["active_run"] = active_run
+            self._write_payload(payload)
 
     def mark_failed(
         self,
@@ -198,19 +206,20 @@ class CompileRunStore:
         Returns:
             CompileRunRecord produced by the operation.
         """
-        payload = self._read_payload()
-        active_run = self._require_active(payload, run_id)
-        active_run["status"] = "failed"
-        active_run["finished_at"] = utc_now_iso()
-        active_run["error"] = error
-        if failed_source is not None:
-            active_run["failed_source_slug"] = failed_source.slug
-        record = CompileRunRecord.from_dict(active_run)
-        payload["active_run"] = None
-        payload["resume_run"] = record.to_dict()
-        payload.setdefault("history", []).append(record.to_dict())
-        self._write_payload(payload)
-        return record
+        with file_lock(self.state_file):
+            payload = self._read_payload()
+            active_run = self._require_active(payload, run_id)
+            active_run["status"] = "failed"
+            active_run["finished_at"] = utc_now_iso()
+            active_run["error"] = error
+            if failed_source is not None:
+                active_run["failed_source_slug"] = failed_source.slug
+            record = CompileRunRecord.from_dict(active_run)
+            payload["active_run"] = None
+            payload["resume_run"] = record.to_dict()
+            payload.setdefault("history", []).append(record.to_dict())
+            self._write_payload(payload)
+            return record
 
     def mark_completed(self, run_id: str) -> CompileRunRecord:
         """Mark completed.
@@ -221,23 +230,25 @@ class CompileRunStore:
         Returns:
             CompileRunRecord produced by the operation.
         """
-        payload = self._read_payload()
-        active_run = self._require_active(payload, run_id)
-        active_run["status"] = "completed"
-        active_run["finished_at"] = utc_now_iso()
-        active_run["pending_source_slugs"] = []
-        record = CompileRunRecord.from_dict(active_run)
-        payload["active_run"] = None
-        payload["resume_run"] = None
-        payload.setdefault("history", []).append(record.to_dict())
-        self._write_payload(payload)
-        return record
+        with file_lock(self.state_file):
+            payload = self._read_payload()
+            active_run = self._require_active(payload, run_id)
+            active_run["status"] = "completed"
+            active_run["finished_at"] = utc_now_iso()
+            active_run["pending_source_slugs"] = []
+            record = CompileRunRecord.from_dict(active_run)
+            payload["active_run"] = None
+            payload["resume_run"] = None
+            payload.setdefault("history", []).append(record.to_dict())
+            self._write_payload(payload)
+            return record
 
     def clear_resume_candidate(self) -> None:
         """Clear resume candidate."""
-        payload = self._read_payload()
-        payload["resume_run"] = None
-        self._write_payload(payload)
+        with file_lock(self.state_file):
+            payload = self._read_payload()
+            payload["resume_run"] = None
+            self._write_payload(payload)
 
     def _require_active(self, payload: dict[str, Any], run_id: str) -> dict[str, Any]:
         active_run = payload.get("active_run")

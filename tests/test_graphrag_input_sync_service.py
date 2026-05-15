@@ -49,7 +49,10 @@ def _write_graphrag_settings(test_project) -> None:
 def _source_record(
     *,
     source_id: str = "src-1",
+    slug: str = "rag",
+    title: str = "Retrieval-Augmented Generation",
     normalized_path: str | None = "raw/normalized/rag.md",
+    content_hash: str = "normalized-sha256",
 ) -> RawSourceRecord:
     """Handles source record.
 
@@ -62,13 +65,13 @@ def _source_record(
     """
     return RawSourceRecord(
         source_id=source_id,
-        slug="rag",
-        title="Retrieval-Augmented Generation",
+        slug=slug,
+        title=title,
         origin="C:/sources/rag.pdf",
         source_type="file",
         raw_path="raw/sources/rag.pdf",
         normalized_path=normalized_path,
-        content_hash="normalized-sha256",
+        content_hash=content_hash,
         origin_hash="raw-sha256",
         ingested_at="2026-05-11T00:00:00+00:00",
         metadata={
@@ -178,6 +181,38 @@ def test_sync_reports_missing_normalized_artifact(test_project) -> None:
 
     with pytest.raises(GraphRAGInputSyncError, match="Normalized artifact missing"):
         service.sync()
+
+
+def test_sync_can_skip_missing_normalized_artifacts_when_allowed(test_project) -> None:
+    """Verifies one broken source does not block every graph input record."""
+    _write_graphrag_settings(test_project)
+    test_project.write_file(
+        "raw/normalized/present.md",
+        "# Present\n\nThis source can still enter GraphRAG.\n",
+    )
+    test_project.services["manifest"].save_source(_source_record())
+    test_project.services["manifest"].save_source(
+        _source_record(
+            source_id="src-2",
+            slug="present",
+            title="Present",
+            normalized_path="raw/normalized/present.md",
+            content_hash="present-sha256",
+        )
+    )
+
+    service = GraphRAGInputSyncService(
+        test_project.paths,
+        test_project.services["manifest"],
+    )
+
+    result = service.sync(allow_missing_sources=True)
+
+    assert result.source_count == 1
+    assert len(result.skipped_sources) == 1
+    assert "src-1" in result.skipped_sources[0]
+    records = json.loads(result.output_path.read_text(encoding="utf-8"))
+    assert [record["source_id"] for record in records] == ["src-2"]
 
 
 def test_sync_reports_missing_normalized_path(test_project) -> None:

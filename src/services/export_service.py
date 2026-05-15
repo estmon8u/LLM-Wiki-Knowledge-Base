@@ -45,21 +45,16 @@ class ExportService:
         """
         exported_paths: list[str] = []
         removed_paths: list[str] = []
+        exported_set: set[str] = set()
         # Copy current wiki pages into the vault.
         for file_path in sorted(self.paths.wiki_dir.rglob("*.md")):
             relative = file_path.relative_to(self.paths.wiki_dir)
             destination = self.paths.vault_obsidian_dir / relative
             atomic_copy_file(file_path, destination)
+            exported_set.add(relative.as_posix())
             exported_paths.append(destination.relative_to(self.paths.root).as_posix())
         # Remove stale vault files that no longer exist in wiki.
         if clean and self.paths.vault_obsidian_dir.exists():
-            exported_set = {
-                p.relative_to(self.paths.vault_obsidian_dir).as_posix()
-                for p in self.paths.vault_obsidian_dir.rglob("*.md")
-                if (
-                    self.paths.wiki_dir / p.relative_to(self.paths.vault_obsidian_dir)
-                ).exists()
-            }
             for vault_file in sorted(self.paths.vault_obsidian_dir.rglob("*.md")):
                 rel = vault_file.relative_to(self.paths.vault_obsidian_dir).as_posix()
                 if rel not in exported_set:

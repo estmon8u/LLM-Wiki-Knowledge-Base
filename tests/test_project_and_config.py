@@ -420,6 +420,23 @@ def test_config_service_migrates_legacy_file_and_rewrites_disk(test_project) -> 
     assert "summary_paragraph_limit" not in persisted["compile"]
 
 
+def test_config_service_does_not_persist_failed_migration(test_project) -> None:
+    """Verifies migration rewrites happen only after the migrated config validates."""
+    original = (
+        "version: 5\n"
+        "graph:\n"
+        "  provider: ''\n"
+        "  model: gpt-4.1\n"
+        "  embedding_model: text-embedding-3-small\n"
+    )
+    test_project.paths.config_file.write_text(original, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="graph.provider"):
+        ConfigService(test_project.paths).load()
+
+    assert test_project.paths.config_file.read_text(encoding="utf-8") == original
+
+
 def test_config_service_migrates_provider_overrides_into_providers_section(
     test_project,
 ) -> None:

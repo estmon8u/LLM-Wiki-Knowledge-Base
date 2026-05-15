@@ -12,9 +12,6 @@ import json
 import logging
 import re
 from typing import Any, Callable, Optional
-
-import nltk
-import nltk.data
 from pydantic import BaseModel, Field
 import yaml
 
@@ -26,6 +23,7 @@ from src.providers import (
 from src.providers.base import ProviderRequest, TextProvider
 from src.providers.structured import StructuredOutputError, parse_model_payload
 from src.services.config_service import schema_excerpt
+from src.services.file_lock import file_lock
 from src.services.markdown_document import (
     headings as markdown_headings,
     inline_text as markdown_inline_text,
@@ -82,6 +80,22 @@ _PLACEHOLDER_SUMMARIES = {
 _SUMMARY_PROMPT_ECHO_PATTERN = re.compile(
     r"(?:^|\s)(source_id|raw_path|content_hash|source_hash|compiled_at|summary)\s*:",
     re.IGNORECASE,
+)
+_SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'])")
+_ABBREVIATION_DOT = "<KB_ABBR_DOT>"
+_SENTENCE_ABBREVIATIONS = (
+    "dr",
+    "mr",
+    "mrs",
+    "ms",
+    "prof",
+    "sr",
+    "jr",
+    "st",
+    "vs",
+    "etc",
+    "e.g",
+    "i.e",
 )
 
 
@@ -485,24 +499,25 @@ class CompileService:
         resumed: bool = False,
     ) -> None:
         timestamp = utc_now_iso()
-        current = "# Activity Log\n"
-        if self.paths.wiki_log_file.exists():
-            current = self.paths.wiki_log_file.read_text(encoding="utf-8")
-        if not current.endswith("\n"):
-            current += "\n"
-        flags = []
-        if force:
-            flags.append("force")
-        if resumed:
-            flags.append("resume")
-        flag_str = f" ({', '.join(flags)})" if flags else ""
-        heading = unique_markdown_heading(
-            current,
-            f"## [{timestamp}] update | "
-            f"{compiled_count} compiled, {skipped_count} skipped{flag_str}",
-        )
-        current += f"\n{heading}\n"
-        atomic_write_text(self.paths.wiki_log_file, current)
+        with file_lock(self.paths.wiki_log_file):
+            current = "# Activity Log\n"
+            if self.paths.wiki_log_file.exists():
+                current = self.paths.wiki_log_file.read_text(encoding="utf-8")
+            if not current.endswith("\n"):
+                current += "\n"
+            flags = []
+            if force:
+                flags.append("force")
+            if resumed:
+                flags.append("resume")
+            flag_str = f" ({', '.join(flags)})" if flags else ""
+            heading = unique_markdown_heading(
+                current,
+                f"## [{timestamp}] update | "
+                f"{compiled_count} compiled, {skipped_count} skipped{flag_str}",
+            )
+            current += f"\n{heading}\n"
+            atomic_write_text(self.paths.wiki_log_file, current)
 
 
 def _deterministic_summary(contents: str) -> str:
@@ -667,11 +682,27 @@ def _split_sentences(text: str) -> list[str]:
     normalized = " ".join(text.split()).strip()
     if not normalized:
         return []
-    try:
-        return [s.strip() for s in nltk.sent_tokenize(normalized) if s.strip()]
-    except LookupError:
-        # Fallback if punkt_tab data is unavailable at runtime.
-        return [s.strip() for s in re.split(r"(?<=[.!?])\s+", normalized) if s.strip()]
+    protected = _protect_sentence_abbreviations(normalized)
+    return [
+        _restore_sentence_abbreviations(sentence.strip())
+        for sentence in _SENTENCE_SPLIT_PATTERN.split(protected)
+        if sentence.strip()
+    ]
+
+
+def _protect_sentence_abbreviations(text: str) -> str:
+    protected = text
+    for abbreviation in sorted(_SENTENCE_ABBREVIATIONS, key=len, reverse=True):
+        pattern = re.compile(rf"\b{re.escape(abbreviation)}\.", re.IGNORECASE)
+        protected = pattern.sub(
+            lambda match: match.group(0).replace(".", _ABBREVIATION_DOT),
+            protected,
+        )
+    return protected
+
+
+def _restore_sentence_abbreviations(text: str) -> str:
+    return text.replace(_ABBREVIATION_DOT, ".")
 
 
 def _is_weak_summary(summary: str) -> bool:

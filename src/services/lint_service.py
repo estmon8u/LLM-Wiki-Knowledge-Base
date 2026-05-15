@@ -607,6 +607,33 @@ class LintService:
     def _lint_manifest_state(self, source: RawSourceRecord) -> list[LintIssue]:
         issues: list[LintIssue] = []
         article_path = self.paths.wiki_sources_dir / f"{source.slug}.md"
+        raw_path = _resolve_project_path(self.paths, source.raw_path)
+        if not raw_path.exists():
+            issues.append(
+                LintIssue(
+                    severity="error",
+                    code="missing-raw-source",
+                    path=source.raw_path,
+                    message=(
+                        "Manifest raw source file is missing. Re-ingest the source "
+                        "or remove the stale manifest entry."
+                    ),
+                )
+            )
+        if source.normalized_path:
+            normalized_path = _resolve_project_path(self.paths, source.normalized_path)
+            if not normalized_path.exists():
+                issues.append(
+                    LintIssue(
+                        severity="error",
+                        code="missing-normalized-source",
+                        path=source.normalized_path,
+                        message=(
+                            "Manifest normalized artifact is missing. Run "
+                            "`kb update --force` or re-ingest the source."
+                        ),
+                    )
+                )
         if source.compiled_from_hash != source.content_hash:
             issues.append(
                 LintIssue(
@@ -794,6 +821,13 @@ def _resolve_markdown_target(current_file: Path, destination: str) -> Path:
     if path.is_absolute():
         return path
     return (current_file.parent / path).resolve()
+
+
+def _resolve_project_path(paths: ProjectPaths, value: str) -> Path:
+    path = Path(value)
+    if path.is_absolute():
+        return path
+    return paths.root / path
 
 
 def _strip_excerpt_section(text: str) -> str:

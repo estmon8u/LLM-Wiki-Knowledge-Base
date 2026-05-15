@@ -52,6 +52,7 @@ _PROVIDER_UNVERIFIABLE_CODES = frozenset(
         "truncated-summary",
     }
 )
+_REVIEW_PROMPT_LIMIT = 50_000
 
 _REVIEW_SYSTEM_PROMPT = (
     "You are a knowledge-base quality reviewer. Analyze the wiki pages below "
@@ -275,10 +276,22 @@ class ReviewService:
             return [], "no-sources"
 
         page_texts: list[str] = []
+        prompt_chars = len("## Wiki Pages\n\n")
         for md_file in sorted(source_dir.rglob("*.md")):
             text = md_file.read_text(encoding="utf-8")
             rel = md_file.relative_to(self.paths.root).as_posix()
-            page_texts.append(f"### {rel}\n{_review_page_excerpt(text)}")
+            page_block = f"### {rel}\n{_review_page_excerpt(text)}"
+            remaining = _REVIEW_PROMPT_LIMIT - prompt_chars
+            if remaining <= 0:
+                logger.warning(
+                    "Provider review prompt budget exhausted after %s page(s).",
+                    len(page_texts),
+                )
+                break
+            if len(page_block) > remaining:
+                page_block = page_block[:remaining].rstrip()
+            page_texts.append(page_block)
+            prompt_chars += len(page_block) + 2
 
         if not page_texts:
             return [], "no-sources"

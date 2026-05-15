@@ -72,7 +72,7 @@ def create_command() -> click.Command:
         default=None,
         hidden=True,
     )
-    @click.option("--limit", type=int, help="Deprecated; ignored.")
+    @click.option("--limit", type=int, help="Deprecated; use GraphRAG routing instead.")
     @click.option(
         "--save",
         "save_answer",
@@ -136,14 +136,19 @@ def create_command() -> click.Command:
         """
         require_initialized(command_context)
         if not question_terms:
-            raise click.ClickException("Provide a question to answer.")
+            raise click.ClickException(
+                'Provide a question to answer, for example: kb ask "What changed?"'
+            )
         if streaming is not None:
             raise click.ClickException(
                 "--streaming is not supported by kb ask yet; GraphRAG query output "
                 "is captured before rendering."
             )
-        if limit is not None and not as_json:
-            console.print("[yellow]--limit is ignored for GraphRAG queries.[/yellow]")
+        if limit is not None:
+            raise click.ClickException(
+                "--limit is not supported by kb ask because GraphRAG controls "
+                "retrieval internally."
+            )
         if show_evidence and not as_json:
             console.print(
                 "[yellow]--show-evidence is deprecated; use "

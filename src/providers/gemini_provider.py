@@ -7,6 +7,8 @@ surface that uses it.
 
 from __future__ import annotations
 
+import json
+import logging
 import os
 
 from google import genai
@@ -14,6 +16,9 @@ from google.genai import types
 
 from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
 from src.providers.retry import provider_retry
+
+
+logger = logging.getLogger(__name__)
 
 
 class GeminiProvider(TextProvider):
@@ -70,6 +75,11 @@ class GeminiProvider(TextProvider):
             config_kwargs["system_instruction"] = request.system_prompt
         if request.response_schema:
             config_kwargs["response_mime_type"] = "application/json"
+            if _schema_uses_additional_properties(request.response_schema):
+                logger.warning(
+                    "Gemini response schema does not support additionalProperties; "
+                    "removing it before provider call."
+                )
             config_kwargs["response_schema"] = _gemini_response_schema(
                 request.response_schema
             )
@@ -115,6 +125,14 @@ def _gemini_response_schema(schema: object) -> object:
     if isinstance(schema, list):
         return [_gemini_response_schema(item) for item in schema]
     return schema
+
+
+def _schema_uses_additional_properties(schema: object) -> bool:
+    try:
+        encoded = json.dumps(schema)
+    except TypeError:
+        return False
+    return '"additionalProperties"' in encoded
 
 
 def _uses_thinking_budget(model: str) -> bool:

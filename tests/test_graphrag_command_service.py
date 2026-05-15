@@ -277,6 +277,14 @@ def test_split_index_method_maps_update_suffix() -> None:
     assert _split_index_method("standard-update") == ("standard", True)
 
 
+def test_system_exit_code_handles_non_numeric_payloads() -> None:
+    """Verifies SystemExit payloads are normalized before recording failures."""
+    assert command_module._system_exit_code(SystemExit(None)) == 0
+    assert command_module._system_exit_code(SystemExit("")) == 0
+    assert command_module._system_exit_code(SystemExit(True)) == 1
+    assert command_module._system_exit_code(SystemExit({"error": "boom"})) == 1
+
+
 def test_extract_progress_label_suppresses_noisy_warning() -> None:
     """Verifies that extract progress label suppresses noisy warning."""
     assert _extract_progress_label("Warning: noisy dependency output") == ""

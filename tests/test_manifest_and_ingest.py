@@ -14,6 +14,7 @@ import pytest
 
 from src.models.source_models import RawSourceRecord
 from src.services.ingest_service import IngestService
+from src.services.manifest_service import ManifestError
 from src.services.normalization_service import NormalizationService, _ConvertedText
 from src.services.normalization_service import _extract_title
 from src.services.normalization_service import is_supported_source_path
@@ -208,6 +209,40 @@ def test_manifest_service_save_source_updates_existing_record(test_project) -> N
     assert len(sources) == 1
     assert sources[0].title == "Updated Sample"
     assert manifest_service.find_by_hash("hash-1").source_id == "source-1"
+
+
+def test_manifest_service_rejects_duplicate_content_hashes(test_project) -> None:
+    """Verifies duplicate normalized content hashes cannot enter the manifest."""
+    manifest_service = test_project.services["manifest"]
+    first = RawSourceRecord(
+        source_id="source-1",
+        slug="sample-one",
+        title="Sample One",
+        origin="one.md",
+        source_type="file",
+        raw_path="raw/sources/one.md",
+        content_hash="same-hash",
+        ingested_at=utc_now_iso(),
+    )
+    duplicate = RawSourceRecord(
+        source_id="source-2",
+        slug="sample-two",
+        title="Sample Two",
+        origin="two.md",
+        source_type="file",
+        raw_path="raw/sources/two.md",
+        content_hash="same-hash",
+        ingested_at=utc_now_iso(),
+    )
+
+    manifest_service.save_source(first)
+
+    with pytest.raises(ManifestError, match="Duplicate manifest content_hash"):
+        manifest_service.save_source(duplicate)
+
+    assert [source.source_id for source in manifest_service.list_sources()] == [
+        "source-1"
+    ]
 
 
 @pytest.mark.parametrize(

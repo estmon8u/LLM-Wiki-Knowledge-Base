@@ -259,6 +259,18 @@ def test_ask_streaming_is_rejected_until_live_streaming_is_supported() -> None:
         assert "--streaming is not supported by kb ask yet" in result.output
 
 
+def test_ask_limit_is_rejected_for_graphrag_queries() -> None:
+    """Verifies deprecated retrieval limits do not silently do nothing."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["ask", "--limit", "2", "What", "changed?"])
+
+        assert result.exit_code != 0
+        assert "--limit is not supported by kb ask" in result.output
+
+
 def test_update_output_renders_resume_removed_concepts_and_graph_details() -> None:
     """Verifies that update output renders resume removed concepts and graph details."""
     update_result = UpdateResult(
@@ -278,6 +290,7 @@ def test_update_output_renders_resume_removed_concepts_and_graph_details() -> No
             removed_paths=["wiki/concepts/old.md"],
         ),
         search_refreshed=True,
+        search_warning="Search index refresh skipped because SQLite FTS5 is unavailable.",
         graph_result=GraphUpdateResult(
             initialized=True,
             preflight_result=_sync_result(Path.cwd()),
@@ -303,9 +316,12 @@ def test_update_output_renders_resume_removed_concepts_and_graph_details() -> No
         assert result.exit_code == 0
         assert "resumed interrupted update run compile-run-1" in result.output
         assert "Removed 1 stale concept page(s)" in result.output
+        assert "Search Summary" in result.output
+        assert "SQLite FTS5 is unavailable" in result.output
         assert "initialized graph workspace" in result.output
         assert "GraphRAG cost warning." in result.output
         assert "Graph index run: run-1 (fast)" in result.output
+        assert "Graph output: graph/graphrag/output" in result.output
         assert "Graph wiki export: 1 page(s)" in result.output
 
 
@@ -673,13 +689,14 @@ def test_update_service_initializes_and_skips_when_preflight_skips(
     from src.services.update_service import UpdateOptions
 
     workspace = _FakeWorkspace(initialized=False)
+    sync = _FakeGraphSync(
+        test_project.root,
+        _sync_result(test_project.root, action="skip", method=None),
+    )
     service = _update_service_for_graph(
         test_project,
         workspace=workspace,
-        sync=_FakeGraphSync(
-            test_project.root,
-            _sync_result(test_project.root, action="skip", method=None),
-        ),
+        sync=sync,
     )
 
     result = service._run_graph_sync(UpdateOptions(allow_partial=True))
@@ -688,6 +705,7 @@ def test_update_service_initializes_and_skips_when_preflight_skips(
     assert result.initialized is True
     assert result.skipped is True
     assert result.skip_reason == "test decision"
+    assert sync.calls[0]["allow_missing_sources"] is True
 
 
 def test_update_service_exports_graph_wiki_when_index_skips_with_complete_output(
@@ -827,14 +845,15 @@ def test_update_service_reports_index_or_export_failure(
     from src.services.update_service import UpdateOptions
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    sync = _FakeGraphSync(
+        test_project.root,
+        _sync_result(test_project.root),
+        _sync_result(test_project.root),
+    )
     service = _update_service_for_graph(
         test_project,
         workspace=_FakeWorkspace(initialized=True),
-        sync=_FakeGraphSync(
-            test_project.root,
-            _sync_result(test_project.root),
-            _sync_result(test_project.root),
-        ),
+        sync=sync,
         export=_FakeGraphExport(error=RuntimeError("export boom")),
     )
 
@@ -842,6 +861,8 @@ def test_update_service_reports_index_or_export_failure(
 
     assert result.sync_result is not None
     assert result.warning == "Graph index/export failed: export boom"
+    assert sync.calls[0]["allow_missing_sources"] is True
+    assert sync.calls[1]["allow_missing_sources"] is True
 
 
 def test_update_service_fails_graph_errors_unless_partial_allowed(

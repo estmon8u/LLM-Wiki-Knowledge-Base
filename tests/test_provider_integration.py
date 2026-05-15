@@ -374,8 +374,29 @@ def test_anthropic_provider_generate() -> None:
     assert result.text == "Claude says hi"
     assert result.model_name == "claude-sonnet-4-6"
     call_kwargs = MockClient.return_value.messages.create.call_args.kwargs
-    assert call_kwargs["thinking"] == {"type": "adaptive", "effort": "medium"}
-    assert "output_config" not in call_kwargs
+    assert call_kwargs["thinking"] == {"type": "adaptive"}
+    assert call_kwargs["output_config"] == {"effort": "medium"}
+
+
+def test_anthropic_provider_adaptive_thinking_supports_new_claude_4_models() -> None:
+    """Verifies future Claude 4 minor releases are not excluded by a hardcoded list."""
+    with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test"}):
+        with patch("src.providers.anthropic_provider.Anthropic") as MockClient:
+            from src.providers.anthropic_provider import AnthropicProvider
+
+            provider = AnthropicProvider(model="claude-sonnet-4-7")
+            mock_message = MagicMock()
+            mock_block = MagicMock()
+            mock_block.type = "text"
+            mock_block.text = "response"
+            mock_message.content = [mock_block]
+            MockClient.return_value.messages.create.return_value = mock_message
+
+            provider.generate(ProviderRequest(prompt="test", reasoning_effort="low"))
+
+    call_kwargs = MockClient.return_value.messages.create.call_args.kwargs
+    assert call_kwargs["thinking"] == {"type": "adaptive"}
+    assert call_kwargs["output_config"] == {"effort": "low"}
 
 
 def test_anthropic_provider_keeps_manual_thinking_for_older_models() -> None:
@@ -522,6 +543,32 @@ def test_gemini_response_schema_removes_additional_properties() -> None:
     converted = _gemini_response_schema(schema)
 
     assert "additionalProperties" not in json.dumps(converted)
+
+
+def test_gemini_provider_warns_when_schema_is_downgraded(caplog) -> None:
+    """Verifies Gemini schema downgrades are visible instead of silent."""
+    with patch.dict("os.environ", {"GEMINI_API_KEY": "test"}):
+        with patch("src.providers.gemini_provider.genai") as mock_genai:
+            from src.providers.gemini_provider import GeminiProvider
+
+            provider = GeminiProvider(model="gemini-2.5-flash")
+            mock_response = MagicMock()
+            mock_response.text = "{}"
+            mock_genai.Client.return_value.models.generate_content.return_value = (
+                mock_response
+            )
+
+            provider.generate(
+                ProviderRequest(
+                    prompt="test",
+                    response_schema={
+                        "type": "object",
+                        "additionalProperties": False,
+                    },
+                )
+            )
+
+    assert "does not support additionalProperties" in caplog.text
 
 
 def test_gemini_provider_generate_without_system_prompt() -> None:

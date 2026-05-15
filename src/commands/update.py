@@ -223,6 +223,10 @@ def create_command() -> click.Command:
                     )
                 for path in concept_result.concept_paths:
                     echo_bullet(path)
+            if result.search_warning:
+                console.print("")
+                echo_section("Search Summary")
+                console.print(f"[yellow]{result.search_warning}[/yellow]")
 
         graph_result = result.graph_result
         if graph_result is not None:
@@ -243,6 +247,7 @@ def create_command() -> click.Command:
             if graph_result.sync_result and graph_result.sync_result.index_run:
                 run = graph_result.sync_result.index_run
                 console.print(f"Graph index run: {run.run_id} ({run.method})")
+                console.print("Graph output: graph/graphrag/output")
             if graph_result.export_result:
                 console.print(
                     "Graph wiki export: "

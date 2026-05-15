@@ -121,6 +121,7 @@ class GraphRAGSyncService:
         verbose: bool = False,
         run_index: bool = True,
         preview_only: bool = False,
+        allow_missing_sources: bool = False,
         status_callback: Any | None = None,
     ) -> GraphRAGSyncResult:
         """Sync.
@@ -134,6 +135,7 @@ class GraphRAGSyncService:
             verbose: Whether to emit verbose command output.
             run_index: Run index value used by the operation.
             preview_only: Preview only value used by the operation.
+            allow_missing_sources: Skip sources with missing normalized artifacts.
             status_callback: Status callback value used by the operation.
 
         Returns:
@@ -142,7 +144,10 @@ class GraphRAGSyncService:
         if self.workspace_service.is_initialized() and not preview_only:
             self.workspace_service.sync_settings()
 
-        input_sync = self.input_sync_service.sync(preview_only=preview_only)
+        input_sync = self.input_sync_service.sync(
+            preview_only=preview_only,
+            allow_missing_sources=allow_missing_sources,
+        )
         status = self.status_service.status()
         if preview_only:
             status = replace(

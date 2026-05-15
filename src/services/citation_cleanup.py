@@ -14,8 +14,8 @@ _CITATION_REF_PATTERN = re.compile(
     r"\s*"
     r"[\[\(]"
     r"[`\s]*"
-    r"(?:wiki/[^\]\)]+#chunk-\d+)"
-    r"(?:\s*,\s*(?:wiki/[^\]\)]+#chunk-\d+))*"
+    r"(?:wiki/[A-Za-z0-9._/-]+#chunk-\d+)"
+    r"(?:\s*,\s*(?:wiki/[A-Za-z0-9._/-]+#chunk-\d+))*"
     r"[`\s]*"
     r"[\]\)]",
 )

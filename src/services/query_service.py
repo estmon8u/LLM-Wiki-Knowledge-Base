@@ -25,6 +25,7 @@ from src.providers.base import ProviderRequest, TextProvider
 from src.providers.structured import StructuredOutputError, parse_model_payload
 from src.services.citation_cleanup import clean_citation_refs
 from src.services.config_service import schema_excerpt
+from src.services.file_lock import file_lock
 from src.services.project_service import (
     ProjectPaths,
     atomic_write_text,
@@ -366,19 +367,20 @@ class QueryService:
     def _append_log(self, question: str, dest: "Path") -> None:
         """Append a saved-analysis entry to wiki/log.md."""
         timestamp = utc_now_iso()
-        current = "# Activity Log\n"
-        if self.paths.wiki_log_file.exists():
-            current = self.paths.wiki_log_file.read_text(encoding="utf-8")
-        if not current.endswith("\n"):
-            current += "\n"
-        rel = dest.relative_to(self.paths.root).as_posix()
-        question_summary = _log_safe_text(question)
-        heading = unique_markdown_heading(
-            current,
-            f"## [{timestamp}] ask --save | {question_summary} -> {rel}",
-        )
-        current += f"\n{heading}\n"
-        atomic_write_text(self.paths.wiki_log_file, current)
+        with file_lock(self.paths.wiki_log_file):
+            current = "# Activity Log\n"
+            if self.paths.wiki_log_file.exists():
+                current = self.paths.wiki_log_file.read_text(encoding="utf-8")
+            if not current.endswith("\n"):
+                current += "\n"
+            rel = dest.relative_to(self.paths.root).as_posix()
+            question_summary = _log_safe_text(question)
+            heading = unique_markdown_heading(
+                current,
+                f"## [{timestamp}] ask --save | {question_summary} -> {rel}",
+            )
+            current += f"\n{heading}\n"
+            atomic_write_text(self.paths.wiki_log_file, current)
 
     def _format_saved_citation(self, citation: SearchResult) -> str:
         line = f"- [[{citation.title}]] (`{citation.citation_ref}`)"

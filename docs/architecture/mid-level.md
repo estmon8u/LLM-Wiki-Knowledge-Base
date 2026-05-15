@@ -6,11 +6,11 @@
 | --- | --- |
 | `src/cli.py` | CLI entrypoint and application bootstrap |
 | `src/commands/` | Thin user-facing command wrappers |
-| `src/services/` | Deterministic normalization, ingest, compile, concept, diff, lint, review, search, query (legacy ask), export, status, config, manifest, GraphRAG workspace/input/index/status/query/export services, plus the default graph ask controller and router |
+| `src/services/` | Deterministic normalization, ingest, compile, concept, diff, lint, review, search, query (legacy ask), export, status, config, manifest, file-locking, GraphRAG workspace/input/index/status/query/export services, plus the default graph ask controller and router |
 | `src/models/` | Shared command, source, and wiki dataclasses |
 | `src/engine/` | Command registry boundary |
-| `src/providers/` | Provider abstraction layer with OpenAI, Anthropic, and Gemini implementations; shared structured-output parser, Tenacity retry decorator for transient failures, per-request reasoning/output controls, diagnostics on provider responses, Gemini schema adaptation, and catalog-backed provider resolution |
-| `src/storage/` | Compile-run state persistence and SQLite FTS5 chunk-index storage |
+| `src/providers/` | Provider abstraction layer with OpenAI, Anthropic, and Gemini implementations; shared structured-output parser, Tenacity retry decorator for transient failures, per-request reasoning/output controls, diagnostics on provider responses, adaptive Anthropic thinking, Gemini schema adaptation with warnings, and catalog-backed provider resolution |
+| `src/storage/` | Lock-protected compile-run state persistence and SQLite FTS5 chunk-index storage |
 | `scripts/` | Operational scripts, including Phase 8 evaluation runners for retrieval and answer-mode comparison |
 | `eval/` | Benchmark definitions, legacy captures, and generated evaluation reports |
 
@@ -45,13 +45,13 @@ Most commands are flat top-level verbs. The GraphRAG pivot keeps the deprecated 
 | Legacy search | compiled wiki artifacts | deprecated `kb legacy find` comparator matches from source pages, generated concept pages, and saved analysis pages, derived from indexed chunks that skip wiki bookkeeping sections |
 | Legacy ask | user question plus source-page evidence, excluding generated concept pages and saved analysis pages | cited provider answer validated for parseability, non-empty content, and grounded citation refs; optionally saved as a non-blank analysis page |
 | GraphRAG workspace | project GraphRAG workspace path plus `kb.config.yaml` graph defaults | GraphRAG Python-entrypoint-initialized settings, prompts, and input scaffold under `graph/graphrag/`, with managed provider/model/embedding/API-key values synced from config during `kb init` and `kb update` while unrelated GraphRAG tuning is preserved |
-| GraphRAG input/index | normalized artifacts plus manifest metadata during `kb update` | planned non-mutating preflight state; `graph/graphrag/input/sources.json` JSON records with source text and provenance metadata when graph work applies; JSON input settings; auto full/update/retry/skip index metadata; generated output tables, active output directory metadata from the latest successful complete run, and ignored run metadata |
+| GraphRAG input/index | normalized artifacts plus manifest metadata during `kb update` | planned non-mutating preflight state; tolerant skipped-missing-artifact warnings during normal updates; `graph/graphrag/input/sources.json` JSON records with source text and provenance metadata when graph work applies; JSON input settings; auto full/update/retry/skip index metadata; generated output tables, active output directory metadata from the latest successful complete run, and ignored run metadata |
 | Default graph ask | user question plus `--method auto|basic|local|global|drift` and graph readiness status | GraphRAG answer metadata with deterministic route reason, planner metadata, source trace, and conservative support level; optional saved analysis page with retriever/method/planner/claim_support/index hash metadata |
 | GraphRAG wiki export | active complete GraphRAG Parquet output tables during `kb update` or `kb export` | generated markdown graph pages under `wiki/graph/` for documents, text units, entities, relationships, and communities; export also runs when update skips indexing because complete output is current; raw source text is fenced and high-volume relationship page export is capped while row counts remain visible |
 | Evaluation | benchmark questions plus an initialized KB project | `eval/results/summary.md`, `retrieval_metrics.csv`, `answer_metrics.csv`, and ignored per-question command artifacts |
-| Lint | compiled wiki and metadata | structural findings for links, fragments, headings, titles, typed frontmatter, empty pages, graph staleness, and maintenance signals |
+| Lint | compiled wiki and metadata | structural findings for links, fragments, headings, titles, typed frontmatter, empty pages, raw/normalized manifest artifact drift, graph staleness, and maintenance signals |
 | Review | compiled source/concept pages | semantic findings from deterministic overlap checks over source pages, terminology-variant checks over reviewable source/concept pages, and schema-guided single-pass provider review over curated source-page excerpts |
-| Export | compiled wiki | Obsidian-friendly vault view |
+| Export | compiled wiki | Obsidian-friendly vault view; clean mode removes only markdown paths absent from the current export set |
 
 ## Current Ingest Scope
 
@@ -81,6 +81,6 @@ Most commands are flat top-level verbs. The GraphRAG pivot keeps the deprecated 
 
 Provider-backed semantic steps now request structured responses at the service boundary instead of parsing freeform text. Concept generation returns concept clusters with title, summary, topic terms, and source pages. Review returns JSON findings with severity, code, pages, and message, then filters findings that only reflect curated-excerpt boundaries. `kb legacy ask` returns answer markdown, claims, citations, and an insufficient-evidence flag, and rejects answers that are syntactically valid but empty or ungrounded. Compile summaries return summary, key points, open questions, and a title suggestion.
 
-The provider request boundary also carries operation-specific reasoning effort and token budgets. Schema-bound operational tasks can request lower reasoning effort with enough visible-output budget for valid JSON, Anthropic adaptive-thinking models receive the required thinking flag plus the requested effort, and Gemini receives model-sensitive thinking configuration plus a schema subset that removes unsupported `additionalProperties` keys before SDK submission.
+The provider request boundary also carries operation-specific reasoning effort and token budgets. Schema-bound operational tasks can request lower reasoning effort with enough visible-output budget for valid JSON, Anthropic adaptive-thinking models receive the required thinking flag plus the requested effort using version-pattern detection for current Claude identifiers, and Gemini receives model-sensitive thinking configuration plus a schema subset that removes unsupported `additionalProperties` keys before SDK submission with a warning.
 
 OCR and normalization quality review intentionally remain outside the default structured-output path. Conversion quality is still handled by deterministic converter status and lightweight quality gates unless an explicit future fallback is added.

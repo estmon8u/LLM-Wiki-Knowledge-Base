@@ -24,6 +24,7 @@ from pydantic import (
 )
 import yaml
 
+from src.services.file_lock import file_lock
 from src.services.graphrag_defaults import (
     DEFAULT_GRAPHRAG_API_KEY_ENV,
     DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
@@ -225,19 +226,21 @@ class ConfigService:
         """
         if not self.paths.config_file.exists():
             return deepcopy(DEFAULT_CONFIG)
-        with self.paths.config_file.open("r", encoding="utf-8") as handle:
-            loaded = yaml.safe_load(handle) or {}
-        if not isinstance(loaded, dict):
-            raise ValueError("kb.config.yaml must contain a YAML mapping.")
-        migrated, changed = _apply_config_migrations(loaded)
-        if changed:
-            atomic_write_text(
-                self.paths.config_file,
-                yaml.safe_dump(migrated, sort_keys=False),
-            )
-        merged = deepcopy(DEFAULT_CONFIG)
-        merged = _deep_merge(merged, migrated)
-        return _validate_config(merged)
+        with file_lock(self.paths.config_file):
+            with self.paths.config_file.open("r", encoding="utf-8") as handle:
+                loaded = yaml.safe_load(handle) or {}
+            if not isinstance(loaded, dict):
+                raise ValueError("kb.config.yaml must contain a YAML mapping.")
+            migrated, changed = _apply_config_migrations(loaded)
+            merged = deepcopy(DEFAULT_CONFIG)
+            merged = _deep_merge(merged, migrated)
+            validated = _validate_config(merged)
+            if changed:
+                atomic_write_text(
+                    self.paths.config_file,
+                    yaml.safe_dump(migrated, sort_keys=False),
+                )
+            return validated
 
     def load_schema(self) -> str:
         """Loads schema.
@@ -251,10 +254,11 @@ class ConfigService:
 
     def save(self, config: dict[str, Any]) -> None:
         """Write *config* back to kb.config.yaml (atomic)."""
-        atomic_write_text(
-            self.paths.config_file,
-            yaml.safe_dump(config, sort_keys=False),
-        )
+        with file_lock(self.paths.config_file):
+            atomic_write_text(
+                self.paths.config_file,
+                yaml.safe_dump(config, sort_keys=False),
+            )
 
     def ensure_files(self, *, repair_invalid: bool = False) -> list[str]:
         """Ensure files.
@@ -264,19 +268,21 @@ class ConfigService:
         """
         created: list[str] = []
         if not self.paths.config_file.exists():
-            atomic_write_text(
-                self.paths.config_file,
-                yaml.safe_dump(DEFAULT_CONFIG, sort_keys=False),
-            )
+            with file_lock(self.paths.config_file):
+                atomic_write_text(
+                    self.paths.config_file,
+                    yaml.safe_dump(DEFAULT_CONFIG, sort_keys=False),
+                )
             created.append(self.paths.config_file.name)
         elif repair_invalid:
             try:
                 self.load()
             except (ValueError, yaml.YAMLError):
-                atomic_write_text(
-                    self.paths.config_file,
-                    yaml.safe_dump(DEFAULT_CONFIG, sort_keys=False),
-                )
+                with file_lock(self.paths.config_file):
+                    atomic_write_text(
+                        self.paths.config_file,
+                        yaml.safe_dump(DEFAULT_CONFIG, sort_keys=False),
+                    )
                 created.append(f"{self.paths.config_file.name} (regenerated)")
         if not self.paths.schema_file.exists():
             atomic_write_text(self.paths.schema_file, DEFAULT_SCHEMA)

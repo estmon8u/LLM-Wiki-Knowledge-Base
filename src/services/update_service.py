@@ -72,6 +72,7 @@ class UpdateResult:
     concepts_skipped: bool = False
     concepts_skip_reason: str = ""
     search_refreshed: bool = False
+    search_warning: str = ""
     graph_result: Optional["GraphUpdateResult"] = None
 
     @property
@@ -228,8 +229,12 @@ class UpdateService:
                 self._compile.refresh_index()
 
         # Search refresh
-        self._search.refresh(force=True)
-        result.search_refreshed = True
+        result.search_refreshed = self._search.refresh(force=True)
+        if not result.search_refreshed:
+            result.search_warning = (
+                "Search index refresh skipped because SQLite FTS5 is unavailable; "
+                "`kb find` will scan markdown files."
+            )
 
         result.graph_result = self._run_graph_sync(
             options, status_callback=graph_status_callback
@@ -305,6 +310,7 @@ class UpdateService:
                 force=options.force,
                 dry_run=True,
                 preview_only=True,
+                allow_missing_sources=True,
             )
         except Exception as exc:
             message = f"Graph preflight failed: {exc}"
@@ -312,6 +318,10 @@ class UpdateService:
                 return GraphUpdateResult(skipped=True, warning=message)
             raise ValueError(message) from exc
         result.preflight_result = preflight
+        if preflight.input_sync.skipped_sources:
+            result.warning = _missing_source_warning(
+                preflight.input_sync.skipped_sources
+            )
 
         decision = preflight.decision
         if decision.action != "index" or decision.method is None:
@@ -358,6 +368,7 @@ class UpdateService:
                 force=options.force,
                 dry_run=False,
                 run_index=True,
+                allow_missing_sources=True,
                 status_callback=status_callback,
             )
             if status_callback is not None:
@@ -382,6 +393,17 @@ class UpdateService:
                 continue
             missing.append(key)
         return missing
+
+
+def _missing_source_warning(skipped_sources: tuple[str, ...]) -> str:
+    count = len(skipped_sources)
+    examples = "; ".join(skipped_sources[:3])
+    suffix = "" if count <= 3 else f"; {count - 3} more"
+    return (
+        f"Graph input skipped {count} source(s) with missing normalized artifacts: "
+        f"{examples}{suffix}. Run `kb update --force` or re-ingest the source files "
+        "to restore them."
+    )
 
 
 class UpdatePreflightError(Exception):

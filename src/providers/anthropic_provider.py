@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 
 from anthropic import Anthropic
 
@@ -59,8 +60,8 @@ class AnthropicProvider(TextProvider):
             "messages": [{"role": "user", "content": request.prompt}],
         }
         if use_adaptive_thinking:
-            kwargs["thinking"] = {
-                "type": "adaptive",
+            kwargs["thinking"] = {"type": "adaptive"}
+            kwargs["output_config"] = {
                 "effort": request.reasoning_effort or self._thinking_effort,
             }
         elif self._thinking_budget and self._thinking_budget > 0:
@@ -71,9 +72,11 @@ class AnthropicProvider(TextProvider):
         system_prompt = request.system_prompt
         if request.response_schema:
             schema_text = json.dumps(request.response_schema, indent=2, sort_keys=True)
-            system_prompt = (
-                f"{system_prompt}\n\n" if system_prompt else ""
-            ) + f"Return only JSON matching this schema:\n{schema_text}"
+            system_prompt = (f"{system_prompt}\n\n" if system_prompt else "") + (
+                "Return only JSON matching this schema. This output-format "
+                "requirement overrides any conflicting prose or markdown "
+                f"instructions:\n{schema_text}"
+            )
         if system_prompt:
             kwargs["system"] = system_prompt
         message = self._client.messages.create(**kwargs)
@@ -93,12 +96,7 @@ class AnthropicProvider(TextProvider):
 def _uses_adaptive_thinking(model: str) -> bool:
     """Return True for Claude models that use adaptive thinking effort."""
     normalized = model.casefold()
-    return any(
-        marker in normalized
-        for marker in (
-            "sonnet-4-6",
-            "opus-4-6",
-            "opus-4-7",
-            "mythos",
-        )
-    )
+    if "mythos" in normalized:
+        return True
+    match = re.search(r"claude-(?:opus|sonnet)-4-(\d+)", normalized)
+    return bool(match and int(match.group(1)) >= 6)

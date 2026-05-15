@@ -360,7 +360,7 @@ def test_find_and_ask_require_terms() -> None:
         assert search_result.exit_code != 0
         assert "Provide at least one search term." in search_result.output
         assert ask_result.exit_code != 0
-        assert "Provide a question to answer." in ask_result.output
+        assert "Provide a question to answer" in ask_result.output
         assert legacy_search_result.exit_code != 0
         assert "Provide at least one search term." in legacy_search_result.output
         assert legacy_ask_result.exit_code != 0
@@ -1601,3 +1601,6 @@ def test_clean_citation_refs_strips_inline_citation_refs() -> None:
     # Parenthesized refs
     paren = "Claims (wiki/sources/a.md#chunk-0) stand."
     assert "wiki/sources/" not in clean_citation_refs(paren)
+
+    unbalanced = "Keep malformed [wiki/sources/a.md#chunk-0 and this bracket."
+    assert clean_citation_refs(unbalanced) == unbalanced

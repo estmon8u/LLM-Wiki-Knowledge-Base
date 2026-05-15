@@ -7,6 +7,7 @@ surface that uses it.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 import sqlite3
@@ -1342,6 +1343,20 @@ def test_export_service_copies_all_markdown_files(test_project) -> None:
     }
 
 
+def test_export_clean_removes_only_unexported_vault_markdown(test_project) -> None:
+    """Verifies clean uses the exported file set, not stale wiki path checks."""
+    test_project.write_file("wiki/sources/current.md", "Current")
+    test_project.write_file("vault/obsidian/sources/current.md", "Old current")
+    test_project.write_file("vault/obsidian/sources/stale.md", "Stale")
+
+    result = test_project.services["export"].export_vault(clean=True)
+
+    assert "vault/obsidian/sources/current.md" in result.exported_paths
+    assert result.removed_paths == ["vault/obsidian/sources/stale.md"]
+    assert (test_project.root / "vault/obsidian/sources/current.md").exists()
+    assert not (test_project.root / "vault/obsidian/sources/stale.md").exists()
+
+
 def test_status_service_counts_sources_compiled_pages_and_last_compile(
     test_project,
 ) -> None:
@@ -1516,6 +1531,33 @@ def test_search_index_rebuilds_on_version_mismatch(monkeypatch, test_project) ->
     result = service.refresh()
     assert result is True
     assert rebuild_called
+
+
+def test_search_refresh_force_retries_after_fts_unavailable(
+    monkeypatch,
+    test_project,
+) -> None:
+    """Verifies a transient FTS failure does not disable forced rebuilds forever."""
+    from src.storage.search_index_store import SearchIndexUnavailable
+
+    test_project.write_file("wiki/sources/retry.md", "retryable fts content")
+    service = test_project.services["search"]
+    calls = 0
+    original_load = service.index_store.load_indexed_files
+
+    def fail_once():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise SearchIndexUnavailable("fts unavailable")
+        return original_load()
+
+    monkeypatch.setattr(service.index_store, "load_indexed_files", fail_once)
+
+    assert service.refresh() is False
+    assert service._fts_available is False
+    assert service.refresh(force=True) is True
+    assert service._fts_available is True
 
 
 def test_refresh_file_upserts_single_file_without_full_rebuild(
@@ -2034,6 +2076,25 @@ def test_diff_service_reports_changed_after_source_modification(test_project) ->
     assert report.changed_count == 1
     assert report.up_to_date_count == 0
     assert report.entries[0].status == "changed"
+
+
+def test_diff_service_distinguishes_manifest_source_change(test_project) -> None:
+    """Verifies diff separates manifest-updated sources from disk-only edits."""
+    source_path = test_project.write_file("notes/diff.md", "# Diff\n\nBody\n")
+    test_project.services["ingest"].ingest_path(source_path)
+    test_project.services["compile"].compile()
+
+    record = test_project.services["manifest"].list_sources()[0]
+    norm_path = test_project.root / (record.normalized_path or record.raw_path)
+    edited = "# Diff\n\nUpdated through ingest metadata.\n"
+    norm_path.write_text(edited, encoding="utf-8")
+    record.content_hash = hashlib.sha256(edited.encode("utf-8")).hexdigest()
+    test_project.services["manifest"].save_source(record)
+
+    report = test_project.services["diff"].diff()
+
+    assert report.entries[0].status == "changed"
+    assert report.entries[0].details == "source changed since last compile"
 
 
 def test_diff_service_reports_missing_after_normalized_file_delete(

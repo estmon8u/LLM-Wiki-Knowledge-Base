@@ -10,6 +10,7 @@ from typing import Any
 
 import yaml
 
+from src.services.file_lock import file_lock
 from src.services.graphrag_command_service import GraphRAGCommandResult
 from src.services.project_service import ProjectPaths, atomic_write_text, utc_now_iso
 
@@ -216,10 +217,7 @@ class GraphRAGStatusService:
         runs = self._load_runs()
         last_run = runs[-1] if runs else None
         active_output_dir = self._active_output_dir()
-        table_paths = {
-            name: self._table_path(active_output_dir, *patterns)
-            for name, patterns in GRAPH_OUTPUT_TABLES.items()
-        }
+        table_paths = self._table_paths(active_output_dir)
         tables = {name: path is not None for name, path in table_paths.items()}
         vector_store_path = self._vector_store_path(active_output_dir)
         vector_store_exists = bool(vector_store_path and vector_store_path.exists())
@@ -341,12 +339,13 @@ class GraphRAGStatusService:
             output_state=output_state,
             active_output_dir=active_output_dir,
         )
-        runs = self._load_runs()
-        runs.append(record.to_dict())
-        atomic_write_text(
-            self.runs_file,
-            json.dumps(runs, indent=2, sort_keys=True) + "\n",
-        )
+        with file_lock(self.runs_file):
+            runs = self._load_runs()
+            runs.append(record.to_dict())
+            atomic_write_text(
+                self.runs_file,
+                json.dumps(runs, indent=2, sort_keys=True) + "\n",
+            )
         return record
 
     def last_successful_index_run(self) -> dict[str, Any] | None:
@@ -431,24 +430,24 @@ class GraphRAGStatusService:
         return max(candidates.items(), key=lambda item: (item[1], str(item[0])))[0]
 
     def _output_dir_complete(self, output_dir: Path) -> bool:
-        return all(
-            self._table_path(output_dir, *patterns) is not None
-            for patterns in GRAPH_OUTPUT_TABLES.values()
-        ) and self._vector_store_readable(self._vector_store_path(output_dir))
+        table_paths = self._table_paths(output_dir)
+        return all(table_paths.values()) and self._vector_store_readable(
+            self._vector_store_path(output_dir)
+        )
+
+    def _table_paths(self, output_dir: Path | None) -> dict[str, Path | None]:
+        if output_dir is None or not output_dir.exists():
+            return {name: None for name in GRAPH_OUTPUT_TABLES}
+        parquet_paths = sorted(output_dir.glob("*.parquet"))
+        paths: dict[str, Path | None] = {}
+        for name, tokens in GRAPH_OUTPUT_TABLES.items():
+            paths[name] = _match_table_path(parquet_paths, tokens)
+        return paths
 
     def _table_path(self, output_dir: Path | None, *tokens: str) -> Path | None:
         if output_dir is None or not output_dir.exists():
             return None
-        for token in tokens:
-            exact = output_dir / f"{token}.parquet"
-            if exact.exists():
-                return exact
-        normalized_tokens = tuple(token.lower() for token in tokens)
-        for path in sorted(output_dir.glob("*.parquet")):
-            stem = path.stem.lower()
-            if any(stem == token or token in stem for token in normalized_tokens):
-                return path
-        return None
+        return _match_table_path(sorted(output_dir.glob("*.parquet")), tokens)
 
     @staticmethod
     def _table_row_count(path: Path) -> int | None:
@@ -641,6 +640,20 @@ def _timestamp_iso(timestamp: float | None) -> str | None:
         .replace(microsecond=0)
         .isoformat()
     )
+
+
+def _match_table_path(paths: list[Path], tokens: tuple[str, ...]) -> Path | None:
+    for token in tokens:
+        exact_name = f"{token}.parquet"
+        for path in paths:
+            if path.name == exact_name:
+                return path
+    normalized_tokens = tuple(token.lower() for token in tokens)
+    for path in paths:
+        stem = path.stem.lower()
+        if any(stem == token or token in stem for token in normalized_tokens):
+            return path
+    return None
 
 
 def iso_timestamp_after(left: str | None, right: str | None) -> bool:

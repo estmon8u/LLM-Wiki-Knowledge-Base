@@ -58,6 +58,7 @@ class GraphRAGInputSyncResult:
     settings_updated: bool
     input_digest: str | None = None
     source_hashes: dict[str, str] = field(default_factory=dict)
+    skipped_sources: tuple[str, ...] = ()
 
 
 class GraphRAGInputSyncService:
@@ -111,16 +112,25 @@ class GraphRAGInputSyncService:
         """
         return self.workspace_dir / "settings.yaml"
 
-    def sync(self, *, preview_only: bool = False) -> GraphRAGInputSyncResult:
+    def sync(
+        self,
+        *,
+        preview_only: bool = False,
+        allow_missing_sources: bool = False,
+    ) -> GraphRAGInputSyncResult:
         """Sync.
 
         Args:
             preview_only: Build the planned input/settings payload without writing.
+            allow_missing_sources: Skip isolated sources whose normalized artifact
+                is missing instead of blocking every remaining source.
 
         Returns:
             GraphRAGInputSyncResult produced by the operation.
         """
-        records = self._planned_records()
+        records, skipped_sources = self._planned_records(
+            allow_missing_sources=allow_missing_sources
+        )
         settings_updated = self._settings_would_update()
         payload = json.dumps(records, indent=2, sort_keys=True, default=str) + "\n"
         if not preview_only:
@@ -135,6 +145,7 @@ class GraphRAGInputSyncService:
             settings_updated=settings_updated,
             input_digest=_text_digest(payload),
             source_hashes=_source_hashes(records),
+            skipped_sources=tuple(skipped_sources),
         )
 
     def configure_settings(self) -> bool:
@@ -214,7 +225,11 @@ class GraphRAGInputSyncService:
         original, updated = self._configured_settings_payload()
         return updated != original
 
-    def _planned_records(self) -> list[dict[str, Any]]:
+    def _planned_records(
+        self,
+        *,
+        allow_missing_sources: bool = False,
+    ) -> tuple[list[dict[str, Any]], list[str]]:
         try:
             sources = self.manifest_service.list_sources()
         except ManifestError as exc:
@@ -226,10 +241,18 @@ class GraphRAGInputSyncService:
         self._reject_duplicate_source_ids(sources)
 
         manifest_hash = self._manifest_hash()
-        return [
-            {**self._record_for_source(source), "manifest_hash": manifest_hash}
-            for source in sources
-        ]
+        records: list[dict[str, Any]] = []
+        skipped_sources: list[str] = []
+        for source in sources:
+            try:
+                record = self._record_for_source(source)
+            except GraphRAGInputSyncError as exc:
+                if not allow_missing_sources:
+                    raise
+                skipped_sources.append(f"{source.source_id}: {exc}")
+                continue
+            records.append({**record, "manifest_hash": manifest_hash})
+        return records, skipped_sources
 
     def _record_for_source(self, source: RawSourceRecord) -> dict[str, Any]:
         if not source.normalized_path:

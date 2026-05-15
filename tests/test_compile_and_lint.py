@@ -511,6 +511,18 @@ def test_lint_service_reports_stale_and_missing_compiled_pages(test_project) -> 
     assert any(issue.code == "missing-compiled-page" for issue in missing_report.issues)
 
 
+def test_lint_service_reports_manifest_artifact_drift(test_project) -> None:
+    """Verifies lint catches manifest paths that no longer exist on disk."""
+    source = _ingest_source(test_project, "notes/missing.md", "# Missing\n\nBody\n")
+    (test_project.root / source.raw_path).unlink()
+    (test_project.root / source.normalized_path).unlink()
+
+    report = test_project.services["lint"].lint()
+
+    assert any(issue.code == "missing-raw-source" for issue in report.issues)
+    assert any(issue.code == "missing-normalized-source" for issue in report.issues)
+
+
 def test_lint_service_reports_missing_frontmatter_and_broken_links(
     test_project,
 ) -> None:
@@ -2489,11 +2501,11 @@ def test_is_link_only_inline_rejects_mixed_content() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_split_sentences_with_nltk() -> None:
-    """Verifies that split sentences with nltk."""
+def test_split_sentences_uses_deterministic_boundaries() -> None:
+    """Verifies that split sentences uses deterministic boundaries."""
     text = "First sentence. Second sentence. Third one."
     result = _split_sentences(text)
-    assert len(result) >= 2
+    assert len(result) == 3
     assert result[0] == "First sentence."
 
 
@@ -2501,8 +2513,7 @@ def test_split_sentences_handles_abbreviations() -> None:
     """Verifies that split sentences handles abbreviations."""
     text = "Dr. Smith found results. The test passed."
     result = _split_sentences(text)
-    # NLTK should not split on "Dr."
-    assert any("Dr." in s for s in result)
+    assert result == ["Dr. Smith found results.", "The test passed."]
 
 
 def test_split_sentences_empty_input() -> None:

@@ -683,6 +683,27 @@ def test_resolve_destination_suffix_collision(test_project) -> None:
     assert dest.name == "test-slug-3.md"
 
 
+def test_resolve_destination_stops_after_slug_attempt_limit(
+    monkeypatch,
+    test_project,
+) -> None:
+    """Verifies concept slug allocation cannot loop forever."""
+    import pytest
+    import src.services.concept_service as concept_module
+
+    monkeypatch.setattr(concept_module, "_MAX_CONCEPT_SLUG_ATTEMPTS", 3)
+    test_project.paths.wiki_concepts_dir.mkdir(parents=True, exist_ok=True)
+    for name in ("test-slug.md", "test-slug-2.md", "test-slug-3.md"):
+        test_project.write_file(
+            f"wiki/concepts/{name}",
+            "---\ntitle: Manual\ntype: analysis\n---\n\n# Manual\n",
+        )
+    service = ConceptService(test_project.paths)
+
+    with pytest.raises(ValueError, match="after 3 attempts"):
+        service._resolve_destination("test-slug", set())
+
+
 def test_list_managed_pages_no_concepts_dir(test_project) -> None:
     """Verifies that list managed pages no concepts dir.
 

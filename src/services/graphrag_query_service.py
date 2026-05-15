@@ -15,6 +15,7 @@ from typing import Callable
 
 import yaml
 
+from src.services.file_lock import file_lock
 from src.services.graphrag_command_service import (
     GraphRAGCommandError,
     GraphRAGCommandResult,
@@ -278,18 +279,19 @@ class GraphRAGQueryService:
 
     def _append_log(self, question: str, dest: Path) -> None:
         timestamp = utc_now_iso()
-        current = "# Activity Log\n"
-        if self.paths.wiki_log_file.exists():
-            current = self.paths.wiki_log_file.read_text(encoding="utf-8")
-        if not current.endswith("\n"):
-            current += "\n"
-        rel = dest.relative_to(self.paths.root).as_posix()
-        heading = unique_markdown_heading(
-            current,
-            f"## [{timestamp}] graph ask --save | {json.dumps(question)} -> {rel}",
-        )
-        current += f"\n{heading}\n"
-        atomic_write_text(self.paths.wiki_log_file, current)
+        with file_lock(self.paths.wiki_log_file):
+            current = "# Activity Log\n"
+            if self.paths.wiki_log_file.exists():
+                current = self.paths.wiki_log_file.read_text(encoding="utf-8")
+            if not current.endswith("\n"):
+                current += "\n"
+            rel = dest.relative_to(self.paths.root).as_posix()
+            heading = unique_markdown_heading(
+                current,
+                f"## [{timestamp}] graph ask --save | {json.dumps(question)} -> {rel}",
+            )
+            current += f"\n{heading}\n"
+            atomic_write_text(self.paths.wiki_log_file, current)
 
     def _require_query_ready(self, status: GraphRAGStatus) -> None:
         if not status.workspace_initialized:

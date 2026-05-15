@@ -116,8 +116,10 @@ class SearchService:
         Returns:
             bool produced by the operation.
         """
-        if not self._fts_available:
+        if not self._fts_available and not force:
             return False
+        if force:
+            self._fts_available = True
 
         inventory = self._wiki_inventory()
         try:

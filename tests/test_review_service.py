@@ -610,3 +610,35 @@ def test_provider_review_filters_truncation_and_uses_curated_excerpts(
     assert "Useful summary" in request.prompt
     assert "Useful evidence excerpt" in request.prompt
     assert "Source Details" not in request.prompt
+
+
+def test_provider_review_caps_total_prompt_size(test_project) -> None:
+    """Verifies provider review cannot build unbounded prompts."""
+    from src.services import review_service as review_module
+
+    for index in range(80):
+        test_project.write_file(
+            f"wiki/sources/page-{index}.md",
+            "---\n"
+            f"title: Page {index}\n"
+            "summary: Dense retrieval evidence.\n"
+            "type: source\n"
+            f"source_id: page-{index}\n"
+            "source_hash: h\n"
+            "raw_path: raw/page.md\n"
+            "origin: local\n"
+            "compiled_at: t\n"
+            "ingested_at: t\n"
+            "tags: []\n"
+            "---\n\n"
+            "# Page\n\n"
+            "## Summary\n\n" + ("dense retrieval evidence " * 400) + "\n",
+        )
+    provider = SequencedReviewProvider([json.dumps({"issues": []})])
+    service = ReviewService(test_project.paths, provider=provider)
+
+    issues, mode = service._provider_review()
+
+    assert issues == []
+    assert mode == "provider:fake-review-v1"
+    assert len(provider.requests[0].prompt) <= review_module._REVIEW_PROMPT_LIMIT

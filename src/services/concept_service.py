@@ -55,6 +55,7 @@ _MIN_SHARED_TERMS = 2
 _MIN_JACCARD = 0.18
 _MIN_SOURCE_PAGES = 3
 _CONCEPT_CACHE_VERSION = 1
+_MAX_CONCEPT_SLUG_ATTEMPTS = 1000
 _PLACEHOLDER_SUMMARIES = {
     "no summary available yet.",
     "summary unavailable.",
@@ -397,11 +398,15 @@ class ConceptService:
         if not destination.exists() or destination in managed_pages:
             return destination
         suffix = 2
-        while True:
+        while suffix <= _MAX_CONCEPT_SLUG_ATTEMPTS:
             candidate = self.paths.wiki_concepts_dir / f"{slug}-{suffix}.md"
             if not candidate.exists() or candidate in managed_pages:
                 return candidate
             suffix += 1
+        raise ValueError(
+            f"Could not allocate a unique concept page slug for '{slug}' after "
+            f"{_MAX_CONCEPT_SLUG_ATTEMPTS} attempts."
+        )
 
     def _maintain_source_backlinks(
         self,
