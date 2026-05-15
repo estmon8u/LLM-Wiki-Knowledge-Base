@@ -15,10 +15,7 @@ from typing import Iterable
 import pandas as pd
 
 from src.services.graphrag_query_service import GRAPH_QUERY_METHODS
-from src.services.graphrag_status_service import (
-    GRAPH_OUTPUT_TABLES,
-    GraphRAGStatusService,
-)
+from src.services.graphrag_status_service import GraphRAGStatusService
 
 
 GRAPH_ASK_METHODS = ("auto", *GRAPH_QUERY_METHODS)
@@ -192,18 +189,6 @@ def _read_term_columns(path: Path) -> Iterable[str]:
             if len(text) >= 3:
                 terms.append(text)
     return terms
-
-
-def _find_table_path(output_dir: Path, table_name: str) -> Path | None:
-    """Return the first matching GraphRAG output table below *output_dir*."""
-    tokens = GRAPH_OUTPUT_TABLES.get(table_name)
-    if tokens is None or not output_dir.exists():
-        return None
-    for parquet_path in sorted(output_dir.rglob("*.parquet")):
-        stem = parquet_path.stem.casefold()
-        if all(token in stem for token in tokens):
-            return parquet_path
-    return None
 
 
 def _available_term_columns(path: Path) -> list[str]:

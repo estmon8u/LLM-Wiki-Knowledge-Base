@@ -488,7 +488,7 @@ def test_status_json_includes_graph_status() -> None:
         assert payload["graph_status"]["workspace_dir"] == "graph/graphrag"
         assert payload["graph_status"]["state"] == "missing"
         assert "documents" in payload["graph_status"]["missing_tables"]
-        assert payload["graph"]["state"] == "missing"
+        assert "graph" not in payload
 
 
 def test_status_human_output_includes_last_graph_index() -> None:

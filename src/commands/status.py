@@ -74,6 +74,9 @@ def create_command(
         project_service = command_context.services["project"]
         status_service = command_context.services["status"]
         snapshot = status_service.snapshot(initialized=project_service.is_initialized())
+        graph_status = (
+            snapshot.graph_status if isinstance(snapshot.graph_status, dict) else {}
+        )
 
         if changed:
             require_initialized(command_context)
@@ -132,8 +135,7 @@ def create_command(
                     "provider_summary": snapshot.provider_summary,
                     "index_status": snapshot.index_status,
                     "export_status": snapshot.export_status,
-                    "graph_status": snapshot.graph_status,
-                    "graph": snapshot.graph_status,
+                    "graph_status": graph_status,
                 }
             )
             return
@@ -172,8 +174,8 @@ def create_command(
         console.print(f"  {snapshot.export_status}")
         console.print("")
 
-        if snapshot.graph_status:
-            graph = snapshot.graph_status
+        if graph_status:
+            graph = graph_status
             echo_section("GraphRAG")
             workspace = (
                 "initialized" if graph.get("workspace_initialized") else "missing"

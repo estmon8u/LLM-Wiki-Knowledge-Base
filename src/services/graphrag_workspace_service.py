@@ -14,6 +14,11 @@ from src.services.graphrag_command_service import (
     GraphRAGCommandService,
 )
 from src.services.config_service import GraphRAGRuntimeConfig, resolve_graph_config
+from src.services.graphrag_defaults import (
+    DEFAULT_GRAPHRAG_CHUNK_OVERLAP,
+    DEFAULT_GRAPHRAG_CHUNK_SIZE,
+    DEFAULT_GRAPHRAG_ENCODING_MODEL,
+)
 from src.services.project_service import ProjectPaths, atomic_write_text
 import yaml
 
@@ -232,9 +237,9 @@ def _default_settings() -> dict[str, Any]:
         },
         "chunking": {
             "type": "tokens",
-            "size": 1200,
-            "overlap": 100,
-            "encoding_model": "o200k_base",
+            "size": DEFAULT_GRAPHRAG_CHUNK_SIZE,
+            "overlap": DEFAULT_GRAPHRAG_CHUNK_OVERLAP,
+            "encoding_model": DEFAULT_GRAPHRAG_ENCODING_MODEL,
         },
         "output_storage": {
             "type": "file",

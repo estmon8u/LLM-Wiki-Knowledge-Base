@@ -14,6 +14,7 @@ import yaml
 
 from src.models.source_models import RawSourceRecord
 from src.services.graphrag_defaults import (
+    DEFAULT_GRAPHRAG_ENCODING_MODEL,
     DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
     DEFAULT_GRAPHRAG_MODEL,
 )
@@ -41,7 +42,7 @@ def _write_graphrag_settings(test_project) -> None:
         "  type: tokens\n"
         "  size: 100\n"
         "  overlap: 25\n"
-        "  encoding_model: o200k_base\n",
+        f"  encoding_model: {DEFAULT_GRAPHRAG_ENCODING_MODEL}\n",
     )
 
 

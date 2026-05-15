@@ -96,8 +96,8 @@ CLI design guardrails:
 - `kb export` refreshes graph artifact pages when GraphRAG output exists, so inspection pages can be regenerated without rerunning GraphRAG.
 - Old FTS5 behavior should not be available through a normal `--retriever lexical` option.
 - Old FTS5 behavior is exposed only through `kb legacy find` and `kb legacy ask`.
-- Legacy commands should print deprecation warnings to stderr and keep primary answer/search output on stdout.
-- `--json` output should stay machine-readable and include retriever metadata such as `retriever: "legacy-fts"` and `deprecated: true`.
+- Legacy commands should print deprecation warnings to stderr for human output and keep primary answer/search output on stdout.
+- `--json` output should stay machine-readable, keep stderr empty, and include retriever metadata such as `retriever: "legacy-fts"`, `deprecated: true`, and a `warning` field.
 - If the GraphRAG workspace, synced input, or index is missing, top-level `kb ask`, `kb status`, `kb doctor`, and `kb lint` should report actionable next steps instead of silently falling back to FTS5.
 - Use the main command surface for GraphRAG operations and one explicit `legacy` command group for retained FTS5 behavior; avoid hidden aliases and avoid reviving the removed graph command group.
 - Command names should stay lowercase, short, and discoverable through Click help.

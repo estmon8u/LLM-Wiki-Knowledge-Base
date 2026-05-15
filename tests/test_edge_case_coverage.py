@@ -31,10 +31,10 @@ from src.services.normalization_service import (
 from src.services.project_service import build_project_paths
 from src.services.query_router_service import (
     QueryRouterService,
-    _find_table_path,
     _read_term_columns,
     _term_in_question,
 )
+from src.services.stopwords import _load_stopwords
 from src.storage.compile_run_store import CompileRunStore, MAX_COMPILE_RUN_HISTORY
 
 
@@ -181,12 +181,9 @@ def test_query_router_helper_edge_cases(tmp_path) -> None:
     assert router._mentions_known_graph_term(" rag ") is False
 
     output_dir = tmp_path / "output"
-    assert _find_table_path(output_dir, "entities") is None
     output_dir.mkdir()
-    assert _find_table_path(output_dir, "unknown") is None
     table_path = output_dir / "create_final_entities.parquet"
     table_path.write_text("not parquet", encoding="utf-8")
-    assert _find_table_path(output_dir, "entities") == table_path
     assert list(_read_term_columns(table_path)) == []
     assert _term_in_question("rag", "what is rag?") is True
 
@@ -207,6 +204,24 @@ def test_query_router_helper_edge_cases(tmp_path) -> None:
     graph_router = QueryRouterService(_StatusService())
     assert graph_router.route("What is Neural Graph Retrieval?").method == "local"
     assert graph_router.route("Explain Neural Graph Retrieval.").method == "local"
+
+
+def test_stopword_loader_rejects_missing_and_empty_files(tmp_path) -> None:
+    missing = tmp_path / "missing.txt"
+    empty = tmp_path / "empty.txt"
+    empty.write_text("", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="missing or unreadable"):
+        _load_stopwords(missing)
+    with pytest.raises(RuntimeError, match="empty"):
+        _load_stopwords(empty)
+
+
+def test_stopword_loader_normalizes_terms(tmp_path) -> None:
+    path = tmp_path / "stopwords.txt"
+    path.write_text("The\n and \n\n", encoding="utf-8")
+
+    assert _load_stopwords(path) == frozenset({"the", "and"})
 
 
 def test_graphrag_status_edge_cases(tmp_path) -> None:

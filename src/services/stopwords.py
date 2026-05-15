@@ -10,6 +10,17 @@ from pathlib import Path
 
 _DATA_FILE = Path(__file__).resolve().parent.parent / "data" / "english_stopwords.txt"
 
-STOPWORDS: frozenset[str] = frozenset(
-    word for word in _DATA_FILE.read_text(encoding="utf-8").splitlines() if word.strip()
-)
+
+def _load_stopwords(path: Path = _DATA_FILE) -> frozenset[str]:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise RuntimeError(f"Stopword file is missing or unreadable: {path}") from exc
+
+    words = frozenset(word.strip().casefold() for word in lines if word.strip())
+    if not words:
+        raise RuntimeError(f"Stopword file is empty: {path}")
+    return words
+
+
+STOPWORDS: frozenset[str] = _load_stopwords()

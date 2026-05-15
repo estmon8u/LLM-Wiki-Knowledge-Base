@@ -1257,8 +1257,8 @@ def test_update_fails_without_provider_config() -> None:
         assert "Provider is not configured" in result.output
 
 
-def test_update_generic_service_error_becomes_click_exception() -> None:
-    """Verifies that update generic service error becomes click exception."""
+def test_update_generic_service_error_propagates_unexpected_exception() -> None:
+    """Verifies update does not hide unexpected service errors."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("note.md").write_text("# Note\n\nBody.\n", encoding="utf-8")
@@ -1276,7 +1276,8 @@ def test_update_generic_service_error_becomes_click_exception() -> None:
             result = runner.invoke(main, ["update", "--no-graph"])
 
         assert result.exit_code != 0
-        assert "boom" in result.output
+        assert isinstance(result.exception, RuntimeError)
+        assert str(result.exception) == "boom"
 
 
 # ---------------------------------------------------------------------------
@@ -1400,10 +1401,11 @@ def test_find_json_output() -> None:
         result = runner.invoke(main, ["legacy", "find", "--json", "traceability"])
 
         assert result.exit_code == 0
-        assert "Deprecated: SQLite FTS5 retrieval is legacy-only" in result.stderr
+        assert result.stderr == ""
         data = json.loads(result.output)
         assert data["retriever"] == "legacy-fts"
         assert data["deprecated"] is True
+        assert "Deprecated: SQLite FTS5 retrieval is legacy-only" in data["warning"]
         assert isinstance(data["results"], list)
         assert len(data["results"]) > 0
         assert data["results"][0]["retriever"] == "legacy-fts"
@@ -1422,10 +1424,11 @@ def test_find_json_empty_results() -> None:
         result = runner.invoke(main, ["legacy", "find", "--json", "missing-topic"])
 
         assert result.exit_code == 0
-        assert "Deprecated: SQLite FTS5 retrieval is legacy-only" in result.stderr
+        assert result.stderr == ""
         data = json.loads(result.output)
         assert data["retriever"] == "legacy-fts"
         assert data["deprecated"] is True
+        assert "Deprecated: SQLite FTS5 retrieval is legacy-only" in data["warning"]
         assert data["results"] == []
 
 

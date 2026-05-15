@@ -164,8 +164,6 @@ def create_command() -> click.Command:
                 )
         except (UpdatePreflightError, ValueError) as exc:
             raise click.ClickException(str(exc)) from exc
-        except Exception as exc:
-            raise click.ClickException(str(exc)) from exc
 
         # Render ingest phase
         for summary in result.ingest_summaries:

@@ -21,6 +21,7 @@ from src.services.project_service import ProjectPaths
 
 Runner = Callable[..., subprocess.CompletedProcess[str]]
 StatusCallback = Callable[[str], None] | None
+MAX_PROGRESS_LABEL_LENGTH = 120
 
 
 @dataclass(frozen=True)
@@ -299,7 +300,7 @@ class GraphRAGCommandService:
         finally:
             proc.wait()
             for thread in threads:
-                thread.join(timeout=1)
+                thread.join()
 
         stdout_data = "".join(stdout_lines)
         stderr_text = "".join(stderr_lines)
@@ -367,16 +368,17 @@ def _extract_progress_label(line: str) -> str:
         return line.strip()
     # Pass through other substantive lines (but cap length)
     stripped = line.strip()
-    if len(stripped) > 120:
-        return stripped[:117] + "..."
+    if len(stripped) > MAX_PROGRESS_LABEL_LENGTH:
+        return stripped[: MAX_PROGRESS_LABEL_LENGTH - 3] + "..."
     return stripped
 
 
 def _is_known_graphrag_dry_run_logging_error(stderr: str) -> bool:
     stripped = stderr.strip()
+    normalized = " ".join(stripped.split())
     return (
         stripped.startswith("--- Logging error ---")
-        and 'logger.info("Dry run complete, exiting...", True)' in stripped
-        and "Message: 'Dry run complete, exiting...'" in stripped
+        and "Dry run complete, exiting..." in stripped
         and "Arguments: (True,)" in stripped
+        and ("logger.info" in normalized or "logging" in normalized.casefold())
     )

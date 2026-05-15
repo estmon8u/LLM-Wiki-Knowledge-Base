@@ -82,7 +82,8 @@ def create_command() -> click.Command:
         require_initialized(command_context)
         if not query_terms:
             raise click.ClickException("Provide at least one search term.")
-        _warn_legacy()
+        if not as_json:
+            _warn_legacy()
 
         search_service = command_context.services["search"]
         query = " ".join(query_terms)
@@ -93,6 +94,7 @@ def create_command() -> click.Command:
                 {
                     "retriever": "legacy-fts",
                     "deprecated": True,
+                    "warning": LEGACY_WARNING,
                     "query": query,
                     "results": [_search_result_payload(result) for result in results],
                 }

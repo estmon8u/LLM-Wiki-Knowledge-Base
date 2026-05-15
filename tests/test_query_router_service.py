@@ -14,7 +14,6 @@ from src.services.graphrag_status_service import GraphRAGStatusService
 from src.services.query_router_service import (
     QueryRouterError,
     QueryRouterService,
-    _find_table_path,
     _read_term_columns,
     _term_in_question,
 )
@@ -75,13 +74,9 @@ def test_router_helpers_handle_missing_invalid_and_empty_terms(tmp_path) -> None
     Args:
         tmp_path: Tmp path value used by the operation.
     """
-    missing_output = tmp_path / "missing"
-    assert _find_table_path(missing_output, "entities") is None
-
     output_dir = tmp_path / "output"
     output_dir.mkdir()
     unmatched_table = output_dir / "unmatched.parquet"
     unmatched_table.write_text("not parquet", encoding="utf-8")
-    assert _find_table_path(output_dir, "entities") is None
     assert list(_read_term_columns(unmatched_table)) == []
     assert not _term_in_question("", "what is rag?")

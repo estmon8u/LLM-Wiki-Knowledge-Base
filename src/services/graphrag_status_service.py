@@ -413,10 +413,19 @@ class GraphRAGStatusService:
     @staticmethod
     def _table_row_count(path: Path) -> int | None:
         try:
+            import pyarrow.lib as arrow_lib
             import pyarrow.parquet as parquet
-
+        except ImportError:
+            return None
+        try:
             return int(parquet.read_metadata(path).num_rows)
-        except Exception:
+        except (
+            OSError,
+            TypeError,
+            ValueError,
+            RuntimeError,
+            arrow_lib.ArrowException,
+        ):
             return None
 
     def _latest_parquet_mtime_iso(self, output_dir: Path | None = None) -> str | None:

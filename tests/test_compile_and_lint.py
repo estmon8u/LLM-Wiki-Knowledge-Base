@@ -488,6 +488,7 @@ def test_split_frontmatter_parses_valid_yaml_and_invalid_text() -> None:
         None,
         "---\ntitle: broken\nBody\n",
     )
+    assert _split_frontmatter("---\ntitle: [broken\n---\nBody\n") == (None, "Body\n")
 
 
 def test_lint_service_reports_stale_and_missing_compiled_pages(test_project) -> None:
@@ -989,6 +990,7 @@ def test_fragment_exists_returns_false_for_empty_fragment() -> None:
         file_path=Path("wiki/sources/test.md"),
         relative_path="wiki/sources/test.md",
         frontmatter=None,
+        frontmatter_error=None,
         content="",
         analysis_text="",
         headings=[],
@@ -1269,17 +1271,31 @@ def test_lint_page_with_many_links_performs_reasonably(test_project) -> None:
     assert report is not None
 
 
-def test_frontmatter_yaml_injection_blocked_by_safe_load() -> None:
-    """Verifies that frontmatter yaml injection blocked by safe load."""
-    import yaml
-    from src.services.lint_service import _split_frontmatter
+def test_frontmatter_yaml_injection_is_reported_as_invalid_yaml() -> None:
+    """Verifies that unsafe frontmatter YAML is not executed or raised."""
 
     malicious = (
         "---\ntitle: !!python/object/apply:os.system ['echo pwned']\n---\nBody\n"
     )
 
-    with pytest.raises(yaml.constructor.ConstructorError):
-        _split_frontmatter(malicious)
+    assert _split_frontmatter(malicious) == (None, "Body\n")
+
+
+def test_lint_service_reports_invalid_yaml_frontmatter_as_warning(test_project) -> None:
+    """Verifies that malformed frontmatter produces a lint warning."""
+    test_project.write_file(
+        "wiki/sources/broken-yaml.md",
+        "---\ntitle: [broken\n---\n# Broken YAML\n\nBody.\n",
+    )
+
+    report = test_project.services["lint"].lint()
+
+    invalid_issues = [
+        issue for issue in report.issues if issue.code == "invalid-frontmatter-yaml"
+    ]
+    assert len(invalid_issues) == 1
+    assert invalid_issues[0].severity == "warning"
+    assert invalid_issues[0].path == "wiki/sources/broken-yaml.md"
 
 
 def test_markdown_paragraphs_preserves_content_before_first_heading() -> None:

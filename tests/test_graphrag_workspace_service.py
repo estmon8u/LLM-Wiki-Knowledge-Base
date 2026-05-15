@@ -14,6 +14,7 @@ import tomllib
 import yaml
 
 from src.services.graphrag_command_service import GraphRAGCommandService
+from src.services.graphrag_defaults import DEFAULT_GRAPHRAG_ENCODING_MODEL
 from src.services.graphrag_workspace_service import GraphRAGWorkspaceService
 
 
@@ -177,3 +178,15 @@ def test_pyproject_includes_graphrag_prompt_templates() -> None:
     payload = tomllib.loads(pyproject.read_text(encoding="utf-8"))
 
     assert "graph/graphrag/prompts/*.txt" in payload["tool"]["poetry"]["include"]
+
+
+def test_tracked_graphrag_settings_use_portable_defaults() -> None:
+    """Verifies tracked GraphRAG settings match portable project defaults."""
+    settings_path = (
+        Path(__file__).resolve().parents[1] / "graph" / "graphrag" / "settings.yaml"
+    )
+
+    settings = yaml.safe_load(settings_path.read_text(encoding="utf-8"))
+
+    assert settings["chunking"]["encoding_model"] == DEFAULT_GRAPHRAG_ENCODING_MODEL
+    assert settings["vector_store"]["db_uri"] == "output/lancedb"

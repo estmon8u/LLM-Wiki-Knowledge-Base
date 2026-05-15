@@ -445,6 +445,40 @@ def test_successful_dry_run_filters_known_graphrag_logging_error(test_project) -
     assert result.stderr == ""
 
 
+def test_successful_dry_run_filters_variant_graphrag_logging_error(
+    test_project,
+) -> None:
+    """Verifies dry-run logging filtering tolerates GraphRAG format changes."""
+    logging_error = (
+        "--- Logging error ---\n"
+        "GraphRAG logging formatter failed while handling dry run completion\n"
+        "Message: 'Dry run complete, exiting...'\n"
+        "Arguments: (True,)\n"
+    )
+
+    def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr=logging_error)
+
+    service = GraphRAGCommandService(test_project.paths, runner=runner)
+
+    result = service.index(
+        method="fast",
+        dry_run=True,
+        cache=True,
+        skip_validation=False,
+    )
+
+    assert result.stderr == ""
+
+
 def test_non_dry_run_keeps_stderr(test_project) -> None:
     """Verifies that non dry run keeps stderr.
 

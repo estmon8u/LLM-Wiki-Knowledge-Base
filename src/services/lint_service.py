@@ -84,6 +84,7 @@ class _PageState:
     file_path: Path
     relative_path: str
     frontmatter: Optional[Dict[str, Any]]
+    frontmatter_error: str | None
     content: str
     analysis_text: str
     headings: list[tuple[int, str]]
@@ -141,7 +142,19 @@ class LintService:
                 is_analysis_page = (
                     state.file_path.parent == self.paths.wiki_analysis_dir
                 )
-                if state.frontmatter is None:
+                if state.frontmatter_error is not None:
+                    issues.append(
+                        LintIssue(
+                            severity="warning",
+                            code="invalid-frontmatter-yaml",
+                            path=state.relative_path,
+                            message=(
+                                "YAML frontmatter could not be parsed; "
+                                f"{state.frontmatter_error}"
+                            ),
+                        )
+                    )
+                elif state.frontmatter is None:
                     issues.append(
                         LintIssue(
                             severity="error",
@@ -692,20 +705,30 @@ class LintService:
 
 
 def _split_frontmatter(text: str) -> Tuple[Optional[Dict[str, Any]], str]:
+    frontmatter, content, _ = _split_frontmatter_with_error(text)
+    return frontmatter, content
+
+
+def _split_frontmatter_with_error(
+    text: str,
+) -> Tuple[Optional[Dict[str, Any]], str, str | None]:
     if not text.startswith("---\n"):
-        return None, text
+        return None, text, None
     marker = text.find("\n---\n", 4)
     if marker == -1:
-        return None, text
+        return None, text, None
     payload = text[4:marker]
     content = text[marker + 5 :]
-    parsed = yaml.safe_load(payload) or {}
-    return parsed if isinstance(parsed, dict) else {}, content
+    try:
+        parsed = yaml.safe_load(payload) or {}
+    except yaml.YAMLError as exc:
+        return None, content, str(exc).splitlines()[0]
+    return parsed if isinstance(parsed, dict) else {}, content, None
 
 
 def _build_page_state(file_path: Path, paths: ProjectPaths) -> _PageState:
     text = file_path.read_text(encoding="utf-8")
-    frontmatter, content = _split_frontmatter(text)
+    frontmatter, content, frontmatter_error = _split_frontmatter_with_error(text)
     analysis_text = _strip_fenced_code_blocks(_strip_excerpt_section(content))
     headings = _extract_headings(content)
     anchors = {slugify(title) for _, title in headings if slugify(title)}
@@ -714,6 +737,7 @@ def _build_page_state(file_path: Path, paths: ProjectPaths) -> _PageState:
         file_path=file_path,
         relative_path=file_path.relative_to(paths.root).as_posix(),
         frontmatter=frontmatter,
+        frontmatter_error=frontmatter_error,
         content=content,
         analysis_text=analysis_text,
         headings=headings,
