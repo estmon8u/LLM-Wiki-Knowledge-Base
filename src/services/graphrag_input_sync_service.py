@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -23,7 +22,7 @@ from src.services.graphrag_defaults import (
     DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
     DEFAULT_GRAPHRAG_MODEL,
 )
-from src.services.manifest_service import ManifestService
+from src.services.manifest_service import ManifestError, ManifestService
 from src.services.project_service import ProjectPaths, atomic_write_text
 
 
@@ -115,7 +114,14 @@ class GraphRAGInputSyncService:
         Returns:
             GraphRAGInputSyncResult produced by the operation.
         """
-        sources = self.manifest_service.list_sources()
+        try:
+            sources = self.manifest_service.list_sources()
+        except ManifestError as exc:
+            message = str(exc).replace(
+                "Duplicate manifest source_id",
+                "Duplicate source_id",
+            )
+            raise GraphRAGInputSyncError(message) from exc
         self._reject_duplicate_source_ids(sources)
 
         manifest_hash = self._manifest_hash()

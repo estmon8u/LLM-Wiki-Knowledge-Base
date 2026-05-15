@@ -10,9 +10,9 @@ Requirements:
 
 | Tool | Required | Notes |
 | --- | --- | --- |
-| Python 3.11.x | Yes | The project is pinned to Python `>=3.11,<3.12`. |
+| Python 3.11, 3.12, or 3.13 | Yes | The project is pinned to Python `>=3.11,<3.14`. |
 | Poetry | Yes | Installs dependencies and runs the `kb` entrypoint. |
-| LLM API key | Yes for `update`, `legacy ask`, `review`, and real GraphRAG index/query jobs | OpenAI, Anthropic, Gemini, and the configured GraphRAG provider. |
+| LLM API key | Yes for legacy `update`, `legacy ask`, `review`, and real GraphRAG index/query jobs | `kb update --graph-only` only needs the configured GraphRAG provider credentials. |
 | Mistral API key | Required for PDFs, Office docs, images, and HTML OCR | Markdown and plain text do not need it. |
 | HTML renderer | Required only for HTML OCR | `wkhtmltopdf` is preferred when installed; bundled `xhtml2pdf` is the pure-Python fallback. |
 

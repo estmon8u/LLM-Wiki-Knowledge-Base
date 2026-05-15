@@ -7,6 +7,8 @@ import importlib.util
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+import yaml
+
 from src.providers import resolve_provider_settings, supported_provider_names
 from src.services.config_service import resolve_graph_config
 from src.services.graphrag_defaults import env_file_has_key
@@ -400,6 +402,7 @@ class DoctorService:
                 severity="ok" if workspace_ok else sev,
             )
         )
+        checks.append(self._check_graphrag_settings(status, strict=strict))
         checks.append(self._check_graphrag_api_key(strict=strict))
         input_ok = bool(
             status and status.input_exists and status.input_document_count > 0
@@ -443,6 +446,45 @@ class DoctorService:
             )
         )
         return checks
+
+    def _check_graphrag_settings(
+        self, status: Any | None, *, strict: bool = False
+    ) -> DoctorCheck:
+        sev = "error" if strict else "warning"
+        if status is None or not status.settings_path.exists():
+            return DoctorCheck(
+                name="graphrag_settings",
+                ok=False,
+                detail="GraphRAG settings.yaml is missing. Run `kb init`.",
+                severity=sev,
+            )
+        try:
+            settings = yaml.safe_load(status.settings_path.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError) as exc:
+            return DoctorCheck(
+                name="graphrag_settings",
+                ok=False,
+                detail=f"GraphRAG settings.yaml could not be parsed: {exc}",
+                severity="error",
+            )
+        vector_store = (
+            settings.get("vector_store", {}) if isinstance(settings, dict) else {}
+        )
+        db_uri = str(vector_store.get("db_uri", ""))
+        if "\\" in db_uri:
+            return DoctorCheck(
+                name="graphrag_settings",
+                ok=False,
+                detail="GraphRAG vector_store.db_uri must use POSIX paths, e.g. output/lancedb.",
+                severity=sev,
+            )
+        return DoctorCheck(
+            name="graphrag_settings",
+            ok=True,
+            detail="GraphRAG settings.yaml parses and uses portable paths.",
+            severity="ok",
+        )
+
     def _check_graphrag_api_key(self, *, strict: bool = False) -> DoctorCheck:
         sev = "error" if strict else "warning"
         try:

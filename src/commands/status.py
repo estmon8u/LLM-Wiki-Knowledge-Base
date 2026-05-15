@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 import click
@@ -126,6 +125,7 @@ def create_command(
                     "index_status": snapshot.index_status,
                     "export_status": snapshot.export_status,
                     "graph_status": snapshot.graph_status,
+                    "graph": snapshot.graph_status,
                 }
             )
             return
@@ -170,12 +170,11 @@ def create_command(
             workspace = (
                 "initialized" if graph.get("workspace_initialized") else "missing"
             )
-            if graph.get("output_complete"):
-                output = "complete"
-            elif graph.get("output_present"):
-                output = "partial"
-            else:
-                output = "missing"
+            output = graph.get("state") or (
+                "complete"
+                if graph.get("output_complete")
+                else "partial" if graph.get("output_present") else "missing"
+            )
             console.print(f"  Workspace: {workspace}")
             console.print(f"  Input documents: {graph.get('input_document_count', 0)}")
             console.print(f"  Index output: {output}")

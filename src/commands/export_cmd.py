@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 import click
@@ -55,6 +54,18 @@ def create_command() -> click.Command:
         """
         require_initialized(command_context)
         export_service = command_context.services["export"]
+
+        graph_result = None
+        graph_status_service = command_context.services.get("graphrag_status")
+        graph_export_service = command_context.services.get("graphrag_wiki_export")
+        if graph_status_service is not None and graph_export_service is not None:
+            graph_status = graph_status_service.status()
+            if graph_status.workspace_initialized and graph_status.output_complete:
+                try:
+                    graph_result = graph_export_service.export_wiki()
+                except GraphRAGWikiExportError as exc:
+                    console.print(f"[yellow]Graph wiki export skipped: {exc}[/yellow]")
+
         result = export_service.export_vault(clean=clean)
         echo_section("Vault Export")
         console.print(
@@ -71,17 +82,7 @@ def create_command() -> click.Command:
             for path in result.removed_paths:
                 echo_bullet(path)
 
-        graph_status_service = command_context.services.get("graphrag_status")
-        graph_export_service = command_context.services.get("graphrag_wiki_export")
-        if graph_status_service is None or graph_export_service is None:
-            return
-        graph_status = graph_status_service.status()
-        if not graph_status.workspace_initialized or not graph_status.output_complete:
-            return
-        try:
-            graph_result = graph_export_service.export_wiki()
-        except GraphRAGWikiExportError as exc:
-            console.print(f"[yellow]Graph wiki export skipped: {exc}[/yellow]")
+        if graph_result is None:
             return
         console.print("")
         echo_section("Graph Wiki Export")

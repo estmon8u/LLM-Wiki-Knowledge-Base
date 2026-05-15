@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 from collections import Counter
@@ -623,6 +622,18 @@ class LintService:
             return []
         status = self.graphrag_status_service.status()
         issues: list[LintIssue] = []
+        if status.output_present and not status.output_complete:
+            issues.append(
+                LintIssue(
+                    severity="error",
+                    code="graph-output-incomplete",
+                    path=status.output_dir.relative_to(self.paths.root).as_posix(),
+                    message=(
+                        "GraphRAG output is missing required table(s): "
+                        f"{', '.join(status.missing_tables)}. Run `kb update`."
+                    ),
+                )
+            )
         if status.input_exists and self.paths.raw_manifest_file.exists():
             current_manifest_hash = _file_sha256(self.paths.raw_manifest_file)
             synced_manifest_hash = _input_manifest_hash(status.input_path)

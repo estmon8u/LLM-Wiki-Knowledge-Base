@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 from typing import Optional
@@ -73,7 +72,7 @@ def create_command() -> click.Command:
         default=None,
         help="Forward GraphRAG's query streaming flag.",
     )
-    @click.option("--limit", default=3, type=int, help="Deprecated; ignored.")
+    @click.option("--limit", type=int, help="Deprecated; ignored.")
     @click.option(
         "--save",
         "save_answer",
@@ -103,7 +102,7 @@ def create_command() -> click.Command:
         dynamic_community_selection: bool | None,
         response_type: str | None,
         streaming: bool | None,
-        limit: int,
+        limit: int | None,
         save_answer: bool,
         save_as_name: Optional[str],
         show_evidence: bool,
@@ -130,7 +129,8 @@ def create_command() -> click.Command:
         require_initialized(command_context)
         if not question_terms:
             raise click.ClickException("Provide a question to answer.")
-        _ = limit
+        if limit is not None and not as_json:
+            console.print("[yellow]--limit is ignored for GraphRAG queries.[/yellow]")
         question = " ".join(question_terms).strip()
         controller = command_context.services["graph_ask_controller"]
 

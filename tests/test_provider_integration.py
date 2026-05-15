@@ -128,7 +128,7 @@ def test_build_provider_uses_catalog_defaults_for_openai() -> None:
                 "thinking_budget": 10_000,
             },
             "gemini": {
-                "model": "gemini-3.1-flash-lite-preview",
+                "model": "gemini-2.5-flash",
                 "api_key_env": "GEMINI_API_KEY",
                 "reasoning_effort": "high",
             },
@@ -181,7 +181,7 @@ def test_build_provider_uses_catalog_thinking_budget_for_anthropic() -> None:
                 "thinking_budget": 2048,
             },
             "gemini": {
-                "model": "gemini-3.1-flash-lite-preview",
+                "model": "gemini-2.5-flash",
                 "api_key_env": "GEMINI_API_KEY",
                 "reasoning_effort": "high",
             },
@@ -215,7 +215,7 @@ def test_build_provider_creates_gemini_provider() -> None:
             provider = build_provider({"provider": {"name": "gemini"}})
     assert provider is not None
     assert provider.name == "gemini"
-    assert provider.model == "gemini-3.1-flash-lite-preview"
+    assert provider.model == "gemini-2.5-flash"
 
 
 def test_build_provider_creates_gemini_provider_with_custom_model() -> None:
@@ -260,7 +260,7 @@ def test_build_provider_ignores_ambiguous_active_provider_overrides_in_v3() -> N
                 "thinking_budget": 10_000,
             },
             "gemini": {
-                "model": "gemini-3.1-flash-lite-preview",
+                "model": "gemini-2.5-flash",
                 "api_key_env": "GEMINI_API_KEY",
                 "reasoning_effort": "high",
             },
@@ -373,6 +373,33 @@ def test_anthropic_provider_generate() -> None:
 
     assert result.text == "Claude says hi"
     assert result.model_name == "claude-sonnet-4-6"
+    call_kwargs = MockClient.return_value.messages.create.call_args.kwargs
+    assert call_kwargs["output_config"] == {"effort": "medium"}
+    assert "thinking" not in call_kwargs
+
+
+def test_anthropic_provider_keeps_manual_thinking_for_older_models() -> None:
+    """Verifies that older Claude models retain manual thinking budgets."""
+    with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test"}):
+        with patch("src.providers.anthropic_provider.Anthropic") as MockClient:
+            from src.providers.anthropic_provider import AnthropicProvider
+
+            provider = AnthropicProvider(
+                model="claude-3-7-sonnet-latest",
+                thinking_budget=2048,
+            )
+            mock_message = MagicMock()
+            mock_block = MagicMock()
+            mock_block.type = "text"
+            mock_block.text = "response"
+            mock_message.content = [mock_block]
+            MockClient.return_value.messages.create.return_value = mock_message
+
+            provider.generate(ProviderRequest(prompt="test"))
+
+    call_kwargs = MockClient.return_value.messages.create.call_args.kwargs
+    assert call_kwargs["thinking"] == {"type": "enabled", "budget_tokens": 2048}
+    assert "output_config" not in call_kwargs
 
 
 def test_anthropic_provider_generate_without_system_prompt() -> None:
@@ -410,7 +437,7 @@ def test_gemini_provider_generate() -> None:
         with patch("src.providers.gemini_provider.genai") as mock_genai:
             from src.providers.gemini_provider import GeminiProvider
 
-            provider = GeminiProvider(model="gemini-3.1-flash-lite-preview")
+            provider = GeminiProvider(model="gemini-2.5-flash")
             mock_response = MagicMock()
             mock_response.text = " Gemini says hi "
             mock_genai.Client.return_value.models.generate_content.return_value = (
@@ -422,7 +449,7 @@ def test_gemini_provider_generate() -> None:
             )
 
     assert result.text == "Gemini says hi"
-    assert result.model_name == "gemini-3.1-flash-lite-preview"
+    assert result.model_name == "gemini-2.5-flash"
 
 
 def test_gemini_response_schema_removes_additional_properties() -> None:

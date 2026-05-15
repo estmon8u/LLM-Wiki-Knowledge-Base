@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 import json
@@ -474,6 +473,26 @@ def test_lint_returns_nonzero_when_errors_exist() -> None:
         assert "broken-link" in result.output
 
 
+def test_lint_json_reports_issues_and_exits_nonzero() -> None:
+    """Verifies that lint json reports errors and exits nonzero."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        Path("wiki/sources").mkdir(parents=True, exist_ok=True)
+        Path("wiki/sources/bad.md").write_text(
+            "---\ntype: source\nsummary: Bad\n---\n\n# Bad\n\n[[missing]]",
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(main, ["lint", "--json"])
+
+        assert result.exit_code == 1
+        payload = json.loads(result.output)
+        assert payload["ok"] is False
+        assert payload["error_count"] >= 1
+        assert any(issue["code"] == "broken-link" for issue in payload["issues"])
+
+
 def test_lint_reports_markdown_link_and_heading_errors_at_cli() -> None:
     """Verifies that lint reports markdown link and heading errors at cli."""
     runner = CliRunner()
@@ -834,7 +853,7 @@ def test_provider_override_clears_tier_and_api_key_env() -> None:
         with patch("src.services.build_provider", side_effect=_capture_provider_config):
             result = runner.invoke(
                 main,
-                ["--provider", "anthropic", "status"],
+                ["--provider", "anthropic", "update", "--no-graph"],
             )
 
         assert result.exit_code == 0
@@ -1044,6 +1063,36 @@ def test_review_successful_run_shows_issues() -> None:
         assert "Total review issues:" in result.output
 
 
+def test_review_json_and_fail_on_warning() -> None:
+    """Verifies review json output and fail-on threshold."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        Path("wiki/sources").mkdir(parents=True, exist_ok=True)
+        overlap_body = (
+            "knowledge base traceability citation markdown wiki compile "
+            "ingest lint review export vault query"
+        )
+        Path("wiki/sources/alpha.md").write_text(
+            _compiled_page("Alpha", overlap_body), encoding="utf-8"
+        )
+        Path("wiki/sources/beta.md").write_text(
+            _compiled_page("Beta", overlap_body), encoding="utf-8"
+        )
+
+        _set_provider_config()
+        with patch("src.services.build_provider", return_value=_CliFakeProvider()):
+            result = runner.invoke(
+                main, ["review", "--json", "--fail-on", "suggestion"]
+            )
+
+        assert result.exit_code == 1
+        payload = json.loads(result.output)
+        assert payload["ok"] is False
+        assert payload["issue_count"] >= 1
+        assert any(issue["code"] == "overlapping-topics" for issue in payload["issues"])
+
+
 def test_sources_show_displays_details() -> None:
     """Verifies that sources show displays details."""
     runner = CliRunner()
@@ -1217,11 +1266,12 @@ def test_update_generic_service_error_becomes_click_exception() -> None:
         assert runner.invoke(main, ["add", "note.md"]).exit_code == 0
         _set_provider_config()
 
-        with patch(
-            "src.services.build_provider", return_value=_CliFakeProvider()
-        ), patch(
-            "src.services.update_service.UpdateService.run",
-            side_effect=RuntimeError("boom"),
+        with (
+            patch("src.services.build_provider", return_value=_CliFakeProvider()),
+            patch(
+                "src.services.update_service.UpdateService.run",
+                side_effect=RuntimeError("boom"),
+            ),
         ):
             result = runner.invoke(main, ["update", "--no-graph"])
 

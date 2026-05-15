@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -206,7 +205,8 @@ class GraphRAGWikiExportService:
         if not self.graph_wiki_dir.exists():
             return
         for path in sorted(self.graph_wiki_dir.rglob("*.md"), reverse=True):
-            path.unlink()
+            if _is_generated_graph_page(path):
+                path.unlink()
         for directory in sorted(
             [p for p in self.graph_wiki_dir.rglob("*") if p.is_dir()],
             reverse=True,
@@ -511,6 +511,7 @@ class GraphRAGWikiExportService:
         )
         target_dir.mkdir(parents=True, exist_ok=True)
         path = target_dir / f"{slug}.md"
+        frontmatter = {**frontmatter, "generated": True}
         yaml_block = yaml.safe_dump(frontmatter, sort_keys=False).strip()
         atomic_write_text(path, f"---\n{yaml_block}\n---\n\n{body.rstrip()}\n")
         return path.relative_to(self.paths.root).as_posix()
@@ -600,8 +601,25 @@ def _field_list(record: dict[str, Any], *, exclude: set[str] | None = None) -> s
 
 def _format_value(value: Any) -> str:
     if isinstance(value, (dict, list)):
-        return json.dumps(value, ensure_ascii=True, sort_keys=True)
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
     return str(value)
+
+
+def _is_generated_graph_page(path: Path) -> bool:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    if not text.startswith("---\n"):
+        return False
+    marker = text.find("\n---\n", 4)
+    if marker == -1:
+        return False
+    try:
+        payload = yaml.safe_load(text[4:marker]) or {}
+    except yaml.YAMLError:
+        return False
+    return isinstance(payload, dict) and payload.get("generated") is True
 
 
 def _bullet_values(value: Any, *, empty: str) -> str:

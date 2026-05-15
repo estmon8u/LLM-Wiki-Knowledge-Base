@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 import json
@@ -318,6 +317,7 @@ def test_init_sets_up_graph_workspace_settings() -> None:
             settings["local_search"]["prompt"]
             == "prompts/local_search_system_prompt.txt"
         )
+        assert settings["vector_store"]["db_uri"] == "output/lancedb"
         assert Path("graph/graphrag/prompts/extract_graph.txt").exists()
 
 
@@ -458,6 +458,9 @@ def test_status_json_includes_graph_status() -> None:
         payload = json.loads(result.output)
         assert payload["graph_status"]["workspace_initialized"] is True
         assert payload["graph_status"]["workspace_dir"] == "graph/graphrag"
+        assert payload["graph_status"]["state"] == "missing"
+        assert "documents" in payload["graph_status"]["missing_tables"]
+        assert payload["graph"]["state"] == "missing"
 
 
 def test_status_human_output_includes_last_graph_index() -> None:
@@ -497,6 +500,7 @@ def test_export_includes_graph_wiki_export() -> None:
         assert "Vault Export" in result.output
         assert "Graph Wiki Export" in result.output
         assert Path("wiki/graph/index.md").exists()
+        assert Path("vault/obsidian/graph/index.md").exists()
 
 
 class _FakeWorkspace:
@@ -661,7 +665,7 @@ def test_update_service_initializes_and_skips_when_preflight_skips(
         ),
     )
 
-    result = service._run_graph_sync(UpdateOptions())
+    result = service._run_graph_sync(UpdateOptions(allow_partial=True))
 
     assert workspace.ensured is True
     assert result.initialized is True
@@ -683,7 +687,7 @@ def test_update_service_reports_preflight_failure(test_project) -> None:
         sync=_FakeGraphSync(test_project.root, error=RuntimeError("preflight boom")),
     )
 
-    result = service._run_graph_sync(UpdateOptions())
+    result = service._run_graph_sync(UpdateOptions(allow_partial=True))
 
     assert result.skipped is True
     assert "Graph preflight failed: preflight boom" == result.warning
@@ -707,7 +711,7 @@ def test_update_service_reports_missing_graph_credentials(
         sync=_FakeGraphSync(test_project.root, _sync_result(test_project.root)),
     )
 
-    result = service._run_graph_sync(UpdateOptions())
+    result = service._run_graph_sync(UpdateOptions(allow_partial=True))
 
     assert result.skipped is True
     assert "OPENAI_API_KEY" in result.warning
@@ -735,7 +739,7 @@ def test_update_service_reports_invalid_graph_config(test_project) -> None:
     )
     service._config = config
 
-    result = service._run_graph_sync(UpdateOptions())
+    result = service._run_graph_sync(UpdateOptions(allow_partial=True))
 
     assert result.skipped is True
     assert "graph config is invalid" in result.warning
@@ -765,10 +769,56 @@ def test_update_service_reports_index_or_export_failure(
         export=_FakeGraphExport(error=RuntimeError("export boom")),
     )
 
-    result = service._run_graph_sync(UpdateOptions())
+    result = service._run_graph_sync(UpdateOptions(allow_partial=True))
 
     assert result.sync_result is not None
     assert result.warning == "Graph index/export failed: export boom"
+
+
+def test_update_service_fails_graph_errors_unless_partial_allowed(
+    test_project,
+) -> None:
+    """Verifies that graph failures are hard failures by default."""
+    from src.services.update_service import UpdateOptions
+
+    service = _update_service_for_graph(
+        test_project,
+        workspace=_FakeWorkspace(initialized=True),
+        sync=_FakeGraphSync(test_project.root, error=RuntimeError("preflight boom")),
+    )
+
+    try:
+        service._run_graph_sync(UpdateOptions())
+    except ValueError as exc:
+        assert "Graph preflight failed: preflight boom" in str(exc)
+    else:
+        raise AssertionError("Graph preflight failure should be a hard failure")
+
+
+def test_update_graph_only_skips_legacy_provider_preflight(
+    test_project, monkeypatch
+) -> None:
+    """Verifies that graph-only update skips legacy compile/provider work."""
+    from src.services.update_service import UpdateOptions
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    sync = _FakeGraphSync(
+        test_project.root,
+        _sync_result(test_project.root),
+        _sync_result(test_project.root),
+    )
+    service = _update_service_for_graph(
+        test_project,
+        workspace=_FakeWorkspace(initialized=True),
+        sync=sync,
+    )
+    service._config["provider"] = {}
+
+    result = service.run(UpdateOptions(graph_only=True))
+
+    assert result.compile_result is None
+    assert result.graph_result is not None
+    assert result.graph_result.export_result is not None
 
 
 def test_graph_hash_helpers_handle_missing_and_dict_inputs(tmp_path) -> None:

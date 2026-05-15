@@ -11,8 +11,8 @@
 | `src/providers/retry.py` | Shared Tenacity retry decorator (`provider_retry()`) for all `generate()` calls: 3 attempts, exponential backoff with jitter, transient-only retry |
 | `src/providers/structured.py` | Shared structured-output parser for direct JSON, fenced JSON, and common prose-prefaced JSON plus Pydantic model validation |
 | `src/providers/openai_provider.py` | OpenAI chat-completions provider; `@provider_retry()` on `generate()` |
-| `src/providers/anthropic_provider.py` | Anthropic messages provider; `@provider_retry()` on `generate()` |
-| `src/providers/gemini_provider.py` | Google Gemini provider; `@provider_retry()` on `generate()` and JSON-schema cleanup for SDK-compatible structured output |
+| `src/providers/anthropic_provider.py` | Anthropic messages provider; uses adaptive thinking effort for Claude 4.6-style models, keeps legacy manual thinking budgets for older models, and applies `@provider_retry()` on `generate()` |
+| `src/providers/gemini_provider.py` | Google Gemini provider with stable `gemini-2.5-flash` default; `@provider_retry()` on `generate()` and JSON-schema cleanup for SDK-compatible structured output |
 
 ## Current Command Files
 
@@ -22,7 +22,7 @@
 | `src/commands/init.py` | Project initialization behavior |
 | `src/commands/add.py` | Primary source-add command, delegates to `src/commands/ingest.py` for shared implementation |
 | `src/commands/ingest.py` | Shared ingest implementation for single files and directory ingest that recurses by default |
-| `src/commands/update.py` | Full update workflow: add → build wiki pages → concepts → search refresh → GraphRAG sync/index/export, with compile progress and lazy GraphRAG status rendering; delegates to `UpdateService` |
+| `src/commands/update.py` | Full update workflow: add → build wiki pages → concepts → search refresh → GraphRAG sync/index/export, with compile progress, lazy GraphRAG status rendering, `--graph-only`, and `--allow-partial`; delegates to `UpdateService` |
 | `src/commands/find.py` | Reserved GraphRAG search entry point; currently fails with next-step guidance instead of routing to FTS5 |
 | `src/commands/ask.py` | GraphRAG-aware default answer entry point with TTY-aware query status rendering; delegates to the graph ask controller and never routes to FTS5 |
 | `src/commands/legacy.py` | Deprecated SQLite FTS5 search and ask command group that invokes the legacy search/query services |
@@ -41,29 +41,29 @@
 | `src/services/project_service.py` | Project layout, initialization, Unicode-aware slug generation, and shared atomic write/copy helpers |
 | `src/services/markdown_document.py` | Shared `markdown-it-py` / `python-frontmatter` helpers for frontmatter, plain text, headings, paragraphs, sections, links, and fenced-code-aware lint behavior |
 | `src/services/config_service.py` | Config loading, Pydantic-backed provider/conversion/graph validation, schema defaults, `schema_excerpt()` helper for extracting schema sections by heading, and in-place migration of legacy `kb.config.yaml` versions |
-| `src/services/manifest_service.py` | Raw-source manifest read/write behavior |
+| `src/services/manifest_service.py` | Raw-source manifest read/write behavior with version, required-field, and duplicate-ID validation |
 | `src/services/graphrag_workspace_service.py` | Prepares the project-local `graph/graphrag/` workspace, delegates reproducible non-interactive initialization to the GraphRAG command wrapper, and syncs `kb.config.yaml` graph settings into GraphRAG `settings.yaml` |
 | `src/services/graphrag_command_service.py` | Thin subprocess boundary around `python -m graphrag` for `init`, `index`, and `query`, with UTF-8 subprocess decoding, unbuffered streaming index subprocesses, concurrent stdout/stderr draining, status callbacks for live indexing progress, and structured command errors |
 | `src/services/graphrag_defaults.py` | Shared GraphRAG model, embedding, and API-key environment defaults used by command defaults and user-facing setup guidance |
-| `src/services/graphrag_status_service.py` | Reports GraphRAG workspace readiness, synced input counts, output table presence, wiki export presence, row counts, and ignored local index-run metadata |
+| `src/services/graphrag_status_service.py` | Reports GraphRAG workspace readiness, synced input counts, normalized graph state, missing required output tables, wiki export presence, row counts, and ignored local index-run metadata |
 | `src/services/graphrag_sync_service.py` | Coordinates GraphRAG sync/index decisions used by `kb update`: refreshes workspace settings, writes GraphRAG input, compares source/runtime digests to the last successful index, chooses full rebuild, incremental update, or skip, and records reproducibility metadata |
 | `src/services/graphrag_query_service.py` | Requires a ready graph index, runs explicit GraphRAG query modes, captures answer/raw output metadata, computes the synced-input hash, and saves optional GraphRAG analysis pages with lint-compatible analysis frontmatter and stdout-only raw answer text |
 | `src/services/query_router_service.py` | Deterministically chooses `basic`, `local`, `global`, or `drift` for top-level `kb ask` based on question wording and known graph entity/document terms |
 | `src/services/graph_ask_controller_service.py` | User-facing GraphRAG ask controller: checks graph readiness and credentials, asks the router for a method, delegates to `GraphRAGQueryService`, and saves analysis pages with planner metadata |
-| `src/services/graphrag_wiki_export_service.py` | Reads GraphRAG Parquet output tables and generates `wiki/graph/` markdown pages for documents, text units, entities, relationships, communities, and the graph index; fences raw document/text-unit content and caps high-volume relationship page export |
+| `src/services/graphrag_wiki_export_service.py` | Reads GraphRAG Parquet output tables and generates marked `wiki/graph/` markdown pages for documents, text units, entities, relationships, communities, and the graph index; preserves manual graph notes, fences raw document/text-unit content, escapes table cells, and caps high-volume relationship page export |
 | `src/services/graphrag_input_sync_service.py` | Syncs manifest-backed normalized artifacts into `graph/graphrag/input/sources.json`, validates the GraphRAG workspace settings file, configures JSON input columns, and lists provenance metadata fields for chunk prepending |
 | `src/services/normalization_service.py` | Document-type normalization routing for direct text inputs, Mistral OCR-backed native documents and images, HTML OCR rendered through `wkhtmltopdf` first and `xhtml2pdf` as fallback, MarkItDown-backed born-digital converters, explicit Docling/MarkItDown fallbacks, and conversion quality gates |
-| `src/services/ingest_service.py` | Raw-source copy, normalized-artifact write, duplicate detection, source registration, deterministic recursive directory ingest, and callback-friendly batch progress hooks used by `kb add` |
+| `src/services/ingest_service.py` | Raw-source copy, normalized-artifact write, origin-hash duplicate short-circuiting before expensive normalization, content duplicate detection after normalization, source registration, deterministic recursive directory ingest, and callback-friendly batch progress hooks used by `kb add` |
 | `src/services/compile_service.py` | Derived wiki generation with provider-backed summary generation, deterministic summary fallback on weak provider output, sentence-safe excerpts, schema-excerpt-enhanced prompts, `type: source` frontmatter, analysis-page discovery for index, parseable heading-style log entries, callback-friendly compile planning/progress hooks, and persisted resume/failure tracking for interrupted compiles |
 | `src/services/concept_service.py` | Provider-first structured concept clustering with source-digest cache, deterministic NLTK/collocation fallback, concept-page generation, and backlink maintenance |
 | `src/services/diff_service.py` | Pre-update source diff reporting |
 | `src/services/search_service.py` | Deprecated legacy search over compiled artifacts using a SQLite FTS5 chunk index with page-level result deduplication, evidence-section chunking, metadata-section suppression, best-chunk section/index preservation for downstream citations, concept/analysis filtering controls for callers, and fallback markdown scanning if FTS5 is unavailable |
 | `src/services/query_service.py` | Provider-backed query answer assembly from primary source-page evidence while excluding generated concept pages and saved analysis pages; schema-excerpt-enhanced prompts, low-reasoning structured ask requests with larger output budget, raw citation-ref cleanup in answer prose, parseable heading-style log entries, semantic answer/citation validation, provider-status capture, and optional save-to-wiki for non-blank analysis pages that also refresh the search index and wiki index immediately |
 | `src/services/review_service.py` | Provider-required semantic review: deterministic source-page topic overlap, terminology checks over reviewable source/concept pages with inflection/specificity/negating-prefix suppression, and schema-guided JSON provider review over curated source-page excerpts that rejects malformed output and filters excerpt-boundary truncation claims |
-| `src/services/lint_service.py` | Structural validation for wiki links, markdown links, fragments, headings, titles, typed frontmatter (including `missing-type` warning for legacy source pages), empty pages, GraphRAG input/index/export staleness, and maintenance findings |
+| `src/services/lint_service.py` | Structural validation for wiki links, markdown links, fragments, headings, titles, typed frontmatter (including `missing-type` warning for legacy source pages), empty pages, GraphRAG completeness/input/index/export staleness, and maintenance findings |
 | `src/services/export_service.py` | Vault export generation with atomic copies into the Obsidian view |
 | `src/services/status_service.py` | Project, corpus, and GraphRAG status reporting |
-| `src/services/update_service.py` | Orchestrates the full update workflow: preflight → ingest → compile → concepts → search refresh → GraphRAG sync/index/export |
+| `src/services/update_service.py` | Orchestrates the full update workflow: preflight → ingest → compile → concepts → search refresh → GraphRAG sync/index/export, plus graph-only maintenance and explicit allow-partial graph failure handling |
 
 ## Current Model Files
 

@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 from collections import Counter
@@ -209,6 +208,23 @@ class ConceptService:
         updated_source_paths = self._maintain_source_backlinks(source_pages, drafts)
         return ConceptGenerationResult(
             concept_paths=sorted(concept_paths),
+            updated_source_paths=sorted(updated_source_paths),
+            removed_paths=sorted(removed_paths),
+        )
+
+    def remove_generated_pages(self) -> ConceptGenerationResult:
+        """Remove generated concept pages without generating replacement pages."""
+        source_pages = self._load_source_pages()
+        removed_paths: list[str] = []
+        for existing_path in sorted(self._list_managed_pages()):
+            if existing_path.exists():
+                removed_paths.append(
+                    existing_path.relative_to(self.paths.root).as_posix()
+                )
+                existing_path.unlink()
+        updated_source_paths = self._maintain_source_backlinks(source_pages, [])
+        return ConceptGenerationResult(
+            concept_paths=[],
             updated_source_paths=sorted(updated_source_paths),
             removed_paths=sorted(removed_paths),
         )

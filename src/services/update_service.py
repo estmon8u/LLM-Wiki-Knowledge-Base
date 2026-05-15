@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -40,6 +39,8 @@ class UpdateOptions:
     force: bool = False
     resume: bool = False
     no_graph: bool = False
+    graph_only: bool = False
+    allow_partial: bool = False
     concepts: bool | None = None
 
 
@@ -166,9 +167,21 @@ class UpdateService:
         """
         if options.force and options.resume:
             raise ValueError("--resume cannot be combined with --force.")
+        if options.no_graph and options.graph_only:
+            raise ValueError("--graph-only cannot be combined with --no-graph.")
+        if options.graph_only and options.source_paths:
+            raise ValueError("--graph-only cannot ingest new source paths.")
+        if options.graph_only and options.resume:
+            raise ValueError("--graph-only cannot resume legacy compile runs.")
+
+        result = UpdateResult()
+        if options.graph_only:
+            result.graph_result = self._run_graph_sync(
+                options, status_callback=graph_status_callback
+            )
+            return result
 
         self.preflight()
-        result = UpdateResult()
 
         # Ingest phase
         for source_path in options.source_paths:
@@ -207,6 +220,12 @@ class UpdateService:
                 "disabled by default; set concepts.enabled: true or pass "
                 "--concepts to refresh legacy concept pages"
             )
+            result.concept_result = self._concepts.remove_generated_pages()
+            if (
+                result.concept_result.removed_paths
+                or result.concept_result.updated_source_paths
+            ):
+                self._compile.refresh_index()
 
         # Search refresh
         self._search.refresh(force=True)
@@ -247,9 +266,11 @@ class UpdateService:
                 path=source_path,
                 is_dir=False,
                 created_count=1 if file_result.created else 0,
-                message=""
-                if file_result.created
-                else f"Already present: {source_path.name}",
+                message=(
+                    ""
+                    if file_result.created
+                    else f"Already present: {source_path.name}"
+                ),
             )
 
     def _run_graph_sync(
@@ -286,10 +307,10 @@ class UpdateService:
                 preview_only=True,
             )
         except Exception as exc:
-            return GraphUpdateResult(
-                skipped=True,
-                warning=f"Graph preflight failed: {exc}",
-            )
+            message = f"Graph preflight failed: {exc}"
+            if options.allow_partial:
+                return GraphUpdateResult(skipped=True, warning=message)
+            raise ValueError(message) from exc
         result.preflight_result = preflight
 
         decision = preflight.decision
@@ -301,18 +322,22 @@ class UpdateService:
         try:
             missing_keys = self._missing_graph_credentials()
         except ValueError as exc:
-            result.skipped = True
-            result.warning = (
-                f"Graph index skipped because graph config is invalid: {exc}"
-            )
-            return result
+            message = f"Graph index skipped because graph config is invalid: {exc}"
+            if options.allow_partial:
+                result.skipped = True
+                result.warning = message
+                return result
+            raise ValueError(message) from exc
         if missing_keys:
-            result.skipped = True
-            result.warning = (
+            message = (
                 "Graph index skipped because provider credentials are missing: "
                 + ", ".join(missing_keys)
             )
-            return result
+            if options.allow_partial:
+                result.skipped = True
+                result.warning = message
+                return result
+            raise ValueError(message)
 
         try:
             if status_callback is not None:
@@ -328,7 +353,11 @@ class UpdateService:
                 status_callback("exporting graph pages")
             result.export_result = self._graphrag_wiki_export.export_wiki()
         except Exception as exc:
-            result.warning = f"Graph index/export failed: {exc}"
+            message = f"Graph index/export failed: {exc}"
+            if options.allow_partial:
+                result.warning = message
+                return result
+            raise ValueError(message) from exc
         return result
 
     def _missing_graph_credentials(self) -> list[str]:

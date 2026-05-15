@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -297,7 +296,7 @@ def test_config_service_invalid_provider_settings_raise(test_project) -> None:
         "    api_key_env: ANTHROPIC_API_KEY\n"
         "    thinking_budget: 10000\n"
         "  gemini:\n"
-        "    model: gemini-3.1-flash-lite-preview\n"
+        "    model: gemini-2.5-flash\n"
         "    api_key_env: GEMINI_API_KEY\n"
         "    reasoning_effort: high\n",
         encoding="utf-8",
@@ -416,7 +415,7 @@ def test_config_service_migrates_legacy_file_and_rewrites_disk(test_project) -> 
     )
     assert persisted["version"] == CURRENT_CONFIG_VERSION
     assert persisted["provider"] == {}
-    assert persisted["providers"]["gemini"]["model"] == "gemini-3.1-flash-lite-preview"
+    assert persisted["providers"]["gemini"]["model"] == "gemini-2.5-flash"
     assert persisted["storage"]["raw_normalized_dir"] == "raw/normalized"
     assert "summary_paragraph_limit" not in persisted["compile"]
 

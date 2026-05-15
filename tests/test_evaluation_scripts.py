@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 import csv
@@ -220,6 +219,8 @@ def test_graph_method_provider_payload_scores_claim_support(
     )
 
     assert row["status"] == "ok"
-    assert row["claim_support"] == "graph-grounded"
-    assert row["claim_support_rate"] == 1.0
+    assert row["claim_support"] == "graph-provenance-only"
+    assert row["claim_support_rate"] == 0.0
+    assert row["graph_provenance_rate"] == 1.0
+    assert row["citation_verified_claim_rate"] == 0.0
     assert row["diversity"] == 1.0

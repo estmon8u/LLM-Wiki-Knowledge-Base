@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -53,6 +52,8 @@ ANSWER_COLUMNS = (
     "status",
     "claim_support",
     "claim_support_rate",
+    "graph_provenance_rate",
+    "citation_verified_claim_rate",
     "insufficient_evidence_expected",
     "insufficient_evidence_observed",
     "insufficient_evidence_behavior",
@@ -362,9 +363,11 @@ def evaluate_auto_route(
         status=status,
         expected_method=expected_method,
         routed_method=routed_method,
-        method_fit=_bool_metric(routed_method == expected_method)
-        if expected_method and routed_method
-        else "",
+        method_fit=(
+            _bool_metric(routed_method == expected_method)
+            if expected_method and routed_method
+            else ""
+        ),
         expected_source_count=len(question.expected_sources),
         matched_source_count="",
         recall_at_5="",
@@ -608,10 +611,9 @@ def evaluate_graph_method(
             error=_command_error(run),
         )
     answer_text = ""
-    claim_support = "graph-output"
+    claim_support = "graph-provenance-only"
     if isinstance(payload, dict):
         answer_text = str(payload.get("answer") or payload.get("raw_output") or "")
-        claim_support = str(payload.get("claim_support") or "graph-output")
     else:
         answer_text = run.stdout
     return score_answer_row(
@@ -688,9 +690,9 @@ def score_expected_source_coverage(
         "expected_count": len(expected),
         "matched_count": matched,
         "recall": round(recall, 4),
-        "multi_source_coverage": _bool_metric(matched == len(expected))
-        if len(expected) > 1
-        else "",
+        "multi_source_coverage": (
+            _bool_metric(matched == len(expected)) if len(expected) > 1 else ""
+        ),
     }
 
 
@@ -735,13 +737,15 @@ def score_answer_row(
         status=status,
         claim_support=claim_support,
         claim_support_rate=_claim_support_rate(claim_support),
+        graph_provenance_rate=_graph_provenance_rate(claim_support),
+        citation_verified_claim_rate=_citation_verified_claim_rate(claim_support),
         insufficient_evidence_expected=_bool_metric(expected_insufficient),
         insufficient_evidence_observed=_bool_metric(observed_insufficient),
-        insufficient_evidence_behavior=_bool_metric(
-            observed_insufficient == expected_insufficient
-        )
-        if expected_insufficient
-        else "",
+        insufficient_evidence_behavior=(
+            _bool_metric(observed_insufficient == expected_insufficient)
+            if expected_insufficient
+            else ""
+        ),
         comprehensiveness=_comprehensiveness_score(answer_text),
         diversity=expected_coverage["recall"],
         latency_seconds=latency_seconds,
@@ -836,6 +840,12 @@ def render_summary(result: EvaluationResult, *, allow_provider_calls: bool) -> s
     claim_support = _average_numeric(
         row.get("claim_support_rate") for row in result.answer_rows
     )
+    graph_provenance = _average_numeric(
+        row.get("graph_provenance_rate") for row in result.answer_rows
+    )
+    citation_verified = _average_numeric(
+        row.get("citation_verified_claim_rate") for row in result.answer_rows
+    )
     project = (
         _display_path(result.project_root, result.benchmark.root)
         if result.project_root
@@ -857,7 +867,9 @@ def render_summary(result: EvaluationResult, *, allow_provider_calls: bool) -> s
         f"- Answer rows: {len(result.answer_rows)} ({answer_status})\n"
         f"- Average Recall@5: {_metric_text(average_recall)}\n"
         f"- Auto-router method fit: {_metric_text(method_fit)}\n"
-        f"- Claim support rate: {_metric_text(claim_support)}\n\n"
+        f"- Claim support rate: {_metric_text(claim_support)}\n"
+        f"- Graph provenance rate: {_metric_text(graph_provenance)}\n"
+        f"- Citation-verified claim rate: {_metric_text(citation_verified)}\n\n"
         "## Outputs\n\n"
         "- `eval/results/retrieval_metrics.csv`\n"
         "- `eval/results/answer_metrics.csv`\n"
@@ -961,6 +973,8 @@ def _answer_row_for_run(
         status=status,
         claim_support="",
         claim_support_rate="",
+        graph_provenance_rate="",
+        citation_verified_claim_rate="",
         insufficient_evidence_expected=_bool_metric(
             "insufficient_evidence" in question.expected_behaviors
         ),
@@ -1027,6 +1041,8 @@ def _skipped_answer_row(
         status=status,
         claim_support="",
         claim_support_rate="",
+        graph_provenance_rate="",
+        citation_verified_claim_rate="",
         insufficient_evidence_expected=_bool_metric(
             "insufficient_evidence" in question.expected_behaviors
         ),
@@ -1105,6 +1121,8 @@ def _answer_row(
     status: str,
     claim_support: str,
     claim_support_rate: object,
+    graph_provenance_rate: object,
+    citation_verified_claim_rate: object,
     insufficient_evidence_expected: object,
     insufficient_evidence_observed: object,
     insufficient_evidence_behavior: object,
@@ -1143,6 +1161,8 @@ def _answer_row(
         "status": status,
         "claim_support": claim_support,
         "claim_support_rate": claim_support_rate,
+        "graph_provenance_rate": graph_provenance_rate,
+        "citation_verified_claim_rate": citation_verified_claim_rate,
         "insufficient_evidence_expected": insufficient_evidence_expected,
         "insufficient_evidence_observed": insufficient_evidence_observed,
         "insufficient_evidence_behavior": insufficient_evidence_behavior,
@@ -1257,11 +1277,35 @@ def _claim_support_rate(claim_support: str) -> object:
     normalized = claim_support.casefold()
     if not normalized:
         return ""
-    if normalized in {"graph-grounded", "graph-output", "legacy-citation-validated"}:
+    if normalized == "legacy-citation-validated":
         return 1.0
     if normalized == "stale-index":
         return 0.5
     if normalized == "no-answer":
+        return 0.0
+    if normalized.startswith("graph-"):
+        return 0.0
+    return ""
+
+
+def _graph_provenance_rate(claim_support: str) -> object:
+    """Return whether the answer has GraphRAG run/index provenance."""
+    normalized = claim_support.casefold()
+    if not normalized:
+        return ""
+    if normalized.startswith("graph-"):
+        return 1.0
+    return 0.0
+
+
+def _citation_verified_claim_rate(claim_support: str) -> object:
+    """Return whether answer claims were verified against source citations."""
+    normalized = claim_support.casefold()
+    if not normalized:
+        return ""
+    if normalized == "legacy-citation-validated":
+        return 1.0
+    if normalized.startswith("graph-") or normalized == "no-answer":
         return 0.0
     return ""
 

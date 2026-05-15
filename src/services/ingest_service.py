@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -127,15 +126,22 @@ class IngestService:
         if source_path.is_dir():
             raise ValueError(f"Directory ingest requires --recursive: {source_path}")
 
+        origin_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
+        duplicate = self.manifest_service.find_by_origin_hash(origin_hash)
+        if duplicate is not None:
+            return IngestResult(
+                created=False,
+                source=duplicate,
+                duplicate_of=duplicate,
+                message=f"Duplicate source skipped: {duplicate.title}",
+            )
+
         normalized = self.normalization_service.normalize_path(source_path)
         content_hash = hashlib.sha256(
             normalized.normalized_text.encode("utf-8")
         ).hexdigest()
-        origin_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
 
-        duplicate = self.manifest_service.find_by_origin_hash(
-            origin_hash
-        ) or self.manifest_service.find_by_hash(content_hash)
+        duplicate = self.manifest_service.find_by_hash(content_hash)
         if duplicate is not None:
             return IngestResult(
                 created=False,

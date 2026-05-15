@@ -1,6 +1,5 @@
 """Project-managed GraphRAG workspace setup and settings synchronization."""
 
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -233,7 +232,7 @@ def _default_settings() -> dict[str, Any]:
         },
         "vector_store": {
             "type": "lancedb",
-            "db_uri": "output\\lancedb",
+            "db_uri": "output/lancedb",
         },
         "embed_text": {
             "embedding_model_id": "default_embedding_model",

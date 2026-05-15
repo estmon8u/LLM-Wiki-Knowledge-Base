@@ -5,12 +5,12 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 import json
 import subprocess
 
+import pandas as pd
 import pytest
 
 from src.services.graph_ask_controller_service import (
@@ -38,7 +38,26 @@ def _write_ready_graph(test_project) -> None:
         "graph/graphrag/input/sources.json",
         json.dumps([{"id": "src-1", "text": "RAG text"}]),
     )
-    test_project.write_file("graph/graphrag/output/entities.parquet", "")
+    output_dir = test_project.paths.graph_dir / "graphrag" / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        [{"id": "doc-1", "title": "RAG Document", "text": "RAG text"}]
+    ).to_parquet(output_dir / "documents.parquet")
+    pd.DataFrame([{"id": "tu-1", "text": "RAG text"}]).to_parquet(
+        output_dir / "text_units.parquet"
+    )
+    pd.DataFrame([{"id": "entity-1", "title": "RAG"}]).to_parquet(
+        output_dir / "entities.parquet"
+    )
+    pd.DataFrame([{"id": "rel-1", "source": "RAG", "target": "REALM"}]).to_parquet(
+        output_dir / "relationships.parquet"
+    )
+    pd.DataFrame([{"id": "community-0", "community": 0, "title": "RAG"}]).to_parquet(
+        output_dir / "communities.parquet"
+    )
+    pd.DataFrame(
+        [{"id": "report-0", "community": 0, "title": "RAG", "summary": "RAG summary."}]
+    ).to_parquet(output_dir / "community_reports.parquet")
     GraphRAGStatusService(test_project.paths).record_index_run(
         method="fast",
         dry_run=False,

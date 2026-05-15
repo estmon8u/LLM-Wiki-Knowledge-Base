@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 import json
@@ -1786,7 +1785,7 @@ def test_status_provider_summary_uses_catalog_defaults(test_project) -> None:
                     "thinking_budget": 10_000,
                 },
                 "gemini": {
-                    "model": "gemini-3.1-flash-lite-preview",
+                    "model": "gemini-2.5-flash",
                     "api_key_env": "GEMINI_API_KEY",
                     "reasoning_effort": "high",
                 },

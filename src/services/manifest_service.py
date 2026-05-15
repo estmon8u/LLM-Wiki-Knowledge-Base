@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 import json
@@ -13,6 +12,10 @@ from typing import Any, Optional
 
 from src.models.source_models import RawSourceRecord
 from src.services.project_service import ProjectPaths, atomic_write_text, utc_now_iso
+
+
+class ManifestError(ValueError):
+    """Raised when the raw source manifest is malformed."""
 
 
 class ManifestService:
@@ -103,7 +106,9 @@ class ManifestService:
         if not self.paths.raw_manifest_file.exists():
             self.ensure_manifest()
         with self.paths.raw_manifest_file.open("r", encoding="utf-8") as handle:
-            return json.load(handle)
+            payload = json.load(handle)
+        self._validate(payload)
+        return payload
 
     def _write(self, payload: dict[str, Any]) -> None:
         self.paths.raw_manifest_file.parent.mkdir(parents=True, exist_ok=True)
@@ -111,3 +116,42 @@ class ManifestService:
             self.paths.raw_manifest_file,
             json.dumps(payload, indent=2, sort_keys=True),
         )
+
+    @staticmethod
+    def _validate(payload: dict[str, Any]) -> None:
+        if not isinstance(payload, dict):
+            raise ManifestError("Manifest must be a JSON object.")
+        if payload.get("version") != 1:
+            raise ManifestError("Manifest version must be 1.")
+        sources = payload.get("sources")
+        if not isinstance(sources, list):
+            raise ManifestError("Manifest sources must be a list.")
+        seen_source_ids: set[str] = set()
+        seen_slugs: set[str] = set()
+        required_fields = {
+            "source_id",
+            "slug",
+            "title",
+            "origin",
+            "source_type",
+            "raw_path",
+            "content_hash",
+            "ingested_at",
+        }
+        for index, source in enumerate(sources):
+            if not isinstance(source, dict):
+                raise ManifestError(f"Manifest source #{index + 1} must be an object.")
+            missing = sorted(required_fields - set(source))
+            if missing:
+                raise ManifestError(
+                    f"Manifest source #{index + 1} missing field(s): "
+                    f"{', '.join(missing)}."
+                )
+            source_id = str(source.get("source_id", "")).strip()
+            slug = str(source.get("slug", "")).strip()
+            if source_id in seen_source_ids:
+                raise ManifestError(f"Duplicate manifest source_id: {source_id}.")
+            if slug in seen_slugs:
+                raise ManifestError(f"Duplicate manifest slug: {slug}.")
+            seen_source_ids.add(source_id)
+            seen_slugs.add(slug)

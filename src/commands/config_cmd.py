@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 import click
@@ -112,6 +111,7 @@ def create_command() -> click.BaseCommand:
             "api_key_env",
             "reasoning_effort",
             "thinking_budget",
+            "thinking_effort",
         ):
             provider_section.pop(stale_key, None)
         provider_section["name"] = validated_name

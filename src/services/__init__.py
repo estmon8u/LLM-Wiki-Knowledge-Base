@@ -1,13 +1,10 @@
 """Service construction helpers for the capstone CLI."""
 
-
 from __future__ import annotations
-
-"""Service construction helpers for the capstone CLI."""
 
 from typing import Any
 
-from src.providers import build_lazy_provider
+from src.providers import build_lazy_provider, build_provider
 from src.services.compile_service import CompileService
 from src.services.concept_service import ConceptService
 from src.services.config_service import ConfigService
@@ -50,7 +47,7 @@ def build_services(
     config_service = ConfigService(paths)
     manifest_service = ManifestService(paths)
     search_service = SearchService(paths)
-    provider = build_lazy_provider(config)
+    provider = build_lazy_provider(config, provider_builder=build_provider)
     schema_text = config_service.load_schema()
     compile_run_store = CompileRunStore(paths.graph_exports_dir / "compile_runs.json")
     graphrag_command_service = GraphRAGCommandService(paths)

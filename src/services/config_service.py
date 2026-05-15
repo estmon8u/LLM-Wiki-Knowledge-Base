@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -102,10 +101,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "anthropic": {
             "model": "claude-sonnet-4-6",
             "api_key_env": "ANTHROPIC_API_KEY",
-            "thinking_budget": 10_000,
+            "thinking_effort": "medium",
         },
         "gemini": {
-            "model": "gemini-3.1-flash-lite-preview",
+            "model": "gemini-2.5-flash",
             "api_key_env": "GEMINI_API_KEY",
             "reasoning_effort": "high",
         },
@@ -177,7 +176,7 @@ Operational rules for building and maintaining this knowledge base.
 
 - Use GraphRAG for top-level `kb ask` when graph output is complete.
 - Use the local wiki index for `kb find` and deprecated legacy comparators.
-- Answer from grounded evidence only; cite each claim with [Source Title] or graph-backed references.
+- Answer from wiki evidence only; cite each claim with [Source Title] or graph-backed references.
 - If the evidence is insufficient, say so explicitly.
 - Saved answers compound into the wiki as analysis pages.
 
@@ -375,7 +374,13 @@ def _migrate_v2_to_v3(config: dict[str, Any]) -> dict[str, Any]:
             if not isinstance(target, dict):
                 target = deepcopy(DEFAULT_CONFIG["providers"][name])
                 providers[name] = target
-            for key in ("model", "api_key_env", "reasoning_effort", "thinking_budget"):
+            for key in (
+                "model",
+                "api_key_env",
+                "reasoning_effort",
+                "thinking_budget",
+                "thinking_effort",
+            ):
                 if key in provider_section:
                     target[key] = provider_section.pop(key)
 
@@ -472,9 +477,10 @@ class _AnthropicProviderConfig(_StrictConfigModel):
 
     model: StrictStr
     api_key_env: StrictStr
-    thinking_budget: StrictInt = Field(ge=0)
+    thinking_budget: StrictInt | None = Field(default=None, ge=0)
+    thinking_effort: StrictStr = "medium"
 
-    @field_validator("model", "api_key_env")
+    @field_validator("model", "api_key_env", "thinking_effort")
     @classmethod
     def _must_be_non_empty(cls, value: str) -> str:
         if not value.strip():
@@ -633,9 +639,18 @@ def resolve_graph_config(config: dict[str, Any]) -> GraphRAGRuntimeConfig:
         GraphRAGRuntimeConfig produced by the operation.
     """
     graph = config.get("graph", DEFAULT_CONFIG["graph"])
+    if not isinstance(graph, dict):
+        raise ValueError("kb.config.yaml 'graph' must contain a YAML mapping.")
     try:
         validated = _GraphConfig.model_validate(graph).model_dump(mode="python")
     except ValidationError as exc:
+        error = exc.errors()[0]
+        if str(error.get("type", "")) == "extra_forbidden":
+            loc_parts = tuple(str(part) for part in error.get("loc", ()))
+            key = loc_parts[-1] if loc_parts else "unknown"
+            raise ValueError(
+                f"kb.config.yaml 'graph' contains unknown keys: {key}."
+            ) from exc
         raise ValueError(_format_config_validation_error(exc)) from exc
     provider = validated["provider"].strip()
     explicit_api_key_env = _optional_str(validated.get("api_key_env"))
@@ -645,20 +660,6 @@ def resolve_graph_config(config: dict[str, Any]) -> GraphRAGRuntimeConfig:
         explicit_api_key_env=explicit_api_key_env,
         field_name="api_key_env",
     )
-
-
-def concept_generation_enabled(config: dict[str, Any]) -> bool:
-    concepts = config.get("concepts", DEFAULT_CONFIG["concepts"])
-    if not isinstance(concepts, dict):
-        return False
-    return bool(concepts.get("enabled", False))
-
-
-def concept_provider_backed_enabled(config: dict[str, Any]) -> bool:
-    concepts = config.get("concepts", DEFAULT_CONFIG["concepts"])
-    if not isinstance(concepts, dict):
-        return False
-    return bool(concepts.get("provider_backed", False))
     embedding_provider = _optional_str(validated.get("embedding_provider")) or provider
     explicit_embedding_api_key_env = _optional_str(
         validated.get("embedding_api_key_env")
@@ -682,6 +683,20 @@ def concept_provider_backed_enabled(config: dict[str, Any]) -> bool:
         api_key_env=api_key_env,
         embedding_api_key_env=embedding_api_key_env,
     )
+
+
+def concept_generation_enabled(config: dict[str, Any]) -> bool:
+    concepts = config.get("concepts", DEFAULT_CONFIG["concepts"])
+    if not isinstance(concepts, dict):
+        return False
+    return bool(concepts.get("enabled", False))
+
+
+def concept_provider_backed_enabled(config: dict[str, Any]) -> bool:
+    concepts = config.get("concepts", DEFAULT_CONFIG["concepts"])
+    if not isinstance(concepts, dict):
+        return False
+    return bool(concepts.get("provider_backed", False))
 
 
 def _optional_str(value: Any) -> str | None:

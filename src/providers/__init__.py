@@ -94,10 +94,10 @@ _FALLBACK_PROVIDER_CATALOG = {
     "anthropic": {
         "model": "claude-sonnet-4-6",
         "api_key_env": "ANTHROPIC_API_KEY",
-        "thinking_budget": 10_000,
+        "thinking_effort": "medium",
     },
     "gemini": {
-        "model": "gemini-3.1-flash-lite-preview",
+        "model": "gemini-2.5-flash",
         "api_key_env": "GEMINI_API_KEY",
         "reasoning_effort": "high",
     },
@@ -204,7 +204,8 @@ def build_provider(
     model = provider_cfg.get("model", "")
     api_key_env = provider_cfg.get("api_key_env", "")
     reasoning_effort = provider_cfg.get("reasoning_effort", "high")
-    thinking_budget = provider_cfg.get("thinking_budget", 0)
+    thinking_budget = provider_cfg.get("thinking_budget")
+    thinking_effort = provider_cfg.get("thinking_effort", "medium")
 
     try:
         if name == "openai":
@@ -222,6 +223,7 @@ def build_provider(
                 model=model,
                 api_key_env=api_key_env,
                 thinking_budget=thinking_budget,
+                thinking_effort=thinking_effort,
             )
         if name == "gemini":
             from src.providers.gemini_provider import GeminiProvider
@@ -245,13 +247,18 @@ def build_provider(
 def build_lazy_provider(
     config: dict[str, Any],
     provider_catalog: ProviderCatalog | None = None,
+    provider_builder: (
+        Callable[[dict[str, Any], ProviderCatalog | None], Optional[TextProvider]]
+        | None
+    ) = None,
 ) -> Optional[TextProvider]:
     """Return a provider proxy without importing SDKs or checking env eagerly."""
     resolved = resolve_provider_settings(config, provider_catalog=provider_catalog)
     if resolved is None:
         return None
     name, _ = resolved
+    builder = provider_builder or build_provider
     return LazyProvider(
-        lambda: build_provider(config, provider_catalog=provider_catalog),
+        lambda: builder(config, provider_catalog),
         provider_name=name,
     )

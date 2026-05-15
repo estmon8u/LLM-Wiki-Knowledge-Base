@@ -8,7 +8,7 @@ This branch is in the GraphRAG pivot. GraphRAG is the target default retrieval a
 
 ## Requirements
 
-- Python 3.11.x
+- Python 3.11, 3.12, or 3.13
 - [Poetry](https://python-poetry.org/) (installed at user level, not inside the project virtualenv)
 
 ## Installation
@@ -518,11 +518,16 @@ All non-text formats are normalized into canonical markdown and stored in `raw/n
 
 ## Provider Configuration
 
-`kb update`, `kb legacy ask`, and `kb review` require a configured provider.
+`kb update`, `kb legacy ask`, and `kb review` require a configured provider
+for legacy compile/review work. `kb update --graph-only` can refresh GraphRAG
+without the legacy text-provider section when the GraphRAG provider credentials
+are available.
 If the provider is missing, those commands fail with a configuration error.
-`kb legacy ask` and `kb review` fail on provider execution errors; `kb update` keeps
-deterministic fallbacks for compile summaries and concept clustering after a
-provider call failure.
+`kb legacy ask` and `kb review` fail on provider execution errors; `kb update`
+keeps deterministic fallbacks for compile summaries and concept clustering after
+a provider call failure. GraphRAG sync/index/export failures are hard failures
+by default; use `kb update --allow-partial` only when you intentionally want the
+legacy wiki refresh to finish while graph work is reported as a warning.
 
 Provider responses carry the returned text plus model/provider diagnostics such
 as finish reason and token counts when the SDK exposes them. Saved `kb legacy ask`
@@ -552,9 +557,9 @@ providers:
   anthropic:
     model: claude-sonnet-4-6
     api_key_env: ANTHROPIC_API_KEY
-    thinking_budget: 10000
+    thinking_effort: medium
   gemini:
-    model: gemini-3.1-flash-lite-preview
+    model: gemini-2.5-flash
     api_key_env: GEMINI_API_KEY
     reasoning_effort: high
 conversion:
@@ -588,8 +593,12 @@ providers:
   anthropic:
     model: claude-opus-4-6
     api_key_env: MY_ANTHROPIC_KEY
-    thinking_budget: 2048
+    thinking_effort: high
 ```
+
+Modern Claude 4.6-style models use Anthropic adaptive thinking through
+`thinking_effort`. A legacy `thinking_budget` value is still accepted for older
+models that require manual extended-thinking token budgets.
 
 The `graph` section controls GraphRAG runtime setup independently from the text-provider section used by `kb update`, `kb review`, and `kb legacy ask`, but it does not duplicate API keys by default. `api_key_env: null` means "resolve this from `providers.<graph.provider>.api_key_env`"; `embedding_api_key_env: null` does the same for `providers.<graph.embedding_provider>.api_key_env`. Run `kb init` after editing it to refresh `graph/graphrag/settings.yaml`; `kb update` also syncs existing workspace settings before deciding whether model or prompt changes require a rebuild.
 
@@ -611,7 +620,7 @@ seeded into `kb.config.yaml`:
 | --- | --- | --- | --- |
 | `openai` | `gpt-5.4-nano` | `OPENAI_API_KEY` | `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini` |
 | `anthropic` | `claude-sonnet-4-6` | `ANTHROPIC_API_KEY` | `claude-opus-4-6`, `claude-haiku-4-5` |
-| `gemini` | `gemini-3.1-flash-lite-preview` | `GEMINI_API_KEY` | `gemini-3.1-pro-preview`, `gemini-2.5-flash` |
+| `gemini` | `gemini-2.5-flash` | `GEMINI_API_KEY` | `gemini-3.1-pro-preview`, `gemini-2.5-flash` |
 
 As of the latest OpenAI model docs checked for this branch, `gpt-5.5` is the flagship model, while the cost-sensitive current smaller variants are `gpt-5.4-mini` and `gpt-5.4-nano`; there is no documented `gpt-5.5-mini` or `gpt-5.5-nano` model ID. OpenAI also documents `gpt-5-nano`, but recommends starting with `gpt-5.4-nano` for most new speed- and cost-sensitive workloads. The project uses `gpt-5.4-nano` as the default to keep graph rebuilds and routine provider-backed maintenance inexpensive, with `gpt-5.4-mini`, `gpt-5.4`, or `gpt-5.5` available as explicit quality/cost upgrades.
 

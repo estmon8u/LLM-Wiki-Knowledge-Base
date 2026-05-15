@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 import json
@@ -148,7 +147,11 @@ def test_export_wiki_writes_graph_pages_and_preserves_legacy_concepts(
     )
     stale_graph_page = test_project.write_file(
         "wiki/graph/entities/stale.md",
-        "# Stale\n",
+        "---\ntype: graph_entity\ngenerated: true\n---\n\n# Stale\n",
+    )
+    manual_graph_note = test_project.write_file(
+        "wiki/graph/entities/manual.md",
+        "---\ntype: graph_note\n---\n\n# Manual\n",
     )
     kept_non_markdown = test_project.write_file(
         "wiki/graph/entities/keep.txt",
@@ -159,6 +162,7 @@ def test_export_wiki_writes_graph_pages_and_preserves_legacy_concepts(
     result = service.export_wiki()
 
     assert stale_graph_page.exists() is False
+    assert manual_graph_note.exists() is True
     assert kept_non_markdown.exists() is True
     assert legacy_concept.exists() is True
     assert result.table_counts["entities"] == 1
@@ -175,6 +179,7 @@ def test_export_wiki_writes_graph_pages_and_preserves_legacy_concepts(
     entity_text = entity_path.read_text(encoding="utf-8")
     entity_frontmatter = yaml.safe_load(entity_text.split("---", 2)[1])
     assert entity_frontmatter["type"] == "graph_entity"
+    assert entity_frontmatter["generated"] is True
     assert entity_frontmatter["entity_title"] == "Retrieval-Augmented Generation"
     assert "uses dense retrieval" in entity_text
     community_pages = list(
@@ -225,7 +230,7 @@ def test_export_wiki_requires_initialized_workspace(test_project) -> None:
 def test_export_wiki_reports_missing_tables_and_finds_nested_outputs(
     test_project,
 ) -> None:
-    """Verifies that export wiki reports missing tables and finds nested outputs.
+    """Verifies that export wiki rejects incomplete nested outputs.
 
     Args:
         test_project: Test project value used by the operation.
@@ -245,14 +250,15 @@ def test_export_wiki_reports_missing_tables_and_finds_nested_outputs(
     ).to_parquet(output_dir / "create_final_entities.parquet")
     service = _build_service(test_project)
 
-    result = service.export_wiki()
+    status = GraphRAGStatusService(test_project.paths).status()
 
-    assert result.table_counts["entities"] == 1
-    assert "documents" in result.missing_tables
-    assert "relationships" in result.missing_tables
-    assert (
-        test_project.paths.wiki_dir / "graph" / "entities" / "retrieval.md"
-    ).exists()
+    assert status.output_present is True
+    assert status.output_complete is False
+    assert status.entity_count == 1
+    assert "documents" in status.missing_tables
+    assert "relationships" in status.missing_tables
+    with pytest.raises(GraphRAGWikiExportError, match="output is incomplete"):
+        service.export_wiki()
 
 
 def test_export_wiki_handles_realistic_create_final_parquet_shapes(
@@ -434,6 +440,25 @@ def test_export_wiki_caps_relationship_pages_and_entity_tables(test_project) -> 
             for index in range(relationship_count)
         ]
     ).to_parquet(output_dir / "relationships.parquet")
+    pd.DataFrame(
+        [{"id": "doc-1", "title": "Hub Document", "text": "Hub text."}]
+    ).to_parquet(output_dir / "documents.parquet")
+    pd.DataFrame([{"id": "tu-1", "text": "Hub text unit."}]).to_parquet(
+        output_dir / "text_units.parquet"
+    )
+    pd.DataFrame(
+        [{"id": "community-0", "community": 0, "title": "Hub Community"}]
+    ).to_parquet(output_dir / "communities.parquet")
+    pd.DataFrame(
+        [
+            {
+                "id": "report-0",
+                "community": 0,
+                "title": "Hub Community",
+                "summary": "Hub community summary.",
+            }
+        ]
+    ).to_parquet(output_dir / "community_reports.parquet")
     GraphRAGStatusService(test_project.paths).record_index_run(
         method="fast",
         dry_run=False,
@@ -504,6 +529,31 @@ def test_export_wiki_fences_raw_document_and_text_unit_markdown(test_project) ->
     pd.DataFrame(
         [{"id": "tu-1", "chunk": raw_text, "raw_data": {"text": raw_text}}]
     ).to_parquet(output_dir / "text_units.parquet")
+    pd.DataFrame(
+        [
+            {
+                "id": "entity-1",
+                "title": "Raw Heading",
+                "description": "Raw markdown entity.",
+            }
+        ]
+    ).to_parquet(output_dir / "entities.parquet")
+    pd.DataFrame([], columns=["id", "source", "target", "description"]).to_parquet(
+        output_dir / "relationships.parquet"
+    )
+    pd.DataFrame(
+        [{"id": "community-0", "community": 0, "title": "Raw Markdown"}]
+    ).to_parquet(output_dir / "communities.parquet")
+    pd.DataFrame(
+        [
+            {
+                "id": "report-0",
+                "community": 0,
+                "title": "Raw Markdown",
+                "summary": "Raw markdown community.",
+            }
+        ]
+    ).to_parquet(output_dir / "community_reports.parquet")
     GraphRAGStatusService(test_project.paths).record_index_run(
         method="fast",
         dry_run=False,

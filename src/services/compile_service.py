@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -240,9 +239,9 @@ class CompileService:
         run_record = self.compile_run_store.start_run(
             plan.pending_sources,
             force=force,
-            resumed_from_run_id=resume_record.run_id
-            if resume_record is not None
-            else "",
+            resumed_from_run_id=(
+                resume_record.run_id if resume_record is not None else ""
+            ),
         )
         current_source: RawSourceRecord | None = None
         try:
@@ -266,9 +265,9 @@ class CompileService:
                 source.compiled_at = compiled_at
                 source.compiled_from_hash = source.content_hash
                 source.metadata = dict(source.metadata or {})
-                source.metadata[
-                    SOURCE_PAGE_CONTRACT_VERSION_KEY
-                ] = SOURCE_PAGE_CONTRACT_VERSION
+                source.metadata[SOURCE_PAGE_CONTRACT_VERSION_KEY] = (
+                    SOURCE_PAGE_CONTRACT_VERSION
+                )
                 self.manifest_service.save_source(source)
                 self.compile_run_store.mark_source_compiled(run_record.run_id, source)
 

@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -14,7 +13,6 @@ from typing import Optional
 import click
 
 from src.engine.command_registry import (
-    build_command_specs,
     get_click_command,
     list_command_names,
 )
@@ -23,6 +21,14 @@ from src.providers import validate_provider_name
 from src.services import build_services
 from src.services.config_service import ConfigService
 from src.services.project_service import build_project_paths, discover_project_root
+
+
+def _extract_project_root(ctx: click.Context) -> Path:
+    """Return the discovered project root for a Click invocation context."""
+    project_root = None
+    if isinstance(ctx.params, dict):
+        project_root = ctx.params.get("project_root")
+    return discover_project_root(project_root or Path.cwd())
 
 
 def build_runtime_context(
@@ -61,6 +67,7 @@ def build_runtime_context(
         config["provider"].pop("api_key_env", None)
         config["provider"].pop("reasoning_effort", None)
         config["provider"].pop("thinking_budget", None)
+        config["provider"].pop("thinking_effort", None)
     schema_text = config_service.load_schema()
 
     services = build_services(paths, config)
@@ -136,7 +143,7 @@ def main(
         verbose: Whether to emit verbose command output.
         provider_override: Optional provider name overriding the configured provider.
     """
-    root = discover_project_root(project_root or Path.cwd())
+    root = _extract_project_root(ctx)
     ctx.obj = build_runtime_context(
         root,
         verbose=verbose,
@@ -144,13 +151,6 @@ def main(
     )
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
-
-
-def _extract_project_root(ctx: click.Context) -> Path:
-    project_root = ctx.params.get("project_root")
-    if isinstance(project_root, Path):
-        return discover_project_root(project_root)
-    return discover_project_root(Path.cwd())
 
 
 if __name__ == "__main__":  # pragma: no cover

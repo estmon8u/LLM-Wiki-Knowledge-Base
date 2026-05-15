@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -16,6 +15,9 @@ import uuid
 
 from src.models.source_models import RawSourceRecord
 from src.services.project_service import atomic_write_text, utc_now_iso
+
+
+MAX_COMPILE_RUN_HISTORY = 50
 
 
 def _default_payload() -> dict[str, Any]:
@@ -261,7 +263,10 @@ class CompileRunStore:
             return _default_payload()
         try:
             payload = json.loads(self.state_file.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except OSError:
+            return _default_payload()
+        except json.JSONDecodeError:
+            self._move_corrupt_state_file()
             return _default_payload()
         if not isinstance(payload, dict):
             return _default_payload()
@@ -272,7 +277,23 @@ class CompileRunStore:
 
     def _write_payload(self, payload: dict[str, Any]) -> None:
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
+        payload["version"] = 1
+        history = payload.get("history", [])
+        if isinstance(history, list):
+            payload["history"] = history[-MAX_COMPILE_RUN_HISTORY:]
         atomic_write_text(
             self.state_file,
             json.dumps(payload, indent=2, sort_keys=True),
         )
+
+    def _move_corrupt_state_file(self) -> None:
+        if not self.state_file.exists():
+            return
+        stamp = utc_now_iso().replace(":", "").replace("+", "Z")
+        corrupt_path = self.state_file.with_name(
+            f"{self.state_file.name}.{stamp}.corrupt"
+        )
+        try:
+            self.state_file.replace(corrupt_path)
+        except OSError:
+            return

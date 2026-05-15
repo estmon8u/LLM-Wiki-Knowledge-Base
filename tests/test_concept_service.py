@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -594,7 +593,7 @@ def test_compile_with_concepts_flag_cli() -> None:
         )
 
         with patch("src.services.build_provider", return_value=_FakeProvider()):
-            result = runner.invoke(main, ["update"])
+            result = runner.invoke(main, ["update", "--concepts", "--no-graph"])
 
         assert result.exit_code == 0
         assert "Concept Summary" in result.output
@@ -1058,16 +1057,18 @@ class _StubConceptProvider:
             if line.startswith("### wiki/sources/"):
                 source_pages.append(line[4:].strip())
         report = {
-            "concepts": [
-                {
-                    "title": "Stub Cluster",
-                    "summary": "Stub summary.",
-                    "topic_terms": ["stub-theme"],
-                    "source_pages": source_pages[:3],
-                }
-            ]
-            if len(source_pages) >= 3
-            else []
+            "concepts": (
+                [
+                    {
+                        "title": "Stub Cluster",
+                        "summary": "Stub summary.",
+                        "topic_terms": ["stub-theme"],
+                        "source_pages": source_pages[:3],
+                    }
+                ]
+                if len(source_pages) >= 3
+                else []
+            )
         }
         return ProviderResponse(text=json.dumps(report), model_name="stub-v1")
 

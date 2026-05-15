@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 import json
@@ -26,10 +25,12 @@ class AnthropicProvider(TextProvider):
         self,
         model: str = "claude-sonnet-4-6",
         api_key_env: str = "ANTHROPIC_API_KEY",
-        thinking_budget: int = 10_000,
+        thinking_budget: int | None = None,
+        thinking_effort: str = "medium",
     ) -> None:
         self.model = model
         self._thinking_budget = thinking_budget
+        self._thinking_effort = thinking_effort
         api_key = os.environ.get(api_key_env, "")
         if not api_key:
             raise ValueError(
@@ -48,13 +49,20 @@ class AnthropicProvider(TextProvider):
         Returns:
             ProviderResponse produced by the operation.
         """
-        max_tokens = max(request.max_tokens, self._thinking_budget + 4096)
+        use_adaptive_thinking = _uses_adaptive_thinking(self.model)
+        max_tokens = request.max_tokens
+        if self._thinking_budget and not use_adaptive_thinking:
+            max_tokens = max(request.max_tokens, self._thinking_budget + 4096)
         kwargs: dict = {
             "model": self.model,
             "max_tokens": max_tokens,
             "messages": [{"role": "user", "content": request.prompt}],
         }
-        if self._thinking_budget > 0:
+        if use_adaptive_thinking:
+            kwargs["output_config"] = {
+                "effort": request.reasoning_effort or self._thinking_effort
+            }
+        elif self._thinking_budget and self._thinking_budget > 0:
             kwargs["thinking"] = {
                 "type": "enabled",
                 "budget_tokens": self._thinking_budget,
@@ -79,3 +87,17 @@ class AnthropicProvider(TextProvider):
             output_tokens=getattr(usage, "output_tokens", None),
             raw=message,
         )
+
+
+def _uses_adaptive_thinking(model: str) -> bool:
+    """Return True for Claude models that use adaptive thinking effort."""
+    normalized = model.casefold()
+    return any(
+        marker in normalized
+        for marker in (
+            "sonnet-4-5",
+            "sonnet-4-6",
+            "opus-4-6",
+            "opus-4-7",
+        )
+    )

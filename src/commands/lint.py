@@ -5,12 +5,11 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 import click
 
-from src.commands.common import console, require_initialized
+from src.commands.common import console, emit_json, require_initialized
 from src.models.command_models import CommandContext, CommandSpec
 from rich.markup import escape as _esc
 
@@ -45,16 +44,40 @@ def create_command() -> click.Command:
     """
 
     @click.command(name="lint", help=SUMMARY, short_help="Check wiki health.")
+    @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
     @click.pass_obj
-    def command(command_context: CommandContext) -> None:
+    def command(command_context: CommandContext, as_json: bool) -> None:
         """Command.
 
         Args:
             command_context: Command context value used by the operation.
+            as_json: As json value used by the operation.
         """
         require_initialized(command_context)
         lint_service = command_context.services["lint"]
         report = lint_service.lint()
+
+        if as_json:
+            emit_json(
+                {
+                    "ok": report.error_count == 0,
+                    "error_count": report.error_count,
+                    "warning_count": report.warning_count,
+                    "suggestion_count": report.suggestion_count,
+                    "issues": [
+                        {
+                            "severity": issue.severity,
+                            "code": issue.code,
+                            "path": issue.path,
+                            "message": issue.message,
+                        }
+                        for issue in report.issues
+                    ],
+                }
+            )
+            if report.error_count > 0:
+                raise click.exceptions.Exit(1)
+            return
 
         if not report.issues:
             console.print("[green]No lint issues found.[/green]")

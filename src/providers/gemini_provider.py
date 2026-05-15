@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 import os
@@ -24,7 +23,7 @@ class GeminiProvider(TextProvider):
 
     def __init__(
         self,
-        model: str = "gemini-3.1-flash-lite-preview",
+        model: str = "gemini-2.5-flash",
         api_key_env: str = "GEMINI_API_KEY",
         reasoning_effort: str = "high",
     ) -> None:

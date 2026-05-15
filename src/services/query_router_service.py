@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -16,7 +15,10 @@ from typing import Iterable
 import pandas as pd
 
 from src.services.graphrag_query_service import GRAPH_QUERY_METHODS
-from src.services.graphrag_status_service import GraphRAGStatusService
+from src.services.graphrag_status_service import (
+    GRAPH_OUTPUT_TABLES,
+    GraphRAGStatusService,
+)
 
 
 GRAPH_ASK_METHODS = ("auto", *GRAPH_QUERY_METHODS)
@@ -108,7 +110,7 @@ class QueryRouterService:
 
     def __init__(self, status_service: GraphRAGStatusService | None = None) -> None:
         self.status_service = status_service
-        self._known_terms_cache: tuple[str, ...] | None = None
+        self._known_terms_cache: tuple[str | None, tuple[str, ...]] | None = None
 
     def route(self, question: str, *, method: str = "auto") -> QueryRoute:
         """Route.
@@ -133,12 +135,14 @@ class QueryRouterService:
             )
 
         text = f" {question.casefold()} "
-        if any(keyword in text for keyword in GLOBAL_KEYWORDS):
-            return QueryRoute(method="global", reason="global corpus keyword")
         if any(keyword in text for keyword in DRIFT_KEYWORDS):
             return QueryRoute(method="drift", reason="comparison keyword")
+        if any(keyword in text for keyword in GLOBAL_KEYWORDS):
+            return QueryRoute(method="global", reason="global corpus keyword")
         if any(keyword in text for keyword in DIRECT_LOOKUP_KEYWORDS):
-            return QueryRoute(method="basic", reason="direct lookup or maintenance keyword")
+            return QueryRoute(
+                method="basic", reason="direct lookup or maintenance keyword"
+            )
         if any(keyword in text for keyword in LOCAL_ENTITY_KEYWORDS):
             return QueryRoute(method="local", reason="known retrieval system keyword")
         if self._mentions_known_graph_term(text):
@@ -154,16 +158,24 @@ class QueryRouterService:
         return False
 
     def _known_graph_terms(self) -> Iterable[str]:
+        status = self.status_service.status()
+        cache_key = status.output_updated_at or status.last_index_run_id
         if self._known_terms_cache is not None:
-            return self._known_terms_cache
+            cached_key, cached_terms = self._known_terms_cache
+            if cached_key == cache_key:
+                return cached_terms
         terms: list[str] = []
         for table_name in ("entities", "documents"):
             table_path = self.status_service.table_path(table_name)
             if table_path is None:
                 continue
             terms.extend(_read_term_columns(table_path))
-        self._known_terms_cache = tuple(dict.fromkeys(_usable_term(term) for term in terms if _usable_term(term)))
-        return self._known_terms_cache
+        known_terms = tuple(
+            dict.fromkeys(_usable_term(term) for term in terms if _usable_term(term))
+        )
+        self._known_terms_cache = (cache_key, known_terms)
+        return known_terms
+
 
 def _read_term_columns(path: Path) -> Iterable[str]:
     columns = _available_term_columns(path)
@@ -180,6 +192,18 @@ def _read_term_columns(path: Path) -> Iterable[str]:
             if len(text) >= 3:
                 terms.append(text)
     return terms
+
+
+def _find_table_path(output_dir: Path, table_name: str) -> Path | None:
+    """Return the first matching GraphRAG output table below *output_dir*."""
+    tokens = GRAPH_OUTPUT_TABLES.get(table_name)
+    if tokens is None or not output_dir.exists():
+        return None
+    for parquet_path in sorted(output_dir.rglob("*.parquet")):
+        stem = parquet_path.stem.casefold()
+        if all(token in stem for token in tokens):
+            return parquet_path
+    return None
 
 
 def _available_term_columns(path: Path) -> list[str]:

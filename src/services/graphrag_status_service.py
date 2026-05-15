@@ -1,6 +1,5 @@
 """GraphRAG status tracking for the knowledge-base workflow."""
 
-
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -102,6 +101,38 @@ class GraphRAGStatus:
     community_report_count: int | None = None
 
     @property
+    def missing_tables(self) -> list[str]:
+        """Return required GraphRAG output tables missing from active output."""
+        return [
+            name
+            for name, present in (
+                ("documents", self.documents_present),
+                ("text_units", self.text_units_present),
+                ("entities", self.entities_present),
+                ("relationships", self.relationships_present),
+                ("communities", self.communities_present),
+                ("community_reports", self.community_reports_present),
+            )
+            if not present
+        ]
+
+    @property
+    def state(self) -> str:
+        """Return a normalized machine-readable graph index state."""
+        if self.last_index_success is False:
+            return "failed"
+        if not self.workspace_initialized:
+            return "missing"
+        if not self.output_present:
+            return "missing"
+        if not self.output_complete:
+            return "partial"
+        if self.input_updated_at and self.output_updated_at:
+            if self.input_updated_at > self.output_updated_at:
+                return "stale"
+        return "complete"
+
+    @property
     def output_complete(self) -> bool:
         """Return True only when all required GraphRAG output tables are present."""
         return (
@@ -127,6 +158,8 @@ class GraphRAGStatus:
         for key in ("workspace_dir", "settings_path", "input_path", "output_dir"):
             payload[key] = self._relative_to_project(payload[key], project_root)
         payload["output_complete"] = self.output_complete
+        payload["missing_tables"] = self.missing_tables
+        payload["state"] = self.state
         return payload
 
     @staticmethod
@@ -205,12 +238,12 @@ class GraphRAGStatusService:
             ),
             last_index_input_digest=last_run.get("input_digest") if last_run else None,
             last_index_input_hash=last_run.get("input_hash") if last_run else None,
-            last_index_config_digest=last_run.get("config_digest")
-            if last_run
-            else None,
-            last_index_input_source_count=last_run.get("input_source_count")
-            if last_run
-            else None,
+            last_index_config_digest=(
+                last_run.get("config_digest") if last_run else None
+            ),
+            last_index_input_source_count=(
+                last_run.get("input_source_count") if last_run else None
+            ),
             last_index_output_state=last_run.get("output_state") if last_run else None,
             input_updated_at=self._file_mtime_iso(self.input_path),
             output_updated_at=self._latest_parquet_mtime_iso(),

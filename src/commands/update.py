@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -98,6 +97,16 @@ def create_command() -> click.Command:
         help="Skip GraphRAG sync, indexing, and graph wiki export.",
     )
     @click.option(
+        "--graph-only",
+        is_flag=True,
+        help="Sync/index/export GraphRAG without legacy compile or search refresh.",
+    )
+    @click.option(
+        "--allow-partial",
+        is_flag=True,
+        help="Treat GraphRAG sync/index/export failures as warnings.",
+    )
+    @click.option(
         "--concepts/--no-concepts",
         default=None,
         help="Opt in or out of legacy concept page generation for this update.",
@@ -109,6 +118,8 @@ def create_command() -> click.Command:
         force: bool,
         resume: bool,
         no_graph: bool,
+        graph_only: bool,
+        allow_partial: bool,
         concepts: bool | None,
     ) -> None:
         """Command.
@@ -119,6 +130,8 @@ def create_command() -> click.Command:
             force: Force value used by the operation.
             resume: Resume value used by the operation.
             no_graph: No graph value used by the operation.
+            graph_only: Graph only value used by the operation.
+            allow_partial: Allow partial value used by the operation.
             concepts: Concepts value used by the operation.
         """
         require_initialized(command_context)
@@ -129,6 +142,8 @@ def create_command() -> click.Command:
             force=force,
             resume=resume,
             no_graph=no_graph,
+            graph_only=graph_only,
+            allow_partial=allow_partial,
             concepts=concepts,
         )
 
@@ -167,39 +182,41 @@ def create_command() -> click.Command:
 
         # Render build phase
         cr = result.compile_result
-        if cr.resumed_from_run_id:
+        if cr is not None and cr.resumed_from_run_id:
             echo_status_line(
                 "resume", f"resumed interrupted update run {cr.resumed_from_run_id}"
             )
             console.print("")
 
-        echo_section("Update Summary")
-        console.print(f"Compiled {cr.compiled_count} source page(s)")
-        console.print(f"Skipped {cr.skipped_count} source page(s)")
-        for path in cr.compiled_paths:
-            echo_bullet(f"updated {path}")
+        if cr is not None:
+            echo_section("Update Summary")
+            console.print(f"Compiled {cr.compiled_count} source page(s)")
+            console.print(f"Skipped {cr.skipped_count} source page(s)")
+            for path in cr.compiled_paths:
+                echo_bullet(f"updated {path}")
 
         # Render concept phase
-        console.print("")
-        echo_section("Concept Summary")
-        concept_result = result.concept_result
-        if result.concepts_skipped:
-            console.print(f"Skipped: {result.concepts_skip_reason}")
-        elif concept_result is not None:
-            console.print(
-                f"Generated {len(concept_result.concept_paths)} concept page(s)"
-            )
-            console.print(
-                "Updated "
-                f"{len(concept_result.updated_source_paths)} source page backlink "
-                "section(s)"
-            )
-            if concept_result.removed_paths:
+        if cr is not None:
+            console.print("")
+            echo_section("Concept Summary")
+            concept_result = result.concept_result
+            if result.concepts_skipped:
+                console.print(f"Skipped: {result.concepts_skip_reason}")
+            elif concept_result is not None:
                 console.print(
-                    f"Removed {len(concept_result.removed_paths)} stale concept page(s)"
+                    f"Generated {len(concept_result.concept_paths)} concept page(s)"
                 )
-            for path in concept_result.concept_paths:
-                echo_bullet(path)
+                console.print(
+                    "Updated "
+                    f"{len(concept_result.updated_source_paths)} source page backlink "
+                    "section(s)"
+                )
+                if concept_result.removed_paths:
+                    console.print(
+                        f"Removed {len(concept_result.removed_paths)} stale concept page(s)"
+                    )
+                for path in concept_result.concept_paths:
+                    echo_bullet(path)
 
         graph_result = result.graph_result
         if graph_result is not None:

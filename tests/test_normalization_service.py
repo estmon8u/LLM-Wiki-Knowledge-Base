@@ -5,7 +5,6 @@ close to the command, service, model, provider, storage, script, or test
 surface that uses it.
 """
 
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -964,7 +963,9 @@ def test_validate_conversion_output_rejects_empty_output() -> None:
         _validate_conversion_output("", page_count=1, source_name="empty.pdf")
 
 
-def test_validate_conversion_output_rejects_implausibly_short_multi_page_output() -> None:
+def test_validate_conversion_output_rejects_implausibly_short_multi_page_output() -> (
+    None
+):
     """Verifies that validate conversion output rejects implausibly short multi page output."""
     with pytest.raises(ValueError, match="implausibly short"):
         _validate_conversion_output(
