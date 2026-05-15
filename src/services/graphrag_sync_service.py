@@ -302,17 +302,26 @@ class GraphRAGSyncService:
             )
 
         if requested_method != AUTO_SYNC_METHOD:
+            method = requested_method
+            reason = f"Explicit GraphRAG index method requested: {requested_method}."
+            if requested_method in UPDATE_METHODS and output_state != "complete":
+                method = FORCED_FULL_METHODS[requested_method]
+                reason = (
+                    f"Explicit GraphRAG update method {requested_method} requires "
+                    f"complete existing output; using full {method} rebuild because "
+                    f"graph output is {output_state}."
+                )
             return GraphRAGSyncDecision(
                 action="index",
-                method=requested_method,
-                reason=f"Explicit GraphRAG index method requested: {requested_method}.",
+                method=method,
+                reason=reason,
                 output_state=output_state,
                 input_digest=input_digest,
                 config_digest=config_digest,
                 input_changed=input_changed,
                 config_changed=config_changed,
                 changed_source_count=changed_source_count,
-                cost_warning=cost_warning(requested_method),
+                cost_warning=cost_warning(method),
                 stale_metadata=stale_metadata,
             )
 

@@ -4,7 +4,7 @@ A CLI-first GraphRAG research-memory system for ingesting technical documents, b
 
 The wiki is not the retrieval engine. The wiki is the human-readable artifact layer. GraphRAG is the retrieval and synthesis engine.
 
-This branch is in the GraphRAG pivot. GraphRAG is the target default retrieval and synthesis path. The existing SQLite FTS5 search and source-grounded ask workflow is now explicit legacy behavior under `kb legacy find` and `kb legacy ask` with deprecation warnings. Top-level `kb ask` is a GraphRAG-aware answer controller that checks graph readiness, chooses a query mode with deterministic routing by default, calls GraphRAG, and can save analysis pages with graph metadata and source trace. Top-level `kb find` is a non-generative search over the maintained wiki index, including generated graph pages when they exist. GraphRAG setup and maintenance are folded into the main command surface: `kb init` creates the graph workspace, `kb update` syncs input, indexes when needed, and exports graph wiki pages from complete graph output even when indexing is skipped as current, `kb status` reports graph health, and `kb export` refreshes graph inspection pages when graph output exists. The old `kb graph` command group has been removed. See [docs/graphrag-pivot.md](docs/graphrag-pivot.md) for the pivot rationale and target architecture.
+This branch is in the GraphRAG pivot. GraphRAG is the target default retrieval and synthesis path. The existing SQLite FTS5 search and source-grounded ask workflow is now explicit source-page-only legacy behavior under `kb legacy find` and `kb legacy ask` with deprecation warnings. Top-level `kb ask` is a GraphRAG-aware answer controller that checks graph readiness, chooses a query mode with deterministic routing by default, calls GraphRAG, and can save analysis pages with graph metadata and source trace. Top-level `kb find` is a non-generative search over the maintained wiki index, including generated graph pages when they exist. GraphRAG setup and maintenance are folded into the main command surface: `kb init` creates the graph workspace, `kb update` syncs input, indexes when needed, and exports graph wiki pages from complete graph output even when indexing is skipped as current, `kb status` reports graph health, and `kb export` refreshes graph inspection pages when complete graph output exists. The old `kb graph` command group has been removed. See [docs/graphrag-pivot.md](docs/graphrag-pivot.md) for the pivot rationale and target architecture.
 
 ## Requirements
 
@@ -36,7 +36,7 @@ GraphRAG runtime defaults live in the `graph` section of `kb.config.yaml`. `kb i
 
 `kb update` uses the existing knowledge-base corpus as the source of truth. It reads `raw/_manifest.json` plus the normalized artifacts in `raw/normalized/`, writes `graph/graphrag/input/sources.json`, configures GraphRAG for JSON input with metadata prepended into chunks, and then auto-decides whether to run a full index, incremental update, retry after a failed latest attempt, or skip because the graph is already current. The preflight decision path plans those settings and input changes without mutating `settings.yaml` or `input/sources.json`, so skipped or credential-blocked graph runs do not leave partial workspace state behind. Successful index runs record the source digest, source hashes, runtime settings/prompt digest, selected method, active output directory, and command result under ignored run metadata for reproducibility. If GraphRAG credentials are missing during a normal `kb update`, the wiki compile still completes and graph indexing is skipped with a warning; `kb update --graph-only` fails clearly because the requested graph-only operation cannot run. Use `kb update --no-graph` when you intentionally want the legacy wiki compile/index refresh without touching the graph.
 
-`kb status` checks whether settings, synced input, the active complete GraphRAG output tables, and the last recorded index run are present. It prefers the active output directory recorded by the latest successful run when that directory is still complete, rather than trusting the newest output folder blindly. `kb ask --method auto|basic|local|global|drift` wraps GraphRAG query modes and can save GraphRAG answers as analysis pages with support-level and source-trace metadata. `kb export` reads GraphRAG Parquet tables and writes human-readable documents, entities, relationships, communities, and text units under `wiki/graph/` when graph output exists.
+`kb status` checks whether settings, synced input, the active complete GraphRAG output tables, vector store, and last recorded index run are present. It prefers the active output directory recorded by the latest successful run when that directory is still complete, rather than trusting the newest output folder blindly. `kb ask --method auto|basic|local|global|drift` wraps GraphRAG query modes, passes the active output directory explicitly to GraphRAG, and can save GraphRAG answers as analysis pages with support-level and source-trace metadata. `kb export` reads GraphRAG Parquet tables and writes human-readable documents, entities, relationships, communities, and text units under `wiki/graph/` when graph output exists.
 
 ## Evaluation Harness
 
@@ -259,6 +259,7 @@ poetry run kb update
 poetry run kb update path/to/new-paper.pdf
 poetry run kb update --force
 poetry run kb update --resume
+poetry run kb update --graph-only
 ```
 
 | Option | Default | Description |
@@ -266,12 +267,14 @@ poetry run kb update --resume
 | `--force` | off | Rebuild every source page even if nothing changed. |
 | `--resume` | off | Resume the most recent failed or interrupted update run. Cannot be combined with `--force`. |
 | `--no-graph` | off | Skip GraphRAG input sync, index refresh, and graph wiki export. |
+| `--graph-only` | off | Run GraphRAG sync/index/export without legacy compile or search refresh. |
+| `--allow-partial` | off | Treat GraphRAG sync/index/export failures as warnings during a normal update. |
 | `--concepts` / `--no-concepts` | config | Opt in or out of legacy concept page generation for this run. |
 
 When source paths are provided, the command adds them first. Legacy concept pages are skipped by default now that GraphRAG is the default cross-document retrieval layer; pass `--concepts` or set `concepts.enabled: true` in `kb.config.yaml` to refresh them.
 Compile summaries request structured provider output (`summary`, `key_points`, `open_questions`, and `title_suggestion`) and persist the extra fields when returned. When concept generation is enabled, concept clustering uses deterministic collocation-based grouping by default. Set `concepts.provider_backed: true` to let the configured provider propose clusters; provider output is parsed through the shared structured-output parser, cached by source-page digest, and falls back to deterministic grouping if provider clustering fails.
 
-`kb update` also owns routine GraphRAG maintenance. It creates the graph workspace if needed, syncs normalized artifacts into `graph/graphrag/input/sources.json`, checks the current GraphRAG output and run metadata, selects a full `fast` build, `fast-update`, retry after the latest failed attempt, or skip, runs the selected index when graph credentials are available, and exports graph inspection pages under `wiki/graph/` whenever complete output exists. Graph indexing is skipped with an explicit warning when provider credentials are missing during a normal update; the compile/wiki update still completes. `kb update --graph-only` treats missing graph credentials as a hard error because no non-graph work was requested.
+`kb update` also owns routine GraphRAG maintenance. It prints `Mode: full`, `Mode: graph-only`, or `Mode: wiki-only` at the start, creates the graph workspace if needed, syncs normalized artifacts into `graph/graphrag/input/sources.json`, checks the current GraphRAG output and run metadata, selects a full `fast` build, `fast-update`, retry after the latest failed attempt, or skip, runs the selected index when graph credentials are available, and exports graph inspection pages under `wiki/graph/` whenever complete output exists. Graph indexing is skipped with an explicit warning when provider credentials are missing during a normal update; the compile/wiki update still completes. `kb update --graph-only` treats missing graph credentials as a hard error because no non-graph work was requested.
 
 ### Main GraphRAG behavior
 
@@ -283,7 +286,7 @@ The `kb graph` command group has been removed. GraphRAG setup, input sync, index
 | `kb update` | Syncs normalized sources, auto-selects the graph index action, runs GraphRAG indexing when credentials are present, records run metadata, and exports graph wiki pages from complete output even when indexing is skipped. |
 | `kb update --force` | Rebuilds source pages and forces a full GraphRAG rebuild. |
 | `kb update --no-graph` | Updates the wiki and legacy index without syncing or indexing GraphRAG. |
-| `kb status` / `kb status --json` | Includes GraphRAG workspace, input, active output directory, output-table, last-index-run, row-count, and next-action fields. |
+| `kb status` / `kb status --json` | Includes GraphRAG workspace, input, active output directory, output-table, vector-store, last-index-run, row-count, and next-action fields. |
 | `kb ask --method auto|basic|local|global|drift` | Queries GraphRAG through the default controller. |
 | `kb export` | Exports the vault and refreshes `wiki/graph/` when GraphRAG output exists. |
 
@@ -291,14 +294,14 @@ GraphRAG indexing uses the same decision table that powered the former graph syn
 
 | State | Default action |
 | --- | --- |
-| No GraphRAG Parquet output exists | Full rebuild with `fast` |
-| Output exists but required tables are incomplete | Full rebuild with `fast` |
+| No GraphRAG Parquet output or vector store exists | Full rebuild with `fast` |
+| Output exists but required tables or vector store are incomplete | Full rebuild with `fast` |
 | Source hashes changed since the last successful index | Incremental update with `fast-update` |
 | Latest index attempt failed after an older success | Retry with `fast-update` when complete output exists, otherwise `fast` |
 | Graph runtime settings or prompts changed | Full rebuild with `fast` |
 | Sources and runtime config match the last successful index | Skip indexing |
 
-Graph wiki export reads standard GraphRAG tables such as `documents`, `text_units`, `entities`, `relationships`, `communities`, and `community_reports` from the active complete output directory under `graph/graphrag/output/`. It writes:
+Graph wiki export reads standard GraphRAG tables such as `documents`, `text_units`, `entities`, `relationships`, `communities`, and `community_reports` from the active complete output directory under `graph/graphrag/output/`. A complete output directory means those tables and the configured vector store are present. It writes:
 
 - `wiki/graph/index.md`
 - `wiki/graph/documents/*.md`
@@ -314,6 +317,7 @@ Troubleshooting paths:
 - Workspace: `graph/graphrag/`
 - Synced GraphRAG input: `graph/graphrag/input/sources.json`
 - Generated GraphRAG output: `graph/graphrag/output/`
+- GraphRAG vector store: normally `graph/graphrag/output/lancedb/`
 - Active output in JSON status: `graph_status.active_output_dir`
 - Graph wiki pages: `wiki/graph/`
 - Local index-run metadata: `graph/runs/graph_index_runs.json`
@@ -341,7 +345,7 @@ modes or the deprecated FTS ask path.
 
 ### `kb legacy find <terms>`
 
-Search the deprecated SQLite FTS5 wiki index for relevant pages and snippets.
+Search the deprecated SQLite FTS5 comparator index for source-page snippets.
 
 ```bash
 poetry run kb legacy find "traceability citation"
@@ -356,9 +360,9 @@ poetry run kb legacy find --json "REALM vs RAG"
 
 Uses a SQLite FTS5 chunk index stored at `graph/exports/search_index.sqlite3`.
 This is temporary legacy behavior rather than the final retrieval engine.
-The command searches source pages, generated concept pages, and saved analysis
-pages, ranks hits with BM25-style FTS ordering, and returns page-level results
-using the best matching chunk snippet. JSON output includes
+The command searches compiled source pages only, ranks hits with BM25-style FTS
+ordering, and returns page-level results using the best matching chunk snippet.
+JSON output includes
 `retriever: "legacy-fts"` and `deprecated: true` metadata. Evidence chunks skip
 metadata-only sections such as `Source Details`, `Source Pages`,
 `Related Concept Pages`, and `Citations` so retrieval and citations point at
@@ -418,7 +422,7 @@ Requires a configured provider. Retrieves the best-matching source-page chunks a
 
 Provider-backed answers must be both parseable and useful. Empty `answer_markdown`, missing claims when `insufficient_evidence` is false, claims without citation refs, and citation refs outside the retrieved evidence set fail the command instead of being treated as a successful answer. Provider failures include response diagnostics such as finish reason and token counts when the selected SDK exposes them.
 
-Use `--save` or `--save-as` to persist the answer as a markdown analysis page in `wiki/analysis/` with YAML frontmatter (`type: analysis`), the question, a timestamp, `insufficient_evidence`, claim/citation counts, structured claims/provider citations when available, provider status diagnostics, and backlinks to cited source chunks. Blank answers are refused rather than saved. Saved analysis pages are indexed for `kb legacy find` and appear in `wiki/index.md` immediately, but later legacy ask runs exclude analysis pages from the evidence set so saved answers are not recursively cited as primary evidence. Repeated saves use unique `wiki/log.md` headings so lint does not treat a rerun as a duplicate-heading issue.
+Use `--save` or `--save-as` to persist the answer as a markdown analysis page in `wiki/analysis/` with YAML frontmatter (`type: analysis`), the question, a timestamp, `insufficient_evidence`, claim/citation counts, structured claims/provider citations when available, provider status diagnostics, and backlinks to cited source chunks. Blank answers are refused rather than saved. Saved analysis pages are indexed for top-level `kb find` and appear in `wiki/index.md` immediately, but `kb legacy find` and later legacy ask runs stay source-only so saved answers are not recursively cited as primary evidence. Repeated saves use unique `wiki/log.md` headings so lint does not treat a rerun as a duplicate-heading issue.
 
 ### `kb lint`
 

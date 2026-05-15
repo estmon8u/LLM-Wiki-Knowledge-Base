@@ -19,6 +19,8 @@ from src.services.graphrag_query_service import (
 from src.services.graphrag_status_service import (
     GraphRAGStatus,
     GraphRAGStatusService,
+    graph_not_ready_message,
+    graph_ready_for_query,
     iso_timestamp_after,
     _timestamp_iso,
 )
@@ -88,8 +90,9 @@ class GraphAskControllerService:
         """
         graph_config = self._resolve_graph_config()
         status = self.status_service.status()
-        if _graph_ready_for_query(status):
-            self._require_credentials(graph_config)
+        if not graph_ready_for_query(status):
+            raise GraphAskControllerError(graph_not_ready_message(status))
+        self._require_credentials(graph_config)
 
         staleness = self._check_staleness(status)
 
@@ -153,17 +156,6 @@ class GraphAskControllerService:
             return _timestamp_iso(path.stat().st_mtime)
         except OSError:
             return None
-
-
-def _graph_ready_for_query(status: GraphRAGStatus) -> bool:
-    return (
-        status.workspace_initialized
-        and status.input_exists
-        and status.input_document_count > 0
-        and status.output_present
-        and status.output_complete
-        and status.last_index_success is not False
-    )
 
 
 def _assess_claim_support(answer: GraphRAGQueryAnswer, staleness: list[str]) -> str:

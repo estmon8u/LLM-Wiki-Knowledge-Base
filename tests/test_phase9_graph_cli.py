@@ -58,6 +58,9 @@ def _write_graph_tables(root: Path) -> None:
     pd.DataFrame(
         [{"id": "report-0", "community": 0, "summary": "Retrieval systems."}]
     ).to_parquet(output_dir / "community_reports.parquet")
+    vector_marker = output_dir / "lancedb" / "vector-store.marker"
+    vector_marker.parent.mkdir(parents=True, exist_ok=True)
+    vector_marker.write_text("ready", encoding="utf-8")
 
 
 def _graph_answer(*, saved_path: str | None = None) -> GraphRAGQueryAnswer:

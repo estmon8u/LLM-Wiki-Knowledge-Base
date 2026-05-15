@@ -59,9 +59,9 @@ class AnthropicProvider(TextProvider):
             "messages": [{"role": "user", "content": request.prompt}],
         }
         if use_adaptive_thinking:
-            kwargs["thinking"] = {"type": "adaptive"}
-            kwargs["output_config"] = {
-                "effort": request.reasoning_effort or self._thinking_effort
+            kwargs["thinking"] = {
+                "type": "adaptive",
+                "effort": request.reasoning_effort or self._thinking_effort,
             }
         elif self._thinking_budget and self._thinking_budget > 0:
             kwargs["thinking"] = {

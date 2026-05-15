@@ -333,7 +333,7 @@ class MistralOcrConverter:
                 raise ValueError(
                     f"Mistral OCR requires environment variable {self.api_key_env}."
                 )
-            from mistralai.client.sdk import Mistral
+            from mistralai.client import Mistral
 
             self._client = Mistral(api_key=api_key)
         return self._client
@@ -838,7 +838,7 @@ class NormalizationService:
 
     def _pdf_converter_instance(self) -> DoclingPdfConverter:
         if self._pdf_converter is None:
-            self._pdf_converter = PdfDocumentConverter()
+            self._pdf_converter = DoclingPdfConverter()
         return self._pdf_converter
 
     def _mistral_ocr_converter_instance(self) -> MistralOcrConverter:
@@ -1085,6 +1085,3 @@ def _is_probable_title(candidate: str) -> bool:
 
 def _normalize_newlines(contents: str) -> str:
     return markdown_normalize_newlines(contents).lstrip("\ufeff")
-
-
-PdfDocumentConverter = DoclingPdfConverter

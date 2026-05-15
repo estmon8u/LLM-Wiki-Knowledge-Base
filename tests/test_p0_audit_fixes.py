@@ -12,6 +12,7 @@ from click.testing import CliRunner
 from src.cli import main
 from src.services.doctor_service import DoctorService
 from src.services.export_service import ExportService
+from src.services.graphrag_status_service import GraphRAGStatusService
 from src.services.search_service import (
     _extract_frontmatter_type,
     _is_generated_concept_page,
@@ -407,6 +408,22 @@ def test_doctor_checks_converters(test_project) -> None:
     conv_check = next(c for c in report.checks if c.name == "converters")
     # At minimum we check it doesn't crash; converter availability depends on env
     assert isinstance(conv_check.ok, bool)
+
+
+def test_doctor_reports_missing_graphrag_vector_store(test_project) -> None:
+    """Verifies that doctor checks GraphRAG vector-store readiness separately."""
+    status_service = GraphRAGStatusService(test_project.paths)
+    doctor = DoctorService(
+        test_project.paths,
+        test_project.config,
+        graphrag_status_service=status_service,
+    )
+
+    report = doctor.diagnose()
+
+    vector_check = next(c for c in report.checks if c.name == "graphrag_vector_store")
+    assert not vector_check.ok
+    assert "vector store" in vector_check.detail
 
 
 def test_doctor_fails_for_uninitialized_project(uninitialized_project) -> None:

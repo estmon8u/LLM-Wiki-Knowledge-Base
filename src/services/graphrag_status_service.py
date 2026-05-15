@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from src.services.graphrag_command_service import GraphRAGCommandResult
 from src.services.project_service import ProjectPaths, atomic_write_text, utc_now_iso
 
@@ -101,11 +103,14 @@ class GraphRAGStatus:
     community_count: int | None = None
     community_report_count: int | None = None
     active_output_dir: Path | None = None
+    vector_store_path: Path | None = None
+    vector_store_exists: bool = False
+    vector_store_readable: bool = False
 
     @property
     def missing_tables(self) -> list[str]:
-        """Return required GraphRAG output tables missing from active output."""
-        return [
+        """Return required GraphRAG output artifacts missing from active output."""
+        missing = [
             name
             for name, present in (
                 ("documents", self.documents_present),
@@ -117,6 +122,9 @@ class GraphRAGStatus:
             )
             if not present
         ]
+        if not self.vector_store_readable:
+            missing.append("vector_store")
+        return missing
 
     @property
     def state(self) -> str:
@@ -135,7 +143,7 @@ class GraphRAGStatus:
 
     @property
     def output_complete(self) -> bool:
-        """Return True only when all required GraphRAG output tables are present."""
+        """Return True only when all required GraphRAG output artifacts are present."""
         return (
             self.output_present
             and self.documents_present
@@ -144,6 +152,7 @@ class GraphRAGStatus:
             and self.relationships_present
             and self.communities_present
             and self.community_reports_present
+            and self.vector_store_readable
         )
 
     def to_dict(self, project_root: Path) -> dict[str, Any]:
@@ -162,6 +171,7 @@ class GraphRAGStatus:
             "input_path",
             "output_dir",
             "active_output_dir",
+            "vector_store_path",
         ):
             path = payload[key]
             payload[key] = (
@@ -211,7 +221,10 @@ class GraphRAGStatusService:
             for name, patterns in GRAPH_OUTPUT_TABLES.items()
         }
         tables = {name: path is not None for name, path in table_paths.items()}
-        output_complete = all(tables.values())
+        vector_store_path = self._vector_store_path(active_output_dir)
+        vector_store_exists = bool(vector_store_path and vector_store_path.exists())
+        vector_store_readable = self._vector_store_readable(vector_store_path)
+        output_complete = all(tables.values()) and vector_store_readable
         table_counts = {
             name: self._table_row_count(path) if path is not None else None
             for name, path in table_paths.items()
@@ -246,6 +259,8 @@ class GraphRAGStatusService:
                 input_document_count=input_document_count,
                 output_present=output_present,
                 output_complete=output_complete,
+                vector_store_exists=vector_store_exists,
+                vector_store_readable=vector_store_readable,
                 last_run=last_run,
             ),
             last_index_input_digest=last_run.get("input_digest") if last_run else None,
@@ -268,6 +283,9 @@ class GraphRAGStatusService:
             community_count=table_counts["communities"],
             community_report_count=table_counts["community_reports"],
             active_output_dir=active_output_dir,
+            vector_store_path=vector_store_path,
+            vector_store_exists=vector_store_exists,
+            vector_store_readable=vector_store_readable,
         )
 
     def record_index_run(
@@ -369,6 +387,15 @@ class GraphRAGStatusService:
                     return len(value)
         return 0
 
+    def _load_settings(self) -> dict[str, Any]:
+        if not self.settings_path.exists():
+            return {}
+        try:
+            payload = yaml.safe_load(self.settings_path.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
     def _active_output_dir(self, *, prefer_recorded: bool = True) -> Path | None:
         if not self.output_dir.exists():
             return None
@@ -407,7 +434,7 @@ class GraphRAGStatusService:
         return all(
             self._table_path(output_dir, *patterns) is not None
             for patterns in GRAPH_OUTPUT_TABLES.values()
-        )
+        ) and self._vector_store_readable(self._vector_store_path(output_dir))
 
     def _table_path(self, output_dir: Path | None, *tokens: str) -> Path | None:
         if output_dir is None or not output_dir.exists():
@@ -440,6 +467,47 @@ class GraphRAGStatusService:
             arrow_lib.ArrowException,
         ):
             return None
+
+    def _vector_store_path(self, active_output_dir: Path | None) -> Path | None:
+        candidates: list[Path] = []
+        configured = self._configured_vector_store_path()
+        if configured is not None:
+            candidates.append(configured)
+        if active_output_dir is not None:
+            candidates.append(active_output_dir / "lancedb")
+            if active_output_dir.parent != active_output_dir:
+                candidates.append(active_output_dir.parent / "lancedb")
+        candidates.append(self.output_dir / "lancedb")
+
+        unique_candidates = list(dict.fromkeys(candidates))
+        for candidate in unique_candidates:
+            if candidate.exists():
+                return candidate
+        return unique_candidates[0] if unique_candidates else None
+
+    def _configured_vector_store_path(self) -> Path | None:
+        settings = self._load_settings()
+        vector_store = settings.get("vector_store", {})
+        if not isinstance(vector_store, dict):
+            return self.output_dir / "lancedb"
+        db_uri = vector_store.get("db_uri") or "output/lancedb"
+        if not isinstance(db_uri, str) or not db_uri.strip():
+            return self.output_dir / "lancedb"
+        path = Path(db_uri)
+        if path.is_absolute():
+            return path
+        return self.workspace_dir / path
+
+    @staticmethod
+    def _vector_store_readable(path: Path | None) -> bool:
+        if path is None or not path.exists():
+            return False
+        try:
+            if path.is_dir():
+                return next(path.iterdir(), None) is not None
+            return path.stat().st_size > 0
+        except OSError:
+            return False
 
     def _latest_parquet_mtime_iso(self, output_dir: Path | None = None) -> str | None:
         output_dir = output_dir or self.output_dir
@@ -490,7 +558,9 @@ class GraphRAGStatusService:
         input_document_count: int,
         output_present: bool,
         output_complete: bool,
-        last_run: dict[str, Any] | None,
+        vector_store_exists: bool = True,
+        vector_store_readable: bool = True,
+        last_run: dict[str, Any] | None = None,
     ) -> str:
         if not workspace_initialized:
             return "Run `kb init`."
@@ -505,8 +575,58 @@ class GraphRAGStatusService:
                 return "Run `kb update` to build the graph index."
             return "Run `kb update` to sync and build the graph index."
         if not output_complete:
+            if not vector_store_exists:
+                return "Run `kb update --graph-only` to rebuild the missing graph vector store."
+            if not vector_store_readable:
+                return "Run `kb update --graph-only` to rebuild the unreadable graph vector store."
             return "Run `kb update` to rebuild incomplete graph index output."
         return 'Run `kb ask --method drift "..."` or `kb export`.'
+
+
+def graph_ready_for_query(status: GraphRAGStatus) -> bool:
+    """Return whether GraphRAG has every artifact required for querying."""
+    return (
+        status.workspace_initialized
+        and status.input_exists
+        and status.input_document_count > 0
+        and status.output_present
+        and status.output_complete
+        and status.vector_store_readable
+        and status.last_index_success is not False
+    )
+
+
+def graph_not_ready_message(status: GraphRAGStatus) -> str:
+    """Return a precise next-step message for an unqueryable graph."""
+    if not status.workspace_initialized:
+        return "GraphRAG workspace is not initialized. Run `kb init` first."
+    if not status.input_exists:
+        return "GraphRAG input not found. Run `kb update` first."
+    if status.input_document_count == 0:
+        return (
+            "GraphRAG input has no documents. Add and compile sources, then run "
+            "`kb update`."
+        )
+    if status.last_index_success is False:
+        return "The last GraphRAG index run failed. Re-run `kb update` before asking."
+    if not status.output_present:
+        return "GraphRAG index output not found. Run `kb update`."
+    if not status.vector_store_exists:
+        return (
+            "GraphRAG vector store not found. Run `kb update --graph-only` to "
+            "rebuild the graph index."
+        )
+    if not status.vector_store_readable:
+        return (
+            "GraphRAG vector store is empty or unreadable. Run `kb update --graph-only` "
+            "to rebuild the graph index."
+        )
+    if not status.output_complete:
+        return (
+            "GraphRAG index output is incomplete. Run `kb update --graph-only` to "
+            "rebuild it."
+        )
+    return f"GraphRAG index is not ready. {status.next_action}"
 
 
 def _tail(value: str, *, max_chars: int = 2000) -> str:

@@ -50,7 +50,7 @@ def create_command() -> click.Command:
         graphrag_workspace_service = command_context.services.get("graphrag_workspace")
 
         created_items = project_service.ensure_structure()
-        created_items.extend(config_service.ensure_files())
+        created_items.extend(config_service.ensure_files(repair_invalid=True))
         if manifest_service.ensure_manifest():
             created_items.append("raw/_manifest.json")
         if graphrag_workspace_service is not None and command_context.config.get(

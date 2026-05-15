@@ -87,7 +87,13 @@ def create_command() -> click.Command:
 
         search_service = command_context.services["search"]
         query = " ".join(query_terms)
-        results = search_service.search(query, limit=limit, include_concepts=True)
+        results = search_service.search(
+            query,
+            limit=limit,
+            include_concepts=False,
+            include_analysis=False,
+            page_types={"source"},
+        )
 
         if as_json:
             emit_json(

@@ -419,6 +419,19 @@ class DoctorService:
                 severity="ok" if input_ok else sev,
             )
         )
+        vector_ok = bool(status and status.vector_store_readable)
+        checks.append(
+            DoctorCheck(
+                name="graphrag_vector_store",
+                ok=vector_ok,
+                detail=(
+                    "GraphRAG vector store is present."
+                    if vector_ok
+                    else _graphrag_vector_store_detail(status)
+                ),
+                severity="ok" if vector_ok else sev,
+            )
+        )
         index_ok = bool(status and status.output_complete)
         checks.append(
             DoctorCheck(
@@ -527,3 +540,9 @@ def _graphrag_index_detail(status: Any | None) -> str:
     if status is not None and getattr(status, "output_present", False):
         return "GraphRAG index output is incomplete. Run `kb update`."
     return "GraphRAG index output is missing. Run `kb update`."
+
+
+def _graphrag_vector_store_detail(status: Any | None) -> str:
+    if status is not None and getattr(status, "vector_store_exists", False):
+        return "GraphRAG vector store is empty or unreadable. Run `kb update --graph-only`."
+    return "GraphRAG vector store is missing. Run `kb update --graph-only`."

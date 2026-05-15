@@ -2336,6 +2336,44 @@ def test_query_service_excludes_saved_analysis_pages_from_evidence(
     assert "wiki/analysis/prior-answer.md" not in provider.requests[0].prompt
 
 
+def test_query_service_uses_source_pages_only_for_legacy_evidence(
+    test_project,
+) -> None:
+    """Regression: legacy ask must not reuse generated graph pages as evidence."""
+    test_project.write_file(
+        "wiki/sources/primary.md",
+        "---\ntitle: Primary\nsummary: S\ntype: source\n---\n\n"
+        "# Primary\n\ntraceability source evidence.\n",
+    )
+    test_project.write_file(
+        "wiki/graph/entities/traceability.md",
+        "---\ntitle: Traceability Graph\ntype: graph_entity\n---\n\n"
+        "# Traceability Graph\n\ntraceability generated graph page.\n",
+    )
+    provider = SequencedProvider(
+        [
+            _structured_query_response(
+                answer="Traceability comes from source evidence.",
+                ref="wiki/sources/primary.md#chunk-0",
+                title="Primary",
+                claim="Traceability comes from source evidence.",
+            )
+        ]
+    )
+    query_service = QueryService(
+        test_project.paths,
+        test_project.services["search"],
+        provider=provider,
+    )
+
+    answer = query_service.answer_question("traceability", limit=5)
+
+    assert [citation.path for citation in answer.citations] == [
+        "wiki/sources/primary.md"
+    ]
+    assert "wiki/graph/entities/traceability.md" not in provider.requests[0].prompt
+
+
 def test_save_answer_includes_summary_in_frontmatter(test_project) -> None:
     """Verifies that save answer includes summary in frontmatter.
 

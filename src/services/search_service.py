@@ -1,9 +1,4 @@
-"""Search service service behavior for the knowledge-base workflow.
-
-This module belongs to `src.services.search_service` and keeps related behavior
-close to the command, service, model, provider, storage, script, or test
-surface that uses it.
-"""
+"""Maintained wiki search index used by `kb find` and saved-page refreshes."""
 
 from __future__ import annotations
 
@@ -59,11 +54,7 @@ class _SectionChunk:
 
 
 class SearchService:
-    """Coordinates search operations.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Indexes generated wiki markdown for non-generative navigation."""
 
     def __init__(self, paths: ProjectPaths) -> None:
         self.paths = paths
@@ -79,6 +70,7 @@ class SearchService:
         limit: int = 5,
         include_concepts: bool = False,
         include_analysis: bool = True,
+        page_types: set[str] | None = None,
     ) -> list[SearchResult]:
         """Search.
 
@@ -87,6 +79,7 @@ class SearchService:
             limit: Maximum number of results to return or process.
             include_concepts: Include concepts value used by the operation.
             include_analysis: Include analysis value used by the operation.
+            page_types: Optional frontmatter ``type`` allow-list.
 
         Returns:
             list[SearchResult] produced by the operation.
@@ -103,6 +96,7 @@ class SearchService:
                     limit=limit,
                     include_concepts=include_concepts,
                     include_analysis=include_analysis,
+                    page_types=page_types,
                 )
 
         return self._scan_markdown_files(
@@ -110,6 +104,7 @@ class SearchService:
             limit=limit,
             include_concepts=include_concepts,
             include_analysis=include_analysis,
+            page_types=page_types,
         )
 
     def refresh(self, *, force: bool = False) -> bool:
@@ -181,6 +176,7 @@ class SearchService:
         limit: int,
         include_concepts: bool = False,
         include_analysis: bool = True,
+        page_types: set[str] | None = None,
     ) -> list[SearchResult]:
         try:
             hits = self.index_store.search(
@@ -195,6 +191,7 @@ class SearchService:
                 limit=limit,
                 include_concepts=include_concepts,
                 include_analysis=include_analysis,
+                page_types=page_types,
             )
 
         results: list[SearchResult] = []
@@ -205,6 +202,8 @@ class SearchService:
             if not include_concepts and hit.page_type == "concept":
                 continue
             if not include_analysis and hit.page_type == "analysis":
+                continue
+            if page_types is not None and hit.page_type not in page_types:
                 continue
             seen_paths.add(hit.page_path)
             snippet = _clean_search_snippet(hit.snippet)
@@ -232,6 +231,7 @@ class SearchService:
         limit: int,
         include_concepts: bool = False,
         include_analysis: bool = True,
+        page_types: set[str] | None = None,
     ) -> list[SearchResult]:
         results: list[SearchResult] = []
         for file_path in sorted(self.paths.wiki_dir.rglob("*.md")):
@@ -243,8 +243,10 @@ class SearchService:
             ):
                 continue
             text = file_path.read_text(encoding="utf-8")
-            page_type = _extract_frontmatter_type(text)
+            page_type = _page_type(text, relative_path)
             if not include_analysis and page_type == "analysis":
+                continue
+            if page_types is not None and page_type not in page_types:
                 continue
             normalized = text.lower()
             score = sum(normalized.count(term) for term in terms)
@@ -290,7 +292,9 @@ class SearchService:
 
         frontmatter = _extract_frontmatter(text)
         title = _page_title(file_path, text, frontmatter)
-        page_type = _frontmatter_value(frontmatter, "type")
+        page_type = _page_type_from_frontmatter(frontmatter) or _page_type_from_path(
+            relative_path
+        )
         metadata = _frontmatter_search_text(frontmatter)
         chunks = _chunk_markdown_body(text, title)
         if not chunks:
@@ -321,8 +325,29 @@ def _strip_frontmatter(text: str) -> str:
 
 def _extract_frontmatter_type(text: str) -> str:
     """Return the ``type`` value from YAML frontmatter, or empty string."""
-    value = markdown_parse_frontmatter(text).get("type")
+    return _page_type_from_frontmatter(markdown_parse_frontmatter(text))
+
+
+def _page_type(text: str, relative_path: str) -> str:
+    """Return the semantic page type from frontmatter or wiki path."""
+    return _extract_frontmatter_type(text) or _page_type_from_path(relative_path)
+
+
+def _page_type_from_frontmatter(frontmatter: dict[str, object]) -> str:
+    value = frontmatter.get("type")
     return value.strip().strip("\"'") if isinstance(value, str) else ""
+
+
+def _page_type_from_path(relative_path: str) -> str:
+    if relative_path.startswith("wiki/sources/"):
+        return "source"
+    if relative_path.startswith("wiki/concepts/"):
+        return "concept"
+    if relative_path.startswith("wiki/analysis/"):
+        return "analysis"
+    if relative_path.startswith("wiki/graph/"):
+        return "graph"
+    return ""
 
 
 def _is_generated_concept_page(file_path: Path, paths: ProjectPaths) -> bool:

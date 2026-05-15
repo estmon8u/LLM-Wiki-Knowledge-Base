@@ -106,6 +106,10 @@ def _write_complete_output(test_project) -> None:
         "community_reports",
     ):
         test_project.write_file(f"graph/graphrag/output/{table}.parquet", "")
+    test_project.write_file(
+        "graph/graphrag/output/lancedb/vector-store.marker",
+        "ready",
+    )
 
 
 def _build_service(test_project, runner) -> GraphRAGSyncService:
@@ -461,7 +465,7 @@ def test_sync_force_coerces_update_method_to_full_rebuild(test_project) -> None:
     assert calls[0][calls[0].index("--method") + 1] == "fast"
 
 
-def test_sync_respects_explicit_method_override(test_project) -> None:
+def test_sync_respects_explicit_full_method_override(test_project) -> None:
     """Verifies that sync respects explicit method override.
 
     Args:
@@ -485,14 +489,37 @@ def test_sync_respects_explicit_method_override(test_project) -> None:
     _write_source(test_project)
     service = _build_service(test_project, runner)
 
+    result = service.sync(method="standard")
+
+    assert result.decision.action == "index"
+    assert result.decision.method == "standard"
+    assert result.decision.reason == (
+        "Explicit GraphRAG index method requested: standard."
+    )
+    assert calls[0][calls[0].index("--method") + 1] == "standard"
+
+
+def test_sync_coerces_explicit_update_method_when_output_missing(
+    test_project,
+) -> None:
+    """Regression: update methods require complete existing graph output."""
+    calls = []
+
+    def runner(command, *, cwd, capture_output, text):
+        """Runner."""
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="rebuilt\n", stderr="")
+
+    _write_settings(test_project)
+    _write_source(test_project)
+    service = _build_service(test_project, runner)
+
     result = service.sync(method="standard-update")
 
     assert result.decision.action == "index"
-    assert result.decision.method == "standard-update"
-    assert result.decision.reason == (
-        "Explicit GraphRAG index method requested: standard-update."
-    )
-    assert calls[0][calls[0].index("--method") + 1] == "standard-update"
+    assert result.decision.method == "standard"
+    assert "requires complete existing output" in result.decision.reason
+    assert calls[0][calls[0].index("--method") + 1] == "standard"
 
 
 def test_sync_rebuilds_complete_output_when_metadata_is_missing(test_project) -> None:

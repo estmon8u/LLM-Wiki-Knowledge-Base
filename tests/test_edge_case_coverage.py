@@ -309,6 +309,8 @@ def test_graphrag_status_edge_cases(tmp_path) -> None:
         "relationships_present": True,
         "communities_present": True,
         "community_reports_present": True,
+        "vector_store_exists": True,
+        "vector_store_readable": True,
         "last_index_run_id": None,
         "last_index_run_at": None,
         "last_index_method": None,

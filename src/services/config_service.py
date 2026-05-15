@@ -256,7 +256,7 @@ class ConfigService:
             yaml.safe_dump(config, sort_keys=False),
         )
 
-    def ensure_files(self) -> list[str]:
+    def ensure_files(self, *, repair_invalid: bool = False) -> list[str]:
         """Ensure files.
 
         Returns:
@@ -269,6 +269,15 @@ class ConfigService:
                 yaml.safe_dump(DEFAULT_CONFIG, sort_keys=False),
             )
             created.append(self.paths.config_file.name)
+        elif repair_invalid:
+            try:
+                self.load()
+            except (ValueError, yaml.YAMLError):
+                atomic_write_text(
+                    self.paths.config_file,
+                    yaml.safe_dump(DEFAULT_CONFIG, sort_keys=False),
+                )
+                created.append(f"{self.paths.config_file.name} (regenerated)")
         if not self.paths.schema_file.exists():
             atomic_write_text(self.paths.schema_file, DEFAULT_SCHEMA)
             created.append(self.paths.schema_file.name)

@@ -157,6 +157,23 @@ def test_init_is_idempotent() -> None:
         assert "project already had the required scaffold" in result.output
 
 
+def test_init_regenerates_malformed_config() -> None:
+    """Verifies init can recover a malformed config file."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        Path("kb.config.yaml").write_text("version: [\n", encoding="utf-8")
+
+        result = runner.invoke(main, ["init"])
+
+        assert result.exit_code == 0
+        assert "kb.config.yaml (regenerated)" in result.output
+        assert isinstance(
+            yaml.safe_load(Path("kb.config.yaml").read_text(encoding="utf-8")),
+            dict,
+        )
+
+
 def test_help_lists_core_commands() -> None:
     """Verifies that help lists core commands."""
     runner = CliRunner()
@@ -177,6 +194,20 @@ def test_help_lists_core_commands() -> None:
         "update",
     ):
         assert command_name in result.output
+
+
+def test_subcommand_help_works_with_malformed_config() -> None:
+    """Verifies command help does not require loading a valid project config."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        Path("kb.config.yaml").write_text("version: [\n", encoding="utf-8")
+
+        result = runner.invoke(main, ["update", "--help"])
+
+        assert result.exit_code == 0
+        assert "Usage:" in result.output
+        assert "--graph-only" in result.output
 
 
 def test_running_cli_without_subcommand_prints_help() -> None:
@@ -221,6 +252,7 @@ def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
             update_result = runner.invoke(main, ["update", "--no-graph"])
         assert update_result.exit_code == 0
         assert "Update Summary" in update_result.output
+        assert "Mode: wiki-only" in update_result.output
         assert "Compiled 1 source page(s)" in update_result.output
 
         lint_result = runner.invoke(main, ["lint"])
@@ -253,6 +285,7 @@ def test_end_to_end_cli_flow_for_local_html_source() -> None:
     """Verifies that end to end cli flow for local html source."""
     runner = CliRunner()
     with runner.isolated_filesystem():
+        offline_env = {"MISTRAL_API_KEY": ""}
         Path("sample.html").write_text(
             "<html><body><h1>HTML Research Note</h1>"
             "<p>Traceability survives conversion.</p></body></html>",
@@ -261,7 +294,7 @@ def test_end_to_end_cli_flow_for_local_html_source() -> None:
 
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        ingest_result = runner.invoke(main, ["add", "sample.html"])
+        ingest_result = runner.invoke(main, ["add", "sample.html"], env=offline_env)
         assert ingest_result.exit_code == 0
         assert "Ingested HTML Research Note" in ingest_result.output
         assert "raw/normalized/html-research-note.md" in ingest_result.output
@@ -270,11 +303,26 @@ def test_end_to_end_cli_flow_for_local_html_source() -> None:
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             update_result = runner.invoke(main, ["update", "--no-graph"])
         assert update_result.exit_code == 0
+        assert "Mode: wiki-only" in update_result.output
         assert "Compiled 1 source page(s)" in update_result.output
 
         search_result = runner.invoke(main, ["legacy", "find", "traceability"])
         assert search_result.exit_code == 0
         assert "wiki/sources/html-research-note.md" in search_result.output
+
+        graph_page = Path("wiki/graph/entities/generated.md")
+        graph_page.parent.mkdir(parents=True, exist_ok=True)
+        graph_page.write_text(
+            "---\ntitle: Generated Graph\ntype: graph_entity\n---\n\n"
+            "# Generated Graph\n\nuniquegraphtoken appears only here.\n",
+            encoding="utf-8",
+        )
+        find_result = runner.invoke(main, ["find", "uniquegraphtoken"])
+        legacy_find_result = runner.invoke(main, ["legacy", "find", "uniquegraphtoken"])
+        assert find_result.exit_code == 0
+        assert "wiki/graph/entities/generated.md" in find_result.output
+        assert legacy_find_result.exit_code == 0
+        assert "No wiki pages matched that query." in legacy_find_result.output
 
 
 def test_legacy_search_empty_and_top_level_find_searches_wiki() -> None:

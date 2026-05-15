@@ -152,6 +152,7 @@ class GraphRAGCommandService:
         question: str,
         *,
         method: str,
+        data_dir: Path | None = None,
         community_level: int | None = None,
         dynamic_community_selection: bool | None = None,
         response_type: str | None = None,
@@ -163,6 +164,7 @@ class GraphRAGCommandService:
         Args:
             question: User question to answer from available evidence.
             method: Method value used by the operation.
+            data_dir: Active GraphRAG output directory containing parquet files.
             community_level: Community level value used by the operation.
             dynamic_community_selection: Dynamic community selection value used by the operation.
             response_type: Response type value used by the operation.
@@ -179,6 +181,8 @@ class GraphRAGCommandService:
             "--method",
             method,
         ]
+        if data_dir is not None:
+            args.extend(["--data", str(data_dir)])
         if community_level is not None:
             args.extend(["--community-level", str(community_level)])
         if dynamic_community_selection is True:

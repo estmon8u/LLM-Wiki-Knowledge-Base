@@ -22,7 +22,7 @@ from src.services.graphrag_command_service import (
     GraphRAGCommandResult,
     GraphRAGCommandService,
 )
-from src.services.graphrag_query_service import GraphRAGQueryError, GraphRAGQueryService
+from src.services.graphrag_query_service import GraphRAGQueryService
 from src.services.graphrag_status_service import GraphRAGStatusService
 from src.services.query_router_service import QueryRouterService
 
@@ -58,6 +58,10 @@ def _write_ready_graph(test_project) -> None:
     pd.DataFrame(
         [{"id": "report-0", "community": 0, "title": "RAG", "summary": "RAG summary."}]
     ).to_parquet(output_dir / "community_reports.parquet")
+    test_project.write_file(
+        "graph/graphrag/output/lancedb/vector-store.marker",
+        "ready",
+    )
     GraphRAGStatusService(test_project.paths).record_index_run(
         method="fast",
         dry_run=False,
@@ -187,6 +191,31 @@ def test_controller_reports_missing_graph_credentials(
         controller.ask("What is RAG?")
 
 
+def test_controller_stops_before_query_when_vector_store_missing(
+    test_project, monkeypatch
+) -> None:
+    """Regression: kb ask should not call GraphRAG when the index is incomplete."""
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    _write_ready_graph(test_project)
+    marker = (
+        test_project.paths.graph_dir
+        / "graphrag"
+        / "output"
+        / "lancedb"
+        / "vector-store.marker"
+    )
+    marker.unlink()
+
+    def fail_runner(command, **kwargs):
+        """Fail if the controller reaches the query subprocess."""
+        raise AssertionError("GraphRAG query should not run")
+
+    controller = _build_controller(test_project, fail_runner)
+
+    with pytest.raises(GraphAskControllerError, match="vector store"):
+        controller.ask("What is RAG?")
+
+
 def test_controller_requires_separate_embedding_credentials(
     test_project, monkeypatch
 ) -> None:
@@ -230,7 +259,7 @@ def test_controller_reports_graph_readiness_before_credentials(
         lambda command, **kwargs: subprocess.CompletedProcess(command, 0),
     )
 
-    with pytest.raises(GraphRAGQueryError, match="workspace is not initialized"):
+    with pytest.raises(GraphAskControllerError, match="workspace is not initialized"):
         controller.ask("What is RAG?")
 
 

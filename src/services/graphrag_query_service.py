@@ -21,6 +21,7 @@ from src.services.graphrag_command_service import (
     GraphRAGCommandService,
 )
 from src.services.graphrag_status_service import GraphRAGStatus, GraphRAGStatusService
+from src.services.graphrag_status_service import graph_not_ready_message
 from src.services.graphrag_sync_service import file_digest
 from src.services.project_service import (
     ProjectPaths,
@@ -140,6 +141,7 @@ class GraphRAGQueryService:
             result = self.command_service.query(
                 question,
                 method=method,
+                data_dir=status.active_output_dir,
                 community_level=community_level,
                 dynamic_community_selection=dynamic_community_selection,
                 response_type=response_type,
@@ -291,28 +293,19 @@ class GraphRAGQueryService:
 
     def _require_query_ready(self, status: GraphRAGStatus) -> None:
         if not status.workspace_initialized:
-            raise GraphRAGQueryError(
-                "GraphRAG workspace is not initialized. Run `kb init` first."
-            )
+            raise GraphRAGQueryError(graph_not_ready_message(status))
         if not status.input_exists:
-            raise GraphRAGQueryError("GraphRAG input not found. Run `kb update` first.")
+            raise GraphRAGQueryError(graph_not_ready_message(status))
         if status.input_document_count == 0:
-            raise GraphRAGQueryError(
-                "GraphRAG input has no documents. Add and compile sources, then run "
-                "`kb update`."
-            )
+            raise GraphRAGQueryError(graph_not_ready_message(status))
         if not status.output_present:
-            raise GraphRAGQueryError(
-                "GraphRAG index output not found. Run `kb update`."
-            )
+            raise GraphRAGQueryError(graph_not_ready_message(status))
+        if not status.vector_store_exists or not status.vector_store_readable:
+            raise GraphRAGQueryError(graph_not_ready_message(status))
         if not status.output_complete:
-            raise GraphRAGQueryError(
-                "GraphRAG index output is incomplete. Run `kb update` to rebuild it."
-            )
+            raise GraphRAGQueryError(graph_not_ready_message(status))
         if status.last_index_success is False:
-            raise GraphRAGQueryError(
-                "The last GraphRAG index run failed. Re-run `kb update` before asking."
-            )
+            raise GraphRAGQueryError(graph_not_ready_message(status))
 
     @staticmethod
     def _input_manifest_hash(input_path: Path) -> str:

@@ -135,8 +135,10 @@ poetry run kb --project-root $projectRoot update --force
 
 After `kb update`, GraphRAG state is determined from the planned or synced
 input, the latest successful index run, and the active complete output
-directory. The graph step first plans sync work without mutating workspace
-files. When graph work proceeds, it writes `graph/graphrag/input/sources.json`
+directory. A complete output directory includes the required GraphRAG Parquet
+tables and the configured vector store. The graph step first plans sync work
+without mutating workspace files. When graph work proceeds, it writes
+`graph/graphrag/input/sources.json`
 from `raw/_manifest.json` and `raw/normalized/`, preserving source IDs, hashes,
 paths, converter metadata, and the normalized text for GraphRAG indexing. The
 generated JSON file can contain local corpus text and stays untracked.
@@ -213,7 +215,8 @@ poetry run kb --project-root $projectRoot legacy find "citation grounding"
 poetry run kb --project-root $projectRoot legacy find --limit 10 "agent architecture"
 ```
 
-Deprecated legacy ask uses source-page chunks as evidence and returns a cited answer:
+Deprecated legacy search and ask are source-page-only comparators. Legacy ask
+uses source-page chunks as evidence and returns a cited answer:
 
 ```powershell
 poetry run kb --project-root $projectRoot legacy ask "How does the wiki handle stale pages?"
@@ -227,9 +230,9 @@ poetry run kb --project-root $projectRoot legacy ask --save "What does the updat
 poetry run kb --project-root $projectRoot legacy ask --save-as update-pipeline "What does the update pipeline do?"
 ```
 
-Saved analysis pages are searchable with `kb find` and `kb legacy find`, but
-later legacy ask runs do not cite saved answers or generated concept pages as
-primary evidence.
+Saved analysis pages are searchable with top-level `kb find`, but `kb legacy
+find` and later legacy ask runs stay source-only so saved answers or generated
+concept pages are not treated as primary evidence.
 
 ## 8. Check and export
 
@@ -269,7 +272,7 @@ poetry run kb --project-root $projectRoot export --clean
 | Search returns stale results | Run `kb update` after adding or changing sources. |
 | GraphRAG workspace is missing | Run `kb init`. |
 | GraphRAG input is missing | Run `kb update`. |
-| GraphRAG output is missing | Set graph provider credentials, then run `kb update`; a normal update without them only refreshes the wiki and warns. |
+| GraphRAG output or vector store is missing | Set graph provider credentials, then run `kb update`; a normal update without them only refreshes the wiki and warns. |
 | Generated pages look stale | Run `kb status --changed`, then `kb update --force` if needed. |
 
 ## Next Steps

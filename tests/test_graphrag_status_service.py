@@ -37,6 +37,10 @@ def test_status_reports_workspace_input_outputs_and_last_run(test_project) -> No
         "community_reports",
     ):
         test_project.write_file(f"graph/graphrag/output/{table}.parquet", "")
+    test_project.write_file(
+        "graph/graphrag/output/lancedb/vector-store.marker",
+        "ready",
+    )
     service = GraphRAGStatusService(test_project.paths)
     run = service.record_index_run(
         method="fast",
@@ -62,6 +66,8 @@ def test_status_reports_workspace_input_outputs_and_last_run(test_project) -> No
     assert status.relationships_present is True
     assert status.communities_present is True
     assert status.community_reports_present is True
+    assert status.vector_store_exists is True
+    assert status.vector_store_readable is True
     assert (
         status.active_output_dir == test_project.paths.graph_dir / "graphrag" / "output"
     )
@@ -73,6 +79,7 @@ def test_status_reports_workspace_input_outputs_and_last_run(test_project) -> No
     assert payload["workspace_dir"] == "graph/graphrag"
     assert payload["input_path"] == "graph/graphrag/input/sources.json"
     assert payload["active_output_dir"] == "graph/graphrag/output"
+    assert payload["vector_store_path"] == "graph/graphrag/output/lancedb"
 
 
 def test_status_counts_realistic_nested_graphrag_parquet_tables(
@@ -104,6 +111,10 @@ def test_status_counts_realistic_nested_graphrag_parquet_tables(
     }
     for filename, rows in table_rows.items():
         pd.DataFrame(rows).to_parquet(output_dir / filename)
+    test_project.write_file(
+        "graph/graphrag/output/lancedb/vector-store.marker",
+        "ready",
+    )
     test_project.write_file("wiki/graph/index.md", "# GraphRAG Index\n")
 
     status = GraphRAGStatusService(test_project.paths).status()
@@ -121,6 +132,7 @@ def test_status_counts_realistic_nested_graphrag_parquet_tables(
     assert status.relationship_count == 1
     assert status.community_count == 1
     assert status.community_report_count == 1
+    assert status.vector_store_readable is True
     assert status.input_updated_at is not None
     assert status.output_updated_at is not None
     assert status.wiki_export_present is True
@@ -129,6 +141,35 @@ def test_status_counts_realistic_nested_graphrag_parquet_tables(
     assert payload["output_dir"] == "graph/graphrag/output"
     assert payload["active_output_dir"] == "graph/graphrag/output/artifacts"
     assert payload["entity_count"] == 1
+
+
+def test_status_treats_missing_vector_store_as_incomplete_output(
+    test_project,
+) -> None:
+    """Regression: Parquet tables alone are not enough for query readiness."""
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "doc-1", "text": "GraphRAG source text."}]),
+    )
+    for table in (
+        "documents",
+        "text_units",
+        "entities",
+        "relationships",
+        "communities",
+        "community_reports",
+    ):
+        test_project.write_file(f"graph/graphrag/output/{table}.parquet", "")
+
+    status = GraphRAGStatusService(test_project.paths).status()
+
+    assert status.output_present is True
+    assert status.vector_store_exists is False
+    assert status.vector_store_readable is False
+    assert status.output_complete is False
+    assert "vector_store" in status.missing_tables
+    assert "vector store" in status.next_action
 
 
 def test_status_prefers_complete_output_over_newer_partial_output(
@@ -164,6 +205,10 @@ def test_status_prefers_complete_output_over_newer_partial_output(
         os.utime(path, (older, older))
     for path in partial_dir.glob("*.parquet"):
         os.utime(path, (newer, newer))
+    test_project.write_file(
+        "graph/graphrag/output/lancedb/vector-store.marker",
+        "ready",
+    )
 
     service = GraphRAGStatusService(test_project.paths)
     status = service.status()
@@ -196,6 +241,10 @@ def test_status_prefers_recorded_successful_output_dir(test_project) -> None:
             path = directory / f"{table}.parquet"
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("", encoding="utf-8")
+    test_project.write_file(
+        "graph/graphrag/output/lancedb/vector-store.marker",
+        "ready",
+    )
     service = GraphRAGStatusService(test_project.paths)
     service.record_index_run(
         method="fast",

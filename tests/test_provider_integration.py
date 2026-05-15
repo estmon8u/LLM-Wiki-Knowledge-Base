@@ -374,8 +374,8 @@ def test_anthropic_provider_generate() -> None:
     assert result.text == "Claude says hi"
     assert result.model_name == "claude-sonnet-4-6"
     call_kwargs = MockClient.return_value.messages.create.call_args.kwargs
-    assert call_kwargs["thinking"] == {"type": "adaptive"}
-    assert call_kwargs["output_config"] == {"effort": "medium"}
+    assert call_kwargs["thinking"] == {"type": "adaptive", "effort": "medium"}
+    assert "output_config" not in call_kwargs
 
 
 def test_anthropic_provider_keeps_manual_thinking_for_older_models() -> None:

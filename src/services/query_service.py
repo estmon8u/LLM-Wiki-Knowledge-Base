@@ -197,7 +197,10 @@ class QueryService:
         """
         provider = self._require_provider()
         matches = self.search_service.search(
-            question, limit=limit, include_analysis=False
+            question,
+            limit=limit,
+            include_analysis=False,
+            page_types={"source"},
         )
         if not matches:
             return QueryAnswer(

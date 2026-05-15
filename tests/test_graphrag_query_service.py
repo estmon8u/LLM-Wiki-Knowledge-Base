@@ -58,6 +58,10 @@ def _write_ready_graph(test_project, *, index_success: bool = True) -> None:
     pd.DataFrame(
         [{"id": "report-0", "community": 0, "title": "RAG", "summary": "RAG summary."}]
     ).to_parquet(output_dir / "community_reports.parquet")
+    test_project.write_file(
+        "graph/graphrag/output/lancedb/vector-store.marker",
+        "ready",
+    )
     GraphRAGStatusService(test_project.paths).record_index_run(
         method="fast",
         dry_run=False,
@@ -130,6 +134,8 @@ def test_graph_query_runs_explicit_method_and_options(test_project) -> None:
     assert command[1:4] == ("-m", "graphrag", "query")
     assert "--method" in command
     assert "local" in command
+    assert "--data" in command
+    assert str(test_project.paths.graph_dir / "graphrag" / "output") in command
     assert "--community-level" in command
     assert "1" in command
     assert "--no-dynamic-selection" in command
@@ -315,6 +321,27 @@ def test_graph_query_requires_index_output(test_project) -> None:
     )
 
     with pytest.raises(GraphRAGQueryError, match="GraphRAG index output not found"):
+        service.ask("What is RAG?", method="basic")
+
+
+def test_graph_query_requires_vector_store(test_project) -> None:
+    """Regression: table-only output is not enough for GraphRAG query readiness."""
+    _write_ready_graph(test_project)
+    marker = (
+        test_project.paths.graph_dir
+        / "graphrag"
+        / "output"
+        / "lancedb"
+        / "vector-store.marker"
+    )
+    marker.unlink()
+
+    service = _build_query_service(
+        test_project,
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0),
+    )
+
+    with pytest.raises(GraphRAGQueryError, match="vector store"):
         service.ask("What is RAG?", method="basic")
 
 

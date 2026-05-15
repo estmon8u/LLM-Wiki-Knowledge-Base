@@ -64,6 +64,14 @@ def _get_update_service(command_context: CommandContext) -> UpdateService:
     )
 
 
+def _mode_label(options: UpdateOptions) -> str:
+    if options.graph_only:
+        return "graph-only"
+    if options.no_graph:
+        return "wiki-only"
+    return "full"
+
+
 def create_command() -> click.Command:
     """Creates the Click command exposed by this module.
 
@@ -146,6 +154,8 @@ def create_command() -> click.Command:
             allow_partial=allow_partial,
             concepts=concepts,
         )
+
+        console.print(f"Mode: {_mode_label(options)}")
 
         try:
 

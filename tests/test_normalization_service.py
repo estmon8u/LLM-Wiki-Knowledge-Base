@@ -26,7 +26,6 @@ from src.services.normalization_service import (
     DoclingPdfConverter,
     MistralOcrConverter,
     NormalizationService,
-    PdfDocumentConverter,
     WkhtmltopdfRenderer,
     _ConvertedText,
     _extract_title,
@@ -498,7 +497,7 @@ def test_pdf_document_converter_uses_provided_converter(tmp_path: Path) -> None:
     source_path.write_bytes(b"%PDF-1.4\nfake\n")
     inner_converter = FakeDoclingInnerConverter("# Wrapped PDF\n\nExported text.\n")
 
-    result = PdfDocumentConverter(inner_converter).convert_local(source_path)
+    result = DoclingPdfConverter(inner_converter).convert_local(source_path)
 
     assert inner_converter.paths == [source_path]
     assert result.normalized_text == "# Wrapped PDF\n\nExported text.\n"
@@ -546,7 +545,7 @@ def test_pdf_document_converter_uses_ascii_temp_copy_for_unicode_paths(
 
     inner_converter = UnicodeSensitiveDoclingConverter()
 
-    result = PdfDocumentConverter(inner_converter).convert_local(source_path)
+    result = DoclingPdfConverter(inner_converter).convert_local(source_path)
 
     assert result.normalized_text == "# Unicode Safe PDF\n\nConverted text.\n"
     assert len(inner_converter.paths) == 1
@@ -600,7 +599,7 @@ def test_pdf_document_converter_lazy_loads_docling_converter(
         FakeLazyDoclingConverter,
     )
 
-    result = PdfDocumentConverter().convert_local(source_path)
+    result = DoclingPdfConverter().convert_local(source_path)
 
     assert result.normalized_text == "# Lazy PDF\n\nLoaded on demand.\n"
     assert FakeLazyDoclingConverter.paths == [source_path]
@@ -637,7 +636,7 @@ def test_pdf_document_converter_wraps_docling_errors(tmp_path: Path) -> None:
         ValueError,
         match="Docling could not convert sample.pdf: broken pdf",
     ):
-        PdfDocumentConverter(BrokenDoclingConverter()).convert_local(source_path)
+        DoclingPdfConverter(BrokenDoclingConverter()).convert_local(source_path)
 
 
 def test_pdf_document_converter_rejects_partial_success(tmp_path: Path) -> None:
@@ -675,7 +674,7 @@ def test_pdf_document_converter_rejects_partial_success(tmp_path: Path) -> None:
         ValueError,
         match="Docling could not convert sample.pdf cleanly: status=partial_success; errors=page 2 failed",
     ):
-        PdfDocumentConverter(PartialDoclingConverter()).convert_local(source_path)
+        DoclingPdfConverter(PartialDoclingConverter()).convert_local(source_path)
 
 
 def test_normalization_service_lazy_loads_pdf_fallback_converter(
@@ -718,7 +717,7 @@ def test_normalization_service_lazy_loads_pdf_fallback_converter(
 
     monkeypatch.setattr(
         normalization_service_module,
-        "PdfDocumentConverter",
+        "DoclingPdfConverter",
         FakeServicePdfConverter,
     )
 
@@ -1153,6 +1152,18 @@ def test_mistral_ocr_converter_requires_api_key_env(
 
     with pytest.raises(ValueError, match="Mistral OCR requires environment variable"):
         converter.convert_document_bytes(b"document", mime_type="application/pdf")
+
+
+def test_mistral_ocr_converter_uses_public_sdk_client_import(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: the converter should import the public Mistral SDK client path."""
+    monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+    converter = MistralOcrConverter()
+
+    client = converter._client_instance()
+
+    assert client.__class__.__module__.startswith("mistralai.client")
 
 
 def test_wkhtmltopdf_renderer_validates_binary_paths(tmp_path: Path) -> None:

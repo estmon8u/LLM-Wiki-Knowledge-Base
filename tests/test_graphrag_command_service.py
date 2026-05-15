@@ -128,6 +128,7 @@ def test_query_builds_full_option_command(test_project) -> None:
     result = service.query(
         "What changed?",
         method="local",
+        data_dir=test_project.paths.graph_dir / "graphrag" / "output",
         community_level=2,
         dynamic_community_selection=True,
         response_type="Multiple paragraphs",
@@ -139,6 +140,8 @@ def test_query_builds_full_option_command(test_project) -> None:
     assert command[1:4] == ("-m", "graphrag", "query")
     assert "--method" in command
     assert "local" in command
+    assert "--data" in command
+    assert str(test_project.paths.graph_dir / "graphrag" / "output") in command
     assert "--community-level" in command
     assert "2" in command
     assert "--dynamic-community-selection" in command

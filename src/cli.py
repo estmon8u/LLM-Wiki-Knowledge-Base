@@ -7,10 +7,12 @@ surface that uses it.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 from typing import Optional
 
 import click
+import yaml
 
 from src.engine.command_registry import (
     get_click_command,
@@ -19,7 +21,7 @@ from src.engine.command_registry import (
 from src.models.command_models import CommandContext
 from src.providers import validate_provider_name
 from src.services import build_services
-from src.services.config_service import ConfigService
+from src.services.config_service import DEFAULT_CONFIG, ConfigService
 from src.services.project_service import build_project_paths, discover_project_root
 
 
@@ -36,6 +38,7 @@ def build_runtime_context(
     *,
     verbose: bool,
     provider_override: Optional[str] = None,
+    allow_default_config_on_error: bool = False,
 ) -> CommandContext:
     """Builds runtime context.
 
@@ -51,8 +54,10 @@ def build_runtime_context(
     config_service = ConfigService(paths)
     try:
         config = config_service.load()
-    except ValueError as exc:
-        raise click.ClickException(str(exc)) from exc
+    except (ValueError, yaml.YAMLError) as exc:
+        if not allow_default_config_on_error:
+            raise click.ClickException(str(exc)) from exc
+        config = deepcopy(DEFAULT_CONFIG)
     if provider_override:
         try:
             config.setdefault("provider", {})["name"] = validate_provider_name(
@@ -84,6 +89,11 @@ def build_runtime_context(
 
 class KBGroup(click.Group):
     """Lazy-loading group that discovers commands from the registry."""
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        """Record help-only invocations before the group callback runs."""
+        ctx.meta["kb_help_requested"] = any(arg in {"-h", "--help"} for arg in args)
+        return super().parse_args(ctx, args)
 
     def list_commands(self, ctx: click.Context) -> list[str]:
         """List commands.
@@ -143,14 +153,19 @@ def main(
         verbose: Whether to emit verbose command output.
         provider_override: Optional provider name overriding the configured provider.
     """
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+        return
+    if ctx.meta.get("kb_help_requested"):
+        return
+
     root = _extract_project_root(ctx)
     ctx.obj = build_runtime_context(
         root,
         verbose=verbose,
         provider_override=provider_override,
+        allow_default_config_on_error=ctx.invoked_subcommand == "init",
     )
-    if ctx.invoked_subcommand is None:
-        click.echo(ctx.get_help())
 
 
 if __name__ == "__main__":  # pragma: no cover

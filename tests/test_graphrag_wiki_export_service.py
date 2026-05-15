@@ -34,6 +34,13 @@ from src.services.graphrag_wiki_export_service import (
 )
 
 
+def _write_vector_store(test_project) -> None:
+    test_project.write_file(
+        "graph/graphrag/output/lancedb/vector-store.marker",
+        "ready",
+    )
+
+
 def _write_graph_tables(test_project) -> None:
     """Handles write graph tables.
 
@@ -102,6 +109,7 @@ def _write_graph_tables(test_project) -> None:
     pd.DataFrame(
         [{"id": "doc-1", "title": "RAG Paper", "text": "Paper text."}]
     ).to_parquet(output_dir / "documents.parquet")
+    _write_vector_store(test_project)
     GraphRAGStatusService(test_project.paths).record_index_run(
         method="fast",
         dry_run=False,
@@ -353,6 +361,7 @@ def test_export_wiki_handles_realistic_create_final_parquet_shapes(
             }
         ]
     ).to_parquet(output_dir / "create_final_community_reports.parquet")
+    _write_vector_store(test_project)
     GraphRAGStatusService(test_project.paths).record_index_run(
         method="fast",
         dry_run=False,
@@ -459,6 +468,7 @@ def test_export_wiki_caps_relationship_pages_and_entity_tables(test_project) -> 
             }
         ]
     ).to_parquet(output_dir / "community_reports.parquet")
+    _write_vector_store(test_project)
     GraphRAGStatusService(test_project.paths).record_index_run(
         method="fast",
         dry_run=False,
@@ -554,6 +564,7 @@ def test_export_wiki_fences_raw_document_and_text_unit_markdown(test_project) ->
             }
         ]
     ).to_parquet(output_dir / "community_reports.parquet")
+    _write_vector_store(test_project)
     GraphRAGStatusService(test_project.paths).record_index_run(
         method="fast",
         dry_run=False,
