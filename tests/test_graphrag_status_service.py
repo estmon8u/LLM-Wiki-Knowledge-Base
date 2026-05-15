@@ -62,6 +62,9 @@ def test_status_reports_workspace_input_outputs_and_last_run(test_project) -> No
     assert status.relationships_present is True
     assert status.communities_present is True
     assert status.community_reports_present is True
+    assert (
+        status.active_output_dir == test_project.paths.graph_dir / "graphrag" / "output"
+    )
     assert status.last_index_run_id == run.run_id
     assert status.last_index_method == "fast"
     assert status.last_index_success is True
@@ -69,6 +72,7 @@ def test_status_reports_workspace_input_outputs_and_last_run(test_project) -> No
     payload = status.to_dict(test_project.paths.root)
     assert payload["workspace_dir"] == "graph/graphrag"
     assert payload["input_path"] == "graph/graphrag/input/sources.json"
+    assert payload["active_output_dir"] == "graph/graphrag/output"
 
 
 def test_status_counts_realistic_nested_graphrag_parquet_tables(
@@ -123,7 +127,52 @@ def test_status_counts_realistic_nested_graphrag_parquet_tables(
     assert status.wiki_export_updated_at is not None
     payload = status.to_dict(test_project.paths.root)
     assert payload["output_dir"] == "graph/graphrag/output"
+    assert payload["active_output_dir"] == "graph/graphrag/output/artifacts"
     assert payload["entity_count"] == 1
+
+
+def test_status_prefers_complete_output_over_newer_partial_output(
+    test_project,
+) -> None:
+    """Verifies active output resolution ignores newer incomplete output folders."""
+    import os
+    import time
+
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "a"}]),
+    )
+    complete_dir = test_project.paths.graph_dir / "graphrag" / "output" / "complete"
+    partial_dir = test_project.paths.graph_dir / "graphrag" / "output" / "partial"
+    for table in (
+        "documents",
+        "text_units",
+        "entities",
+        "relationships",
+        "communities",
+        "community_reports",
+    ):
+        test_project.write_file(
+            f"graph/graphrag/output/complete/{table}.parquet",
+            "",
+        )
+    test_project.write_file("graph/graphrag/output/partial/entities.parquet", "")
+    older = time.time() - 120
+    newer = time.time()
+    for path in complete_dir.glob("*.parquet"):
+        os.utime(path, (older, older))
+    for path in partial_dir.glob("*.parquet"):
+        os.utime(path, (newer, newer))
+
+    service = GraphRAGStatusService(test_project.paths)
+    status = service.status()
+
+    assert status.output_complete is True
+    assert status.active_output_dir == complete_dir
+    assert service.table_path("entities") == complete_dir / "entities.parquet"
+    payload = status.to_dict(test_project.paths.root)
+    assert payload["active_output_dir"] == "graph/graphrag/output/complete"
 
 
 def test_status_reports_next_actions_for_missing_workspace(test_project) -> None:

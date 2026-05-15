@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "CLI-first knowledge-base prototype for the CSC 675 capstone"
 authors = ["Esteban Montelongo"]
 packages = [{ include = "src" }]
+include = ["graph/graphrag/prompts/*.txt"]
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.14"

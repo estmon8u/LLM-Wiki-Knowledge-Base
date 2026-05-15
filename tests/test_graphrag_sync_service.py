@@ -204,6 +204,57 @@ def test_sync_skips_when_sources_config_and_complete_output_match(test_project) 
     assert result.command_result is None
 
 
+def test_sync_does_not_skip_after_latest_failed_attempt(test_project) -> None:
+    """Verifies latest failed index metadata forces a retry after prior success."""
+    calls = []
+
+    def runner(command, *, cwd, capture_output, text):
+        """Runner.
+
+        Args:
+            command: Command value used by the operation.
+            cwd: Cwd value used by the operation.
+            capture_output: Capture output value used by the operation.
+            text: Text content being processed.
+        """
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="retried\n", stderr="")
+
+    _write_settings(test_project)
+    _write_source(test_project)
+    service = _build_service(test_project, runner)
+    baseline = service.sync(run_index=False)
+    _write_complete_output(test_project)
+    _record_successful_run(
+        service,
+        input_digest=baseline.decision.input_digest,
+        config_digest=baseline.decision.config_digest,
+    )
+    service.status_service.record_index_run(
+        method="fast-update",
+        dry_run=False,
+        result=GraphRAGCommandResult(
+            command=("python", "-m", "graphrag", "index"),
+            cwd=service.paths.root,
+            returncode=2,
+            stdout="",
+            stderr="index failed",
+        ),
+        input_digest=baseline.decision.input_digest,
+        config_digest=baseline.decision.config_digest,
+        input_source_count=1,
+        source_hashes=graph_input_source_hashes(service.status_service.input_path),
+        output_state="complete",
+    )
+
+    result = service.sync()
+
+    assert result.decision.action == "index"
+    assert result.decision.method == "fast-update"
+    assert result.decision.reason == "Previous GraphRAG index attempt failed."
+    assert calls[0][calls[0].index("--method") + 1] == "fast-update"
+
+
 def test_sync_uses_incremental_update_when_source_hash_changes(test_project) -> None:
     """Verifies that sync uses incremental update when source hash changes.
 

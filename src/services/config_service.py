@@ -176,7 +176,7 @@ Operational rules for building and maintaining this knowledge base.
 
 - Use GraphRAG for top-level `kb ask` when graph output is complete.
 - Use the local wiki index for `kb find` and deprecated legacy comparators.
-- Answer from wiki evidence only; cite each claim with [Source Title] or graph-backed references.
+- Answer from wiki evidence only; cite each legacy claim with [Source Title] and record graph source trace/support metadata for GraphRAG answers.
 - If the evidence is insufficient, say so explicitly.
 - Saved answers compound into the wiki as analysis pages.
 

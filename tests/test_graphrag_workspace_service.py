@@ -7,7 +7,9 @@ surface that uses it.
 
 from __future__ import annotations
 
+from pathlib import Path
 import subprocess
+import tomllib
 
 import yaml
 
@@ -49,6 +51,7 @@ def test_workspace_service_reports_initialization_state(test_project) -> None:
 
     assert result.workspace_dir == test_project.paths.graph_dir / "graphrag"
     assert result.settings_path.exists()
+    assert result.result.command[1:4] == ("-m", "graphrag", "init")
     assert result.model == "chat-model"
     assert result.embedding_provider == "openai"
     assert result.embedding_model == "embed-model"
@@ -166,3 +169,11 @@ def test_workspace_service_syncs_separate_embedding_provider(test_project) -> No
     assert embedding["model_provider"] == "gemini"
     assert embedding["model"] == "gemini-embedding-001"
     assert embedding["api_key"] == "${GEMINI_API_KEY}"
+
+
+def test_pyproject_includes_graphrag_prompt_templates() -> None:
+    """Verifies packaged builds include bundled GraphRAG prompt templates."""
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    payload = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+
+    assert "graph/graphrag/prompts/*.txt" in payload["tool"]["poetry"]["include"]

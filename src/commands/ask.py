@@ -70,7 +70,7 @@ def create_command() -> click.Command:
     @click.option(
         "--streaming/--no-streaming",
         default=None,
-        help="Forward GraphRAG's query streaming flag.",
+        hidden=True,
     )
     @click.option("--limit", type=int, help="Deprecated; ignored.")
     @click.option(
@@ -87,9 +87,15 @@ def create_command() -> click.Command:
         help="Save the answer as an analysis page with a custom slug.",
     )
     @click.option(
+        "--show-source-trace",
+        "show_source_trace",
+        is_flag=True,
+        help="Print the graph source trace and routing metadata before the answer.",
+    )
+    @click.option(
         "--show-evidence",
         is_flag=True,
-        help="Print the retrieved evidence snippets before the answer.",
+        hidden=True,
     )
     @click.option("--verbose", is_flag=True, help="Forward GraphRAG's verbose flag.")
     @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
@@ -105,6 +111,7 @@ def create_command() -> click.Command:
         limit: int | None,
         save_answer: bool,
         save_as_name: Optional[str],
+        show_source_trace: bool,
         show_evidence: bool,
         verbose: bool,
         as_json: bool,
@@ -122,15 +129,26 @@ def create_command() -> click.Command:
             limit: Maximum number of results to return or process.
             save_answer: Save answer value used by the operation.
             save_as_name: Save as name value used by the operation.
-            show_evidence: Show evidence value used by the operation.
+            show_source_trace: Show source trace value used by the operation.
+            show_evidence: Deprecated show source trace alias.
             verbose: Whether to emit verbose command output.
             as_json: As json value used by the operation.
         """
         require_initialized(command_context)
         if not question_terms:
             raise click.ClickException("Provide a question to answer.")
+        if streaming is not None:
+            raise click.ClickException(
+                "--streaming is not supported by kb ask yet; GraphRAG query output "
+                "is captured before rendering."
+            )
         if limit is not None and not as_json:
             console.print("[yellow]--limit is ignored for GraphRAG queries.[/yellow]")
+        if show_evidence and not as_json:
+            console.print(
+                "[yellow]--show-evidence is deprecated; use "
+                "--show-source-trace.[/yellow]"
+            )
         question = " ".join(question_terms).strip()
         controller = command_context.services["graph_ask_controller"]
 
@@ -159,13 +177,13 @@ def create_command() -> click.Command:
             f"planner: {answer.planner or 'none'}, "
             f"index_run_id: {answer.index_run_id or 'unknown'}][/dim]"
         )
-        if show_evidence:
+        if show_source_trace or show_evidence:
             console.print("")
             console.print("Source Trace")
             console.print(f"  GraphRAG input: {answer.source_trace.get('input_path')}")
             console.print(f"  GraphRAG output: {answer.source_trace.get('output_dir')}")
             console.print(f"  Route reason: {answer.route_reason or 'unknown'}")
-            console.print(f"  Claim support: {answer.claim_support or 'unverified'}")
+            console.print(f"  Support level: {answer.claim_support or 'unverified'}")
         console.print("")
         console.print(RichMarkdown(answer.answer or "No answer text returned."))
         if answer.saved_path:

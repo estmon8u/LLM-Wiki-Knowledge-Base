@@ -300,6 +300,22 @@ class GraphRAGSyncService:
                 stale_metadata=stale_metadata,
             )
 
+        if status.last_index_success is False:
+            method = "fast-update" if output_state == "complete" else "fast"
+            return GraphRAGSyncDecision(
+                action="index",
+                method=method,
+                reason="Previous GraphRAG index attempt failed.",
+                output_state=output_state,
+                input_digest=input_digest,
+                config_digest=config_digest,
+                input_changed=input_changed or output_state != "complete",
+                config_changed=config_changed,
+                changed_source_count=changed_source_count,
+                cost_warning=cost_warning(method),
+                stale_metadata=stale_metadata,
+            )
+
         if output_state == "missing":
             return GraphRAGSyncDecision(
                 action="index",

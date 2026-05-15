@@ -41,8 +41,8 @@ GraphRAG is the retrieval and synthesis engine.
 - Retrieval moves from lexical/wiki-first to GraphRAG-first.
 - SQLite FTS5 is not a peer default. It is retained only as an explicit deprecated legacy path for comparison or exact lookup unless it is removed later.
 - GraphRAG must not silently fall back to FTS5 when the graph index is missing or stale; it should fail with clear next-step guidance such as `kb update`.
-- A dedicated GraphRAG workspace now lives under `graph/graphrag/`.
-- Normalized corpus artifacts are synced into GraphRAG JSON input with source metadata attached through `kb update`; the same command now auto-decides whether to run a full `fast` index, an incremental `fast-update`, or skip when sources and runtime settings match the last successful index.
+- A dedicated GraphRAG workspace now lives under `graph/graphrag/` and is initialized through the installed GraphRAG CLI before project settings are patched in.
+- Normalized corpus artifacts are synced into GraphRAG JSON input with source metadata attached through `kb update`; the same command now auto-decides whether to run a full `fast` index, an incremental `fast-update`, retry after the latest failed attempt, or skip when sources and runtime settings match the last successful index.
 - `kb init`, `kb update`, `kb status`, `kb ask`, and `kb export` now own the GraphRAG lifecycle. The earlier `kb graph` command group was removed in Phase 9 so the default UX is the main command surface.
 - GraphRAG indexing creates graph outputs such as text units, entities, relationships, communities, and community reports.
 - GraphRAG query modes are now first-class CLI behavior under `kb ask --method`:
@@ -50,9 +50,9 @@ GraphRAG is the retrieval and synthesis engine.
   - `local` for specific entity, paper, or method questions,
   - `global` for whole-corpus themes,
   - `drift` for comparison questions that benefit from global context plus local refinement.
-- Top-level `kb ask` is now the default GraphRAG-aware answer controller. It checks graph readiness, chooses `basic`, `local`, `global`, or `drift` with deterministic routing unless `--method` is explicit, runs GraphRAG retrieval, and saves analysis pages with planner, method, index-run, manifest-hash, source-trace, and lint-compatible analysis/citation metadata.
-- GraphRAG runtime configuration now lives in the `graph` section of `kb.config.yaml`; `kb init` syncs completion provider/model, embedding provider/model, and API-key environment variables resolved from the centralized `providers` catalog into `graph/graphrag/settings.yaml`.
-- `kb update` and `kb export` convert GraphRAG Parquet outputs into generated markdown pages under `wiki/graph/` for documents, text units, entities, relationships, and communities. Raw document/text-unit content is fenced to keep source markdown inspectable without creating wiki lint failures, and relationship-page materialization is capped while full relationship row counts remain visible in the graph index.
+- Top-level `kb ask` is now the default GraphRAG-aware answer controller. It checks graph readiness, chooses `basic`, `local`, `global`, or `drift` with deterministic routing unless `--method` is explicit, runs GraphRAG retrieval, and saves analysis pages with planner, method, index-run, manifest-hash, source-trace, conservative support-level metadata, and parsed `[Data: ...]` references when GraphRAG emits them.
+- GraphRAG runtime configuration now lives in the `graph` section of `kb.config.yaml`; `kb init` syncs completion provider/model, embedding provider/model, JSON input settings, prompt paths, and API-key environment variables resolved from the centralized `providers` catalog into `graph/graphrag/settings.yaml`.
+- `kb update` and `kb export` convert active complete GraphRAG Parquet outputs into generated markdown pages under `wiki/graph/` for documents, text units, entities, relationships, and communities. `kb update` also refreshes graph pages when indexing is skipped because the graph is already current. Raw document/text-unit content is fenced to keep source markdown inspectable without creating wiki lint failures, and relationship-page materialization is capped while full relationship row counts remain visible in the graph index.
 - Wiki pages are now the inspection, provenance, export, and maintenance layer over the graph workflow.
 
 ## 4. New architecture

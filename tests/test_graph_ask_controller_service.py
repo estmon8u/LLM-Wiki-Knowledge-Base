@@ -134,7 +134,7 @@ def test_controller_accepts_graph_env_file_credentials(
     assert answer.retriever == "graph"
     assert answer.method == "drift"
     assert answer.planner == "heuristic"
-    assert answer.claim_support == "graph-grounded"
+    assert answer.claim_support == "graph-index-answer"
 
 
 def test_controller_saves_answer_when_requested(test_project, monkeypatch) -> None:

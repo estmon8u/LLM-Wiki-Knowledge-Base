@@ -165,7 +165,10 @@ class GraphRAGQueryService:
             response_type=response_type,
             source_trace={
                 "input_path": _relative_path(status.input_path, self.paths.root),
-                "output_dir": _relative_path(status.output_dir, self.paths.root),
+                "output_dir": _relative_path(
+                    status.active_output_dir or status.output_dir,
+                    self.paths.root,
+                ),
                 "index_run_id": status.last_index_run_id,
                 "input_manifest_hash": input_manifest_hash,
             },
@@ -206,8 +209,6 @@ class GraphRAGQueryService:
             answer.answer.strip()
         )
         citations = _graph_data_references(answer.answer)
-        if not citations and not insufficient_evidence:
-            citations = _source_trace_citations(answer)
         frontmatter = {
             "title": answer.question,
             "summary": summary,
@@ -241,7 +242,7 @@ class GraphRAGQueryService:
         if answer.route_reason:
             retrieval_lines.append(f"- Route reason: {answer.route_reason}")
         if answer.claim_support:
-            retrieval_lines.append(f"- Claim support: {answer.claim_support}")
+            retrieval_lines.append(f"- Support level: {answer.claim_support}")
         if answer.community_level is not None:
             retrieval_lines.append(f"- Community level: {answer.community_level}")
         if answer.dynamic_community_selection is not None:
@@ -335,15 +336,6 @@ def _graph_data_references(text: str) -> list[str]:
             match.group(0) for match in GRAPH_DATA_REFERENCE_PATTERN.finditer(text)
         )
     )
-
-
-def _source_trace_citations(answer: GraphRAGQueryAnswer) -> list[str]:
-    if answer.index_run_id:
-        return [f"GraphRAG index {answer.index_run_id}"]
-    input_path = answer.source_trace.get("input_path")
-    if input_path:
-        return [f"GraphRAG input {input_path}"]
-    return []
 
 
 def _relative_path(path: Path, root: Path) -> str:

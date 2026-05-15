@@ -71,7 +71,7 @@ class GraphAskControllerService:
         """Ask.
 
         Args:
-            question: User question to answer from available evidence.
+            question: User question to answer from the active GraphRAG index.
             method: Method value used by the operation.
             community_level: Community level value used by the operation.
             dynamic_community_selection: Dynamic community selection value used by the operation.
@@ -175,14 +175,16 @@ def _graph_ready_for_query(status: GraphRAGStatus) -> bool:
 
 
 def _assess_claim_support(answer: GraphRAGQueryAnswer, staleness: list[str]) -> str:
-    """Simple claim-support assessment based on available evidence."""
+    """Return a conservative support level from parsed citations and trace data."""
     if staleness:
         return "stale-index"
     if not answer.answer or not answer.answer.strip():
         return "no-answer"
+    if "[Data:" in answer.answer:
+        return "cited-graph-answer"
     source_trace = answer.source_trace or {}
     has_index = bool(source_trace.get("index_run_id"))
     has_hash = bool(source_trace.get("input_manifest_hash"))
     if has_index and has_hash:
-        return "graph-grounded"
+        return "graph-index-answer"
     return "unverified"

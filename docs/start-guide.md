@@ -12,7 +12,7 @@ Requirements:
 | --- | --- | --- |
 | Python 3.11, 3.12, or 3.13 | Yes | The project is pinned to Python `>=3.11,<3.14`. |
 | Poetry | Yes | Installs dependencies and runs the `kb` entrypoint. |
-| LLM API key | Yes for legacy `update`, `legacy ask`, `review`, and real GraphRAG index/query jobs | `kb update --graph-only` only needs the configured GraphRAG provider credentials. |
+| LLM API key | Yes for legacy `update`, `legacy ask`, `review`, and real GraphRAG index/query jobs | Normal `kb update` warns and skips graph indexing if GraphRAG credentials are missing; `kb update --graph-only` requires them. |
 | Mistral API key | Required for PDFs, Office docs, images, and HTML OCR | Markdown and plain text do not need it. |
 | HTML renderer | Required only for HTML OCR | `wkhtmltopdf` is preferred when installed; bundled `xhtml2pdf` is the pure-Python fallback. |
 
@@ -127,7 +127,7 @@ poetry run kb --project-root $projectRoot update --force
 
 ## 6. Check GraphRAG state
 
-`kb init` creates the project-local GraphRAG workspace and syncs
+`kb init` initializes the project-local GraphRAG workspace through the installed GraphRAG CLI and syncs
 `graph.provider`, `graph.model`, `graph.embedding_provider`, and
 `graph.embedding_model` from `kb.config.yaml` into
 `graph/graphrag/settings.yaml`. Unless graph-specific API-key overrides are
@@ -139,8 +139,10 @@ catalog.
 paths, converter metadata, and the normalized text for GraphRAG indexing. The
 generated JSON file can contain local corpus text and stays untracked. It then
 auto-decides whether the GraphRAG index needs a full `fast` rebuild, an
-incremental `fast-update`, or no index job because sources and runtime settings
-already match the last successful run.
+incremental `fast-update`, a retry after the latest failed attempt, or no index
+job because sources and runtime settings already match the last successful run.
+When complete graph output already exists and indexing is skipped, `kb update`
+still refreshes `wiki/graph/` from the active output directory.
 
 Check readiness after update:
 
@@ -150,7 +152,9 @@ poetry run kb --project-root $projectRoot status
 
 Real GraphRAG index actions call the configured GraphRAG model and embedding
 provider, so set the provider API key such as `OPENAI_API_KEY`, or put the same
-variable in the local GraphRAG `.env` file, before running `kb update`.
+variable in the local GraphRAG `.env` file, before running graph indexing,
+`kb ask`, or `kb update --graph-only`. A normal `kb update` without GraphRAG
+credentials still compiles the wiki and reports graph indexing as skipped.
 Interactive terminals show a live indexing status spinner while GraphRAG runs.
 Use `kb update --force` for a full source-page and GraphRAG rebuild after
 model/prompt changes or suspected corrupt output. Use `kb update --no-graph`
@@ -174,7 +178,7 @@ graph is missing or not ready; it fails with the next GraphRAG setup command to 
 Use `local` for specific entity, method, or paper questions; `global` for
 whole-corpus themes; `drift` for multi-paper comparisons; and `basic` as the
 simple vector-RAG baseline. Saved graph answers go to `wiki/analysis/` with
-graph metadata and raw GraphRAG output preserved.
+graph metadata, source trace, support level, and raw GraphRAG output preserved.
 
 Export graph artifacts into inspectable wiki pages:
 
@@ -252,7 +256,7 @@ poetry run kb --project-root $projectRoot export --clean
 | Search returns stale results | Run `kb update` after adding or changing sources. |
 | GraphRAG workspace is missing | Run `kb init`. |
 | GraphRAG input is missing | Run `kb update`. |
-| GraphRAG output is missing | Set graph provider credentials, then run `kb update`. |
+| GraphRAG output is missing | Set graph provider credentials, then run `kb update`; a normal update without them only refreshes the wiki and warns. |
 | Generated pages look stale | Run `kb status --changed`, then `kb update --force` if needed. |
 
 ## Next Steps

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 import shutil
 from typing import Any
 
 from src.services.graphrag_command_service import (
+    GraphRAGCommandError,
     GraphRAGCommandResult,
     GraphRAGCommandService,
 )
@@ -78,10 +80,16 @@ class GraphRAGWorkspaceService:
                 directory.mkdir(parents=True, exist_ok=True)
                 created.append(directory.relative_to(self.paths.root).as_posix())
         if not self.settings_path.exists():
-            atomic_write_text(
-                self.settings_path,
-                yaml.safe_dump(_default_settings(), sort_keys=False),
+            graph_config = resolve_graph_config(self.config)
+            self.command_service.init_workspace(
+                model=graph_config.model,
+                embedding=graph_config.embedding_model,
+                force=False,
             )
+            if not self.settings_path.exists():
+                raise GraphRAGCommandError(
+                    "GraphRAG init completed without creating settings.yaml."
+                )
             created.append(self.settings_path.relative_to(self.paths.root).as_posix())
         created.extend(self._ensure_prompt_templates())
         self.sync_settings()
@@ -107,12 +115,32 @@ class GraphRAGWorkspaceService:
         graph_config = resolve_graph_config(self.config)
         model_name = model or graph_config.model
         embedding_model = embedding or graph_config.embedding_model
-        if force and self.settings_path.exists():
-            atomic_write_text(
-                self.settings_path,
-                yaml.safe_dump(_default_settings(), sort_keys=False),
+        for directory in (
+            self.workspace_dir,
+            self.workspace_dir / "input",
+            self.workspace_dir / "prompts",
+        ):
+            directory.mkdir(parents=True, exist_ok=True)
+        if force or not self.settings_path.exists():
+            result = self.command_service.init_workspace(
+                model=model_name,
+                embedding=embedding_model,
+                force=force,
             )
-        created = self.ensure_workspace()
+            if not self.settings_path.exists():
+                raise GraphRAGCommandError(
+                    "GraphRAG init completed without creating settings.yaml.",
+                    result=result,
+                )
+        else:
+            result = GraphRAGCommandResult(
+                command=("kb", "internal", "graphrag", "init", "--already-present"),
+                cwd=self.paths.root,
+                returncode=0,
+                stdout="",
+                stderr="",
+            )
+        self._ensure_prompt_templates()
         self.sync_settings(
             GraphRAGRuntimeConfig(
                 provider=graph_config.provider,
@@ -122,13 +150,6 @@ class GraphRAGWorkspaceService:
                 api_key_env=graph_config.api_key_env,
                 embedding_api_key_env=graph_config.embedding_api_key_env,
             )
-        )
-        result = GraphRAGCommandResult(
-            command=("kb", "internal", "graphrag", "init"),
-            cwd=self.paths.root,
-            returncode=0,
-            stdout="\n".join(created),
-            stderr="",
         )
         return GraphRAGWorkspaceInitResult(
             workspace_dir=self.workspace_dir,
@@ -149,7 +170,7 @@ class GraphRAGWorkspaceService:
             graph_config: Graph config value used by the operation.
         """
         graph_config = graph_config or resolve_graph_config(self.config)
-        settings = self._load_settings()
+        settings = _deep_merge(self._load_settings(), _default_settings())
         completion_models = settings.setdefault("completion_models", {})
         completion = completion_models.setdefault("default_completion_model", {})
         completion["model_provider"] = graph_config.provider
@@ -297,6 +318,16 @@ def _default_settings() -> dict[str, Any]:
             "prompt": "prompts/basic_search_system_prompt.txt",
         },
     }
+
+
+def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+    merged = deepcopy(base)
+    for key, value in overlay.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = deepcopy(value)
+    return merged
 
 
 def _bundled_prompts_dir() -> Path:

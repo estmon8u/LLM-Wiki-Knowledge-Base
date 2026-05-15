@@ -81,7 +81,7 @@ class UpdateResult:
         Returns:
             bool produced by the operation.
         """
-        return self.compile_result is not None
+        return self.compile_result is not None or self.graph_result is not None
 
 
 @dataclass
@@ -317,6 +317,17 @@ class UpdateService:
         if decision.action != "index" or decision.method is None:
             result.skipped = True
             result.skip_reason = decision.reason
+            if decision.output_state == "complete":
+                try:
+                    if status_callback is not None:
+                        status_callback("exporting graph pages")
+                    result.export_result = self._graphrag_wiki_export.export_wiki()
+                except Exception as exc:
+                    message = f"Graph export failed after skipped index: {exc}"
+                    if options.allow_partial:
+                        result.warning = message
+                        return result
+                    raise ValueError(message) from exc
             return result
 
         try:
@@ -333,11 +344,11 @@ class UpdateService:
                 "Graph index skipped because provider credentials are missing: "
                 + ", ".join(missing_keys)
             )
-            if options.allow_partial:
-                result.skipped = True
-                result.warning = message
-                return result
-            raise ValueError(message)
+            if options.graph_only:
+                raise ValueError(message)
+            result.skipped = True
+            result.warning = message
+            return result
 
         try:
             if status_callback is not None:

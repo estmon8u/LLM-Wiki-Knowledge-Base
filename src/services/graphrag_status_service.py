@@ -45,6 +45,7 @@ class GraphRAGIndexRun:
     input_source_count: int | None = None
     source_hashes: dict[str, str] | None = None
     output_state: str | None = None
+    active_output_dir: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serializes this value to a dictionary.
@@ -99,6 +100,7 @@ class GraphRAGStatus:
     relationship_count: int | None = None
     community_count: int | None = None
     community_report_count: int | None = None
+    active_output_dir: Path | None = None
 
     @property
     def missing_tables(self) -> list[str]:
@@ -155,8 +157,19 @@ class GraphRAGStatus:
             dict[str, Any] produced by the operation.
         """
         payload = asdict(self)
-        for key in ("workspace_dir", "settings_path", "input_path", "output_dir"):
-            payload[key] = self._relative_to_project(payload[key], project_root)
+        for key in (
+            "workspace_dir",
+            "settings_path",
+            "input_path",
+            "output_dir",
+            "active_output_dir",
+        ):
+            path = payload[key]
+            payload[key] = (
+                self._relative_to_project(path, project_root)
+                if isinstance(path, Path)
+                else None
+            )
         payload["output_complete"] = self.output_complete
         payload["missing_tables"] = self.missing_tables
         payload["state"] = self.state
@@ -246,7 +259,7 @@ class GraphRAGStatusService:
             ),
             last_index_output_state=last_run.get("output_state") if last_run else None,
             input_updated_at=self._file_mtime_iso(self.input_path),
-            output_updated_at=self._latest_parquet_mtime_iso(),
+            output_updated_at=self._latest_parquet_mtime_iso(active_output_dir),
             wiki_export_present=wiki_export_path.exists(),
             wiki_export_updated_at=self._file_mtime_iso(wiki_export_path),
             document_count=table_counts["documents"],
@@ -255,6 +268,7 @@ class GraphRAGStatusService:
             relationship_count=table_counts["relationships"],
             community_count=table_counts["communities"],
             community_report_count=table_counts["community_reports"],
+            active_output_dir=active_output_dir,
         )
 
     def record_index_run(
@@ -285,6 +299,13 @@ class GraphRAGStatusService:
             GraphRAGIndexRun produced by the operation.
         """
         created_at = utc_now_iso()
+        active_output_dir = None
+        if result.returncode == 0 and not dry_run:
+            resolved_active_output = self.active_output_dir()
+            if resolved_active_output is not None:
+                active_output_dir = self._relative_to_project_root(
+                    resolved_active_output
+                )
         record = GraphRAGIndexRun(
             run_id=created_at.replace(":", "").replace("+", "Z"),
             created_at=created_at,
@@ -301,6 +322,7 @@ class GraphRAGStatusService:
             input_source_count=input_source_count,
             source_hashes=source_hashes,
             output_state=output_state,
+            active_output_dir=active_output_dir,
         )
         runs = self._load_runs()
         runs.append(record.to_dict())
@@ -327,6 +349,10 @@ class GraphRAGStatusService:
         if tokens is None:
             return None
         return self._table_path(self._active_output_dir(), *tokens)
+
+    def active_output_dir(self) -> Path | None:
+        """Return the authoritative GraphRAG output directory for reads."""
+        return self._active_output_dir()
 
     def _input_document_count(self) -> int:
         if not self.input_path.exists():
@@ -357,9 +383,19 @@ class GraphRAGStatusService:
             latest_by_parent[parent] = max(latest_by_parent.get(parent, 0.0), mtime)
         if not latest_by_parent:
             return None
-        return max(latest_by_parent.items(), key=lambda item: (item[1], str(item[0])))[
-            0
-        ]
+        complete_candidates = {
+            parent: mtime
+            for parent, mtime in latest_by_parent.items()
+            if self._output_dir_complete(parent)
+        }
+        candidates = complete_candidates or latest_by_parent
+        return max(candidates.items(), key=lambda item: (item[1], str(item[0])))[0]
+
+    def _output_dir_complete(self, output_dir: Path) -> bool:
+        return all(
+            self._table_path(output_dir, *patterns) is not None
+            for patterns in GRAPH_OUTPUT_TABLES.values()
+        )
 
     def _table_path(self, output_dir: Path | None, *tokens: str) -> Path | None:
         if output_dir is None or not output_dir.exists():
@@ -387,14 +423,18 @@ class GraphRAGStatusService:
         except Exception:
             return None
 
-    def _latest_parquet_mtime_iso(self) -> str | None:
-        if not self.output_dir.exists():
+    def _latest_parquet_mtime_iso(self, output_dir: Path | None = None) -> str | None:
+        output_dir = output_dir or self.output_dir
+        if not output_dir.exists():
             return None
         newest = max(
-            (path.stat().st_mtime for path in self.output_dir.rglob("*.parquet")),
+            (path.stat().st_mtime for path in output_dir.rglob("*.parquet")),
             default=None,
         )
         return _timestamp_iso(newest)
+
+    def _relative_to_project_root(self, path: Path) -> str:
+        return GraphRAGStatus._relative_to_project(path, self.paths.root)
 
     @staticmethod
     def _file_mtime_iso(path: Path) -> str | None:
@@ -432,9 +472,9 @@ class GraphRAGStatusService:
             return "Run `kb update`."
         if input_document_count == 0:
             return "Add and compile sources, then run `kb update`."
+        if last_run and last_run.get("success") is False:
+            return "Fix the last graph index error, then rerun `kb update`."
         if not output_present:
-            if last_run and last_run.get("success") is False:
-                return "Fix the last graph index error, then rerun `kb update`."
             if last_run and last_run.get("dry_run") is True:
                 return "Run `kb update` to build the graph index."
             return "Run `kb update` to sync and build the graph index."

@@ -84,7 +84,7 @@ def _graph_answer(*, saved_path: str | None = None) -> GraphRAGQueryAnswer:
         retriever="graph",
         planner="heuristic",
         route_reason="comparison question",
-        claim_support="graph-grounded",
+        claim_support="graph-index-answer",
         source_trace={
             "input_path": "graph/graphrag/input/sources.json",
             "output_dir": "graph/graphrag/output",
@@ -110,7 +110,12 @@ def _input_sync_result(root: Path) -> GraphRAGInputSyncResult:
     )
 
 
-def _decision(*, action: str = "index", method: str | None = "fast"):
+def _decision(
+    *,
+    action: str = "index",
+    method: str | None = "fast",
+    output_state: str = "missing",
+):
     """Handles decision.
 
     Args:
@@ -121,7 +126,7 @@ def _decision(*, action: str = "index", method: str | None = "fast"):
         action=action,
         method=method,
         reason="test decision",
-        output_state="missing",
+        output_state=output_state,
         input_digest="input-digest",
         config_digest="config-digest",
         input_changed=True,
@@ -131,7 +136,13 @@ def _decision(*, action: str = "index", method: str | None = "fast"):
     )
 
 
-def _sync_result(root: Path, *, action: str = "index", method: str | None = "fast"):
+def _sync_result(
+    root: Path,
+    *,
+    action: str = "index",
+    method: str | None = "fast",
+    output_state: str = "missing",
+):
     """Handles sync result.
 
     Args:
@@ -141,7 +152,7 @@ def _sync_result(root: Path, *, action: str = "index", method: str | None = "fas
     """
     return GraphRAGSyncResult(
         input_sync=_input_sync_result(root),
-        decision=_decision(action=action, method=method),
+        decision=_decision(action=action, method=method, output_state=output_state),
     )
 
 
@@ -185,7 +196,7 @@ def test_ask_prints_graph_answer_metadata_and_source_trace() -> None:
         ):
             result = runner.invoke(
                 main,
-                ["ask", "--show-evidence", "--save", "What", "changed?"],
+                ["ask", "--show-source-trace", "--save", "What", "changed?"],
             )
 
         assert result.exit_code == 0
@@ -193,6 +204,7 @@ def test_ask_prints_graph_answer_metadata_and_source_trace() -> None:
         assert "Source Trace" in result.output
         assert "GraphRAG input: graph/graphrag/input/sources.json" in result.output
         assert "Route reason: comparison question" in result.output
+        assert "Support level: graph-index-answer" in result.output
         assert "GraphRAG answered from the graph." in result.output
         assert "Saved analysis page: wiki/analysis/question.md" in result.output
 
@@ -214,6 +226,18 @@ def test_ask_json_outputs_graph_answer_payload() -> None:
         assert payload["retriever"] == "graph"
         assert payload["method"] == "drift"
         assert payload["command"] == ["python", "-m", "graphrag", "query"]
+
+
+def test_ask_streaming_is_rejected_until_live_streaming_is_supported() -> None:
+    """Verifies captured query output is not advertised as user-visible streaming."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["ask", "--streaming", "What", "changed?"])
+
+        assert result.exit_code != 0
+        assert "--streaming is not supported by kb ask yet" in result.output
 
 
 def test_update_output_renders_resume_removed_concepts_and_graph_details() -> None:
@@ -329,7 +353,7 @@ def test_update_runs_graph_sync_index_and_export(monkeypatch) -> None:
     """
     calls = []
 
-    def fake_run(command, *, cwd, capture_output, text):
+    def fake_run(command, *, cwd, capture_output, text, **kwargs):
         """Fake run.
 
         Args:
@@ -339,6 +363,10 @@ def test_update_runs_graph_sync_index_and_export(monkeypatch) -> None:
             text: Text content being processed.
         """
         calls.append(command)
+        if "init" in command:
+            settings_path = Path(cwd) / "graph" / "graphrag" / "settings.yaml"
+            settings_path.parent.mkdir(parents=True, exist_ok=True)
+            settings_path.write_text("input:\n  type: text\n", encoding="utf-8")
         _write_graph_tables(Path(cwd))
         return subprocess.CompletedProcess(command, 0, stdout="indexed\n", stderr="")
 
@@ -409,7 +437,7 @@ def test_update_runs_graph_sync_index_and_export(monkeypatch) -> None:
         assert "Graph wiki export:" in result.output
         assert Path("graph/graphrag/input/sources.json").exists()
         assert Path("wiki/graph/index.md").exists()
-        assert calls and calls[0][1:4] == ("-m", "graphrag", "index")
+        assert any(call[1:4] == ("-m", "graphrag", "index") for call in calls)
 
 
 def test_update_no_graph_flag_skips_graph(monkeypatch) -> None:
@@ -429,14 +457,14 @@ def test_update_no_graph_flag_skips_graph(monkeypatch) -> None:
         raise AssertionError("GraphRAG should not run with --no-graph")
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    monkeypatch.setattr(
-        "src.services.graphrag_command_service.subprocess.run",
-        fail_run,
-    )
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("sample.md").write_text("# Sample\n\nNo graph body.\n", encoding="utf-8")
         assert runner.invoke(main, ["init"]).exit_code == 0
+        monkeypatch.setattr(
+            "src.services.graphrag_command_service.subprocess.run",
+            fail_run,
+        )
         _set_provider_config()
 
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
@@ -579,9 +607,11 @@ class _FakeGraphExport:
             error: Error value used by the operation.
         """
         self.error = error
+        self.calls = 0
 
     def export_wiki(self):
         """Export wiki."""
+        self.calls += 1
         if self.error is not None:
             raise self.error
         return GraphRAGWikiExportResult(
@@ -673,6 +703,36 @@ def test_update_service_initializes_and_skips_when_preflight_skips(
     assert result.skip_reason == "test decision"
 
 
+def test_update_service_exports_graph_wiki_when_index_skips_with_complete_output(
+    test_project,
+) -> None:
+    """Verifies that a current GraphRAG index still refreshes graph wiki pages."""
+    from src.services.update_service import UpdateOptions
+
+    graph_export = _FakeGraphExport()
+    service = _update_service_for_graph(
+        test_project,
+        workspace=_FakeWorkspace(initialized=True),
+        sync=_FakeGraphSync(
+            test_project.root,
+            _sync_result(
+                test_project.root,
+                action="skip",
+                method=None,
+                output_state="complete",
+            ),
+        ),
+        export=graph_export,
+    )
+
+    result = service._run_graph_sync(UpdateOptions())
+
+    assert result.skipped is True
+    assert result.skip_reason == "test decision"
+    assert result.export_result is not None
+    assert graph_export.calls == 1
+
+
 def test_update_service_reports_preflight_failure(test_project) -> None:
     """Verifies that update service reports preflight failure.
 
@@ -711,10 +771,32 @@ def test_update_service_reports_missing_graph_credentials(
         sync=_FakeGraphSync(test_project.root, _sync_result(test_project.root)),
     )
 
-    result = service._run_graph_sync(UpdateOptions(allow_partial=True))
+    result = service._run_graph_sync(UpdateOptions())
 
     assert result.skipped is True
     assert "OPENAI_API_KEY" in result.warning
+
+
+def test_update_service_graph_only_requires_graph_credentials(
+    test_project, monkeypatch
+) -> None:
+    """Verifies that graph-only updates fail clearly when graph credentials are absent."""
+    from src.services.update_service import UpdateOptions
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    service = _update_service_for_graph(
+        test_project,
+        workspace=_FakeWorkspace(initialized=True),
+        sync=_FakeGraphSync(test_project.root, _sync_result(test_project.root)),
+    )
+
+    try:
+        service._run_graph_sync(UpdateOptions(graph_only=True))
+    except ValueError as exc:
+        assert "provider credentials are missing" in str(exc)
+        assert "OPENAI_API_KEY" in str(exc)
+    else:
+        raise AssertionError("graph-only update should fail without graph credentials")
 
 
 def test_update_service_reports_invalid_graph_config(test_project) -> None:

@@ -190,8 +190,8 @@ def test_graph_query_raw_output_prefers_stdout_over_progress_stderr(
     assert "Progress" in answer.stderr
     saved_text = (test_project.root / saved_path).read_text(encoding="utf-8")
     frontmatter = yaml.safe_load(saved_text.split("---", 2)[1])
-    assert frontmatter["citations"] == [f"GraphRAG index {answer.index_run_id}"]
-    assert frontmatter["citation_count"] == 1
+    assert frontmatter["citations"] == []
+    assert frontmatter["citation_count"] == 0
     assert "GraphRAG answer" in saved_text
     assert "Warning: noisy dependency output" not in saved_text
     assert "Progress: 100%" not in saved_text
@@ -236,7 +236,7 @@ def test_graph_query_save_writes_analysis_page_and_refreshes_index(
     )
     answer.planner = "heuristic"
     answer.route_reason = "comparison question"
-    answer.claim_support = "graph-grounded"
+    answer.claim_support = "cited-graph-answer"
 
     saved_path = service.save_answer(answer)
 
@@ -257,11 +257,11 @@ def test_graph_query_save_writes_analysis_page_and_refreshes_index(
     assert frontmatter["index_run_id"] == answer.index_run_id
     assert frontmatter["input_manifest_hash"] == answer.input_manifest_hash
     assert frontmatter["planner"] == "heuristic"
-    assert frontmatter["claim_support"] == "graph-grounded"
+    assert frontmatter["claim_support"] == "cited-graph-answer"
     assert "## Retrieval Mode" in text
     assert "- Planner: heuristic" in text
     assert "- Route reason: comparison question" in text
-    assert "- Claim support: graph-grounded" in text
+    assert "- Support level: cited-graph-answer" in text
     assert "- Community level: 2" in text
     assert "- Dynamic community selection: True" in text
     assert "- Response type: Multiple Paragraphs" in text
