@@ -303,6 +303,9 @@ def test_controller_claim_support_reports_stale_index(
     answer = controller.ask("What is RAG?")
 
     assert answer.claim_support == "stale-index"
+    assert answer.staleness_warnings == [
+        "Manifest is newer than graph input. Run `kb update`."
+    ]
 
 
 def test_controller_claim_support_reports_no_answer(test_project, monkeypatch) -> None:

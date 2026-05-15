@@ -59,6 +59,7 @@ class AnthropicProvider(TextProvider):
             "messages": [{"role": "user", "content": request.prompt}],
         }
         if use_adaptive_thinking:
+            kwargs["thinking"] = {"type": "adaptive"}
             kwargs["output_config"] = {
                 "effort": request.reasoning_effort or self._thinking_effort
             }
@@ -95,9 +96,9 @@ def _uses_adaptive_thinking(model: str) -> bool:
     return any(
         marker in normalized
         for marker in (
-            "sonnet-4-5",
             "sonnet-4-6",
             "opus-4-6",
             "opus-4-7",
+            "mythos",
         )
     )

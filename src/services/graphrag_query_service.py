@@ -8,7 +8,6 @@ surface that uses it.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-import hashlib
 import json
 from pathlib import Path
 import re
@@ -22,6 +21,7 @@ from src.services.graphrag_command_service import (
     GraphRAGCommandService,
 )
 from src.services.graphrag_status_service import GraphRAGStatus, GraphRAGStatusService
+from src.services.graphrag_sync_service import file_digest
 from src.services.project_service import (
     ProjectPaths,
     atomic_write_text,
@@ -73,6 +73,7 @@ class GraphRAGQueryAnswer:
     route_reason: str | None = None
     claim_support: str | None = None
     source_trace: dict[str, str | None] = field(default_factory=dict)
+    staleness_warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
         """Serializes this value to a dictionary.
@@ -315,15 +316,11 @@ class GraphRAGQueryService:
 
     @staticmethod
     def _input_manifest_hash(input_path: Path) -> str:
-        digest = hashlib.sha256()
-        with input_path.open("rb") as handle:
-            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-                digest.update(chunk)
-        return digest.hexdigest()
+        return file_digest(input_path)
 
 
 def _answer_from_result(result: GraphRAGCommandResult) -> str:
-    return result.stdout.strip() or result.stderr.strip()
+    return result.stdout.strip()
 
 
 def _graph_data_references(text: str) -> list[str]:

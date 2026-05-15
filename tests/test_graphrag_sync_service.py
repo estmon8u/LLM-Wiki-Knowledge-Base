@@ -204,6 +204,30 @@ def test_sync_skips_when_sources_config_and_complete_output_match(test_project) 
     assert result.command_result is None
 
 
+def test_sync_preview_only_has_no_file_side_effects(test_project) -> None:
+    """Regression: preflight planning must not rewrite settings or input files."""
+
+    def fail_runner(command, **kwargs):
+        """Fail runner."""
+        raise AssertionError("index should not run")
+
+    _write_settings(test_project)
+    _write_source(test_project)
+    settings_path = test_project.paths.graph_dir / "graphrag" / "settings.yaml"
+    input_path = test_project.paths.graph_dir / "graphrag" / "input" / "sources.json"
+    before_settings = settings_path.read_text(encoding="utf-8")
+    service = _build_service(test_project, fail_runner)
+
+    result = service.sync(preview_only=True, dry_run=True)
+
+    assert result.decision.action == "index"
+    assert result.decision.method == "fast"
+    assert result.input_sync.source_count == 1
+    assert result.input_sync.settings_updated is True
+    assert settings_path.read_text(encoding="utf-8") == before_settings
+    assert not input_path.exists()
+
+
 def test_sync_does_not_skip_after_latest_failed_attempt(test_project) -> None:
     """Verifies latest failed index metadata forces a retry after prior success."""
     calls = []

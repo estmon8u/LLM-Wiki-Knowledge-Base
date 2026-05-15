@@ -184,6 +184,10 @@ def create_command() -> click.Command:
             console.print(f"  GraphRAG output: {answer.source_trace.get('output_dir')}")
             console.print(f"  Route reason: {answer.route_reason or 'unknown'}")
             console.print(f"  Support level: {answer.claim_support or 'unverified'}")
+        if answer.staleness_warnings:
+            console.print("")
+            for warning in answer.staleness_warnings:
+                console.print(f"[yellow]{warning}[/yellow]")
         console.print("")
         console.print(RichMarkdown(answer.answer or "No answer text returned."))
         if answer.saved_path:

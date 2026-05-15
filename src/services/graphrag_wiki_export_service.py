@@ -13,7 +13,6 @@ import math
 from pathlib import Path
 from typing import Any, Callable
 
-import pandas as pd
 import yaml
 
 from src.services.graphrag_status_service import (
@@ -517,10 +516,11 @@ class _ExportContext:
 
 
 def _read_parquet_records(path: Path) -> list[dict[str, Any]]:
-    frame = pd.read_parquet(path)
+    import pyarrow.parquet as parquet
+
+    rows = parquet.read_table(path).to_pylist()
     return [
-        {str(key): _clean_value(value) for key, value in row.items()}
-        for row in frame.to_dict(orient="records")
+        {str(key): _clean_value(value) for key, value in row.items()} for row in rows
     ]
 
 

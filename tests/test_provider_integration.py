@@ -374,8 +374,8 @@ def test_anthropic_provider_generate() -> None:
     assert result.text == "Claude says hi"
     assert result.model_name == "claude-sonnet-4-6"
     call_kwargs = MockClient.return_value.messages.create.call_args.kwargs
+    assert call_kwargs["thinking"] == {"type": "adaptive"}
     assert call_kwargs["output_config"] == {"effort": "medium"}
-    assert "thinking" not in call_kwargs
 
 
 def test_anthropic_provider_keeps_manual_thinking_for_older_models() -> None:
@@ -399,6 +399,27 @@ def test_anthropic_provider_keeps_manual_thinking_for_older_models() -> None:
 
     call_kwargs = MockClient.return_value.messages.create.call_args.kwargs
     assert call_kwargs["thinking"] == {"type": "enabled", "budget_tokens": 2048}
+    assert "output_config" not in call_kwargs
+
+
+def test_anthropic_provider_does_not_send_adaptive_thinking_to_older_claude() -> None:
+    """Verifies unsupported older Claude models do not receive adaptive thinking."""
+    with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test"}):
+        with patch("src.providers.anthropic_provider.Anthropic") as MockClient:
+            from src.providers.anthropic_provider import AnthropicProvider
+
+            provider = AnthropicProvider(model="claude-sonnet-4-5")
+            mock_message = MagicMock()
+            mock_block = MagicMock()
+            mock_block.type = "text"
+            mock_block.text = "response"
+            mock_message.content = [mock_block]
+            MockClient.return_value.messages.create.return_value = mock_message
+
+            provider.generate(ProviderRequest(prompt="test"))
+
+    call_kwargs = MockClient.return_value.messages.create.call_args.kwargs
+    assert "thinking" not in call_kwargs
     assert "output_config" not in call_kwargs
 
 
@@ -450,6 +471,33 @@ def test_gemini_provider_generate() -> None:
 
     assert result.text == "Gemini says hi"
     assert result.model_name == "gemini-2.5-flash"
+    call_kwargs = (
+        mock_genai.Client.return_value.models.generate_content.call_args.kwargs
+    )
+    assert call_kwargs["config"].thinking_config.thinking_budget == 24576
+    assert call_kwargs["config"].thinking_config.thinking_level is None
+
+
+def test_gemini_provider_uses_thinking_level_for_gemini_3_models() -> None:
+    """Verifies Gemini 3 models receive thinking_level instead of thinking_budget."""
+    with patch.dict("os.environ", {"GEMINI_API_KEY": "test"}):
+        with patch("src.providers.gemini_provider.genai") as mock_genai:
+            from src.providers.gemini_provider import GeminiProvider
+
+            provider = GeminiProvider(model="gemini-3-flash-preview")
+            mock_response = MagicMock()
+            mock_response.text = "response"
+            mock_genai.Client.return_value.models.generate_content.return_value = (
+                mock_response
+            )
+
+            provider.generate(ProviderRequest(prompt="test", reasoning_effort="low"))
+
+    call_kwargs = (
+        mock_genai.Client.return_value.models.generate_content.call_args.kwargs
+    )
+    assert call_kwargs["config"].thinking_config.thinking_level.value == "LOW"
+    assert call_kwargs["config"].thinking_config.thinking_budget is None
 
 
 def test_gemini_response_schema_removes_additional_properties() -> None:

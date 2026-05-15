@@ -300,7 +300,7 @@ class GraphRAGStatusService:
         created_at = utc_now_iso()
         active_output_dir = None
         if result.returncode == 0 and not dry_run:
-            resolved_active_output = self.active_output_dir()
+            resolved_active_output = self._active_output_dir(prefer_recorded=False)
             if resolved_active_output is not None:
                 active_output_dir = self._relative_to_project_root(
                     resolved_active_output
@@ -369,9 +369,22 @@ class GraphRAGStatusService:
                     return len(value)
         return 0
 
-    def _active_output_dir(self) -> Path | None:
+    def _active_output_dir(self, *, prefer_recorded: bool = True) -> Path | None:
         if not self.output_dir.exists():
             return None
+        if prefer_recorded:
+            last_run = self.last_successful_index_run()
+            recorded_output_dir = (
+                self._project_relative_path(last_run.get("active_output_dir"))
+                if last_run
+                else None
+            )
+            if (
+                recorded_output_dir is not None
+                and recorded_output_dir.exists()
+                and self._output_dir_complete(recorded_output_dir)
+            ):
+                return recorded_output_dir
         latest_by_parent: dict[Path, float] = {}
         for path in self.output_dir.rglob("*.parquet"):
             try:
@@ -440,6 +453,14 @@ class GraphRAGStatusService:
 
     def _relative_to_project_root(self, path: Path) -> str:
         return GraphRAGStatus._relative_to_project(path, self.paths.root)
+
+    def _project_relative_path(self, value: Any) -> Path | None:
+        if not isinstance(value, str) or not value.strip():
+            return None
+        path = Path(value)
+        if path.is_absolute():
+            return path
+        return self.paths.root / path
 
     @staticmethod
     def _file_mtime_iso(path: Path) -> str | None:

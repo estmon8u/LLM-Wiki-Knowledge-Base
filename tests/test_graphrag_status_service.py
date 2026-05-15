@@ -175,6 +175,46 @@ def test_status_prefers_complete_output_over_newer_partial_output(
     assert payload["active_output_dir"] == "graph/graphrag/output/complete"
 
 
+def test_status_prefers_recorded_successful_output_dir(test_project) -> None:
+    """Regression: a later complete folder should not override the recorded run."""
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "a"}]),
+    )
+    recorded_dir = test_project.paths.graph_dir / "graphrag" / "output" / "recorded"
+    later_dir = test_project.paths.graph_dir / "graphrag" / "output" / "later"
+    for directory in (recorded_dir, later_dir):
+        for table in (
+            "documents",
+            "text_units",
+            "entities",
+            "relationships",
+            "communities",
+            "community_reports",
+        ):
+            path = directory / f"{table}.parquet"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("", encoding="utf-8")
+    service = GraphRAGStatusService(test_project.paths)
+    service.record_index_run(
+        method="fast",
+        dry_run=False,
+        result=GraphRAGCommandResult(
+            command=("python", "-m", "graphrag", "index"),
+            cwd=test_project.paths.root,
+            returncode=0,
+            stdout="indexed",
+            stderr="",
+        ),
+    )
+    runs = service._load_runs()
+    runs[-1]["active_output_dir"] = "graph/graphrag/output/recorded"
+    service.runs_file.write_text(json.dumps(runs), encoding="utf-8")
+
+    assert service.status().active_output_dir == recorded_dir
+
+
 def test_status_reports_next_actions_for_missing_workspace(test_project) -> None:
     """Verifies that status reports next actions for missing workspace.
 

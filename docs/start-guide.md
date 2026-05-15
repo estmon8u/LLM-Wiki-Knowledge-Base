@@ -132,17 +132,21 @@ poetry run kb --project-root $projectRoot update --force
 `graph.embedding_model` from `kb.config.yaml` into
 `graph/graphrag/settings.yaml`. Unless graph-specific API-key overrides are
 set, the API-key environment variables come from the centralized `providers`
-catalog.
+catalog. The CLI owns those provider/model/API-key fields but preserves
+user-owned GraphRAG tuning such as chunking, cache, vector-store, and search
+settings when it rewrites the workspace settings file.
 
 `kb update` writes `graph/graphrag/input/sources.json` from
 `raw/_manifest.json` and `raw/normalized/`, preserving source IDs, hashes,
 paths, converter metadata, and the normalized text for GraphRAG indexing. The
 generated JSON file can contain local corpus text and stays untracked. It then
-auto-decides whether the GraphRAG index needs a full `fast` rebuild, an
+plans the graph sync without mutating workspace files, then auto-decides whether
+the GraphRAG index needs a full `fast` rebuild, an
 incremental `fast-update`, a retry after the latest failed attempt, or no index
 job because sources and runtime settings already match the last successful run.
 When complete graph output already exists and indexing is skipped, `kb update`
-still refreshes `wiki/graph/` from the active output directory.
+still refreshes `wiki/graph/` from the active output directory recorded by the
+latest successful complete run.
 
 Check readiness after update:
 
@@ -162,6 +166,14 @@ only when you want to refresh the wiki and legacy index without touching
 GraphRAG.
 
 ## 7. Search and ask
+
+Search the maintained wiki index for source, analysis, concept, and generated
+graph pages:
+
+```powershell
+poetry run kb --project-root $projectRoot find "citation grounding"
+poetry run kb --project-root $projectRoot find --limit 10 "agent architecture"
+```
 
 After a real `kb update`, ask through the default GraphRAG controller:
 
@@ -214,9 +226,9 @@ poetry run kb --project-root $projectRoot legacy ask --save "What does the updat
 poetry run kb --project-root $projectRoot legacy ask --save-as update-pipeline "What does the update pipeline do?"
 ```
 
-Saved analysis pages are searchable with `kb legacy find`, but later legacy ask
-runs do not cite saved answers or generated concept pages as primary evidence.
-Top-level `kb find` is still reserved for future GraphRAG search behavior.
+Saved analysis pages are searchable with `kb find` and `kb legacy find`, but
+later legacy ask runs do not cite saved answers or generated concept pages as
+primary evidence.
 
 ## 8. Check and export
 

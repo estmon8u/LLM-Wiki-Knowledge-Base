@@ -20,6 +20,7 @@ from src.services.graphrag_status_service import (
     GraphRAGStatus,
     GraphRAGStatusService,
     iso_timestamp_after,
+    _timestamp_iso,
 )
 from src.services.project_service import ProjectPaths
 from src.services.query_router_service import QueryRouterService
@@ -105,6 +106,7 @@ class GraphAskControllerService:
         answer.retriever = "graph"
         answer.planner = route.planner
         answer.route_reason = route.reason
+        answer.staleness_warnings = staleness
         answer.claim_support = _assess_claim_support(answer, staleness)
         if save or save_as:
             self.query_service.save_answer(answer, slug=save_as)
@@ -148,14 +150,7 @@ class GraphAskControllerService:
         if not path.exists():
             return None
         try:
-            from datetime import datetime, timezone
-
-            ts = path.stat().st_mtime
-            return (
-                datetime.fromtimestamp(ts, tz=timezone.utc)
-                .replace(microsecond=0)
-                .isoformat()
-            )
+            return _timestamp_iso(path.stat().st_mtime)
         except OSError:
             return None
 

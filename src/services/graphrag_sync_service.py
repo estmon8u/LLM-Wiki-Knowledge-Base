@@ -7,7 +7,7 @@ surface that uses it.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 import hashlib
 import json
 from pathlib import Path
@@ -139,16 +139,32 @@ class GraphRAGSyncService:
         Returns:
             GraphRAGSyncResult produced by the operation.
         """
-        if self.workspace_service.is_initialized():
+        if self.workspace_service.is_initialized() and not preview_only:
             self.workspace_service.sync_settings()
 
-        input_sync = self.input_sync_service.sync()
+        input_sync = self.input_sync_service.sync(preview_only=preview_only)
         status = self.status_service.status()
-        self._require_synced_input(status)
+        if preview_only:
+            status = replace(
+                status,
+                input_exists=status.input_exists or input_sync.source_count > 0,
+                input_document_count=input_sync.source_count,
+            )
+        self._require_synced_input(status, allow_planned_input=preview_only)
 
-        input_digest = file_digest(status.input_path)
-        config_digest = graph_runtime_digest(self.workspace_dir)
-        current_source_hashes = graph_input_source_hashes(status.input_path)
+        input_digest = input_sync.input_digest or file_digest(status.input_path)
+        settings_text = (
+            self.workspace_service.render_settings()
+            if preview_only and self.workspace_service.is_initialized()
+            else None
+        )
+        config_digest = graph_runtime_digest(
+            self.workspace_dir,
+            settings_text=settings_text,
+        )
+        current_source_hashes = input_sync.source_hashes or graph_input_source_hashes(
+            status.input_path
+        )
         last_successful_run = self.status_service.last_successful_index_run()
 
         decision = self._decide(
@@ -402,12 +418,16 @@ class GraphRAGSyncService:
         )
 
     @staticmethod
-    def _require_synced_input(status: GraphRAGStatus) -> None:
+    def _require_synced_input(
+        status: GraphRAGStatus,
+        *,
+        allow_planned_input: bool = False,
+    ) -> None:
         if not status.workspace_initialized:
             raise GraphRAGSyncError(
                 "GraphRAG workspace is not initialized. Run `kb init` first."
             )
-        if not status.input_exists:
+        if not status.input_exists and not allow_planned_input:
             raise GraphRAGSyncError("GraphRAG input not found. Run `kb update` first.")
 
 
@@ -441,7 +461,11 @@ def file_digest(path: Path) -> str:
     return digest.hexdigest()
 
 
-def graph_runtime_digest(workspace_dir: Path) -> str:
+def graph_runtime_digest(
+    workspace_dir: Path,
+    *,
+    settings_text: str | None = None,
+) -> str:
     """Graph runtime digest.
 
     Args:
@@ -451,7 +475,12 @@ def graph_runtime_digest(workspace_dir: Path) -> str:
         str produced by the operation.
     """
     digest = hashlib.sha256()
-    _digest_file(digest, workspace_dir / "settings.yaml", "settings.yaml")
+    if settings_text is None:
+        _digest_file(digest, workspace_dir / "settings.yaml", "settings.yaml")
+    else:
+        digest.update(b"settings.yaml\0")
+        digest.update(settings_text.encode("utf-8"))
+        digest.update(b"\0")
     prompt_dir = workspace_dir / "prompts"
     if prompt_dir.exists():
         for path in sorted(prompt_dir.rglob("*.txt")):

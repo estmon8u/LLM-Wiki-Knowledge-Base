@@ -125,6 +125,69 @@ def test_workspace_service_syncs_graph_config_defaults(test_project) -> None:
     assert embedding["api_key"] == "${OPENAI_GRAPH_KEY}"
 
 
+def test_workspace_service_preserves_user_settings_when_syncing_managed_fields(
+    test_project,
+) -> None:
+    """Regression: defaults should not overwrite user-owned GraphRAG tuning."""
+    settings_path = test_project.paths.graph_dir / "graphrag" / "settings.yaml"
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(
+        "chunking:\n"
+        "  type: tokens\n"
+        "  size: 2222\n"
+        "vector_store:\n"
+        "  type: lancedb\n"
+        "  db_uri: custom/lancedb\n"
+        "completion_models:\n"
+        "  default_completion_model:\n"
+        "    model: stale-model\n",
+        encoding="utf-8",
+    )
+    command_service = GraphRAGCommandService(test_project.paths)
+    workspace_service = GraphRAGWorkspaceService(
+        test_project.paths,
+        command_service,
+        config=test_project.config,
+    )
+
+    workspace_service.sync_settings()
+
+    settings = yaml.safe_load(settings_path.read_text(encoding="utf-8"))
+    assert settings["chunking"]["size"] == 2222
+    assert settings["vector_store"]["db_uri"] == "custom/lancedb"
+    assert (
+        settings["completion_models"]["default_completion_model"]["model"]
+        == "gpt-5.4-nano"
+    )
+    assert settings["input"]["type"] == "json"
+    assert (
+        settings["drift_search"]["reduce_prompt"] == "prompts/drift_reduce_prompt.txt"
+    )
+
+
+def test_workspace_service_normalizes_stock_windows_vector_store_path(
+    test_project,
+) -> None:
+    """Verifies the stock GraphRAG Windows path is rewritten portably."""
+    settings_path = test_project.paths.graph_dir / "graphrag" / "settings.yaml"
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(
+        "vector_store:\n" "  type: lancedb\n" "  db_uri: output\\lancedb\n",
+        encoding="utf-8",
+    )
+    command_service = GraphRAGCommandService(test_project.paths)
+    workspace_service = GraphRAGWorkspaceService(
+        test_project.paths,
+        command_service,
+        config=test_project.config,
+    )
+
+    workspace_service.sync_settings()
+
+    settings = yaml.safe_load(settings_path.read_text(encoding="utf-8"))
+    assert settings["vector_store"]["db_uri"] == "output/lancedb"
+
+
 def test_workspace_service_syncs_separate_embedding_provider(test_project) -> None:
     """Verifies that workspace service syncs separate embedding provider.
 

@@ -174,8 +174,14 @@ class GraphRAGWorkspaceService:
         Args:
             graph_config: Graph config value used by the operation.
         """
+        settings_text = self.render_settings(graph_config)
+        atomic_write_text(self.settings_path, settings_text)
+
+    def render_settings(self, graph_config: GraphRAGRuntimeConfig | None = None) -> str:
+        """Return the settings payload that sync_settings would write."""
         graph_config = graph_config or resolve_graph_config(self.config)
-        settings = _deep_merge(self._load_settings(), _default_settings())
+        settings = _deep_merge(_default_settings(), self._load_settings())
+        _normalize_stock_vector_store_path(settings)
         completion_models = settings.setdefault("completion_models", {})
         completion = completion_models.setdefault("default_completion_model", {})
         completion["model_provider"] = graph_config.provider
@@ -190,10 +196,7 @@ class GraphRAGWorkspaceService:
         embedding["auth_method"] = "api_key"
         embedding["api_key"] = f"${{{graph_config.embedding_api_key_env}}}"
 
-        atomic_write_text(
-            self.settings_path,
-            yaml.safe_dump(settings, sort_keys=False),
-        )
+        return yaml.safe_dump(settings, sort_keys=False)
 
     def _load_settings(self) -> dict[str, Any]:
         if not self.settings_path.exists():
@@ -211,9 +214,9 @@ class GraphRAGWorkspaceService:
         created: list[str] = []
         for source in sorted(bundled_prompts.glob("*.txt")):
             target = prompt_dir / source.name
-            if target.exists():
-                continue
             if source.resolve() == target.resolve():
+                continue
+            if target.exists() and target.read_bytes() == source.read_bytes():
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
@@ -315,7 +318,7 @@ def _default_settings() -> dict[str, Any]:
             "completion_model_id": "default_completion_model",
             "embedding_model_id": "default_embedding_model",
             "prompt": "prompts/drift_search_system_prompt.txt",
-            "reduce_prompt": "prompts/drift_search_reduce_prompt.txt",
+            "reduce_prompt": "prompts/drift_reduce_prompt.txt",
         },
         "basic_search": {
             "completion_model_id": "default_completion_model",
@@ -333,6 +336,14 @@ def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]
         else:
             merged[key] = deepcopy(value)
     return merged
+
+
+def _normalize_stock_vector_store_path(settings: dict[str, Any]) -> None:
+    vector_store = settings.get("vector_store")
+    if not isinstance(vector_store, dict):
+        return
+    if vector_store.get("db_uri") == "output\\lancedb":
+        vector_store["db_uri"] = "output/lancedb"
 
 
 def _bundled_prompts_dir() -> Path:

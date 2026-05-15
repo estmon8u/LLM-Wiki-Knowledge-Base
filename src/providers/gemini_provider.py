@@ -37,7 +37,19 @@ class GeminiProvider(TextProvider):
             )
         self._client = genai.Client(api_key=api_key)
 
-    _EFFORT_TO_LEVEL = {"low": "low", "medium": "medium", "high": "high"}
+    _EFFORT_TO_LEVEL = {
+        "minimal": "minimal",
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+    }
+    _EFFORT_TO_25_BUDGET = {
+        "none": 0,
+        "minimal": 1024,
+        "low": 1024,
+        "medium": 8192,
+        "high": 24576,
+    }
 
     @provider_retry()
     def generate(self, request: ProviderRequest) -> ProviderResponse:
@@ -50,10 +62,9 @@ class GeminiProvider(TextProvider):
             ProviderResponse produced by the operation.
         """
         effort = request.reasoning_effort or self._reasoning_effort
-        thinking_level = self._EFFORT_TO_LEVEL.get(effort, "high")
         config_kwargs: dict = {
             "max_output_tokens": request.max_tokens,
-            "thinking_config": types.ThinkingConfig(thinking_level=thinking_level),
+            "thinking_config": self._thinking_config(effort),
         }
         if request.system_prompt:
             config_kwargs["system_instruction"] = request.system_prompt
@@ -85,6 +96,13 @@ class GeminiProvider(TextProvider):
             raw=response,
         )
 
+    def _thinking_config(self, effort: str) -> types.ThinkingConfig:
+        if _uses_thinking_budget(self.model):
+            budget = self._EFFORT_TO_25_BUDGET.get(effort, 24576)
+            return types.ThinkingConfig(thinking_budget=budget)
+        level = self._EFFORT_TO_LEVEL.get(effort, "high")
+        return types.ThinkingConfig(thinking_level=level)
+
 
 def _gemini_response_schema(schema: object) -> object:
     """Return a Gemini-compatible subset of the JSON schema payload."""
@@ -97,3 +115,7 @@ def _gemini_response_schema(schema: object) -> object:
     if isinstance(schema, list):
         return [_gemini_response_schema(item) for item in schema]
     return schema
+
+
+def _uses_thinking_budget(model: str) -> bool:
+    return model.casefold().startswith("gemini-2.5")

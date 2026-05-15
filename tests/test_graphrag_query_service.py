@@ -197,6 +197,28 @@ def test_graph_query_raw_output_prefers_stdout_over_progress_stderr(
     assert "Progress: 100%" not in saved_text
 
 
+def test_graph_query_does_not_treat_stderr_as_answer(test_project) -> None:
+    """Regression: successful stderr-only GraphRAG noise is not answer text."""
+    _write_ready_graph(test_project)
+
+    def runner(command, *, cwd, capture_output, text):
+        """Runner."""
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="",
+            stderr="Warning: progress-only output\n",
+        )
+
+    service = _build_query_service(test_project, runner)
+
+    answer = service.ask("What is RAG?", method="basic")
+
+    assert answer.answer == ""
+    assert answer.raw_output == ""
+    assert "progress-only" in answer.stderr
+
+
 def test_graph_query_save_writes_analysis_page_and_refreshes_index(
     test_project,
 ) -> None:

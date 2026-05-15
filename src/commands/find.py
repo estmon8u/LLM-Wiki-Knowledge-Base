@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import click
 
-from src.commands.common import require_initialized
+from src.commands.common import console, emit_json, make_table, require_initialized
 from src.models.command_models import CommandContext, CommandSpec
 
 
-SUMMARY = "Deprecated top-level lexical search; use `kb legacy find`."
+SUMMARY = "Search the maintained wiki index, including generated graph pages."
 
 
 def build_spec(_: CommandContext = None) -> CommandSpec:
@@ -30,7 +30,7 @@ def create_command() -> click.Command:
         click.Command produced by the operation.
     """
 
-    @click.command(name="find", help=SUMMARY, short_help="Use `kb legacy find`.")
+    @click.command(name="find", help=SUMMARY, short_help="Search the wiki index.")
     @click.argument("query_terms", nargs=-1)
     @click.option("--limit", default=5, show_default=True, type=int)
     @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
@@ -52,11 +52,49 @@ def create_command() -> click.Command:
         require_initialized(command_context)
         if not query_terms:
             raise click.ClickException("Provide at least one search term.")
-        _ = (limit, as_json)
-        raise click.ClickException(
-            "kb find has moved to kb legacy find. Top-level retrieval is "
-            "GraphRAG-first; use `kb legacy find <terms>` for the local SQLite "
-            "FTS comparator."
+        search_service = command_context.services["search"]
+        query = " ".join(query_terms)
+        results = search_service.search(query, limit=limit, include_concepts=True)
+
+        if as_json:
+            emit_json(
+                {
+                    "retriever": "wiki-index",
+                    "query": query,
+                    "results": [_search_result_payload(result) for result in results],
+                }
+            )
+            return
+
+        if not results:
+            console.print("No wiki pages matched that query.")
+            return
+
+        table = make_table(
+            columns=[
+                ("Title", {"style": "bold"}),
+                ("Path", {}),
+                ("Score", {"justify": "right"}),
+                ("Snippet", {"style": "dim"}),
+            ],
+            rows=[
+                (result.title, result.path, f"{result.score:.2f}", result.snippet)
+                for result in results
+            ],
+            title="Wiki Search Results",
         )
+        console.print(table)
 
     return command
+
+
+def _search_result_payload(result: object) -> dict[str, object]:
+    return {
+        "retriever": "wiki-index",
+        "title": result.title,
+        "path": result.path,
+        "score": result.score,
+        "snippet": result.snippet,
+        "section": result.section,
+        "chunk_index": result.chunk_index,
+    }

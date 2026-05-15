@@ -12,8 +12,6 @@ from pathlib import Path
 import re
 from typing import Iterable
 
-import pandas as pd
-
 from src.services.graphrag_query_service import GRAPH_QUERY_METHODS
 from src.services.graphrag_status_service import GraphRAGStatusService
 
@@ -179,12 +177,17 @@ def _read_term_columns(path: Path) -> Iterable[str]:
     if not columns:
         return []
     try:
-        frame = pd.read_parquet(path, columns=columns)
+        import pyarrow.parquet as parquet
+
+        rows = parquet.read_table(path, columns=columns).to_pylist()
     except Exception:
         return []
     terms: list[str] = []
     for column in columns:
-        for value in frame[column].dropna().tolist():
+        for row in rows:
+            value = row.get(column)
+            if value is None:
+                continue
             text = str(value).strip()
             if len(text) >= 3:
                 terms.append(text)
@@ -198,11 +201,7 @@ def _available_term_columns(path: Path) -> list[str]:
 
         available = set(parquet.read_schema(path).names)
     except Exception:
-        try:
-            frame = pd.read_parquet(path, columns=None)
-        except Exception:
-            return []
-        available = set(frame.columns)
+        return []
     return [name for name in candidates if name in available]
 
 

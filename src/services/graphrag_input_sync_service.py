@@ -7,7 +7,7 @@ surface that uses it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 from pathlib import Path
 from typing import Any
@@ -56,6 +56,8 @@ class GraphRAGInputSyncResult:
     settings_path: Path
     metadata_fields: tuple[str, ...]
     settings_updated: bool
+    input_digest: str | None = None
+    source_hashes: dict[str, str] = field(default_factory=dict)
 
 
 class GraphRAGInputSyncService:
@@ -109,30 +111,21 @@ class GraphRAGInputSyncService:
         """
         return self.workspace_dir / "settings.yaml"
 
-    def sync(self) -> GraphRAGInputSyncResult:
+    def sync(self, *, preview_only: bool = False) -> GraphRAGInputSyncResult:
         """Sync.
+
+        Args:
+            preview_only: Build the planned input/settings payload without writing.
 
         Returns:
             GraphRAGInputSyncResult produced by the operation.
         """
-        try:
-            sources = self.manifest_service.list_sources()
-        except ManifestError as exc:
-            message = str(exc).replace(
-                "Duplicate manifest source_id",
-                "Duplicate source_id",
-            )
-            raise GraphRAGInputSyncError(message) from exc
-        self._reject_duplicate_source_ids(sources)
-
-        manifest_hash = self._manifest_hash()
-        records = [
-            {**self._record_for_source(source), "manifest_hash": manifest_hash}
-            for source in sources
-        ]
-        settings_updated = self.configure_settings()
+        records = self._planned_records()
+        settings_updated = self._settings_would_update()
         payload = json.dumps(records, indent=2, sort_keys=True, default=str) + "\n"
-        atomic_write_text(self.input_file, payload)
+        if not preview_only:
+            settings_updated = self.configure_settings()
+            atomic_write_text(self.input_file, payload)
 
         return GraphRAGInputSyncResult(
             source_count=len(records),
@@ -140,6 +133,8 @@ class GraphRAGInputSyncService:
             settings_path=self.settings_file,
             metadata_fields=GRAPH_INPUT_METADATA_FIELDS,
             settings_updated=settings_updated,
+            input_digest=_text_digest(payload),
+            source_hashes=_source_hashes(records),
         )
 
     def configure_settings(self) -> bool:
@@ -148,6 +143,24 @@ class GraphRAGInputSyncService:
         Returns:
             bool produced by the operation.
         """
+        if not self.settings_file.exists():
+            relative = self._relative(self.settings_file)
+            raise GraphRAGInputSyncError(
+                f"GraphRAG settings not found at {relative}. "
+                "Run `poetry run graphrag init --root graph/graphrag "
+                f"--model {DEFAULT_GRAPHRAG_MODEL} "
+                f"--embedding {DEFAULT_GRAPHRAG_EMBEDDING_MODEL} --force` "
+                "or run `kb init` before `kb update`."
+            )
+
+        original, updated = self._configured_settings_payload()
+        if updated == original:
+            return False
+
+        atomic_write_text(self.settings_file, updated)
+        return True
+
+    def _configured_settings_payload(self) -> tuple[str, str]:
         if not self.settings_file.exists():
             relative = self._relative(self.settings_file)
             raise GraphRAGInputSyncError(
@@ -195,11 +208,28 @@ class GraphRAGInputSyncService:
         updated = yaml.safe_dump(settings, sort_keys=False)
         if not updated.endswith("\n"):
             updated += "\n"
-        if updated == original:
-            return False
+        return original, updated
 
-        atomic_write_text(self.settings_file, updated)
-        return True
+    def _settings_would_update(self) -> bool:
+        original, updated = self._configured_settings_payload()
+        return updated != original
+
+    def _planned_records(self) -> list[dict[str, Any]]:
+        try:
+            sources = self.manifest_service.list_sources()
+        except ManifestError as exc:
+            message = str(exc).replace(
+                "Duplicate manifest source_id",
+                "Duplicate source_id",
+            )
+            raise GraphRAGInputSyncError(message) from exc
+        self._reject_duplicate_source_ids(sources)
+
+        manifest_hash = self._manifest_hash()
+        return [
+            {**self._record_for_source(source), "manifest_hash": manifest_hash}
+            for source in sources
+        ]
 
     def _record_for_source(self, source: RawSourceRecord) -> dict[str, Any]:
         if not source.normalized_path:
@@ -277,3 +307,17 @@ class GraphRAGInputSyncService:
             for chunk in iter(lambda: handle.read(1024 * 1024), b""):
                 digest.update(chunk)
         return digest.hexdigest()
+
+
+def _text_digest(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _source_hashes(records: list[dict[str, Any]]) -> dict[str, str]:
+    hashes: dict[str, str] = {}
+    for record in records:
+        source_id = record.get("source_id") or record.get("id")
+        source_hash = record.get("source_hash")
+        if isinstance(source_id, str) and isinstance(source_hash, str):
+            hashes[source_id] = source_hash
+    return hashes

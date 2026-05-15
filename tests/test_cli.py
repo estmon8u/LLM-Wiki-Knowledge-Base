@@ -277,8 +277,8 @@ def test_end_to_end_cli_flow_for_local_html_source() -> None:
         assert "wiki/sources/html-research-note.md" in search_result.output
 
 
-def test_legacy_search_empty_and_top_level_retrieval_guides_to_legacy() -> None:
-    """Verifies that legacy search empty and top level retrieval guides to legacy."""
+def test_legacy_search_empty_and_top_level_find_searches_wiki() -> None:
+    """Verifies legacy and top-level find both report empty wiki search results."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
@@ -289,8 +289,8 @@ def test_legacy_search_empty_and_top_level_retrieval_guides_to_legacy() -> None:
 
         assert search_result.exit_code == 0
         assert "No wiki pages matched that query." in search_result.output
-        assert find_result.exit_code != 0
-        assert "kb legacy find" in find_result.output
+        assert find_result.exit_code == 0
+        assert "No wiki pages matched that query." in find_result.output
         assert ask_result.exit_code != 0
         assert "kb update" in ask_result.output
         assert "kb legacy ask" not in ask_result.output
@@ -924,7 +924,7 @@ def test_find_command_works() -> None:
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        result = runner.invoke(main, ["legacy", "find", "missing-topic"])
+        result = runner.invoke(main, ["find", "missing-topic"])
 
         assert result.exit_code == 0
         assert "No wiki pages matched that query." in result.output
@@ -1398,18 +1398,15 @@ def test_find_json_output() -> None:
         with patch("src.services.build_provider", return_value=_CliFakeProvider()):
             assert runner.invoke(main, ["update", "--no-graph"]).exit_code == 0
 
-        result = runner.invoke(main, ["legacy", "find", "--json", "traceability"])
+        result = runner.invoke(main, ["find", "--json", "traceability"])
 
         assert result.exit_code == 0
         assert result.stderr == ""
         data = json.loads(result.output)
-        assert data["retriever"] == "legacy-fts"
-        assert data["deprecated"] is True
-        assert "Deprecated: SQLite FTS5 retrieval is legacy-only" in data["warning"]
+        assert data["retriever"] == "wiki-index"
         assert isinstance(data["results"], list)
         assert len(data["results"]) > 0
-        assert data["results"][0]["retriever"] == "legacy-fts"
-        assert data["results"][0]["deprecated"] is True
+        assert data["results"][0]["retriever"] == "wiki-index"
         assert "title" in data["results"][0]
         assert "path" in data["results"][0]
         assert "score" in data["results"][0]
@@ -1421,14 +1418,12 @@ def test_find_json_empty_results() -> None:
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        result = runner.invoke(main, ["legacy", "find", "--json", "missing-topic"])
+        result = runner.invoke(main, ["find", "--json", "missing-topic"])
 
         assert result.exit_code == 0
         assert result.stderr == ""
         data = json.loads(result.output)
-        assert data["retriever"] == "legacy-fts"
-        assert data["deprecated"] is True
-        assert "Deprecated: SQLite FTS5 retrieval is legacy-only" in data["warning"]
+        assert data["retriever"] == "wiki-index"
         assert data["results"] == []
 
 
