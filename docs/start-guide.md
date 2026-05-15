@@ -12,7 +12,7 @@ Requirements:
 | --- | --- | --- |
 | Python 3.11, 3.12, or 3.13 | Yes | The project is pinned to Python `>=3.11,<3.14`. |
 | Poetry | Yes | Installs dependencies and runs the `kb` entrypoint. |
-| LLM API key | Yes for legacy `update`, `legacy ask`, `review`, and real GraphRAG index/query jobs | Normal `kb update` warns and skips graph indexing if GraphRAG credentials are missing; `kb update --graph-only` requires them. |
+| LLM API key | Yes for `kb update`, `kb legacy ask`, `kb review`, and real GraphRAG index/query jobs | Normal `kb update` warns and skips graph indexing if GraphRAG credentials are missing; `kb update --graph-only` requires them. |
 | Mistral API key | Required for PDFs, Office docs, images, and HTML OCR | Markdown and plain text do not need it. |
 | HTML renderer | Required only for HTML OCR | `wkhtmltopdf` is preferred when installed; bundled `xhtml2pdf` is the pure-Python fallback. |
 
@@ -41,7 +41,7 @@ This creates the project files and directories:
 | `kb.schema.md` | Project-specific compilation guidance. |
 | `raw/` | Original and normalized source files. |
 | `wiki/` | Generated source, concept, analysis, index, and log pages. |
-| `graph/` | Legacy search state plus the GraphRAG workspace. |
+| `graph/` | GraphRAG workspace plus local search and run state. |
 | `vault/` | Obsidian export output. |
 
 The rest of this guide assumes you stay in the repo checkout and pass
@@ -78,6 +78,12 @@ Set that key before running a real graph index or query job:
 $env:OPENAI_API_KEY = "..."
 ```
 
+`kb init` creates the project-local GraphRAG workspace and syncs the managed
+provider, model, embedding, and API-key fields into
+`graph/graphrag/settings.yaml`. Later `kb init` or `kb update` runs refresh
+those managed fields while preserving user-owned GraphRAG tuning such as
+chunking, cache, vector-store, and search settings.
+
 Check the setup before adding sources:
 
 ```powershell
@@ -108,10 +114,10 @@ poetry run kb --project-root $projectRoot update
 ```
 
 `kb update` compiles source pages, generates concept pages when useful,
-refreshes `wiki/index.md` and `wiki/log.md`, and currently rebuilds the
-temporary SQLite FTS5 search index for explicit legacy commands. During the
-GraphRAG pivot, GraphRAG is the default retrieval target and retained FTS5
-behavior is exposed only through deprecated `kb legacy ...` commands.
+refreshes `wiki/index.md` and `wiki/log.md`, rebuilds the maintained wiki search
+index used by `kb find`, and refreshes the deprecated legacy comparator index.
+During the GraphRAG pivot, GraphRAG is the default answer path and deprecated
+FTS comparison commands are exposed only through `kb legacy ...`.
 
 If a run is interrupted, resume it:
 
@@ -127,23 +133,18 @@ poetry run kb --project-root $projectRoot update --force
 
 ## 6. Check GraphRAG state
 
-`kb init` initializes the project-local GraphRAG workspace through the installed GraphRAG CLI and syncs
-`graph.provider`, `graph.model`, `graph.embedding_provider`, and
-`graph.embedding_model` from `kb.config.yaml` into
-`graph/graphrag/settings.yaml`. Unless graph-specific API-key overrides are
-set, the API-key environment variables come from the centralized `providers`
-catalog. The CLI owns those provider/model/API-key fields but preserves
-user-owned GraphRAG tuning such as chunking, cache, vector-store, and search
-settings when it rewrites the workspace settings file.
-
-`kb update` writes `graph/graphrag/input/sources.json` from
-`raw/_manifest.json` and `raw/normalized/`, preserving source IDs, hashes,
+After `kb update`, GraphRAG state is determined from the planned or synced
+input, the latest successful index run, and the active complete output
+directory. The graph step first plans sync work without mutating workspace
+files. When graph work proceeds, it writes `graph/graphrag/input/sources.json`
+from `raw/_manifest.json` and `raw/normalized/`, preserving source IDs, hashes,
 paths, converter metadata, and the normalized text for GraphRAG indexing. The
-generated JSON file can contain local corpus text and stays untracked. It then
-plans the graph sync without mutating workspace files, then auto-decides whether
-the GraphRAG index needs a full `fast` rebuild, an
-incremental `fast-update`, a retry after the latest failed attempt, or no index
-job because sources and runtime settings already match the last successful run.
+generated JSON file can contain local corpus text and stays untracked.
+
+The same graph decision checks whether the GraphRAG index needs a full `fast`
+rebuild, an incremental `fast-update`, a retry after the latest failed attempt,
+or no index job because sources and runtime settings already match the last
+successful run.
 When complete graph output already exists and indexing is skipped, `kb update`
 still refreshes `wiki/graph/` from the active output directory recorded by the
 latest successful complete run.
