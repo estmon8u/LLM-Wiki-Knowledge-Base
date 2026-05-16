@@ -12,8 +12,8 @@ import os
 from pathlib import Path
 from typing import Any
 
-from graphwiki_kb.providers import resolve_provider_settings
 from graphwiki_kb.models.wiki_models import StatusSnapshot
+from graphwiki_kb.providers import resolve_provider_settings
 from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
 from graphwiki_kb.services.manifest_service import ManifestService
 from graphwiki_kb.services.project_service import ProjectPaths

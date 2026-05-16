@@ -7,14 +7,15 @@ surface that uses it.
 
 from __future__ import annotations
 
-from collections import Counter
-from dataclasses import dataclass
 import hashlib
 import json
 import logging
-from pathlib import Path
 import re
+from collections import Counter
+from dataclasses import dataclass
+from pathlib import Path
 
+import yaml
 from nltk.collocations import (
     BigramAssocMeasures,
     BigramCollocationFinder,
@@ -23,7 +24,6 @@ from nltk.collocations import (
 )
 from nltk.stem import SnowballStemmer
 from pydantic import BaseModel, Field, ValidationError
-import yaml
 
 from graphwiki_kb.providers.base import ProviderRequest, TextProvider
 from graphwiki_kb.providers.structured import parse_model_payload

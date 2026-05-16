@@ -14,7 +14,6 @@ import click
 
 from graphwiki_kb.models.command_models import CommandContext, CommandSpec
 
-
 # ---------------------------------------------------------------------------
 # Primary top-level commands.
 # GraphRAG-first behavior is folded into the main command surface.

@@ -26,6 +26,8 @@ from graphwiki_kb.providers.base import ProviderRequest, TextProvider
 from graphwiki_kb.providers.structured import StructuredOutputError, iter_json_payloads
 from graphwiki_kb.services.markdown_document import (
     parse_frontmatter as markdown_parse_frontmatter,
+)
+from graphwiki_kb.services.markdown_document import (
     sections as markdown_sections,
 )
 from graphwiki_kb.services.project_service import ProjectPaths

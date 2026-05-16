@@ -17,11 +17,11 @@ from graphwiki_kb.services.graph_ask_controller_service import (
     GraphAskControllerError,
     GraphAskControllerService,
 )
-from graphwiki_kb.services.graphrag_defaults import env_file_has_key
 from graphwiki_kb.services.graphrag_command_service import (
     GraphRAGCommandResult,
     GraphRAGCommandService,
 )
+from graphwiki_kb.services.graphrag_defaults import env_file_has_key
 from graphwiki_kb.services.graphrag_query_service import GraphRAGQueryService
 from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
 from graphwiki_kb.services.query_router_service import QueryRouterService
@@ -309,7 +309,8 @@ def test_controller_claim_support_reports_stale_index(
     test_project.write_file("graph/graphrag/.env", "OPENAI_API_KEY=local-key\n")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
-    import os, time
+    import os
+    import time
 
     now = time.time()
     input_path = test_project.paths.graph_dir / "graphrag" / "input" / "sources.json"

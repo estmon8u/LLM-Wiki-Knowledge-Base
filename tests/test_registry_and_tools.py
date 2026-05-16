@@ -7,13 +7,11 @@ surface that uses it.
 
 from __future__ import annotations
 
-import types
-
 import click
 import pytest
 
-from graphwiki_kb.commands import common as common_module
 from graphwiki_kb.cli import _extract_project_root, build_runtime_context
+from graphwiki_kb.commands import common as common_module
 from graphwiki_kb.commands.common import (
     echo_bullet,
     echo_kv,

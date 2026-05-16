@@ -8,16 +8,23 @@ import sys
 import pytest
 
 from graphwiki_kb.services import graphrag_command_service as command_module
+from graphwiki_kb.services import graphrag_runtime as runtime_module
 from graphwiki_kb.services.graphrag_command_service import (
     GraphRAGApiBackend,
     GraphRAGCommandError,
     GraphRAGCommandResult,
     GraphRAGCommandService,
+    _call_graphrag_entrypoint,
     _extract_progress_label,
     _index_command,
     _init_command,
     _query_command,
+    _query_return_to_text,
     _split_index_method,
+)
+from graphwiki_kb.services.graphrag_runtime import (
+    GraphRAGCompatibilityError,
+    _require_parameters,
 )
 
 
@@ -288,3 +295,199 @@ def test_system_exit_code_handles_non_numeric_payloads() -> None:
 def test_extract_progress_label_suppresses_noisy_warning() -> None:
     """Verifies that extract progress label suppresses noisy warning."""
     assert _extract_progress_label("Warning: noisy dependency output") == ""
+
+
+def test_graphrag_entrypoint_adapter_supplies_current_index_defaults(
+    test_project,
+) -> None:
+    """Regression: GraphRAG 3.0.x index signatures receive additive defaults."""
+    calls = {}
+
+    def fake_index_cli(
+        root_dir,
+        method,
+        verbose,
+        memprofile,
+        cache,
+        config_filepath,
+        dry_run,
+        skip_validation,
+        output_dir,
+    ):
+        calls.update(locals())
+
+    _call_graphrag_entrypoint(
+        fake_index_cli,
+        "fake.index_cli",
+        root_dir=test_project.paths.graph_dir / "graphrag",
+        method="fast",
+        verbose=True,
+        cache=False,
+        dry_run=True,
+        skip_validation=True,
+    )
+
+    assert calls["memprofile"] is False
+    assert calls["config_filepath"] is None
+    assert calls["output_dir"] is None
+    assert calls["cache"] is False
+
+
+def test_graphrag_entrypoint_adapter_filters_unsupported_basic_response_type(
+    test_project,
+) -> None:
+    """Regression: GraphRAG basic search no longer accepts response_type."""
+    calls = {}
+
+    def fake_basic_search(
+        config_filepath, data_dir, root_dir, streaming, query, verbose
+    ):
+        calls.update(locals())
+
+    _call_graphrag_entrypoint(
+        fake_basic_search,
+        "fake.run_basic_search",
+        config_filepath=None,
+        data_dir=test_project.paths.graph_dir / "graphrag" / "output",
+        root_dir=test_project.paths.graph_dir / "graphrag",
+        response_type="Multiple Paragraphs",
+        streaming=False,
+        query="What is RAG?",
+        verbose=False,
+    )
+
+    assert "response_type" not in calls
+    assert calls["config_filepath"] is None
+    assert calls["query"] == "What is RAG?"
+
+
+def test_graphrag_entrypoint_adapter_rejects_unknown_required_parameter() -> None:
+    """Regression: new upstream required parameters fail before a raw TypeError."""
+
+    def fake_query(root_dir, query, new_required_parameter):
+        return None
+
+    with pytest.raises(GraphRAGCompatibilityError, match="new_required_parameter"):
+        _call_graphrag_entrypoint(
+            fake_query,
+            "fake.query",
+            root_dir="workspace",
+            query="What is RAG?",
+        )
+
+
+def test_runtime_validation_rejects_unknown_required_graphrag_parameter() -> None:
+    """Regression: runtime validation rejects new required upstream parameters."""
+
+    def fake_index(root_dir, method, cache, skip_validation, unexpected):
+        return None
+
+    with pytest.raises(GraphRAGCompatibilityError, match="unexpected"):
+        _require_parameters(
+            fake_index,
+            "fake.index",
+            {"root_dir", "method", "cache", "skip_validation"},
+        )
+
+
+def test_runtime_validation_rejects_missing_expected_parameter() -> None:
+    """Regression: runtime validation still catches removed GraphRAG parameters."""
+
+    def fake_index(root_dir, cache, skip_validation):
+        return None
+
+    with pytest.raises(GraphRAGCompatibilityError, match="method"):
+        _require_parameters(
+            fake_index,
+            "fake.index",
+            {"root_dir", "method", "cache", "skip_validation"},
+        )
+
+
+def test_runtime_validation_rejects_unsupported_versions(monkeypatch) -> None:
+    """Regression: GraphRAG version checks fail early before imports."""
+    cases = [
+        ("uninstalled", "not installed"),
+        ("3.0.8", "too old"),
+        ("3.1.0", "outside the supported range"),
+    ]
+    for version, message in cases:
+        monkeypatch.setattr(
+            runtime_module, "installed_graphrag_version", lambda v=version: v
+        )
+        with pytest.raises(GraphRAGCompatibilityError, match=message):
+            runtime_module.validate_graphrag_runtime()
+
+
+def test_runtime_validation_rejects_unavailable_entrypoints(monkeypatch) -> None:
+    """Regression: missing GraphRAG CLI entrypoints fail with a crisp message."""
+    import builtins
+
+    real_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "graphrag.cli.index":
+            raise ImportError("no index entrypoint")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(runtime_module, "installed_graphrag_version", lambda: "3.0.9")
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    with pytest.raises(GraphRAGCompatibilityError, match="entrypoints are unavailable"):
+        runtime_module.validate_graphrag_runtime()
+
+
+def test_installed_graphrag_version_reports_uninstalled(monkeypatch) -> None:
+    """Verifies missing GraphRAG package metadata maps to a stable label."""
+
+    def fake_version(_name):
+        raise runtime_module.importlib.metadata.PackageNotFoundError
+
+    monkeypatch.setattr(runtime_module.importlib.metadata, "version", fake_version)
+
+    assert runtime_module.installed_graphrag_version() == "uninstalled"
+
+
+def test_parse_version_rejects_unknown_format() -> None:
+    """Regression: unparseable GraphRAG versions produce a compatibility error."""
+    with pytest.raises(GraphRAGCompatibilityError, match="Unable to parse"):
+        runtime_module._parse_version("main")
+
+
+def test_api_backend_query_uses_returned_answer_when_stdout_empty(
+    monkeypatch, test_project
+) -> None:
+    """Regression: non-streaming GraphRAG responses can return instead of print."""
+
+    def fake_run_query_entrypoint(**_kwargs):
+        return ("Returned GraphRAG answer", {"context": []})
+
+    monkeypatch.setattr(command_module, "validate_graphrag_runtime", lambda: None)
+    monkeypatch.setattr(
+        command_module,
+        "_run_query_entrypoint",
+        fake_run_query_entrypoint,
+    )
+    backend = GraphRAGApiBackend(test_project.paths)
+
+    result = backend.query(
+        workspace_dir=test_project.paths.graph_dir / "graphrag",
+        question="What is RAG?",
+        method="basic",
+        data_dir=test_project.paths.graph_dir / "graphrag" / "output",
+        community_level=None,
+        dynamic_community_selection=None,
+        response_type=None,
+        streaming=False,
+        verbose=False,
+    )
+
+    assert result.returncode == 0
+    assert result.stdout == "Returned GraphRAG answer\n"
+
+
+def test_query_return_to_text_uses_first_tuple_item() -> None:
+    """Verifies GraphRAG query return payload conversion stays conservative."""
+    assert _query_return_to_text(("answer", {"context": []})) == "answer"
+    assert _query_return_to_text((b"answer",)) == "answer"
+    assert _query_return_to_text(()) == ""

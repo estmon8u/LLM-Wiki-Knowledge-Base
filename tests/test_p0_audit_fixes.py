@@ -3,7 +3,6 @@ diff/status file-hash recomputation, and click.Group migration."""
 
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 from unittest.mock import patch
 
@@ -11,13 +10,11 @@ from click.testing import CliRunner
 
 from graphwiki_kb.cli import main
 from graphwiki_kb.services.doctor_service import DoctorService
-from graphwiki_kb.services.export_service import ExportService
 from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
 from graphwiki_kb.services.search_service import (
     _extract_frontmatter_type,
     _is_generated_concept_page,
 )
-
 
 # ── Search: analysis pages are now searchable ────────────────────────
 
@@ -690,6 +687,7 @@ def test_export_clean_cli_flag(tmp_path) -> None:
 def test_kb_group_is_click_group_not_multi_command() -> None:
     """Verifies that kb group is click group not multi command."""
     import click
+
     from graphwiki_kb.cli import KBGroup
 
     assert issubclass(KBGroup, click.Group)

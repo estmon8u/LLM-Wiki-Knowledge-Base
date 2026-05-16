@@ -20,7 +20,6 @@ from graphwiki_kb.commands.common import (
 )
 from graphwiki_kb.models.command_models import CommandContext, CommandSpec
 
-
 SUMMARY = "Ingest and normalize a source file or directory into the raw corpus."
 SHORT_HELP = "Ingest source files."
 

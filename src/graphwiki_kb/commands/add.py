@@ -12,7 +12,6 @@ import click
 from graphwiki_kb.commands.ingest import create_command as create_ingest_command
 from graphwiki_kb.models.command_models import CommandContext, CommandSpec
 
-
 SUMMARY = "Add and normalize source files or folders."
 
 

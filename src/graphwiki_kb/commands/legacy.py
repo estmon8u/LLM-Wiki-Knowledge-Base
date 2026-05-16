@@ -23,7 +23,6 @@ from graphwiki_kb.commands.common import (
 from graphwiki_kb.models.command_models import CommandContext, CommandSpec
 from graphwiki_kb.providers import ProviderError
 
-
 SUMMARY = "Deprecated SQLite FTS5 commands for comparison and exact lookup."
 LEGACY_WARNING = (
     "Deprecated: SQLite FTS5 retrieval is legacy-only. "

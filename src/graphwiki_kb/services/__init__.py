@@ -8,12 +8,12 @@ from graphwiki_kb.providers import build_lazy_provider, build_provider
 from graphwiki_kb.services.compile_service import CompileService
 from graphwiki_kb.services.concept_service import ConceptService
 from graphwiki_kb.services.config_service import ConfigService, graph_routing_aliases
+from graphwiki_kb.services.container import ServiceContainer
 from graphwiki_kb.services.diff_service import DiffService
 from graphwiki_kb.services.doctor_service import DoctorService
 from graphwiki_kb.services.export_service import ExportService
 from graphwiki_kb.services.graph_ask_controller_service import GraphAskControllerService
 from graphwiki_kb.services.graphrag_command_service import GraphRAGCommandService
-from graphwiki_kb.services.container import ServiceContainer
 from graphwiki_kb.services.graphrag_find_service import GraphRAGFindService
 from graphwiki_kb.services.graphrag_input_sync_service import GraphRAGInputSyncService
 from graphwiki_kb.services.graphrag_query_service import GraphRAGQueryService

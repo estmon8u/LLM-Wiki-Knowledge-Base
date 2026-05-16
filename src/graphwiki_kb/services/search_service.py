@@ -2,17 +2,25 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
-from pathlib import Path
 import re
+from dataclasses import dataclass
+from pathlib import Path
 
 from graphwiki_kb.models.wiki_models import SearchResult
 from graphwiki_kb.services.markdown_document import (
     headings as markdown_headings,
+)
+from graphwiki_kb.services.markdown_document import (
     paragraphs as markdown_paragraphs,
+)
+from graphwiki_kb.services.markdown_document import (
     parse_frontmatter as markdown_parse_frontmatter,
+)
+from graphwiki_kb.services.markdown_document import (
     sections as markdown_sections,
+)
+from graphwiki_kb.services.markdown_document import (
     strip_frontmatter as markdown_strip_frontmatter,
 )
 from graphwiki_kb.services.project_service import ProjectPaths

@@ -7,15 +7,18 @@ surface that uses it.
 
 from __future__ import annotations
 
-from pathlib import Path
 import subprocess
 import tomllib
+from pathlib import Path
 
 import yaml
 
 from graphwiki_kb.services.graphrag_command_service import GraphRAGCommandService
 from graphwiki_kb.services.graphrag_defaults import DEFAULT_GRAPHRAG_ENCODING_MODEL
-from graphwiki_kb.services.graphrag_workspace_service import GraphRAGWorkspaceService
+from graphwiki_kb.services.graphrag_workspace_service import (
+    GraphRAGWorkspaceService,
+    _bundled_prompt_dirs,
+)
 
 
 def test_workspace_service_reports_initialization_state(test_project) -> None:
@@ -240,7 +243,41 @@ def test_pyproject_includes_graphrag_prompt_templates() -> None:
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     payload = tomllib.loads(pyproject.read_text(encoding="utf-8"))
 
-    assert "graph/graphrag/prompts/*.txt" in payload["tool"]["poetry"]["include"]
+    includes = payload["tool"]["poetry"]["include"]
+    prompt_include = next(
+        item for item in includes if item["path"] == "graph/graphrag/prompts/*.txt"
+    )
+    assert prompt_include["format"] == ["sdist", "wheel"]
+
+
+def test_bundled_prompt_dirs_finds_repo_root_templates() -> None:
+    """Regression: prompt discovery must find repository-root templates."""
+    candidates = _bundled_prompt_dirs()
+
+    assert any(
+        candidate.parts[-3:] == ("graph", "graphrag", "prompts")
+        and (candidate / "extract_graph.txt").exists()
+        for candidate in candidates
+    )
+
+
+def test_bundled_prompt_dirs_finds_installed_wheel_root_templates(tmp_path) -> None:
+    """Regression: prompt discovery works after package installation."""
+    module_file = (
+        tmp_path
+        / "site-packages"
+        / "graphwiki_kb"
+        / "services"
+        / "graphrag_workspace_service.py"
+    )
+    module_file.parent.mkdir(parents=True)
+    prompt_dir = tmp_path / "site-packages" / "graph" / "graphrag" / "prompts"
+    prompt_dir.mkdir(parents=True)
+    (prompt_dir / "extract_graph.txt").write_text("Prompt", encoding="utf-8")
+
+    candidates = _bundled_prompt_dirs(module_file)
+
+    assert candidates[0] == prompt_dir
 
 
 def test_tracked_graphrag_settings_use_portable_defaults() -> None:

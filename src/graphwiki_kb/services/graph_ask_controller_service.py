@@ -22,10 +22,10 @@ from graphwiki_kb.services.graphrag_query_service import (
 from graphwiki_kb.services.graphrag_status_service import (
     GraphRAGStatus,
     GraphRAGStatusService,
+    _timestamp_iso,
     graph_not_ready_message,
     graph_ready_for_query,
     iso_timestamp_after,
-    _timestamp_iso,
 )
 from graphwiki_kb.services.project_service import ProjectPaths
 from graphwiki_kb.services.query_router_service import QueryRouterService

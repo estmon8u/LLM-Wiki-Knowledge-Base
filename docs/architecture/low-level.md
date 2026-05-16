@@ -10,9 +10,9 @@
 | `src/graphwiki_kb/providers/__init__.py` | Factory helpers for provider validation, config resolution from `kb.config.yaml`, and `build_provider(config)` |
 | `src/graphwiki_kb/providers/retry.py` | Shared Tenacity retry decorator (`provider_retry()`) for all `generate()` calls: 3 attempts, exponential backoff with jitter, transient-only retry |
 | `src/graphwiki_kb/providers/structured.py` | Shared structured-output parser for direct JSON, fenced JSON, and common prose-prefaced JSON plus Pydantic model validation |
-| `src/graphwiki_kb/providers/openai_provider.py` | OpenAI Responses API provider with explicit Chat Completions fallback; `@provider_retry()` on `generate()` |
+| `src/graphwiki_kb/providers/openai_provider.py` | OpenAI Responses API provider with explicit Chat Completions fallback, API-mode validation, reasoning-effort validation, and reasoning arguments gated to known reasoning-capable model families; `@provider_retry()` on `generate()` |
 | `src/graphwiki_kb/providers/anthropic_provider.py` | Anthropic messages provider; detects current Claude adaptive-thinking model identifiers by version pattern, sends the adaptive-thinking flag plus effort, keeps legacy manual thinking budgets for older models, and applies `@provider_retry()` on `generate()` |
-| `src/graphwiki_kb/providers/gemini_provider.py` | Google Gemini provider with stable `gemini-2.5-flash` default; `@provider_retry()` on `generate()`, model-sensitive thinking budget/level configuration, and warning-backed JSON-schema cleanup for SDK-compatible structured output |
+| `src/graphwiki_kb/providers/gemini_provider.py` | Google Gemini provider with stable `gemini-2.5-flash` default; `@provider_retry()` on `generate()`, model-sensitive thinking budget/level configuration, and JSON-schema transformation reporting while preserving currently supported `additionalProperties` |
 
 ## Current Command Files
 
@@ -44,11 +44,11 @@
 | `src/graphwiki_kb/services/file_lock.py` | Cross-process, reentrant lock helper used around JSON/config/log state files and multi-file GraphRAG workspace operations so concurrent command runs remain serialized on Windows and POSIX |
 | `src/graphwiki_kb/services/config_service.py` | Config loading, Pydantic-backed provider/conversion/graph validation, schema defaults, `schema_excerpt()` helper for extracting schema sections by heading, and lock-protected migration of legacy `kb.config.yaml` versions only after the migrated payload validates |
 | `src/graphwiki_kb/services/manifest_service.py` | Raw-source manifest read/write behavior with lock-protected writes, version and required-field validation, duplicate-ID/slug detection, and duplicate normalized-content-hash rejection |
-| `src/graphwiki_kb/services/graphrag_workspace_service.py` | Prepares the project-local `graph/graphrag/` workspace, delegates reproducible non-interactive initialization to the GraphRAG Python-entrypoint adapter, renders managed settings without writing during planning, syncs `kb.config.yaml` graph settings into GraphRAG `settings.yaml` while preserving user-owned tuning, and refreshes bundled prompt templates |
-| `src/graphwiki_kb/services/graphrag_command_service.py` | Adapter over GraphRAG's installed Python initialization, indexing, update, and query entrypoints, with version/signature compatibility checks, workspace locking, and structured run-result metadata without spawning `python -m graphrag` subprocesses |
+| `src/graphwiki_kb/services/graphrag_workspace_service.py` | Prepares the project-local `graph/graphrag/` workspace, delegates reproducible non-interactive initialization to the GraphRAG Python-entrypoint adapter, renders managed settings without writing during planning, syncs `kb.config.yaml` graph settings into GraphRAG `settings.yaml` while preserving user-owned tuning, and refreshes bundled prompt templates from package-data, installed-wheel, or repository-template locations |
+| `src/graphwiki_kb/services/graphrag_command_service.py` | Adapter over GraphRAG's installed Python initialization, indexing, update, and query entrypoints, with signature-aware kwargs, known additive defaults for GraphRAG 3.0.x, unsupported-kwarg filtering, returned-answer capture for non-streaming queries, workspace locking, and structured run-result metadata without spawning `python -m graphrag` subprocesses |
 | `src/graphwiki_kb/services/graphrag_defaults.py` | Shared GraphRAG model, embedding, and API-key environment defaults used by command defaults and user-facing setup guidance |
-| `src/graphwiki_kb/services/graphrag_runtime.py` | GraphRAG package-version, managed-settings-version, and input-schema-version identity plus compatibility checks used by runtime digests and command startup validation |
-| `src/graphwiki_kb/services/graphrag_status_service.py` | Reports GraphRAG workspace readiness, synced input counts, active output directory preferring the latest successful complete recorded run, normalized graph state, missing required output tables, vector-store readability, wiki export presence, row counts, and lock-protected ignored local index-run metadata |
+| `src/graphwiki_kb/services/graphrag_runtime.py` | GraphRAG package-version, managed-settings-version, and input-schema-version identity plus strict entrypoint compatibility checks used by runtime digests and command startup validation |
+| `src/graphwiki_kb/services/graphrag_status_service.py` | Reports GraphRAG workspace readiness, synced input counts, active output directory preferring the latest successful complete recorded run, normalized graph state, missing required output tables, vector-store state (`missing`, `empty`, `ready`, `unreadable`, or `incompatible`), wiki export presence, row counts, and lock-protected ignored local index-run metadata |
 | `src/graphwiki_kb/services/graphrag_sync_service.py` | Coordinates GraphRAG sync/index decisions used by `kb update`: plans workspace settings/input without preflight side effects, applies GraphRAG input when graph work can proceed, compares source/runtime digests including GraphRAG package and managed schema versions to the last successful index, chooses full rebuild, incremental update, retry after a failed latest attempt, or skip, and records reproducibility metadata |
 | `src/graphwiki_kb/services/graphrag_query_service.py` | Requires a ready graph index, runs explicit GraphRAG query modes, separates parsed answer text from raw stdout/stderr diagnostics, computes the synced-input hash through shared file-digest helpers, and saves optional GraphRAG analysis pages with lint-compatible analysis frontmatter, parsed `[Data: ...]` references when available, source trace, stdout-only raw answer text, and lock-protected wiki log entries |
 | `src/graphwiki_kb/services/graphrag_find_service.py` | Searches active GraphRAG entity and relationship Parquet artifacts directly for top-level `kb find` through projected PyArrow batch scans; command-level merging globally ranks graph and wiki candidates after dedupe |
@@ -89,7 +89,7 @@
 
 | File | Responsibility |
 | --- | --- |
-| `pyproject.toml` | Dependency pins, including Microsoft GraphRAG, OpenAI/Anthropic/Gemini SDKs, Pydantic, markdown/frontmatter/NLP helpers, Mistral SDK, pdfkit, xhtml2pdf, Docling, and MarkItDown, plus CLI entrypoint, Black config, pytest and coverage settings |
+| `pyproject.toml` | Dependency pins, including Microsoft GraphRAG, OpenAI/Anthropic/Gemini SDKs, Pydantic, markdown/frontmatter/NLP helpers, Mistral SDK, pdfkit, xhtml2pdf, Docling, MarkItDown, Ruff, mypy, and pre-commit, plus CLI entrypoint, wheel/sdist prompt-template includes, Black/Ruff/mypy config, pytest, and coverage settings |
 | `graph/graphrag/settings.yaml` | Initialized Microsoft GraphRAG workspace settings; managed provider/model/API-key and JSON input fields are synced from `kb.config.yaml` graph defaults while unrelated user GraphRAG tuning is preserved, and `chunking.prepend_metadata` is configured for source provenance fields |
 | `graph/graphrag/prompts/` | Project-managed GraphRAG prompt templates generated by `graphrag init` and refreshed from bundled templates when repository prompt defaults change |
 | `graph/graphrag/input/.gitkeep` | Tracked input-directory scaffold for generated GraphRAG JSON input |
@@ -103,7 +103,7 @@
 | `scripts/evaluate_graph_modes.py` | Full evaluation runner for legacy FTS, auto-router method fit, and GraphRAG mode comparison |
 | `scripts/evaluate_retrieval.py` | Retrieval-focused wrapper that writes Recall@5, multi-source coverage, method-fit, and latency metrics |
 | `scripts/evaluate_answers.py` | Answer-focused wrapper for claim support, insufficient-evidence behavior, comprehensiveness, diversity, and latency metrics |
-| `.github/workflows/tests.yml` | CI for Poetry install, Black, pytest, and coverage artifact upload |
+| `.github/workflows/tests.yml` | CI matrix for Python 3.11, 3.12, and 3.13 with Poetry install, Black, Ruff, bounded mypy, CLI smoke checks, pytest, and coverage artifact upload |
 | `tests/` | Unit, CLI, regression, and golden-file coverage for the current command/service surface |
 
 ## Low-Level Guardrails

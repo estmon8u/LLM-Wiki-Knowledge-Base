@@ -162,13 +162,13 @@ Check readiness after update:
 poetry run kb --project-root $projectRoot status
 ```
 
-Real GraphRAG index actions call GraphRAG's installed Python entrypoints and
-use the configured GraphRAG model and embedding provider, so set the provider
-API key such as `OPENAI_API_KEY`, or put the same variable in the local GraphRAG
-`.env` file, before running graph indexing, `kb ask`, or `kb update
---graph-only`. A normal `kb update` without GraphRAG credentials still compiles
-the wiki and reports graph indexing as skipped. Interactive terminals show a
-live indexing status spinner while GraphRAG runs.
+Real GraphRAG index actions call GraphRAG's installed Python entrypoints through
+a signature-aware adapter and use the configured GraphRAG model and embedding
+provider, so set the provider API key such as `OPENAI_API_KEY`, or put the same
+variable in the local GraphRAG `.env` file, before running graph indexing,
+`kb ask`, or `kb update --graph-only`. A normal `kb update` without GraphRAG
+credentials still compiles the wiki and reports graph indexing as skipped.
+Interactive terminals show a live indexing status spinner while GraphRAG runs.
 After indexing, the command prints the active GraphRAG output path; if legacy
 SQLite FTS5 refresh is unavailable, it also prints the markdown-scan fallback
 warning for `kb find`.
@@ -199,9 +199,11 @@ Do not use the deprecated top-level `--limit` flag with `kb ask`; GraphRAG
 answers reject it because source-page evidence limiting only applies to
 `kb legacy ask`.
 
-The default `--method auto` router uses question wording and known graph terms
-to choose Basic, Local, Global, or DRIFT. It does not fall back to FTS5 if the
-graph is missing or not ready; it fails with the next GraphRAG setup command to run.
+The default `--method auto` router uses question wording and a capped scan of
+known graph terms to choose Basic, Local, Global, or DRIFT. It does not fall
+back to FTS5 if the graph is missing or not ready; it fails with the next
+GraphRAG setup command to run. Non-streaming GraphRAG answers are preserved even
+when the underlying entrypoint returns the answer instead of printing it.
 
 Use `local` for specific entity, method, or paper questions; `global` for
 whole-corpus themes; `drift` for multi-paper comparisons; and `basic` as the
@@ -288,7 +290,7 @@ cleanup uses the exact destination paths exported by that run.
 | Search returns stale results | Run `kb update` after adding or changing sources. |
 | GraphRAG workspace is missing | Run `kb init`. |
 | GraphRAG input is missing | Run `kb update`. |
-| GraphRAG output or vector store is missing | Set graph provider credentials, then run `kb update`; a normal update without them only refreshes the wiki and warns. |
+| GraphRAG output or vector store is missing, empty, unreadable, or incompatible | Set graph provider credentials, then run `kb update`; a normal update without them only refreshes the wiki and warns. |
 | Update warns about missing normalized graph input | Run `kb lint` to identify the stale manifest entry, then re-add or remove the affected source. |
 | Generated pages look stale | Run `kb status --changed`, then `kb update --force` if needed. |
 

@@ -8,8 +8,8 @@ surface that uses it.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import re
+from pathlib import Path
 from unittest.mock import patch
 
 import yaml
@@ -1462,8 +1462,6 @@ def test_config_provider_set_rejects_unknown_name() -> None:
 # ---------------------------------------------------------------------------
 # --json flag tests
 # ---------------------------------------------------------------------------
-
-import json
 
 
 def test_doctor_json_output() -> None:

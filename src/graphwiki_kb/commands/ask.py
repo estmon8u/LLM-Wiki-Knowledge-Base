@@ -23,7 +23,6 @@ from graphwiki_kb.services.graph_ask_controller_service import GraphAskControlle
 from graphwiki_kb.services.graphrag_query_service import GraphRAGQueryError
 from graphwiki_kb.services.query_router_service import GRAPH_ASK_METHODS
 
-
 SUMMARY = (
     "Ask with the GraphRAG-aware answer controller. Legacy FTS-backed ask lives "
     "under kb legacy ask."

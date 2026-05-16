@@ -7,16 +7,16 @@ surface that uses it.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
+from copy import deepcopy
+from dataclasses import dataclass
 
 from google import genai
 from google.genai import types
 
 from graphwiki_kb.providers.base import ProviderRequest, ProviderResponse, TextProvider
 from graphwiki_kb.providers.retry import provider_retry
-
 
 logger = logging.getLogger(__name__)
 
@@ -75,14 +75,16 @@ class GeminiProvider(TextProvider):
             config_kwargs["system_instruction"] = request.system_prompt
         if request.response_schema:
             config_kwargs["response_mime_type"] = "application/json"
-            if _schema_uses_additional_properties(request.response_schema):
-                logger.warning(
-                    "Gemini response schema does not support additionalProperties; "
-                    "removing it before provider call."
-                )
-            config_kwargs["response_schema"] = _gemini_response_schema(
+            schema, report = _gemini_response_schema_with_report(
                 request.response_schema
             )
+            if report.weakened:
+                logger.warning(
+                    "Gemini response schema was weakened for provider compatibility: "
+                    "%s",
+                    ", ".join(report.removed_keywords),
+                )
+            config_kwargs["response_schema"] = schema
         response = self._client.models.generate_content(
             model=self.model,
             contents=request.prompt,
@@ -114,25 +116,25 @@ class GeminiProvider(TextProvider):
         return types.ThinkingConfig(thinking_level=level)
 
 
+@dataclass(frozen=True, slots=True)
+class GeminiSchemaTransformationReport:
+    """Describes provider schema compatibility transformations."""
+
+    removed_keywords: tuple[str, ...] = ()
+    weakened: bool = False
+
+
 def _gemini_response_schema(schema: object) -> object:
-    """Return a Gemini-compatible subset of the JSON schema payload."""
-    if isinstance(schema, dict):
-        return {
-            key: _gemini_response_schema(value)
-            for key, value in schema.items()
-            if key != "additionalProperties"
-        }
-    if isinstance(schema, list):
-        return [_gemini_response_schema(item) for item in schema]
-    return schema
+    """Return the JSON schema payload sent to Gemini."""
+    converted, _report = _gemini_response_schema_with_report(schema)
+    return converted
 
 
-def _schema_uses_additional_properties(schema: object) -> bool:
-    try:
-        encoded = json.dumps(schema)
-    except TypeError:
-        return False
-    return '"additionalProperties"' in encoded
+def _gemini_response_schema_with_report(
+    schema: object,
+) -> tuple[object, GeminiSchemaTransformationReport]:
+    """Return schema plus any compatibility downgrades applied."""
+    return deepcopy(schema), GeminiSchemaTransformationReport()
 
 
 def _uses_thinking_budget(model: str) -> bool:

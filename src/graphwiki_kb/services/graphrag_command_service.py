@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import inspect
+import io
+import subprocess
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
-import io
 from pathlib import Path
-import subprocess
 from typing import Any, Callable, Sequence
 
 from graphwiki_kb.services.file_lock import workspace_lock
@@ -16,12 +17,16 @@ from graphwiki_kb.services.graphrag_runtime import (
 )
 from graphwiki_kb.services.project_service import ProjectPaths
 
-
 Runner = Callable[..., subprocess.CompletedProcess[str]]
 StatusCallback = Callable[[str], None] | None
 MAX_PROGRESS_LABEL_LENGTH = 120
 DEFAULT_QUERY_RESPONSE_TYPE = "Multiple Paragraphs"
 DEFAULT_QUERY_COMMUNITY_LEVEL = 2
+_KNOWN_GRAPHRAG_ENTRYPOINT_DEFAULTS: dict[str, Any] = {
+    "config_filepath": None,
+    "memprofile": False,
+    "output_dir": None,
+}
 
 
 @dataclass(frozen=True)
@@ -63,6 +68,7 @@ class GraphRAGCommandService:
     ) -> None:
         self.paths = paths
         self.runner = runner or self._default_runner
+        self.api_backend: GraphRAGApiBackend | _RunnerGraphRAGApiBackend
         if api_backend is not None:
             self.api_backend = api_backend
         elif runner is not None:
@@ -284,7 +290,7 @@ class GraphRAGApiBackend:
         stderr = io.StringIO()
         try:
             with redirect_stdout(stdout), redirect_stderr(stderr):
-                _run_query_entrypoint(
+                query_result = _run_query_entrypoint(
                     workspace_dir=workspace_dir,
                     data_dir=data_dir,
                     method=method,
@@ -304,10 +310,15 @@ class GraphRAGApiBackend:
                 stdout=stdout.getvalue(),
                 stderr=stderr_text,
             )
+        stdout_text = stdout.getvalue()
+        if not stdout_text.strip():
+            returned_answer = _query_return_to_text(query_result)
+            if returned_answer:
+                stdout_text = f"{returned_answer}\n"
         return _api_result(
             command,
             self.paths.root,
-            stdout=stdout.getvalue(),
+            stdout=stdout_text,
             stderr=stderr.getvalue(),
         )
 
@@ -414,22 +425,28 @@ def _run_index_entrypoint(
 
     index_method, is_update_run = _split_index_method(method)
     enum_method = IndexingMethod(index_method)
+    kwargs = {
+        "root_dir": workspace_dir,
+        "method": enum_method,
+        "verbose": verbose,
+        "memprofile": False,
+        "cache": cache,
+        "config_filepath": None,
+        "dry_run": dry_run,
+        "skip_validation": skip_validation,
+        "output_dir": None,
+    }
     if is_update_run:
-        update_cli(
-            root_dir=workspace_dir,
-            method=enum_method,
-            verbose=verbose,
-            cache=cache,
-            skip_validation=skip_validation,
+        _call_graphrag_entrypoint(
+            update_cli,
+            "graphrag.cli.index.update_cli",
+            **kwargs,
         )
         return
-    index_cli(
-        root_dir=workspace_dir,
-        method=enum_method,
-        verbose=verbose,
-        cache=cache,
-        dry_run=dry_run,
-        skip_validation=skip_validation,
+    _call_graphrag_entrypoint(
+        index_cli,
+        "graphrag.cli.index.index_cli",
+        **kwargs,
     )
 
 
@@ -444,7 +461,7 @@ def _run_query_entrypoint(
     streaming: bool,
     question: str,
     verbose: bool,
-) -> None:  # pragma: no cover - thin wrapper around GraphRAG package
+) -> Any:  # pragma: no cover - thin wrapper around GraphRAG package
     from graphrag.cli.query import (
         run_basic_search,
         run_drift_search,
@@ -455,45 +472,40 @@ def _run_query_entrypoint(
     response_type = response_type or DEFAULT_QUERY_RESPONSE_TYPE
     community_level = community_level or DEFAULT_QUERY_COMMUNITY_LEVEL
     dynamic_community_selection = bool(dynamic_community_selection)
+    kwargs = {
+        "config_filepath": None,
+        "data_dir": data_dir,
+        "root_dir": workspace_dir,
+        "community_level": community_level,
+        "dynamic_community_selection": dynamic_community_selection,
+        "response_type": response_type,
+        "streaming": streaming,
+        "query": question,
+        "verbose": verbose,
+    }
     if method == "global":
-        run_global_search(
-            data_dir=data_dir,
-            root_dir=workspace_dir,
-            community_level=community_level,
-            dynamic_community_selection=dynamic_community_selection,
-            response_type=response_type,
-            streaming=streaming,
-            query=question,
-            verbose=verbose,
+        return _call_graphrag_entrypoint(
+            run_global_search,
+            "graphrag.cli.query.run_global_search",
+            **kwargs,
         )
     elif method == "local":
-        run_local_search(
-            data_dir=data_dir,
-            root_dir=workspace_dir,
-            community_level=community_level,
-            response_type=response_type,
-            streaming=streaming,
-            query=question,
-            verbose=verbose,
+        return _call_graphrag_entrypoint(
+            run_local_search,
+            "graphrag.cli.query.run_local_search",
+            **kwargs,
         )
     elif method == "drift":
-        run_drift_search(
-            data_dir=data_dir,
-            root_dir=workspace_dir,
-            community_level=community_level,
-            response_type=response_type,
-            streaming=streaming,
-            query=question,
-            verbose=verbose,
+        return _call_graphrag_entrypoint(
+            run_drift_search,
+            "graphrag.cli.query.run_drift_search",
+            **kwargs,
         )
     elif method == "basic":
-        run_basic_search(
-            data_dir=data_dir,
-            root_dir=workspace_dir,
-            response_type=response_type,
-            streaming=streaming,
-            query=question,
-            verbose=verbose,
+        return _call_graphrag_entrypoint(
+            run_basic_search,
+            "graphrag.cli.query.run_basic_search",
+            **kwargs,
         )
     else:
         raise ValueError(f"Invalid GraphRAG query method: {method}")
@@ -514,6 +526,60 @@ def _api_result(
         stdout=stdout,
         stderr=_sanitize_stderr(command, stderr),
     )
+
+
+def _call_graphrag_entrypoint(
+    func: Callable[..., Any],
+    name: str,
+    **kwargs: Any,
+) -> Any:
+    signature = inspect.signature(func)
+    parameters = signature.parameters
+    has_var_kwargs = any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    )
+    call_kwargs: dict[str, Any] = dict(kwargs) if has_var_kwargs else {}
+    missing_required: list[str] = []
+    for parameter in parameters.values():
+        if parameter.kind in (
+            inspect.Parameter.VAR_POSITIONAL,
+            inspect.Parameter.VAR_KEYWORD,
+        ):
+            continue
+        if parameter.name in kwargs:
+            call_kwargs[parameter.name] = kwargs[parameter.name]
+            continue
+        if parameter.name in _KNOWN_GRAPHRAG_ENTRYPOINT_DEFAULTS:
+            call_kwargs[parameter.name] = _KNOWN_GRAPHRAG_ENTRYPOINT_DEFAULTS[
+                parameter.name
+            ]
+            continue
+        if parameter.default is inspect.Parameter.empty:
+            missing_required.append(parameter.name)
+    if missing_required:
+        raise GraphRAGCompatibilityError(
+            f"{name} has unsupported required parameter(s): "
+            f"{', '.join(sorted(missing_required))}."
+        )
+    return func(**call_kwargs)
+
+
+def _query_return_to_text(value: Any) -> str:
+    if isinstance(value, tuple | list):
+        if not value:
+            return ""
+        return _query_return_to_text(value[0])
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace").strip()
+    text = getattr(value, "text", None)
+    if isinstance(text, str):
+        return text.strip()
+    if value is None:
+        return ""
+    return str(value).strip()
 
 
 def _completed_process_result(

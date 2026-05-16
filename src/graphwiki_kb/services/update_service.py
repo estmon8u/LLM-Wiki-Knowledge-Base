@@ -7,26 +7,26 @@ surface that uses it.
 
 from __future__ import annotations
 
+import os
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-import os
 from pathlib import Path
 from typing import Any, Callable, Iterator, Optional
 
-from graphwiki_kb.services.config_service import (
-    concept_generation_enabled,
-    concept_provider_backed_enabled,
-    resolve_graph_config,
-)
 from graphwiki_kb.services.compile_service import CompileResult, CompileService
 from graphwiki_kb.services.concept_service import (
     ConceptGenerationResult,
     ConceptService,
 )
+from graphwiki_kb.services.config_service import (
+    concept_generation_enabled,
+    concept_provider_backed_enabled,
+    resolve_graph_config,
+)
 from graphwiki_kb.services.graphrag_defaults import env_file_has_key
 from graphwiki_kb.services.graphrag_sync_service import GraphRAGSyncResult
 from graphwiki_kb.services.graphrag_wiki_export_service import GraphRAGWikiExportResult
-from graphwiki_kb.services.ingest_service import IngestResult, IngestService
+from graphwiki_kb.services.ingest_service import IngestService
 from graphwiki_kb.services.search_service import SearchService
 
 

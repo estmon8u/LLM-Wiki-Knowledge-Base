@@ -14,8 +14,8 @@ import yaml
 
 from graphwiki_kb.models.source_models import RawSourceRecord
 from graphwiki_kb.services.graphrag_defaults import (
-    DEFAULT_GRAPHRAG_ENCODING_MODEL,
     DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
+    DEFAULT_GRAPHRAG_ENCODING_MODEL,
     DEFAULT_GRAPHRAG_MODEL,
 )
 from graphwiki_kb.services.graphrag_input_sync_service import (

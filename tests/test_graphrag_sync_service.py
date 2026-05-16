@@ -12,6 +12,7 @@ import subprocess
 import pytest
 
 from graphwiki_kb.models.source_models import RawSourceRecord
+from graphwiki_kb.services import graphrag_runtime
 from graphwiki_kb.services.graphrag_command_service import (
     GraphRAGCommandError,
     GraphRAGCommandResult,
@@ -19,10 +20,10 @@ from graphwiki_kb.services.graphrag_command_service import (
 )
 from graphwiki_kb.services.graphrag_input_sync_service import GraphRAGInputSyncService
 from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
-from graphwiki_kb.services import graphrag_runtime
 from graphwiki_kb.services.graphrag_sync_service import (
     GraphRAGSyncService,
     count_source_hash_changes,
+    detect_sync_changes,
     graph_input_source_hashes,
     graph_runtime_digest,
 )
@@ -666,3 +667,31 @@ def test_graph_input_source_hashes_supports_object_payload_and_ignores_bad_recor
 def test_count_source_hash_changes_handles_missing_previous_snapshot() -> None:
     """Verifies that count source hash changes handles missing previous snapshot."""
     assert count_source_hash_changes(None, {"src-1": "hash-1"}) is None
+
+
+def test_detect_sync_changes_separates_input_config_and_metadata(
+    test_project,
+) -> None:
+    """Verifies sync planning inputs are testable without running the planner."""
+    _write_settings(test_project)
+    _write_source(test_project)
+    _write_complete_output(test_project)
+    status = GraphRAGStatusService(test_project.paths).status()
+
+    change_state = detect_sync_changes(
+        status=status,
+        input_digest="current-input",
+        config_digest="current-config",
+        current_source_hashes={"src-1": "hash-2"},
+        last_successful_run={
+            "input_digest": "previous-input",
+            "config_digest": "current-config",
+            "source_hashes": {"src-1": "hash-1"},
+        },
+    )
+
+    assert change_state.output_state == "complete"
+    assert change_state.input_changed is True
+    assert change_state.config_changed is False
+    assert change_state.changed_source_count == 1
+    assert change_state.stale_metadata is False

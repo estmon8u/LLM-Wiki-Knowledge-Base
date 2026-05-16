@@ -19,7 +19,6 @@ from graphwiki_kb.commands.common import (
 )
 from graphwiki_kb.models.command_models import CommandContext, CommandSpec
 
-
 SUMMARY = "Show what exists, what changed, what is stale, and what to do next."
 
 

@@ -27,8 +27,14 @@ _TRANSIENT: list[type] = [ConnectionError, TimeoutError]
 try:
     from openai import (
         APIConnectionError as OAIConnectionError,
+    )
+    from openai import (
         APITimeoutError as OAITimeoutError,
+    )
+    from openai import (
         InternalServerError as OAIInternalServerError,
+    )
+    from openai import (
         RateLimitError as OAIRateLimitError,
     )
 
@@ -44,8 +50,14 @@ except ImportError:  # pragma: no cover
 try:
     from anthropic import (
         APIConnectionError as AntConnectionError,
+    )
+    from anthropic import (
         APITimeoutError as AntTimeoutError,
+    )
+    from anthropic import (
         InternalServerError as AntInternalServerError,
+    )
+    from anthropic import (
         RateLimitError as AntRateLimitError,
     )
 
@@ -61,6 +73,8 @@ except ImportError:  # pragma: no cover
 try:
     from google.api_core.exceptions import (
         DeadlineExceeded as GDeadlineExceeded,
+    )
+    from google.api_core.exceptions import (
         ServiceUnavailable as GServiceUnavailable,
     )
 

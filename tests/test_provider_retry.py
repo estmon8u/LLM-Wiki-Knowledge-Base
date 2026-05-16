@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from graphwiki_kb.providers.base import ProviderRequest, ProviderResponse
 from graphwiki_kb.providers.retry import TRANSIENT_EXCEPTIONS, provider_retry
-
 
 # ---------------------------------------------------------------------------
 # Helpers

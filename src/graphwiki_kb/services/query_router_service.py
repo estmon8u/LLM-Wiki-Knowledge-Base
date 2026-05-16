@@ -7,16 +7,16 @@ surface that uses it.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
-import re
 from typing import Iterable, Mapping
 
 from graphwiki_kb.services.graphrag_query_service import GRAPH_QUERY_METHODS
 from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
 
-
 GRAPH_ASK_METHODS = ("auto", *GRAPH_QUERY_METHODS)
+TERM_SCAN_ROW_LIMIT = 2000
 GLOBAL_KEYWORDS = (
     "main theme",
     "main themes",
@@ -32,6 +32,9 @@ DRIFT_KEYWORDS = (
     "difference",
     "tradeoff",
     "trade-off",
+    "relate",
+    "related to",
+    "relationship",
     "relationship between",
     " versus ",
     " vs ",
@@ -151,7 +154,10 @@ class QueryRouterService:
         return False
 
     def _known_graph_terms(self) -> Iterable[str]:
-        status = self.status_service.status()
+        status_service = self.status_service
+        if status_service is None:
+            return ()
+        status = status_service.status()
         cache_key = status.output_updated_at or status.last_index_run_id
         if self._known_terms_cache is not None:
             cached_key, cached_terms = self._known_terms_cache
@@ -159,7 +165,7 @@ class QueryRouterService:
                 return cached_terms
         terms: list[str] = []
         for table_name in ("entities", "documents"):
-            table_path = self.status_service.table_path(table_name)
+            table_path = status_service.table_path(table_name)
             if table_path is None:
                 continue
             terms.extend(_read_term_columns(table_path))
@@ -170,14 +176,27 @@ class QueryRouterService:
         return known_terms
 
 
-def _read_term_columns(path: Path) -> Iterable[str]:
+def _read_term_columns(
+    path: Path,
+    *,
+    max_rows: int = TERM_SCAN_ROW_LIMIT,
+) -> Iterable[str]:
     columns = _available_term_columns(path)
     if not columns:
         return []
     try:
         import pyarrow.parquet as parquet
 
-        rows = parquet.read_table(path, columns=columns).to_pylist()
+        parquet_file = parquet.ParquetFile(path)
+        rows: list[dict[str, object]] = []
+        for batch in parquet_file.iter_batches(
+            batch_size=max_rows,
+            columns=columns,
+        ):
+            rows.extend(batch.to_pylist())
+            if len(rows) >= max_rows:
+                rows = rows[:max_rows]
+                break
     except Exception:
         return []
     terms: list[str] = []

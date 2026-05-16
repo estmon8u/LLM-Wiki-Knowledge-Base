@@ -8,29 +8,34 @@ surface that uses it.
 from __future__ import annotations
 
 import base64
+import logging
+import os
+import re
+import shutil
 from copy import deepcopy
 from dataclasses import dataclass, field
 from importlib.metadata import version as package_version
-import logging
-import os
 from pathlib import Path
-import re
-import shutil
 from tempfile import TemporaryDirectory
 from typing import Any, Optional
 
-from markitdown import __version__ as markitdown_version
-from markitdown import MarkItDown, MarkItDownException
 import pdfkit
+from markitdown import MarkItDown, MarkItDownException
+from markitdown import __version__ as markitdown_version
 
 from graphwiki_kb.services.config_service import DEFAULT_CONFIG
 from graphwiki_kb.services.markdown_document import (
     normalize_newlines as markdown_normalize_newlines,
+)
+from graphwiki_kb.services.markdown_document import (
     paragraphs as markdown_paragraphs,
+)
+from graphwiki_kb.services.markdown_document import (
     parse_document,
+)
+from graphwiki_kb.services.markdown_document import (
     plain_text as markdown_plain_text,
 )
-
 
 SUPPORTED_MARKDOWN_SUFFIXES = {".md", ".markdown"}
 SUPPORTED_PLAIN_TEXT_SUFFIXES = {".txt"}

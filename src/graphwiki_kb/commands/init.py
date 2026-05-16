@@ -11,7 +11,6 @@ import click
 
 from graphwiki_kb.models.command_models import CommandContext, CommandSpec
 
-
 SUMMARY = "Create the project folders, config, schema, and manifest files."
 
 

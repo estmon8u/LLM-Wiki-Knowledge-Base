@@ -9,15 +9,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import click
 import pytest
 
 from graphwiki_kb.services import build_services
 from graphwiki_kb.services.config_service import (
     CURRENT_CONFIG_VERSION,
-    ConfigService,
     DEFAULT_CONFIG,
     DEFAULT_SCHEMA,
+    ConfigService,
     _apply_config_migrations,
     _config_version,
     _deep_merge,
@@ -316,6 +315,51 @@ def test_config_service_invalid_provider_settings_raise(test_project) -> None:
     )
 
     with pytest.raises(ValueError, match="providers.openai.reasoning_effort"):
+        ConfigService(test_project.paths).load()
+
+
+def test_config_service_rejects_unknown_reasoning_effort_names(test_project) -> None:
+    """Verifies provider reasoning/thinking effort names are validated."""
+    test_project.paths.config_file.write_text(
+        "version: 7\n"
+        "providers:\n"
+        "  openai:\n"
+        "    model: gpt-5.4-nano\n"
+        "    api_key_env: OPENAI_API_KEY\n"
+        "    reasoning_effort: extreme\n"
+        "  anthropic:\n"
+        "    model: claude-sonnet-4-6\n"
+        "    api_key_env: ANTHROPIC_API_KEY\n"
+        "    thinking_effort: medium\n"
+        "  gemini:\n"
+        "    model: gemini-2.5-flash\n"
+        "    api_key_env: GEMINI_API_KEY\n"
+        "    reasoning_effort: high\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="providers.openai.reasoning_effort"):
+        ConfigService(test_project.paths).load()
+
+    test_project.paths.config_file.write_text(
+        "version: 7\n"
+        "providers:\n"
+        "  openai:\n"
+        "    model: gpt-5.4-nano\n"
+        "    api_key_env: OPENAI_API_KEY\n"
+        "    reasoning_effort: low\n"
+        "  anthropic:\n"
+        "    model: claude-sonnet-4-6\n"
+        "    api_key_env: ANTHROPIC_API_KEY\n"
+        "    thinking_effort: extreme\n"
+        "  gemini:\n"
+        "    model: gemini-2.5-flash\n"
+        "    api_key_env: GEMINI_API_KEY\n"
+        "    reasoning_effort: high\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="providers.anthropic.thinking_effort"):
         ConfigService(test_project.paths).load()
 
 
@@ -1108,6 +1152,7 @@ def test_raw_source_record_from_dict_missing_optional_fields() -> None:
 def test_status_snapshot_none_compile_prints_na() -> None:
     """Verifies that status snapshot none compile prints na."""
     from click.testing import CliRunner
+
     from graphwiki_kb.cli import main
 
     runner = CliRunner()

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import os
 import importlib.util
+import os
 from dataclasses import dataclass, field
 from typing import Any, Optional
 

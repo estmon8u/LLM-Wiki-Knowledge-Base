@@ -41,6 +41,18 @@ jobs:
       - name: Check formatting with Black
         run: poetry run black --check src tests
 
+      - name: Run Ruff lint
+        run: poetry run ruff check src tests
+
+      - name: Type-check provider and GraphRAG boundaries
+        run: >
+          poetry run mypy
+          src/graphwiki_kb/providers
+          src/graphwiki_kb/services/graphrag_command_service.py
+          src/graphwiki_kb/services/graphrag_runtime.py
+          src/graphwiki_kb/services/graphrag_status_service.py
+          src/graphwiki_kb/services/query_router_service.py
+
       - name: Smoke test CLI entry points
         run: |
           poetry run kb --help

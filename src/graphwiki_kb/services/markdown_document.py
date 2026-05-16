@@ -7,14 +7,13 @@ plain-text extraction, headings, paragraphs, sections, links, or fenced code.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 from typing import Any
 
 import frontmatter
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
-
 
 _MD_PARSER = MarkdownIt()
 

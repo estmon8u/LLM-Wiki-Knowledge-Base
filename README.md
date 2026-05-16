@@ -32,11 +32,11 @@ poetry run kb init
 poetry run kb update
 ```
 
-GraphRAG runtime defaults live in the `graph` section of `kb.config.yaml`. `kb init` calls the installed GraphRAG Python initialization entrypoint to create the workspace, then syncs the selected completion provider, embedding provider, models, JSON input settings, prompt paths, and resolved API-key environment variables into `graph/graphrag/settings.yaml`. The CLI owns those managed fields, but it preserves user-owned GraphRAG settings such as chunking, cache, vector-store, and search tuning when it rewrites the file. Bundled prompt templates under `graph/graphrag/prompts/` are project-managed and refreshed when the repository templates change. By default, GraphRAG reuses the OpenAI provider entry and references `OPENAI_API_KEY`, so a separate `GRAPHRAG_API_KEY` is not required unless you explicitly set a graph-specific override. The standalone `graphrag` command is still available for diagnostics, but `kb` invokes GraphRAG through Python entrypoints instead of spawning `python -m graphrag`.
+GraphRAG runtime defaults live in the `graph` section of `kb.config.yaml`. `kb init` calls the installed GraphRAG Python initialization entrypoint to create the workspace, then syncs the selected completion provider, embedding provider, models, JSON input settings, prompt paths, and resolved API-key environment variables into `graph/graphrag/settings.yaml`. The CLI owns those managed fields, but it preserves user-owned GraphRAG settings such as chunking, cache, vector-store, and search tuning when it rewrites the file. Bundled prompt templates under `graph/graphrag/prompts/` are project-managed, refreshed when the repository templates change, and explicitly included in wheels so installed-package prompt discovery does not depend on an editable checkout. By default, GraphRAG reuses the OpenAI provider entry and references `OPENAI_API_KEY`, so a separate `GRAPHRAG_API_KEY` is not required unless you explicitly set a graph-specific override. The standalone `graphrag` command is still available for diagnostics, but `kb` invokes GraphRAG through signature-aware Python entrypoint adapters instead of spawning `python -m graphrag`.
 
 `kb update` uses the existing knowledge-base corpus as the source of truth. It reads `raw/_manifest.json` plus the normalized artifacts in `raw/normalized/`, writes `graph/graphrag/input/sources.json`, configures GraphRAG for JSON input with metadata prepended into chunks, and then auto-decides whether to run a full index, incremental update, retry after a failed latest attempt, or skip because the graph is already current. The preflight decision path plans those settings and input changes without mutating `settings.yaml` or `input/sources.json`, so skipped or credential-blocked graph runs do not leave partial workspace state behind. Normal updates can skip isolated missing normalized artifacts with a warning so one stale manifest entry does not block the entire graph refresh; run `kb lint` to catch and fix the manifest drift. Successful index runs record the source digest, source hashes, runtime settings/prompt digest, selected method, active output directory, and command result under ignored run metadata for reproducibility. If GraphRAG credentials are missing during a normal `kb update`, the wiki compile still completes and graph indexing is skipped with a warning; `kb update --graph-only` fails clearly because the requested graph-only operation cannot run. Use `kb update --no-graph` when you intentionally want the legacy wiki compile/index refresh without touching the graph.
 
-`kb status` checks whether settings, synced input, the active complete GraphRAG output tables, vector store, and last recorded index run are present. It prefers the active output directory recorded by the latest successful run when that directory is still complete, rather than trusting the newest output folder blindly. `kb ask --method auto|basic|local|global|drift` calls GraphRAG query entrypoints, passes the active output directory explicitly to GraphRAG, and can save GraphRAG answers as analysis pages with support-level and source-trace metadata. `kb export` reads GraphRAG Parquet tables and writes human-readable documents, entities, relationships, communities, and text units under `wiki/graph/` when graph output exists.
+`kb status` checks whether settings, synced input, the active complete GraphRAG output tables, vector store, and last recorded index run are present, and it distinguishes missing, empty, unreadable, and incompatible vector-store states where possible. It prefers the active output directory recorded by the latest successful run when that directory is still complete, rather than trusting the newest output folder blindly. `kb ask --method auto|basic|local|global|drift` calls GraphRAG query entrypoints, passes the active output directory explicitly to GraphRAG, and preserves returned non-streaming answers even when GraphRAG logs instead of printing them. Saved GraphRAG answers become analysis pages with support-level and source-trace metadata. `kb export` reads GraphRAG Parquet tables and writes human-readable documents, entities, relationships, communities, and text units under `wiki/graph/` when graph output exists.
 
 ## Evaluation Harness
 
@@ -386,7 +386,7 @@ poetry run kb ask --show-source-trace "How does the graph index support source t
 | `--method` | `auto` | Use deterministic auto-routing or force `basic`, `local`, `global`, or `drift`. |
 | `--community-level` | | Forward GraphRAG's community-level option. |
 | `--dynamic-community-selection` / `--no-dynamic-selection` | GraphRAG default | Forward GraphRAG dynamic community selection behavior. |
-| `--response-type` | GraphRAG default | Forward GraphRAG's response type option. |
+| `--response-type` | GraphRAG default | Forward GraphRAG's response type option when the installed entrypoint accepts it; GraphRAG Basic Search builds that omit this argument are handled automatically. |
 | `--save` | off | Save the graph answer as an analysis page under `wiki/analysis/`. |
 | `--save-as` | | Save with a custom analysis slug. Implies `--save`. |
 | `--show-source-trace` | off | Print source trace, route reason, and current support level before the answer. |
@@ -577,9 +577,12 @@ outputs are parsed through the shared JSON parser, which accepts direct JSON,
 fenced JSON, and common prose-prefaced JSON before schema and semantic
 validation. Services can override provider reasoning effort and output budgets
 per operation; schema-bound commands use lower reasoning settings and larger
-visible-output budgets where needed. Gemini receives a provider-compatible JSON
-schema subset with unsupported `additionalProperties` fields removed before the
-SDK call, and logs a warning when that schema downgrade is needed.
+visible-output budgets where needed. OpenAI reasoning arguments are sent only to
+known reasoning-capable model families, and configured effort names are
+validated before SDK calls. Gemini preserves JSON Schema
+`additionalProperties` because the current Gemini structured-output API
+supports it; the provider keeps a schema-transformation report hook so any
+future downgrade can be logged explicitly.
 
 Provider configuration lives entirely in `kb.config.yaml`. The top-level
 `provider.name` selects the active provider, and the `providers` section holds
@@ -772,6 +775,21 @@ conversion:
     wkhtmltopdf_path: C:/Program Files/wkhtmltopdf/bin/wkhtmltopdf.exe
     allow_local_file_access: false
 ```
+
+## Quality Gates
+
+Python source and tests are formatted with Black, linted with Ruff, and checked
+with a bounded mypy gate over provider and GraphRAG boundary code. CI runs those
+checks on Python 3.11, 3.12, and 3.13 before the full pytest coverage suite:
+
+```powershell
+poetry run black --check src tests
+poetry run ruff check src tests
+poetry run mypy src/graphwiki_kb/providers src/graphwiki_kb/services/graphrag_command_service.py src/graphwiki_kb/services/graphrag_runtime.py src/graphwiki_kb/services/graphrag_status_service.py src/graphwiki_kb/services/query_router_service.py
+poetry run pytest tests -q
+```
+
+The same Black, Ruff, and mypy checks are available through pre-commit hooks.
 
 ## Project Layout
 

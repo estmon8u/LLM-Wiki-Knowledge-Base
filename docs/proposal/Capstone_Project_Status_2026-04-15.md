@@ -65,7 +65,7 @@ GraphRAG is the retrieval and synthesis engine.
 - Source-grounded ask behavior: `kb legacy ask` uses source-page chunks as primary evidence, excludes generated concept pages and saved analysis pages from evidence, validates structured claims/citations, and strips raw citation-ref markers from answer prose before display or save.
 - Obsidian vault export via `kb export`.
 - Library-backed simplification pass: shared Markdown/frontmatter parsing, Pydantic config validation, NLTK collocation-based concept topic extraction, RapidFuzz terminology variants, and Unicode-aware slugging.
-- CI and dependency baseline with enforced 97%+ coverage floor from `pyproject.toml`.
+- CI and dependency baseline with the current enforced coverage floor from `pyproject.toml`.
 
 ## In Progress Now
 

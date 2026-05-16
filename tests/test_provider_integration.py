@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,9 +13,8 @@ from graphwiki_kb.providers import (
     build_provider,
 )
 from graphwiki_kb.providers.base import ProviderRequest, ProviderResponse, TextProvider
-from graphwiki_kb.services.query_service import QueryAnswer, QueryService
+from graphwiki_kb.services.query_service import QueryService
 from graphwiki_kb.services.review_service import ReviewService
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -211,7 +207,7 @@ def test_build_provider_creates_anthropic_provider_with_custom_model() -> None:
 def test_build_provider_creates_gemini_provider() -> None:
     """Verifies that build provider creates gemini provider."""
     with patch.dict("os.environ", {"GEMINI_API_KEY": "test-key-789"}):
-        with patch("graphwiki_kb.providers.gemini_provider.genai") as mock_genai:
+        with patch("graphwiki_kb.providers.gemini_provider.genai"):
             provider = build_provider({"provider": {"name": "gemini"}})
     assert provider is not None
     assert provider.name == "gemini"
@@ -316,6 +312,35 @@ def test_openai_provider_uses_request_reasoning_effort_override() -> None:
 
     call_kwargs = MockClient.return_value.responses.create.call_args.kwargs
     assert call_kwargs["reasoning"] == {"effort": "low"}
+
+
+def test_openai_provider_does_not_send_reasoning_to_non_reasoning_model() -> None:
+    """Regression: non-reasoning OpenAI models should not receive reasoning args."""
+    with patch.dict("os.environ", {"OPENAI_API_KEY": "test"}):
+        with patch("graphwiki_kb.providers.openai_provider.OpenAI") as MockClient:
+            from graphwiki_kb.providers.openai_provider import OpenAIProvider
+
+            provider = OpenAIProvider(model="gpt-4o-mini")
+            mock_response = MagicMock()
+            mock_response.output_text = "response"
+            MockClient.return_value.responses.create.return_value = mock_response
+
+            provider.generate(ProviderRequest(prompt="test"))
+
+    call_kwargs = MockClient.return_value.responses.create.call_args.kwargs
+    assert "reasoning" not in call_kwargs
+
+
+def test_openai_provider_validates_api_mode_and_reasoning_effort() -> None:
+    """Verifies provider config fails before unsupported OpenAI kwargs are sent."""
+    with patch.dict("os.environ", {"OPENAI_API_KEY": "test"}):
+        with patch("graphwiki_kb.providers.openai_provider.OpenAI"):
+            from graphwiki_kb.providers.openai_provider import OpenAIProvider
+
+            with pytest.raises(ValueError, match="Unsupported OpenAI API mode"):
+                OpenAIProvider(api="legacy")  # type: ignore[arg-type]
+            with pytest.raises(ValueError, match="Unsupported OpenAI reasoning"):
+                OpenAIProvider(reasoning_effort="extreme")
 
 
 def test_openai_provider_uses_responses_json_schema_contract() -> None:
@@ -445,6 +470,26 @@ def test_openai_provider_keeps_chat_completions_fallback() -> None:
     assert MockClient.return_value.chat.completions.create.called
 
 
+def test_openai_chat_fallback_omits_reasoning_for_non_reasoning_model() -> None:
+    """Verifies chat fallback also gates reasoning_effort by model family."""
+    with patch.dict("os.environ", {"OPENAI_API_KEY": "test"}):
+        with patch("graphwiki_kb.providers.openai_provider.OpenAI") as MockClient:
+            from graphwiki_kb.providers.openai_provider import OpenAIProvider
+
+            provider = OpenAIProvider(model="gpt-4o-mini", api="chat_completions")
+            mock_completion = MagicMock()
+            mock_completion.choices = [MagicMock()]
+            mock_completion.choices[0].message.content = " fallback "
+            MockClient.return_value.chat.completions.create.return_value = (
+                mock_completion
+            )
+
+            provider.generate(ProviderRequest(prompt="test"))
+
+    call_kwargs = MockClient.return_value.chat.completions.create.call_args.kwargs
+    assert "reasoning_effort" not in call_kwargs
+
+
 def test_openai_provider_missing_key_raises() -> None:
     """Verifies that openai provider missing key raises."""
     with patch.dict("os.environ", {}, clear=True):
@@ -498,6 +543,16 @@ def test_anthropic_provider_adaptive_thinking_supports_new_claude_4_models() -> 
     call_kwargs = MockClient.return_value.messages.create.call_args.kwargs
     assert call_kwargs["thinking"] == {"type": "adaptive"}
     assert call_kwargs["output_config"] == {"effort": "low"}
+
+
+def test_anthropic_provider_validates_adaptive_thinking_effort() -> None:
+    """Verifies unsupported adaptive-thinking efforts fail before SDK calls."""
+    with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test"}):
+        with patch("graphwiki_kb.providers.anthropic_provider.Anthropic"):
+            from graphwiki_kb.providers.anthropic_provider import AnthropicProvider
+
+            with pytest.raises(ValueError, match="Unsupported Anthropic thinking"):
+                AnthropicProvider(thinking_effort="extreme")
 
 
 def test_anthropic_provider_keeps_manual_thinking_for_older_models() -> None:
@@ -559,7 +614,7 @@ def test_anthropic_provider_generate_without_system_prompt() -> None:
             mock_message.content = [mock_block]
             MockClient.return_value.messages.create.return_value = mock_message
 
-            result = provider.generate(ProviderRequest(prompt="test"))
+            provider.generate(ProviderRequest(prompt="test"))
 
     call_kwargs = MockClient.return_value.messages.create.call_args
     assert "system" not in call_kwargs.kwargs
@@ -622,9 +677,12 @@ def test_gemini_provider_uses_thinking_level_for_gemini_3_models() -> None:
     assert call_kwargs["config"].thinking_config.thinking_budget is None
 
 
-def test_gemini_response_schema_removes_additional_properties() -> None:
-    """Verifies that gemini response schema removes additional properties."""
-    from graphwiki_kb.providers.gemini_provider import _gemini_response_schema
+def test_gemini_response_schema_preserves_additional_properties() -> None:
+    """Verifies current Gemini JSON Schema support preserves object strictness."""
+    from graphwiki_kb.providers.gemini_provider import (
+        _gemini_response_schema,
+        _gemini_response_schema_with_report,
+    )
 
     schema = {
         "type": "object",
@@ -642,12 +700,16 @@ def test_gemini_response_schema_removes_additional_properties() -> None:
     }
 
     converted = _gemini_response_schema(schema)
+    converted_with_report, report = _gemini_response_schema_with_report(schema)
 
-    assert "additionalProperties" not in json.dumps(converted)
+    assert converted == schema
+    assert converted_with_report == schema
+    assert report.removed_keywords == ()
+    assert report.weakened is False
 
 
-def test_gemini_provider_warns_when_schema_is_downgraded(caplog) -> None:
-    """Verifies Gemini schema downgrades are visible instead of silent."""
+def test_gemini_provider_sends_strict_schema_without_downgrade_warning(caplog) -> None:
+    """Verifies Gemini receives current strict JSON Schema payloads."""
     with patch.dict("os.environ", {"GEMINI_API_KEY": "test"}):
         with patch("graphwiki_kb.providers.gemini_provider.genai") as mock_genai:
             from graphwiki_kb.providers.gemini_provider import GeminiProvider
@@ -669,7 +731,14 @@ def test_gemini_provider_warns_when_schema_is_downgraded(caplog) -> None:
                 )
             )
 
-    assert "does not support additionalProperties" in caplog.text
+    call_kwargs = (
+        mock_genai.Client.return_value.models.generate_content.call_args.kwargs
+    )
+    assert call_kwargs["config"].response_schema == {
+        "type": "object",
+        "additionalProperties": False,
+    }
+    assert "weakened" not in caplog.text
 
 
 def test_gemini_provider_generate_without_system_prompt() -> None:

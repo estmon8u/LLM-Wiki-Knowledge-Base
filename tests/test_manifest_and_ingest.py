@@ -8,7 +8,6 @@ surface that uses it.
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -18,9 +17,9 @@ from graphwiki_kb.services.manifest_service import ManifestError
 from graphwiki_kb.services.normalization_service import (
     NormalizationService,
     _ConvertedText,
+    _extract_title,
+    is_supported_source_path,
 )
-from graphwiki_kb.services.normalization_service import _extract_title
-from graphwiki_kb.services.normalization_service import is_supported_source_path
 from graphwiki_kb.services.project_service import utc_now_iso
 
 

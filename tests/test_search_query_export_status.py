@@ -9,14 +9,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-from pathlib import Path
 import sqlite3
 import threading
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from graphwiki_kb.models.wiki_models import SearchResult
 from graphwiki_kb.providers import (
     ProviderConfigurationError,
     ProviderExecutionError,
@@ -1616,7 +1615,6 @@ def test_search_index_store_upsert_replaces_stale_chunks(test_project) -> None:
     from graphwiki_kb.storage.search_index_store import (
         IndexedChunk,
         IndexedFileState,
-        SearchIndexStore,
     )
 
     store = test_project.services["search"].index_store
@@ -1889,7 +1887,7 @@ def test_status_export_status_stale(test_project) -> None:
     """
     import time
 
-    vault_file = test_project.write_file("vault/obsidian/page.md", "old")
+    test_project.write_file("vault/obsidian/page.md", "old")
     time.sleep(0.05)
     test_project.write_file("wiki/sources/newer.md", "newer")
     source_path = test_project.write_file("notes/s.md", "# S\n\nBody\n")

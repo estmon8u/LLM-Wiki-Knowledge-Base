@@ -18,7 +18,6 @@ from graphwiki_kb.commands.common import (
 from graphwiki_kb.models.command_models import CommandContext, CommandSpec
 from graphwiki_kb.services.graphrag_wiki_export_service import GraphRAGWikiExportError
 
-
 SUMMARY = (
     "Export the compiled wiki to the configured target (defaults to Obsidian vault)."
 )

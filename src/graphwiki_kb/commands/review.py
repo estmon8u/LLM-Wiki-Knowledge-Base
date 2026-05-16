@@ -8,6 +8,7 @@ surface that uses it.
 from __future__ import annotations
 
 import click
+from rich.markup import escape as _esc
 
 from graphwiki_kb.commands.common import (
     SEVERITY_STYLE,
@@ -17,8 +18,6 @@ from graphwiki_kb.commands.common import (
 )
 from graphwiki_kb.models.command_models import CommandContext, CommandSpec
 from graphwiki_kb.providers import ProviderError
-from rich.markup import escape as _esc
-
 
 SUMMARY = (
     "Run semantic review checks for contradictions and terminology drift "

@@ -50,7 +50,7 @@ class UnavailableProvider(TextProvider):
         Returns:
             ProviderResponse produced by the operation.
         """
-        self.ensure_available()
+        raise ProviderConfigurationError(self._message)
 
 
 class LazyProvider(TextProvider):

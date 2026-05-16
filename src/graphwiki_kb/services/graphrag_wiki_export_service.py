@@ -7,9 +7,9 @@ surface that uses it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import json
 import math
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
@@ -27,7 +27,6 @@ from graphwiki_kb.services.project_service import (
     slugify,
 )
 from graphwiki_kb.services.search_service import SearchService
-
 
 GRAPH_TABLE_DIRS = {
     "documents": "documents",

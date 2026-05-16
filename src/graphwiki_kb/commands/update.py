@@ -27,7 +27,6 @@ from graphwiki_kb.services.update_service import (
     UpdateService,
 )
 
-
 SUMMARY = (
     "Bring the knowledge base current. Optionally add new sources first, "
     "then compile, sync GraphRAG, and refresh indexes."

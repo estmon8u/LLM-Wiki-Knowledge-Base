@@ -7,11 +7,12 @@ import inspect
 import re
 from typing import Any, Callable
 
-
 MANAGED_GRAPHRAG_SETTINGS_VERSION = 1
 GRAPH_INPUT_SCHEMA_VERSION = 1
 SUPPORTED_GRAPHRAG_MIN = (3, 0, 9)
 SUPPORTED_GRAPHRAG_MAX_EXCLUSIVE = (3, 1, 0)
+_INDEX_ENTRYPOINT_DEFAULTS = {"config_filepath", "memprofile", "output_dir"}
+_QUERY_ENTRYPOINT_DEFAULTS = {"config_filepath", "response_type"}
 
 
 class GraphRAGCompatibilityError(RuntimeError):
@@ -74,26 +75,74 @@ def validate_graphrag_runtime() -> None:
     _require_parameters(
         index_cli,
         "graphrag.cli.index.index_cli",
-        {"root_dir", "method", "dry_run", "cache", "skip_validation"},
-        aliases={"root_dir": {"root_dir", "root", "workspace_dir"}},
+        {
+            "root_dir",
+            "method",
+            "verbose",
+            "dry_run",
+            "cache",
+            "skip_validation",
+        },
+        supplied_defaults=_INDEX_ENTRYPOINT_DEFAULTS,
     )
     _require_parameters(
         update_cli,
         "graphrag.cli.index.update_cli",
-        {"root_dir", "method", "cache", "skip_validation"},
-        aliases={"root_dir": {"root_dir", "root", "workspace_dir"}},
+        {"root_dir", "method", "verbose", "cache", "skip_validation"},
+        supplied_defaults=_INDEX_ENTRYPOINT_DEFAULTS,
     )
-    for func, name in (
-        (run_local_search, "run_local_search"),
-        (run_global_search, "run_global_search"),
-        (run_drift_search, "run_drift_search"),
-        (run_basic_search, "run_basic_search"),
+    for func, name, provided in (
+        (
+            run_local_search,
+            "run_local_search",
+            {
+                "root_dir",
+                "data_dir",
+                "community_level",
+                "response_type",
+                "streaming",
+                "query",
+                "verbose",
+            },
+        ),
+        (
+            run_global_search,
+            "run_global_search",
+            {
+                "root_dir",
+                "data_dir",
+                "community_level",
+                "dynamic_community_selection",
+                "response_type",
+                "streaming",
+                "query",
+                "verbose",
+            },
+        ),
+        (
+            run_drift_search,
+            "run_drift_search",
+            {
+                "root_dir",
+                "data_dir",
+                "community_level",
+                "response_type",
+                "streaming",
+                "query",
+                "verbose",
+            },
+        ),
+        (
+            run_basic_search,
+            "run_basic_search",
+            {"root_dir", "data_dir", "streaming", "query", "verbose"},
+        ),
     ):
         _require_parameters(
             func,
             f"graphrag.cli.query.{name}",
-            {"root_dir", "data_dir", "query", "streaming", "verbose"},
-            aliases={"root_dir": {"root_dir", "root", "workspace_dir"}},
+            provided,
+            supplied_defaults=_QUERY_ENTRYPOINT_DEFAULTS,
         )
 
 
@@ -103,8 +152,10 @@ def _require_parameters(
     required: set[str],
     *,
     aliases: dict[str, set[str]] | None = None,
+    supplied_defaults: set[str] | None = None,
 ) -> None:
-    parameters = set(inspect.signature(func).parameters)
+    signature = inspect.signature(func)
+    parameters = set(signature.parameters)
     missing: list[str] = []
     for parameter in required:
         alias_set = aliases.get(parameter, {parameter}) if aliases else {parameter}
@@ -114,6 +165,25 @@ def _require_parameters(
         raise GraphRAGCompatibilityError(
             f"{name} is missing expected parameter(s): {', '.join(sorted(missing))}."
         )
+    provided = set(required)
+    if aliases:
+        for parameter, alias_set in aliases.items():
+            if parameter in required:
+                provided.update(alias_set)
+    provided.update(supplied_defaults or set())
+    unknown_required = [
+        parameter.name
+        for parameter in signature.parameters.values()
+        if parameter.kind
+        not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+        and parameter.default is inspect.Parameter.empty
+        and parameter.name not in provided
+    ]
+    if unknown_required:
+        raise GraphRAGCompatibilityError(
+            f"{name} has unsupported required parameter(s): "
+            f"{', '.join(sorted(unknown_required))}."
+        )
 
 
 def _parse_version(version: str) -> tuple[int, int, int]:
@@ -122,4 +192,5 @@ def _parse_version(version: str) -> tuple[int, int, int]:
         raise GraphRAGCompatibilityError(
             f"Unable to parse installed GraphRAG version {version!r}."
         )
-    return tuple(int(part) for part in match.groups())
+    major, minor, patch = (int(part) for part in match.groups())
+    return major, minor, patch

@@ -15,6 +15,8 @@ class OpenAIProvider(TextProvider):
     """OpenAI provider using Responses API by default."""
 
     name = "openai"
+    _SUPPORTED_APIS = {"responses", "chat_completions"}
+    _SUPPORTED_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh"}
 
     def __init__(
         self,
@@ -23,9 +25,13 @@ class OpenAIProvider(TextProvider):
         reasoning_effort: str = "high",
         api: Literal["responses", "chat_completions"] = "responses",
     ) -> None:
+        normalized_api = api.strip().lower()
+        if normalized_api not in self._SUPPORTED_APIS:
+            supported = ", ".join(sorted(self._SUPPORTED_APIS))
+            raise ValueError(f"Unsupported OpenAI API mode {api!r}; use {supported}.")
         self.model = model
-        self._reasoning_effort = reasoning_effort
-        self._api = api
+        self._reasoning_effort = _normalize_reasoning_effort(reasoning_effort)
+        self._api = normalized_api
         api_key = os.environ.get(api_key_env, "")
         if not api_key:
             raise ValueError(
@@ -46,8 +52,13 @@ class OpenAIProvider(TextProvider):
             "model": self.model,
             "input": [{"role": "user", "content": request.prompt}],
             "max_output_tokens": request.max_tokens,
-            "reasoning": {"effort": request.reasoning_effort or self._reasoning_effort},
         }
+        reasoning_effort = _request_reasoning_effort(
+            request.reasoning_effort,
+            self._reasoning_effort,
+        )
+        if _supports_reasoning_effort(self.model):
+            kwargs["reasoning"] = {"effort": reasoning_effort}
         if request.system_prompt:
             kwargs["instructions"] = request.system_prompt
         if request.response_schema:
@@ -81,8 +92,13 @@ class OpenAIProvider(TextProvider):
             "model": self.model,
             "messages": messages,
             "max_completion_tokens": request.max_tokens,
-            "reasoning_effort": request.reasoning_effort or self._reasoning_effort,
         }
+        reasoning_effort = _request_reasoning_effort(
+            request.reasoning_effort,
+            self._reasoning_effort,
+        )
+        if _supports_reasoning_effort(self.model):
+            kwargs["reasoning_effort"] = reasoning_effort
         if request.response_schema:
             kwargs["response_format"] = {
                 "type": "json_schema",
@@ -150,3 +166,34 @@ def _get_value(item: Any, key: str) -> Any:
     if isinstance(item, dict):
         return item.get(key)
     return getattr(item, key, None)
+
+
+def _normalize_reasoning_effort(effort: str) -> str:
+    normalized = effort.strip().lower()
+    if normalized not in OpenAIProvider._SUPPORTED_REASONING_EFFORTS:
+        supported = ", ".join(sorted(OpenAIProvider._SUPPORTED_REASONING_EFFORTS))
+        raise ValueError(
+            f"Unsupported OpenAI reasoning effort {effort!r}; use {supported}."
+        )
+    return normalized
+
+
+def _request_reasoning_effort(
+    request_effort: str | None,
+    default_effort: str,
+) -> str:
+    if request_effort is None:
+        return default_effort
+    return _normalize_reasoning_effort(request_effort)
+
+
+def _supports_reasoning_effort(model: str) -> bool:
+    normalized = model.casefold()
+    reasoning_prefixes = (
+        "gpt-5",
+        "gpt-6",
+        "o1",
+        "o3",
+        "o4",
+    )
+    return normalized.startswith(reasoning_prefixes)

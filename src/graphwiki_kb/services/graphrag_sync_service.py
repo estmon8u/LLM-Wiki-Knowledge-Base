@@ -7,9 +7,9 @@ surface that uses it.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, replace
 import hashlib
 import json
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +30,6 @@ from graphwiki_kb.services.graphrag_status_service import (
 )
 from graphwiki_kb.services.graphrag_workspace_service import GraphRAGWorkspaceService
 from graphwiki_kb.services.project_service import ProjectPaths
-
 
 AUTO_SYNC_METHOD = "auto"
 GRAPH_SYNC_METHODS = ("auto", "standard", "fast", "standard-update", "fast-update")
@@ -73,6 +72,17 @@ class GraphRAGSyncDecision:
             dict[str, Any] produced by the operation.
         """
         return asdict(self)
+
+
+@dataclass(frozen=True)
+class GraphRAGSyncChangeState:
+    """Small, auditable inputs used by the graph sync planner."""
+
+    output_state: str
+    input_changed: bool
+    config_changed: bool
+    changed_source_count: int | None
+    stale_metadata: bool
 
 
 @dataclass(frozen=True)
@@ -243,191 +253,162 @@ class GraphRAGSyncService:
         current_source_hashes: dict[str, str],
         last_successful_run: dict[str, Any] | None,
     ) -> GraphRAGSyncDecision:
-        output_state = graph_output_state(status)
-        stale_metadata = False
-        config_changed = False
-        changed_source_count: int | None = None
-        input_changed = False
-
-        if last_successful_run:
-            last_input_digest = _optional_str(last_successful_run.get("input_digest"))
-            last_config_digest = _optional_str(last_successful_run.get("config_digest"))
-            last_source_hashes = _source_hashes_from_run(last_successful_run)
-            input_changed = last_input_digest != input_digest
-            config_changed = last_config_digest != config_digest
-            changed_source_count = count_source_hash_changes(
-                last_source_hashes,
-                current_source_hashes,
-            )
-            stale_metadata = last_input_digest is None or last_config_digest is None
-        elif output_state != "missing":
-            stale_metadata = True
+        change_state = detect_sync_changes(
+            status=status,
+            input_digest=input_digest,
+            config_digest=config_digest,
+            current_source_hashes=current_source_hashes,
+            last_successful_run=last_successful_run,
+        )
 
         if not run_index:
-            return GraphRAGSyncDecision(
+            return build_sync_decision(
+                change_state,
                 action="input-only",
                 method=None,
                 reason="Graph input synced; indexing disabled by --no-index.",
-                output_state=output_state,
                 input_digest=input_digest,
                 config_digest=config_digest,
-                input_changed=input_changed,
-                config_changed=config_changed,
-                changed_source_count=changed_source_count,
-                stale_metadata=stale_metadata,
             )
 
         if status.input_document_count == 0:
-            return GraphRAGSyncDecision(
+            return build_sync_decision(
+                change_state,
                 action="skip",
                 method=None,
-                reason="Graph input has no documents; add and compile sources before indexing.",
-                output_state=output_state,
+                reason=(
+                    "Graph input has no documents; add and compile sources before "
+                    "indexing."
+                ),
                 input_digest=input_digest,
                 config_digest=config_digest,
-                input_changed=input_changed,
-                config_changed=config_changed,
-                changed_source_count=changed_source_count,
-                stale_metadata=stale_metadata,
             )
 
         if force:
             method = FORCED_FULL_METHODS.get(requested_method, requested_method)
-            return GraphRAGSyncDecision(
+            return build_sync_decision(
+                change_state,
                 action="index",
                 method=method,
                 reason="--force requested a full graph rebuild.",
-                output_state=output_state,
                 input_digest=input_digest,
                 config_digest=config_digest,
                 input_changed=True,
-                config_changed=config_changed,
-                changed_source_count=changed_source_count,
                 cost_warning=cost_warning(method),
-                stale_metadata=stale_metadata,
             )
 
         if requested_method != AUTO_SYNC_METHOD:
             method = requested_method
             reason = f"Explicit GraphRAG index method requested: {requested_method}."
-            if requested_method in UPDATE_METHODS and output_state != "complete":
+            if (
+                requested_method in UPDATE_METHODS
+                and change_state.output_state != "complete"
+            ):
                 method = FORCED_FULL_METHODS[requested_method]
                 reason = (
                     f"Explicit GraphRAG update method {requested_method} requires "
                     f"complete existing output; using full {method} rebuild because "
-                    f"graph output is {output_state}."
+                    f"graph output is {change_state.output_state}."
                 )
-            return GraphRAGSyncDecision(
+            return build_sync_decision(
+                change_state,
                 action="index",
                 method=method,
                 reason=reason,
-                output_state=output_state,
                 input_digest=input_digest,
                 config_digest=config_digest,
-                input_changed=input_changed,
-                config_changed=config_changed,
-                changed_source_count=changed_source_count,
                 cost_warning=cost_warning(method),
-                stale_metadata=stale_metadata,
             )
 
         if status.last_index_success is False:
-            method = "fast-update" if output_state == "complete" else "fast"
-            return GraphRAGSyncDecision(
+            method = (
+                "fast-update" if change_state.output_state == "complete" else "fast"
+            )
+            return build_sync_decision(
+                change_state,
                 action="index",
                 method=method,
                 reason="Previous GraphRAG index attempt failed.",
-                output_state=output_state,
                 input_digest=input_digest,
                 config_digest=config_digest,
-                input_changed=input_changed or output_state != "complete",
-                config_changed=config_changed,
-                changed_source_count=changed_source_count,
+                input_changed=(
+                    change_state.input_changed
+                    or change_state.output_state != "complete"
+                ),
                 cost_warning=cost_warning(method),
-                stale_metadata=stale_metadata,
             )
 
-        if output_state == "missing":
-            return GraphRAGSyncDecision(
+        if change_state.output_state == "missing":
+            return build_sync_decision(
+                change_state,
                 action="index",
                 method="fast",
                 reason="Graph index output is missing.",
-                output_state=output_state,
                 input_digest=input_digest,
                 config_digest=config_digest,
                 input_changed=True,
-                config_changed=config_changed,
-                changed_source_count=changed_source_count,
                 cost_warning=cost_warning("fast"),
-                stale_metadata=stale_metadata,
             )
 
-        if output_state == "partial":
-            return GraphRAGSyncDecision(
+        if change_state.output_state == "partial":
+            return build_sync_decision(
+                change_state,
                 action="index",
                 method="fast",
                 reason="Graph index output is partial or incomplete.",
-                output_state=output_state,
                 input_digest=input_digest,
                 config_digest=config_digest,
                 input_changed=True,
-                config_changed=config_changed,
-                changed_source_count=changed_source_count,
                 cost_warning=cost_warning("fast"),
-                stale_metadata=stale_metadata,
             )
 
-        if stale_metadata:
-            return GraphRAGSyncDecision(
+        if change_state.stale_metadata:
+            return build_sync_decision(
+                change_state,
                 action="index",
                 method="fast",
                 reason="Graph index provenance metadata is missing; rebuilding once.",
-                output_state=output_state,
                 input_digest=input_digest,
                 config_digest=config_digest,
                 input_changed=True,
                 config_changed=True,
-                changed_source_count=changed_source_count,
                 cost_warning=cost_warning("fast"),
                 stale_metadata=True,
             )
 
-        if config_changed:
-            return GraphRAGSyncDecision(
+        if change_state.config_changed:
+            return build_sync_decision(
+                change_state,
                 action="index",
                 method="fast",
                 reason=(
                     "Graph runtime settings, prompts, GraphRAG version, or schema "
                     "changed."
                 ),
-                output_state=output_state,
                 input_digest=input_digest,
                 config_digest=config_digest,
-                input_changed=input_changed,
                 config_changed=True,
-                changed_source_count=changed_source_count,
                 cost_warning=cost_warning("fast"),
             )
 
-        if input_changed:
-            return GraphRAGSyncDecision(
+        if change_state.input_changed:
+            return build_sync_decision(
+                change_state,
                 action="index",
                 method="fast-update",
                 reason="Normalized source hashes changed.",
-                output_state=output_state,
                 input_digest=input_digest,
                 config_digest=config_digest,
                 input_changed=True,
                 config_changed=False,
-                changed_source_count=changed_source_count,
                 cost_warning=cost_warning("fast-update"),
             )
 
-        return GraphRAGSyncDecision(
+        return build_sync_decision(
+            change_state,
             action="skip",
             method=None,
             reason="Graph index is current for the synced sources and runtime config.",
-            output_state=output_state,
             input_digest=input_digest,
             config_digest=config_digest,
             input_changed=False,
@@ -463,6 +444,79 @@ def graph_output_state(status: GraphRAGStatus) -> str:
     if status.output_complete:
         return "complete"
     return "partial"
+
+
+def detect_sync_changes(
+    *,
+    status: GraphRAGStatus,
+    input_digest: str,
+    config_digest: str,
+    current_source_hashes: dict[str, str],
+    last_successful_run: dict[str, Any] | None,
+) -> GraphRAGSyncChangeState:
+    """Detect input, settings, output, and metadata changes for planning."""
+    output_state = graph_output_state(status)
+    if last_successful_run:
+        last_input_digest = _optional_str(last_successful_run.get("input_digest"))
+        last_config_digest = _optional_str(last_successful_run.get("config_digest"))
+        last_source_hashes = _source_hashes_from_run(last_successful_run)
+        return GraphRAGSyncChangeState(
+            output_state=output_state,
+            input_changed=last_input_digest != input_digest,
+            config_changed=last_config_digest != config_digest,
+            changed_source_count=count_source_hash_changes(
+                last_source_hashes,
+                current_source_hashes,
+            ),
+            stale_metadata=last_input_digest is None or last_config_digest is None,
+        )
+    return GraphRAGSyncChangeState(
+        output_state=output_state,
+        input_changed=False,
+        config_changed=False,
+        changed_source_count=None,
+        stale_metadata=output_state != "missing",
+    )
+
+
+def build_sync_decision(
+    change_state: GraphRAGSyncChangeState,
+    *,
+    action: str,
+    method: str | None,
+    reason: str,
+    input_digest: str,
+    config_digest: str,
+    input_changed: bool | None = None,
+    config_changed: bool | None = None,
+    changed_source_count: int | None = None,
+    cost_warning: str | None = None,
+    stale_metadata: bool | None = None,
+) -> GraphRAGSyncDecision:
+    """Build a sync decision from a precomputed change-state snapshot."""
+    return GraphRAGSyncDecision(
+        action=action,
+        method=method,
+        reason=reason,
+        output_state=change_state.output_state,
+        input_digest=input_digest,
+        config_digest=config_digest,
+        input_changed=(
+            change_state.input_changed if input_changed is None else input_changed
+        ),
+        config_changed=(
+            change_state.config_changed if config_changed is None else config_changed
+        ),
+        changed_source_count=(
+            change_state.changed_source_count
+            if changed_source_count is None
+            else changed_source_count
+        ),
+        cost_warning=cost_warning,
+        stale_metadata=(
+            change_state.stale_metadata if stale_metadata is None else stale_metadata
+        ),
+    )
 
 
 def file_digest(path: Path) -> str:

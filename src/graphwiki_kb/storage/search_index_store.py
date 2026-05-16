@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import sqlite3
+from dataclasses import dataclass
 from pathlib import Path
-
 
 _SCHEMA_VERSION = "1"
 _CHUNKER_VERSION = "3"

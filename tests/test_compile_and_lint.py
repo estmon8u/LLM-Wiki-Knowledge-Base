@@ -7,15 +7,14 @@ surface that uses it.
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
 
 from graphwiki_kb.models.wiki_models import LintIssue, LintReport
 from graphwiki_kb.providers.base import ProviderRequest, ProviderResponse, TextProvider
-from graphwiki_kb.services.graphrag_command_service import GraphRAGCommandResult
 from graphwiki_kb.services.compile_service import (
     SOURCE_PAGE_CONTRACT_VERSION,
     _abstract_paragraphs,
@@ -34,18 +33,19 @@ from graphwiki_kb.services.compile_service import (
     _strip_frontmatter,
     _truncate_with_boundary,
 )
-from graphwiki_kb.services.update_service import UpdateOptions, UpdateService
+from graphwiki_kb.services.graphrag_command_service import GraphRAGCommandResult
 from graphwiki_kb.services.lint_service import (
+    _extract_headings,
+    _fragment_exists,
+    _page_title,
+    _PageState,
+    _resolve_markdown_target,
     _split_frontmatter,
     _split_markdown_target,
     _strip_excerpt_section,
     _strip_fenced_code_blocks,
-    _page_title,
-    _extract_headings,
-    _fragment_exists,
-    _resolve_markdown_target,
-    _PageState,
 )
+from graphwiki_kb.services.update_service import UpdateOptions, UpdateService
 
 
 def _ingest_source(test_project, relative_path: str, content: str):
@@ -1750,7 +1750,6 @@ def test_compile_provider_empty_content_returns_no_content_message(
     Args:
         test_project: Test project value used by the operation.
     """
-    from graphwiki_kb.services.compile_service import CompileService
 
     service = test_project.services["compile"]
     summary = service._extract_summary("")
@@ -1765,7 +1764,6 @@ def test_compile_provider_structured_summary_fields(test_project) -> None:
         test_project: Test project value used by the operation.
     """
     from graphwiki_kb.providers.base import (
-        ProviderRequest,
         ProviderResponse,
         TextProvider,
     )
@@ -1823,7 +1821,6 @@ def test_compile_provider_empty_response_falls_back(test_project) -> None:
         test_project: Test project value used by the operation.
     """
     from graphwiki_kb.providers.base import (
-        ProviderRequest,
         ProviderResponse,
         TextProvider,
     )
@@ -1869,8 +1866,6 @@ def test_compile_provider_error_falls_back_to_deterministic_summary(
         test_project: Test project value used by the operation.
     """
     from graphwiki_kb.providers.base import (
-        ProviderRequest,
-        ProviderResponse,
         TextProvider,
     )
 
@@ -1914,7 +1909,6 @@ def test_compile_prompt_echo_summary_falls_back_to_deterministic_summary(
         test_project: Test project value used by the operation.
     """
     from graphwiki_kb.providers.base import (
-        ProviderRequest,
         ProviderResponse,
         TextProvider,
     )

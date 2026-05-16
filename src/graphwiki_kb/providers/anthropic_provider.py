@@ -16,6 +16,8 @@ from anthropic import Anthropic
 from graphwiki_kb.providers.base import ProviderRequest, ProviderResponse, TextProvider
 from graphwiki_kb.providers.retry import provider_retry
 
+_SUPPORTED_THINKING_EFFORTS = {"low", "medium", "high", "xhigh", "max"}
+
 
 class AnthropicProvider(TextProvider):
     """Anthropic messages provider."""
@@ -31,7 +33,7 @@ class AnthropicProvider(TextProvider):
     ) -> None:
         self.model = model
         self._thinking_budget = thinking_budget
-        self._thinking_effort = thinking_effort
+        self._thinking_effort = _normalize_thinking_effort(thinking_effort)
         api_key = os.environ.get(api_key_env, "")
         if not api_key:
             raise ValueError(
@@ -62,7 +64,10 @@ class AnthropicProvider(TextProvider):
         if use_adaptive_thinking:
             kwargs["thinking"] = {"type": "adaptive"}
             kwargs["output_config"] = {
-                "effort": request.reasoning_effort or self._thinking_effort,
+                "effort": _request_thinking_effort(
+                    request.reasoning_effort,
+                    self._thinking_effort,
+                ),
             }
         elif self._thinking_budget and self._thinking_budget > 0:
             kwargs["thinking"] = {
@@ -98,5 +103,31 @@ def _uses_adaptive_thinking(model: str) -> bool:
     normalized = model.casefold()
     if "mythos" in normalized:
         return True
-    match = re.search(r"claude-(?:opus|sonnet)-4-(\d+)", normalized)
-    return bool(match and int(match.group(1)) >= 6)
+    # claude-{opus,sonnet}-4-6+, and any claude 5+ generation.
+    match = re.search(r"claude-(?:opus|sonnet)-(\d+)(?:-(\d+))?", normalized)
+    if not match:
+        return False
+    major = int(match.group(1))
+    if major >= 5:
+        return True
+    minor = int(match.group(2)) if match.group(2) else 0
+    return major == 4 and minor >= 6
+
+
+def _normalize_thinking_effort(effort: str) -> str:
+    normalized = effort.strip().lower()
+    if normalized not in _SUPPORTED_THINKING_EFFORTS:
+        supported = ", ".join(sorted(_SUPPORTED_THINKING_EFFORTS))
+        raise ValueError(
+            f"Unsupported Anthropic thinking effort {effort!r}; use {supported}."
+        )
+    return normalized
+
+
+def _request_thinking_effort(
+    request_effort: str | None,
+    default_effort: str,
+) -> str:
+    if request_effort is None:
+        return default_effort
+    return _normalize_thinking_effort(request_effort)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -72,33 +73,15 @@ class ServiceContainer(Mapping[str, Any]):
     review: ReviewService
     compile_run_store: CompileRunStore
 
-    _NAMES: ClassVar[tuple[str, ...]] = (
-        "project",
-        "config",
-        "manifest",
-        "graphrag_input_sync",
-        "ingest",
-        "compile",
-        "concepts",
-        "diff",
-        "doctor",
-        "lint",
-        "review",
-        "search",
-        "status",
-        "query",
-        "export",
-        "graphrag_command",
-        "graphrag_workspace",
-        "graphrag_status",
-        "graphrag_sync",
-        "graphrag_query",
-        "graphrag_find",
-        "graphrag_wiki_export",
-        "query_router",
-        "graph_ask_controller",
-        "compile_run_store",
-    )
+    _NAMES: ClassVar[tuple[str, ...]] = ()
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        cls._NAMES = tuple(f.name for f in dataclasses.fields(cls))
+
+    def __post_init__(self) -> None:
+        if not type(self)._NAMES:
+            type(self)._NAMES = tuple(f.name for f in dataclasses.fields(self))
 
     def __getitem__(self, key: str) -> Any:
         if key not in self._NAMES:

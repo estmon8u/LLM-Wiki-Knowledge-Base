@@ -13,8 +13,10 @@ from pathlib import Path
 import pandas as pd
 
 from graphwiki_kb.services.graphrag_command_service import GraphRAGCommandResult
-from graphwiki_kb.services.graphrag_status_service import GraphRAGStatus
-from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
+from graphwiki_kb.services.graphrag_status_service import (
+    GraphRAGStatus,
+    GraphRAGStatusService,
+)
 
 
 def test_status_reports_workspace_input_outputs_and_last_run(test_project) -> None:
@@ -68,6 +70,7 @@ def test_status_reports_workspace_input_outputs_and_last_run(test_project) -> No
     assert status.community_reports_present is True
     assert status.vector_store_exists is True
     assert status.vector_store_readable is True
+    assert status.vector_store_state == "ready"
     assert (
         status.active_output_dir == test_project.paths.graph_dir / "graphrag" / "output"
     )
@@ -80,6 +83,7 @@ def test_status_reports_workspace_input_outputs_and_last_run(test_project) -> No
     assert payload["input_path"] == "graph/graphrag/input/sources.json"
     assert payload["active_output_dir"] == "graph/graphrag/output"
     assert payload["vector_store_path"] == "graph/graphrag/output/lancedb"
+    assert payload["vector_store_state"] == "ready"
 
 
 def test_status_counts_realistic_nested_graphrag_parquet_tables(
@@ -167,9 +171,36 @@ def test_status_treats_missing_vector_store_as_incomplete_output(
     assert status.output_present is True
     assert status.vector_store_exists is False
     assert status.vector_store_readable is False
+    assert status.vector_store_state == "missing"
     assert status.output_complete is False
     assert "vector_store" in status.missing_tables
     assert "vector store" in status.next_action
+
+
+def test_status_rejects_non_lancedb_vector_store_directory(test_project) -> None:
+    """Regression: a non-empty vector-store directory alone is not readable."""
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "doc-1", "text": "GraphRAG source text."}]),
+    )
+    for table in (
+        "documents",
+        "text_units",
+        "entities",
+        "relationships",
+        "communities",
+        "community_reports",
+    ):
+        test_project.write_file(f"graph/graphrag/output/{table}.parquet", "")
+    test_project.write_file("graph/graphrag/output/lancedb/random.txt", "not lancedb")
+
+    status = GraphRAGStatusService(test_project.paths).status()
+
+    assert status.vector_store_exists is True
+    assert status.vector_store_readable is False
+    assert status.vector_store_state in {"empty", "unreadable"}
+    assert status.output_complete is False
 
 
 def test_status_prefers_complete_output_over_newer_partial_output(

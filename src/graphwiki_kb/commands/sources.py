@@ -19,7 +19,6 @@ from graphwiki_kb.commands.common import (
 )
 from graphwiki_kb.models.command_models import CommandContext, CommandSpec
 
-
 SUMMARY = "Manage source inventory."
 
 

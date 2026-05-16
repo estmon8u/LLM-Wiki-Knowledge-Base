@@ -21,8 +21,8 @@ import pytest
 from graphwiki_kb.models.command_models import CommandContext
 from graphwiki_kb.providers.base import ProviderRequest, ProviderResponse, TextProvider
 from graphwiki_kb.services import build_services
-from graphwiki_kb.services.container import ServiceContainer
 from graphwiki_kb.services.config_service import ConfigService
+from graphwiki_kb.services.container import ServiceContainer
 from graphwiki_kb.services.manifest_service import ManifestService
 from graphwiki_kb.services.project_service import (
     ProjectPaths,

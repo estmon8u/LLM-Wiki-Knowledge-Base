@@ -15,6 +15,7 @@ from markitdown import MarkItDownException
 
 import graphwiki_kb.services.normalization_service as normalization_service_module
 from graphwiki_kb.services.normalization_service import (
+    DOCX_PPTX_FALLBACK_ROUTE,
     HTML_FALLBACK_ROUTE,
     HTML_RENDERED_OCR_ROUTE,
     HTML_XHTML2PDF_OCR_ROUTE,
@@ -22,7 +23,6 @@ from graphwiki_kb.services.normalization_service import (
     MISTRAL_DOCUMENT_ROUTE,
     MISTRAL_IMAGE_ROUTE,
     PDF_FALLBACK_ROUTE,
-    DOCX_PPTX_FALLBACK_ROUTE,
     DoclingPdfConverter,
     MistralOcrConverter,
     NormalizationService,

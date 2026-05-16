@@ -27,7 +27,11 @@ def test_router_routes_global_drift_and_basic_without_graph_terms() -> None:
         router.route("What are the main themes across the corpus?").method == "global"
     )
     assert router.route("How does REALM differ from RAG?").method == "drift"
+    assert router.route("Compare REALM and RAG.").method == "drift"
+    assert router.route("How does REALM relate to RAG?").method == "drift"
     assert router.route("What is retrieval used for?").method == "basic"
+    assert router.route("Where is REALM mentioned?").method == "basic"
+    assert router.route("Summarize the whole corpus.").method == "global"
     assert router.route("What is REALM?").method == "basic"
 
 
@@ -93,3 +97,20 @@ def test_router_helpers_handle_missing_invalid_and_empty_terms(tmp_path) -> None
     unmatched_table.write_text("not parquet", encoding="utf-8")
     assert list(_read_term_columns(unmatched_table)) == []
     assert not _term_in_question("", "what is rag?")
+
+
+def test_router_term_reader_caps_large_parquet_scans(tmp_path) -> None:
+    """Verifies graph term discovery does not load unbounded Parquet rows."""
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    table_path = output_dir / "entities.parquet"
+    pd.DataFrame(
+        [{"id": f"entity-{index}", "title": f"Entity {index}"} for index in range(5)]
+    ).to_parquet(table_path)
+
+    assert list(_read_term_columns(table_path, max_rows=2)) == [
+        "Entity 0",
+        "Entity 1",
+        "entity-0",
+        "entity-1",
+    ]

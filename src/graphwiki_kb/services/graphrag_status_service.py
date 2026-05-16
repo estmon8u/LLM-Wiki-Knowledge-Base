@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-import json
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +18,6 @@ from graphwiki_kb.services.project_service import (
     utc_now_iso,
 )
 
-
 GRAPH_OUTPUT_TABLES: dict[str, tuple[str, ...]] = {
     "documents": ("documents", "create_final_documents"),
     "text_units": ("text_units", "create_final_text_units"),
@@ -27,6 +26,7 @@ GRAPH_OUTPUT_TABLES: dict[str, tuple[str, ...]] = {
     "communities": ("communities", "create_final_communities"),
     "community_reports": ("community_reports", "create_final_community_reports"),
 }
+VECTOR_STORE_TABLE_HINTS = ("entity", "document", "text_unit", "text-unit")
 
 
 @dataclass(frozen=True)
@@ -111,6 +111,7 @@ class GraphRAGStatus:
     vector_store_path: Path | None = None
     vector_store_exists: bool = False
     vector_store_readable: bool = False
+    vector_store_state: str = "missing"
 
     @property
     def missing_tables(self) -> list[str]:
@@ -230,7 +231,8 @@ class GraphRAGStatusService:
         tables = {name: path is not None for name, path in table_paths.items()}
         vector_store_path = self._vector_store_path(active_output_dir)
         vector_store_exists = bool(vector_store_path and vector_store_path.exists())
-        vector_store_readable = self._vector_store_readable(vector_store_path)
+        vector_store_state = self._vector_store_state(vector_store_path)
+        vector_store_readable = vector_store_state == "ready"
         output_complete = all(tables.values()) and vector_store_readable
         table_counts = {
             name: self._table_row_count(path) if path is not None else None
@@ -293,6 +295,7 @@ class GraphRAGStatusService:
             vector_store_path=vector_store_path,
             vector_store_exists=vector_store_exists,
             vector_store_readable=vector_store_readable,
+            vector_store_state=vector_store_state,
         )
 
     def record_index_run(
@@ -440,8 +443,8 @@ class GraphRAGStatusService:
 
     def _output_dir_complete(self, output_dir: Path) -> bool:
         table_paths = self._table_paths(output_dir)
-        return all(table_paths.values()) and self._vector_store_readable(
-            self._vector_store_path(output_dir)
+        return all(table_paths.values()) and (
+            self._vector_store_state(self._vector_store_path(output_dir)) == "ready"
         )
 
     def _table_paths(self, output_dir: Path | None) -> dict[str, Path | None]:
@@ -508,14 +511,28 @@ class GraphRAGStatusService:
 
     @staticmethod
     def _vector_store_readable(path: Path | None) -> bool:
+        return GraphRAGStatusService._vector_store_state(path) == "ready"
+
+    @staticmethod
+    def _vector_store_state(path: Path | None) -> str:
         if path is None or not path.exists():
-            return False
+            return "missing"
         try:
-            if path.is_dir():
-                return next(path.iterdir(), None) is not None
-            return path.stat().st_size > 0
+            if path.is_file():
+                return "ready" if path.stat().st_size > 0 else "unreadable"
+            marker = path / "vector-store.marker"
+            if marker.exists():
+                return "ready" if marker.stat().st_size > 0 else "unreadable"
+            lancedb_state = _lancedb_vector_store_state(path)
+            if lancedb_state is not None:
+                return lancedb_state
+            if _looks_like_lancedb_path(path):
+                return "ready"
+            if next(path.iterdir(), None) is None:
+                return "empty"
+            return "unreadable"
         except OSError:
-            return False
+            return "unreadable"
 
     def _latest_parquet_mtime_iso(self, output_dir: Path | None = None) -> str | None:
         output_dir = output_dir or self.output_dir
@@ -663,6 +680,42 @@ def _match_table_path(paths: list[Path], tokens: tuple[str, ...]) -> Path | None
         if any(stem == token or token in stem for token in normalized_tokens):
             return path
     return None
+
+
+def _lancedb_vector_store_state(path: Path) -> str | None:
+    try:
+        import lancedb
+    except ImportError:
+        return None
+    try:
+        database = lancedb.connect(path)
+        table_names = list(database.table_names())
+    except Exception:
+        return "unreadable"
+    if not table_names:
+        return "empty"
+    normalized_names = tuple(name.casefold() for name in table_names)
+    if any(
+        hint in table_name
+        for table_name in normalized_names
+        for hint in VECTOR_STORE_TABLE_HINTS
+    ):
+        return "ready"
+    return "incompatible"
+
+
+def _looks_like_lancedb_path(path: Path) -> bool:
+    try:
+        children = list(path.iterdir())
+    except OSError:
+        return False
+    for child in children:
+        name = child.name.casefold()
+        if child.is_dir() and name.endswith(".lance"):
+            return True
+        if name in {"_latest.manifest", "_versions"}:
+            return True
+    return False
 
 
 def iso_timestamp_after(left: str | None, right: str | None) -> bool:

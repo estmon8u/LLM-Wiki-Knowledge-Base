@@ -13,7 +13,6 @@ from graphwiki_kb.commands.common import (
 from graphwiki_kb.models.command_models import CommandContext, CommandSpec
 from graphwiki_kb.models.wiki_models import SearchResult
 
-
 SUMMARY = "Search direct GraphRAG artifacts plus the maintained wiki index."
 
 
@@ -60,7 +59,7 @@ def create_command() -> click.Command:
             raise click.ClickException("Provide at least one search term.")
         search_service = command_context.services.search
         graph_find_service = command_context.services.graphrag_find
-        query = " ".join(query_terms)
+        query = " ".join(query_terms).strip()
         candidate_limit = max(limit * 4, 20)
         graph_results = graph_find_service.search(query, limit=candidate_limit)
         wiki_results = search_service.search(

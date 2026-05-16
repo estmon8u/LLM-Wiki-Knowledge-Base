@@ -7,11 +7,11 @@ surface that uses it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import hashlib
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-import hashlib
 
 import yaml
 
@@ -19,13 +19,12 @@ from graphwiki_kb.models.source_models import RawSourceRecord
 from graphwiki_kb.services.graphrag_defaults import (
     DEFAULT_GRAPHRAG_CHUNK_OVERLAP,
     DEFAULT_GRAPHRAG_CHUNK_SIZE,
-    DEFAULT_GRAPHRAG_ENCODING_MODEL,
     DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
+    DEFAULT_GRAPHRAG_ENCODING_MODEL,
     DEFAULT_GRAPHRAG_MODEL,
 )
 from graphwiki_kb.services.manifest_service import ManifestError, ManifestService
 from graphwiki_kb.services.project_service import ProjectPaths, atomic_write_text
-
 
 GRAPH_INPUT_METADATA_FIELDS = (
     "source_id",

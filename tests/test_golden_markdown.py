@@ -17,7 +17,6 @@ from graphwiki_kb.models.wiki_models import SearchResult
 from graphwiki_kb.services.concept_service import _ConceptDraft, _SourcePage
 from graphwiki_kb.services.query_service import QueryAnswer
 
-
 _FIXED_TIMESTAMP = "2026-04-20T12:00:00+00:00"
 _GOLDEN_DIR = Path(__file__).parent / "golden_markdown"
 

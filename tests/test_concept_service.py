@@ -540,8 +540,10 @@ def test_resolve_destination_skips_manual_page(test_project) -> None:
 
 def test_compile_with_concepts_flag_cli() -> None:
     """Verifies that compile with concepts flag cli."""
-    from click.testing import CliRunner
     from unittest.mock import patch
+
+    from click.testing import CliRunner
+
     from graphwiki_kb.cli import main
     from graphwiki_kb.providers.base import (
         ProviderRequest,
@@ -695,6 +697,7 @@ def test_resolve_destination_stops_after_slug_attempt_limit(
 ) -> None:
     """Verifies concept slug allocation cannot loop forever."""
     import pytest
+
     import graphwiki_kb.services.concept_service as concept_module
 
     monkeypatch.setattr(concept_module, "_MAX_CONCEPT_SLUG_ATTEMPTS", 3)
@@ -764,7 +767,6 @@ def test_generate_zero_output_when_no_themes_qualify(test_project) -> None:
             "ingested_at": "2026-04-22T00:00:00Z",
             "tags": [],
         }
-        import yaml
 
         page = f"---\n{yaml.safe_dump(fm, sort_keys=False)}---\n\n# {title}\n\n## Summary\n\n{fm['summary']}\n"
         test_project.paths.wiki_sources_dir.mkdir(parents=True, exist_ok=True)
@@ -792,7 +794,6 @@ def test_load_source_pages_ignores_placeholder_summaries(test_project) -> None:
         "ingested_at": "2026-04-22T00:00:00Z",
         "tags": [],
     }
-    import yaml
 
     page = f"---\n{yaml.safe_dump(fm, sort_keys=False)}---\n\n# Dense Passage Retrieval\n\n## Summary\n\nNo summary available yet.\n"
     test_project.paths.wiki_sources_dir.mkdir(parents=True, exist_ok=True)
@@ -1076,8 +1077,9 @@ class _StubConceptProvider:
         Args:
             request: Request value used by the operation.
         """
-        from graphwiki_kb.providers.base import ProviderResponse
         import json
+
+        from graphwiki_kb.providers.base import ProviderResponse
 
         source_pages = []
         for line in request.prompt.splitlines():

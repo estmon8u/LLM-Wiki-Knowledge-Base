@@ -2,20 +2,22 @@
 
 from __future__ import annotations
 
+import shutil
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-import shutil
 from typing import Any
 
+import yaml
+
+from graphwiki_kb.services.config_service import (
+    GraphRAGRuntimeConfig,
+    resolve_graph_config,
+)
 from graphwiki_kb.services.graphrag_command_service import (
     GraphRAGCommandError,
     GraphRAGCommandResult,
     GraphRAGCommandService,
-)
-from graphwiki_kb.services.config_service import (
-    GraphRAGRuntimeConfig,
-    resolve_graph_config,
 )
 from graphwiki_kb.services.graphrag_defaults import (
     DEFAULT_GRAPHRAG_CHUNK_OVERLAP,
@@ -23,7 +25,6 @@ from graphwiki_kb.services.graphrag_defaults import (
     DEFAULT_GRAPHRAG_ENCODING_MODEL,
 )
 from graphwiki_kb.services.project_service import ProjectPaths, atomic_write_text
-import yaml
 
 
 @dataclass(frozen=True)
@@ -210,9 +211,10 @@ class GraphRAGWorkspaceService:
         return payload
 
     def _ensure_prompt_templates(self) -> list[str]:
-        bundled_prompts = _bundled_prompts_dir()
         prompt_dir = self.workspace_dir / "prompts"
-        if not bundled_prompts.exists():
+        prompt_dirs = _bundled_prompt_dirs()
+        bundled_prompts = prompt_dirs[0] if prompt_dirs else None
+        if bundled_prompts is None:
             return []
         created: list[str] = []
         for source in sorted(bundled_prompts.glob("*.txt")):
@@ -349,5 +351,25 @@ def _normalize_stock_vector_store_path(settings: dict[str, Any]) -> None:
         vector_store["db_uri"] = "output/lancedb"
 
 
-def _bundled_prompts_dir() -> Path:
-    return Path(__file__).resolve().parents[2] / "graph" / "graphrag" / "prompts"
+def _bundled_prompt_dirs(module_file: Path | None = None) -> list[Path]:
+    current_file = module_file or Path(__file__).resolve()
+    candidates: list[Path] = []
+    package_root = current_file.parents[1]
+    candidates.append(package_root / "data" / "graphrag_prompts")
+    for parent in current_file.parents:
+        candidates.append(parent / "graph" / "graphrag" / "prompts")
+    candidates.append(Path.cwd() / "graph" / "graphrag" / "prompts")
+
+    valid_candidates: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            resolved = candidate
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if candidate.exists() and any(candidate.glob("*.txt")):
+            valid_candidates.append(candidate)
+    return valid_candidates

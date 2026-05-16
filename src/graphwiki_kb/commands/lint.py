@@ -8,6 +8,7 @@ surface that uses it.
 from __future__ import annotations
 
 import click
+from rich.markup import escape as _esc
 
 from graphwiki_kb.commands.common import (
     SEVERITY_STYLE,
@@ -16,8 +17,6 @@ from graphwiki_kb.commands.common import (
     require_initialized,
 )
 from graphwiki_kb.models.command_models import CommandContext, CommandSpec
-from rich.markup import escape as _esc
-
 
 SUMMARY = "Run deterministic structural lint checks over the maintained wiki."
 

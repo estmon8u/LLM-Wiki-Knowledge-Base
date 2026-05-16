@@ -11,9 +11,9 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from click.testing import CliRunner
 import pandas as pd
 import yaml
+from click.testing import CliRunner
 
 from graphwiki_kb.cli import main
 from graphwiki_kb.commands.find import _merge_results
@@ -23,8 +23,10 @@ from graphwiki_kb.services.concept_service import ConceptGenerationResult
 from graphwiki_kb.services.graphrag_command_service import GraphRAGCommandResult
 from graphwiki_kb.services.graphrag_input_sync_service import GraphRAGInputSyncResult
 from graphwiki_kb.services.graphrag_query_service import GraphRAGQueryAnswer
-from graphwiki_kb.services.graphrag_status_service import GraphRAGIndexRun
-from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
+from graphwiki_kb.services.graphrag_status_service import (
+    GraphRAGIndexRun,
+    GraphRAGStatusService,
+)
 from graphwiki_kb.services.graphrag_sync_service import (
     GraphRAGSyncDecision,
     GraphRAGSyncResult,

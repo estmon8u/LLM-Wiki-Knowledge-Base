@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import logging
 import math
-from pathlib import Path
 import re
+from pathlib import Path
 from typing import Any
 
 from graphwiki_kb.models.wiki_models import SearchResult
 from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
 from graphwiki_kb.services.project_service import ProjectPaths, slugify
-
 
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 _GRAPH_FIND_TABLES = ("entities", "relationships")
@@ -124,7 +123,7 @@ def _read_parquet_records(path: Path) -> list[dict[str, Any]]:
     try:
         import pyarrow.lib as arrow_lib
         import pyarrow.parquet as parquet
-    except ImportError as exc:
+    except ImportError:
         logger.debug(
             "PyArrow is unavailable; skipping GraphRAG artifact search for %s",
             path,

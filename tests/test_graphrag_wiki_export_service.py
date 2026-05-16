@@ -16,13 +16,13 @@ import yaml
 from graphwiki_kb.services.graphrag_command_service import GraphRAGCommandResult
 from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
 from graphwiki_kb.services.graphrag_wiki_export_service import (
-    GraphRAGWikiExportError,
-    GraphRAGWikiExportService,
     MAX_ENTITY_RELATIONSHIP_ROWS,
     MAX_EXPORTED_RELATIONSHIP_PAGES,
+    GraphRAGWikiExportError,
+    GraphRAGWikiExportService,
     _clean_value,
-    _field_list,
     _fenced_text,
+    _field_list,
     _findings_markdown,
     _first_number,
     _first_text,

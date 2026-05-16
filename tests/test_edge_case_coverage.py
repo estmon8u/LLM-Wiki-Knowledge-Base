@@ -3,24 +3,25 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import sys
 import types
+from pathlib import Path
 
 import pytest
 
-from graphwiki_kb.services.config_service import DEFAULT_CONFIG, resolve_graph_config
 from graphwiki_kb.services.config_service import (
+    DEFAULT_CONFIG,
     _optional_str,
     _provider_catalog_api_key_env,
     concept_generation_enabled,
     concept_provider_backed_enabled,
+    resolve_graph_config,
 )
 from graphwiki_kb.services.graphrag_status_service import (
     GraphRAGStatus,
     GraphRAGStatusService,
-    iso_timestamp_after,
     _timestamp_iso,
+    iso_timestamp_after,
 )
 from graphwiki_kb.services.graphrag_wiki_export_service import _is_generated_graph_page
 from graphwiki_kb.services.normalization_service import (
@@ -36,8 +37,8 @@ from graphwiki_kb.services.query_router_service import (
 )
 from graphwiki_kb.services.stopwords import _load_stopwords
 from graphwiki_kb.storage.compile_run_store import (
-    CompileRunStore,
     MAX_COMPILE_RUN_HISTORY,
+    CompileRunStore,
 )
 
 

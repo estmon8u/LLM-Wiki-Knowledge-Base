@@ -7,13 +7,14 @@ surface that uses it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import json
 import logging
 import re
+from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
-from pydantic import BaseModel, Field
+
 import yaml
+from pydantic import BaseModel, Field
 
 from graphwiki_kb.models.source_models import RawSourceRecord
 from graphwiki_kb.providers import (
@@ -24,19 +25,37 @@ from graphwiki_kb.providers.base import ProviderRequest, TextProvider
 from graphwiki_kb.providers.structured import StructuredOutputError, parse_model_payload
 from graphwiki_kb.services.config_service import schema_excerpt
 from graphwiki_kb.services.file_lock import file_lock
+from graphwiki_kb.services.manifest_service import ManifestService
 from graphwiki_kb.services.markdown_document import (
     headings as markdown_headings,
+)
+from graphwiki_kb.services.markdown_document import (
     inline_text as markdown_inline_text,
+)
+from graphwiki_kb.services.markdown_document import (
     is_content_paragraph as markdown_is_content_paragraph,
+)
+from graphwiki_kb.services.markdown_document import (
     is_link_only_inline as markdown_is_link_only_inline,
+)
+from graphwiki_kb.services.markdown_document import (
     normalize_newlines as markdown_normalize_newlines,
+)
+from graphwiki_kb.services.markdown_document import (
     paragraphs as markdown_paragraphs,
+)
+from graphwiki_kb.services.markdown_document import (
     parse_frontmatter as markdown_parse_frontmatter,
+)
+from graphwiki_kb.services.markdown_document import (
     plain_text as markdown_plain_text,
+)
+from graphwiki_kb.services.markdown_document import (
     section_paragraphs as markdown_section_paragraphs,
+)
+from graphwiki_kb.services.markdown_document import (
     strip_frontmatter as markdown_strip_frontmatter,
 )
-from graphwiki_kb.services.manifest_service import ManifestService
 from graphwiki_kb.services.project_service import (
     ProjectPaths,
     atomic_write_text,

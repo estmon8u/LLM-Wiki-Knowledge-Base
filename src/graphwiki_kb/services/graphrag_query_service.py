@@ -7,10 +7,10 @@ surface that uses it.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
 import json
-from pathlib import Path
 import re
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Callable
 
 import yaml
@@ -24,8 +24,8 @@ from graphwiki_kb.services.graphrag_command_service import (
 from graphwiki_kb.services.graphrag_status_service import (
     GraphRAGStatus,
     GraphRAGStatusService,
+    graph_not_ready_message,
 )
-from graphwiki_kb.services.graphrag_status_service import graph_not_ready_message
 from graphwiki_kb.services.graphrag_sync_service import file_digest
 from graphwiki_kb.services.project_service import (
     ProjectPaths,
@@ -35,7 +35,6 @@ from graphwiki_kb.services.project_service import (
     utc_now_iso,
 )
 from graphwiki_kb.services.search_service import SearchService
-
 
 GRAPH_QUERY_METHODS = ("local", "global", "drift", "basic")
 GRAPH_DATA_REFERENCE_PATTERN = re.compile(r"\[Data:\s*[^\]]+\]")

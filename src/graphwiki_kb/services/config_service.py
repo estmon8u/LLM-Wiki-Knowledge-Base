@@ -7,12 +7,13 @@ surface that uses it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
 from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+import yaml
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -23,7 +24,6 @@ from pydantic import (
     ValidationError,
     field_validator,
 )
-import yaml
 
 from graphwiki_kb.services.file_lock import file_lock
 from graphwiki_kb.services.graphrag_defaults import (
@@ -39,8 +39,9 @@ from graphwiki_kb.services.project_service import (
     utc_now_iso,
 )
 
-
 CURRENT_CONFIG_VERSION = 7
+PROVIDER_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh"}
+ANTHROPIC_THINKING_EFFORTS = {"low", "medium", "high", "xhigh", "max"}
 
 
 @dataclass(frozen=True)
@@ -542,6 +543,15 @@ class _OpenAIProviderConfig(_StrictConfigModel):
             raise ValueError("must be a non-empty string")
         return value
 
+    @field_validator("reasoning_effort")
+    @classmethod
+    def _reasoning_effort_must_be_supported(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in PROVIDER_REASONING_EFFORTS:
+            supported = ", ".join(sorted(PROVIDER_REASONING_EFFORTS))
+            raise ValueError(f"must be one of: {supported}")
+        return normalized
+
 
 class _AnthropicProviderConfig(_StrictConfigModel):
     """Stores anthropic provider config data.
@@ -562,6 +572,15 @@ class _AnthropicProviderConfig(_StrictConfigModel):
             raise ValueError("must be a non-empty string")
         return value
 
+    @field_validator("thinking_effort")
+    @classmethod
+    def _thinking_effort_must_be_supported(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in ANTHROPIC_THINKING_EFFORTS:
+            supported = ", ".join(sorted(ANTHROPIC_THINKING_EFFORTS))
+            raise ValueError(f"must be one of: {supported}")
+        return normalized
+
 
 class _GeminiProviderConfig(_StrictConfigModel):
     """Stores gemini provider config data.
@@ -580,6 +599,15 @@ class _GeminiProviderConfig(_StrictConfigModel):
         if not value.strip():
             raise ValueError("must be a non-empty string")
         return value
+
+    @field_validator("reasoning_effort")
+    @classmethod
+    def _reasoning_effort_must_be_supported(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in PROVIDER_REASONING_EFFORTS:
+            supported = ", ".join(sorted(PROVIDER_REASONING_EFFORTS))
+            raise ValueError(f"must be one of: {supported}")
+        return normalized
 
 
 class _ProvidersConfig(_StrictConfigModel):

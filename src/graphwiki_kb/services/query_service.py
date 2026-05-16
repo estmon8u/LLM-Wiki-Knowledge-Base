@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseModel, Field
 import yaml
+from pydantic import BaseModel, Field
 
 from graphwiki_kb.models.wiki_models import SearchResult
 from graphwiki_kb.providers import (
@@ -177,7 +179,7 @@ class QueryService:
         search_service: SearchService,
         *,
         provider: Optional[TextProvider] = None,
-        refresh_index: Optional["Callable[[], None]"] = None,
+        refresh_index: Optional[Callable[[], None]] = None,
         schema_text: str = "",
     ) -> None:
         self.paths = paths
@@ -364,7 +366,7 @@ class QueryService:
             self._refresh_index()
         return dest.relative_to(self.paths.root).as_posix()
 
-    def _append_log(self, question: str, dest: "Path") -> None:
+    def _append_log(self, question: str, dest: Path) -> None:
         """Append a saved-analysis entry to wiki/log.md."""
         timestamp = utc_now_iso()
         with file_lock(self.paths.wiki_log_file):

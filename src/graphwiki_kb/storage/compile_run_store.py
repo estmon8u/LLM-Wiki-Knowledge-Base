@@ -7,16 +7,15 @@ surface that uses it.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
 import json
+import uuid
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Optional
-import uuid
 
 from graphwiki_kb.models.source_models import RawSourceRecord
 from graphwiki_kb.services.file_lock import file_lock
 from graphwiki_kb.services.project_service import atomic_write_text, utc_now_iso
-
 
 MAX_COMPILE_RUN_HISTORY = 50
 

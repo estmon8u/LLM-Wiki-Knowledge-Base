@@ -7,9 +7,9 @@ surface that uses it.
 
 from __future__ import annotations
 
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 
 def test_smoke_script_runs_clean_on_temporary_corpus(tmp_path: Path) -> None:

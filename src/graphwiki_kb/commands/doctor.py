@@ -13,11 +13,9 @@ from graphwiki_kb.commands.common import (
     CHECK_SEVERITY_LABEL,
     console,
     emit_json,
-    echo_section,
     make_table,
 )
 from graphwiki_kb.models.command_models import CommandContext, CommandSpec
-
 
 SUMMARY = "Validate project structure, provider config, API keys, and converters."
 

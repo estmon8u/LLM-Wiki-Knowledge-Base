@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import threading
 from contextlib import contextmanager
 from pathlib import Path
-import threading
 from typing import Iterator
 
 _HELD_LOCKS: dict[Path, int] = {}

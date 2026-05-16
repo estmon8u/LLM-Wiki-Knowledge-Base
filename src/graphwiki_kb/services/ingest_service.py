@@ -7,11 +7,11 @@ surface that uses it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
+import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
-import uuid
 
 from graphwiki_kb.models.source_models import RawSourceRecord
 from graphwiki_kb.services.manifest_service import ManifestService

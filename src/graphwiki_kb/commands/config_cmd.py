@@ -113,7 +113,9 @@ def create_command() -> click.BaseCommand:
         provider_section["name"] = validated_name
 
         if model:
-            config["providers"][validated_name]["model"] = model
+            config.setdefault("providers", {}).setdefault(validated_name, {})[
+                "model"
+            ] = model
 
         config_service.save(config)
         msg = f"Provider set to {validated_name}"

@@ -7,12 +7,12 @@ surface that uses it.
 
 from __future__ import annotations
 
-from collections import Counter
-from dataclasses import dataclass
 import hashlib
 import json
-from pathlib import Path
 import re
+from collections import Counter
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import yaml
@@ -24,14 +24,15 @@ from graphwiki_kb.services.compile_service import (
     SOURCE_PAGE_CONTRACT_VERSION_KEY,
 )
 from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
+from graphwiki_kb.services.manifest_service import ManifestService
 from graphwiki_kb.services.markdown_document import (
     headings as markdown_headings,
+)
+from graphwiki_kb.services.markdown_document import (
     markdown_links,
     without_fenced_code_blocks,
 )
-from graphwiki_kb.services.manifest_service import ManifestService
 from graphwiki_kb.services.project_service import ProjectPaths, slugify
-
 
 WIKI_LINK_PATTERN = re.compile(
     r"\[\[(?P<target>[^\]\|#\n]+)(?:#(?P<fragment>[^\]\|\n]+))?(?:\|[^\]\n]+)?\]\]"
