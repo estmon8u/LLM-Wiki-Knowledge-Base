@@ -1,0 +1,108 @@
+"""Diff service service behavior for the knowledge-base workflow.
+
+This module belongs to `graphwiki_kb.services.diff_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+from __future__ import annotations
+
+import hashlib
+from pathlib import Path
+
+from graphwiki_kb.models.wiki_models import DiffEntry, DiffReport
+from graphwiki_kb.services.manifest_service import ManifestService
+from graphwiki_kb.services.project_service import ProjectPaths
+
+
+class DiffService:
+    """Coordinates diff operations.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
+    def __init__(self, paths: ProjectPaths, manifest_service: ManifestService) -> None:
+        self.paths = paths
+        self.manifest_service = manifest_service
+
+    def diff(self) -> DiffReport:
+        """Diff.
+
+        Returns:
+            DiffReport produced by the operation.
+        """
+        sources = (
+            self.manifest_service.list_sources()
+            if self.paths.raw_manifest_file.exists()
+            else []
+        )
+        entries: list[DiffEntry] = []
+        for source in sources:
+            if source.compiled_at is None or source.compiled_from_hash is None:
+                entries.append(
+                    DiffEntry(
+                        source_id=source.source_id,
+                        slug=source.slug,
+                        title=source.title,
+                        status="new",
+                        raw_path=source.raw_path,
+                        details="not yet compiled",
+                    )
+                )
+            else:
+                # Recompute hash from actual normalized file on disk.
+                current_hash = self._current_content_hash(source)
+                if current_hash is None:
+                    entries.append(
+                        DiffEntry(
+                            source_id=source.source_id,
+                            slug=source.slug,
+                            title=source.title,
+                            status="missing",
+                            raw_path=source.raw_path,
+                            details="normalized source file missing on disk",
+                        )
+                    )
+                    continue
+                if current_hash != source.compiled_from_hash:
+                    reason = (
+                        "source changed since last compile"
+                        if current_hash == source.content_hash
+                        else "normalized file changed on disk"
+                    )
+                    entries.append(
+                        DiffEntry(
+                            source_id=source.source_id,
+                            slug=source.slug,
+                            title=source.title,
+                            status="changed",
+                            raw_path=source.raw_path,
+                            details=reason,
+                        )
+                    )
+                else:
+                    entries.append(
+                        DiffEntry(
+                            source_id=source.source_id,
+                            slug=source.slug,
+                            title=source.title,
+                            status="up_to_date",
+                            raw_path=source.raw_path,
+                        )
+                    )
+        return DiffReport(entries=entries)
+
+    def _current_content_hash(self, source) -> str | None:
+        """Compute the actual SHA-256 of the normalized file on disk.
+
+        Returns ``None`` when the normalized file cannot be read so callers can
+        report that missing file explicitly instead of hiding data loss.
+        """
+        norm_path = source.normalized_path or source.raw_path
+        full_path = self.paths.root / Path(norm_path)
+        try:
+            text = full_path.read_text(encoding="utf-8")
+            return hashlib.sha256(text.encode("utf-8")).hexdigest()
+        except OSError:
+            return None

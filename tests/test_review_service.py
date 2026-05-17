@@ -1,3 +1,10 @@
+"""Tests for test review service.
+
+This module belongs to `tests.test_review_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
 from __future__ import annotations
 
 import json
@@ -5,23 +12,43 @@ import threading
 
 import pytest
 
-from src.providers import ProviderConfigurationError, ProviderExecutionError
-from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
-from src.services.review_service import ReviewService
+from graphwiki_kb.providers import ProviderConfigurationError, ProviderExecutionError
+from graphwiki_kb.providers.base import ProviderRequest, ProviderResponse, TextProvider
+from graphwiki_kb.services.review_service import ReviewService
 
 
 class SequencedReviewProvider(TextProvider):
+    """Represents sequenced review provider behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     name = "fake-review"
 
     def __init__(
         self, responses: list[object], model_name: str = "fake-review-v1"
     ) -> None:
+        """Initializes the instance.
+
+        Args:
+            responses: Responses value used by the operation.
+            model_name: Model name value used by the operation.
+        """
         self._responses = list(responses)
         self._model_name = model_name
         self._lock = threading.Lock()
         self.requests: list[ProviderRequest] = []
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        """Generate.
+
+        Args:
+            request: Request value used by the operation.
+
+        Returns:
+            ProviderResponse produced by the operation.
+        """
         with self._lock:
             self.requests.append(request)
             if not self._responses:
@@ -33,6 +60,11 @@ class SequencedReviewProvider(TextProvider):
 
 
 def test_review_service_finds_no_issues_on_empty_wiki(test_project) -> None:
+    """Verifies that review service finds no issues on empty wiki.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     report = test_project.services["review"].review()
 
     assert report.issue_count == 0
@@ -40,6 +72,11 @@ def test_review_service_finds_no_issues_on_empty_wiki(test_project) -> None:
 
 
 def test_review_service_detects_overlapping_source_topics(test_project) -> None:
+    """Verifies that review service detects overlapping source topics.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     # Two source pages with heavily overlapping terminology
     test_project.write_file(
         "wiki/sources/alpha.md",
@@ -59,6 +96,11 @@ def test_review_service_detects_overlapping_source_topics(test_project) -> None:
 
 
 def test_review_service_does_not_flag_distinct_source_pages(test_project) -> None:
+    """Verifies that review service does not flag distinct source pages.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/alpha.md",
         "knowledge base traceability citation provenance compile",
@@ -75,6 +117,11 @@ def test_review_service_does_not_flag_distinct_source_pages(test_project) -> Non
 
 
 def test_review_service_check_summary_overlap_skips_empty_union(test_project) -> None:
+    """Verifies that review service check summary overlap skips empty union.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     service = ReviewService(test_project.paths)
 
     issues = service._check_summary_overlap(
@@ -88,6 +135,11 @@ def test_review_service_check_summary_overlap_skips_empty_union(test_project) ->
 
 
 def test_review_service_detects_terminology_variants(test_project) -> None:
+    """Verifies that review service detects terminology variants.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/page-a.md",
         "The knowledge-base system handles traceability.",
@@ -107,6 +159,11 @@ def test_review_service_detects_terminology_variants(test_project) -> None:
 
 
 def test_review_service_suppresses_simple_inflection_variants(test_project) -> None:
+    """Verifies that review service suppresses simple inflection variants.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/page-a.md",
         "The retriever indexes sources questions datasets benchmarks documents.",
@@ -130,6 +187,11 @@ def test_review_service_suppresses_simple_inflection_variants(test_project) -> N
 def test_review_service_suppresses_false_positive_fuzzy_variants(
     test_project,
 ) -> None:
+    """Verifies that review service suppresses false positive fuzzy variants.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/page-a.md",
         "supervised accuracy billions open-domain knowledge-intensive passage-retrieval",
@@ -156,6 +218,11 @@ def test_review_service_suppresses_false_positive_fuzzy_variants(
 def test_review_service_suppresses_near_spellings_with_different_roots(
     test_project,
 ) -> None:
+    """Verifies that review service suppresses near spellings with different roots.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/page-a.md",
         "contexts produce retrieval evidence",
@@ -177,6 +244,11 @@ def test_review_service_suppresses_near_spellings_with_different_roots(
 def test_review_service_suppresses_hyphenation_only_variants(
     test_project,
 ) -> None:
+    """Verifies that review service suppresses hyphenation only variants.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/page-a.md",
         "pretraining fine-tuning reranking pre-trained",
@@ -203,7 +275,8 @@ def test_review_service_suppresses_hyphenation_only_variants(
 
 
 def test_review_report_properties() -> None:
-    from src.models.wiki_models import ReviewIssue, ReviewReport
+    """Verifies that review report properties."""
+    from graphwiki_kb.models.wiki_models import ReviewIssue, ReviewReport
 
     report = ReviewReport(
         issues=[
@@ -221,6 +294,11 @@ def test_review_report_properties() -> None:
 
 
 def test_review_overlap_exactly_at_threshold(test_project) -> None:
+    """Verifies that review overlap exactly at threshold.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     # Jaccard = 11/20 = 0.55 (exactly at _OVERLAP_THRESHOLD)
     # Shared 11: knowledge system traceability citation markdown compile query ingest lint review vault
     # A-only 4: normalize config schema provider  → set_a = 15
@@ -245,6 +323,11 @@ def test_review_overlap_exactly_at_threshold(test_project) -> None:
 
 
 def test_review_overlap_below_threshold(test_project) -> None:
+    """Verifies that review overlap below threshold.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     # Jaccard = 6/11 ≈ 0.5454 (below 0.55 threshold)
     # Shared 6: knowledge system traceability citation markdown compile
     # A-only 2: normalize config  → set_a = 8
@@ -271,6 +354,11 @@ def test_review_overlap_below_threshold(test_project) -> None:
 
 
 def test_review_multi_agent_prefix_hyphenation_suppressed(test_project) -> None:
+    """Verifies that review multi agent prefix hyphenation suppressed.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/variant-a.md",
         "The multi-agent system handles reasoning.",
@@ -290,6 +378,11 @@ def test_review_multi_agent_prefix_hyphenation_suppressed(test_project) -> None:
 
 
 def test_review_concept_only_pages_no_overlap(test_project) -> None:
+    """Verifies that review concept only pages no overlap.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/concepts/topic-a.md",
         "knowledge base traceability citation markdown wiki compile ingest lint query",
@@ -358,6 +451,11 @@ def test_review_variant_ignores_short_terms(test_project) -> None:
 
 
 def test_review_single_source_page_no_overlap(test_project) -> None:
+    """Verifies that review single source page no overlap.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/solo.md",
         "knowledge base traceability citation markdown wiki compile ingest lint query",
@@ -372,6 +470,11 @@ def test_review_single_source_page_no_overlap(test_project) -> None:
 def test_review_service_provider_review_on_empty_sources_dir_returns_no_sources(
     test_project,
 ) -> None:
+    """Verifies that review service provider review on empty sources dir returns no sources.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     provider = SequencedReviewProvider([])
     service = ReviewService(test_project.paths, provider=provider)
     test_project.paths.wiki_sources_dir.mkdir(parents=True, exist_ok=True)
@@ -385,6 +488,11 @@ def test_review_service_provider_review_on_empty_sources_dir_returns_no_sources(
 def test_review_service_without_provider_raises_configuration_error(
     test_project,
 ) -> None:
+    """Verifies that review service without provider raises configuration error.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     service = ReviewService(test_project.paths, provider=None)
 
     with pytest.raises(ProviderConfigurationError, match="kb review"):
@@ -392,6 +500,7 @@ def test_review_service_without_provider_raises_configuration_error(
 
 
 def test_review_service_parse_provider_issues_reads_structured_json() -> None:
+    """Verifies that review service parse provider issues reads structured json."""
     raw = json.dumps(
         {
             "issues": [
@@ -421,9 +530,28 @@ def test_review_service_parse_provider_issues_reads_structured_json() -> None:
     assert issues[1].code == "term-drift"
 
 
+def test_review_service_parse_provider_issues_skips_prior_json_note() -> None:
+    """Verifies provider review parsing skips earlier JSON with the wrong schema."""
+    raw = (
+        'Diagnostic: {"note": "summary only"}\n'
+        'Payload: {"issues": [{"severity": "warning", "code": "term-drift", '
+        '"pages": ["d.md"], "message": "Term mismatch"}]}'
+    )
+
+    issues = ReviewService._parse_provider_issues(raw)
+
+    assert len(issues) == 1
+    assert issues[0].code == "term-drift"
+
+
 def test_review_service_provider_review_raises_on_provider_failure(
     test_project,
 ) -> None:
+    """Verifies that review service provider review raises on provider failure.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/alpha.md", "# Alpha\n\nContent.\n")
     provider = SequencedReviewProvider([RuntimeError("provider crash")])
     service = ReviewService(test_project.paths, provider=provider)
@@ -435,6 +563,11 @@ def test_review_service_provider_review_raises_on_provider_failure(
 def test_provider_review_filters_truncation_and_uses_curated_excerpts(
     test_project,
 ) -> None:
+    """Verifies that provider review filters truncation and uses curated excerpts.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/alpha.md",
         "---\ntitle: Alpha\ntype: source\n---\n\n"
@@ -477,3 +610,35 @@ def test_provider_review_filters_truncation_and_uses_curated_excerpts(
     assert "Useful summary" in request.prompt
     assert "Useful evidence excerpt" in request.prompt
     assert "Source Details" not in request.prompt
+
+
+def test_provider_review_caps_total_prompt_size(test_project) -> None:
+    """Verifies provider review cannot build unbounded prompts."""
+    from graphwiki_kb.services import review_service as review_module
+
+    for index in range(80):
+        test_project.write_file(
+            f"wiki/sources/page-{index}.md",
+            "---\n"
+            f"title: Page {index}\n"
+            "summary: Dense retrieval evidence.\n"
+            "type: source\n"
+            f"source_id: page-{index}\n"
+            "source_hash: h\n"
+            "raw_path: raw/page.md\n"
+            "origin: local\n"
+            "compiled_at: t\n"
+            "ingested_at: t\n"
+            "tags: []\n"
+            "---\n\n"
+            "# Page\n\n"
+            "## Summary\n\n" + ("dense retrieval evidence " * 400) + "\n",
+        )
+    provider = SequencedReviewProvider([json.dumps({"issues": []})])
+    service = ReviewService(test_project.paths, provider=provider)
+
+    issues, mode = service._provider_review()
+
+    assert issues == []
+    assert mode == "provider:fake-review-v1"
+    assert len(provider.requests[0].prompt) <= review_module._REVIEW_PROMPT_LIMIT

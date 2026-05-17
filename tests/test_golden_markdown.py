@@ -1,25 +1,44 @@
+"""Tests for test golden markdown.
+
+This module belongs to `tests.test_golden_markdown` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
 
-import src.services.compile_service as compile_mod
-import src.services.concept_service as concept_mod
-import src.services.query_service as query_mod
-from src.models.source_models import RawSourceRecord
-from src.models.wiki_models import SearchResult
-from src.services.concept_service import _ConceptDraft, _SourcePage
-from src.services.query_service import QueryAnswer
-
+import graphwiki_kb.services.compile_service as compile_mod
+import graphwiki_kb.services.concept_service as concept_mod
+import graphwiki_kb.services.query_service as query_mod
+from graphwiki_kb.models.source_models import RawSourceRecord
+from graphwiki_kb.models.wiki_models import SearchResult
+from graphwiki_kb.services.concept_service import _ConceptDraft, _SourcePage
+from graphwiki_kb.services.query_service import QueryAnswer
 
 _FIXED_TIMESTAMP = "2026-04-20T12:00:00+00:00"
 _GOLDEN_DIR = Path(__file__).parent / "golden_markdown"
 
 
 def _golden_text(name: str) -> str:
+    """Handles golden text.
+
+    Args:
+        name: Name value used for lookup or display.
+
+    Returns:
+        str produced by the operation.
+    """
     return (_GOLDEN_DIR / name).read_text(encoding="utf-8")
 
 
 def test_source_page_markdown_matches_golden(test_project) -> None:
+    """Verifies that source page markdown matches golden.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     source = RawSourceRecord(
         source_id="src-123",
         slug="example",
@@ -42,6 +61,12 @@ def test_source_page_markdown_matches_golden(test_project) -> None:
 
 
 def test_index_markdown_matches_golden(monkeypatch, test_project) -> None:
+    """Verifies that index markdown matches golden.
+
+    Args:
+        monkeypatch: Monkeypatch value used by the operation.
+        test_project: Test project value used by the operation.
+    """
     sources = [
         RawSourceRecord(
             source_id="b",
@@ -81,6 +106,12 @@ def test_index_markdown_matches_golden(monkeypatch, test_project) -> None:
 
 
 def test_concept_page_markdown_matches_golden(monkeypatch, test_project) -> None:
+    """Verifies that concept page markdown matches golden.
+
+    Args:
+        monkeypatch: Monkeypatch value used by the operation.
+        test_project: Test project value used by the operation.
+    """
     draft = _ConceptDraft(
         title="Dense Retrieval and Question Answering",
         slug="dense-retrieval-question-answering",
@@ -118,6 +149,12 @@ def test_concept_page_markdown_matches_golden(monkeypatch, test_project) -> None
 
 
 def test_analysis_page_markdown_matches_golden(monkeypatch, test_project) -> None:
+    """Verifies that analysis page markdown matches golden.
+
+    Args:
+        monkeypatch: Monkeypatch value used by the operation.
+        test_project: Test project value used by the operation.
+    """
     answer = QueryAnswer(
         answer="Traceability is preserved through compiled source pages.",
         citations=[

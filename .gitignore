@@ -15,3 +15,15 @@ htmlcov/
 .github/prompts/
 .github/agents/
 .github/hooks/
+
+# GraphRAG workspace runtime artifacts
+graph/graphrag/.env
+graph/graphrag/input/sources.json
+graph/graphrag/output/
+graph/graphrag/cache/
+graph/graphrag/logs/
+graph/runs/*.log
+graph/runs/*.json
+
+# Evaluation run artifacts can contain local corpus text or model output
+eval/results/artifacts/

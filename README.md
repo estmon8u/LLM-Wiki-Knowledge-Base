@@ -1,54 +1,153 @@
-# Capstone KB
+# GraphWiki KB
 
-A CLI-first tool for building and maintaining a citation-grounded markdown knowledge base from heterogeneous technical documents.
+A CLI-first GraphRAG research-memory system for ingesting technical documents, building a graph-based retrieval index, answering local/global research questions, and exporting inspectable wiki artifacts with provenance and source traceability.
+
+The wiki is not the retrieval engine. The wiki is the human-readable artifact layer. GraphRAG is the retrieval and synthesis engine.
+
+This branch is in the GraphRAG pivot. GraphRAG is the target default retrieval and synthesis path. The existing SQLite FTS5 search and source-grounded ask workflow is now explicit source-page-only legacy behavior under `kb legacy find` and `kb legacy ask` with deprecation warnings. Top-level `kb ask` is a GraphRAG-aware answer controller that checks graph readiness, chooses a query mode with deterministic routing by default, calls GraphRAG, and can save analysis pages with graph metadata and source trace. Top-level `kb find` is a non-generative search over direct GraphRAG entity/relationship artifacts plus the maintained wiki index, including generated graph pages when they exist. GraphRAG setup and maintenance are folded into the main command surface: `kb init` creates the graph workspace, `kb update` syncs input, indexes when needed, and exports graph wiki pages from complete graph output even when indexing is skipped as current, `kb status` reports graph health, and `kb export` refreshes graph inspection pages when complete graph output exists. The old `kb graph` command group has been removed. See [docs/graphrag-pivot.md](docs/graphrag-pivot.md) for the pivot rationale and target architecture.
 
 ## Requirements
 
-- Python 3.11.x
+- Python 3.11 or 3.12. The GraphRAG dependency currently documents Python 3.10-3.12 support, so GraphWiki KB blocks GraphRAG workflows on Python 3.13 until upstream support lands.
 - [Poetry](https://python-poetry.org/) (installed at user level, not inside the project virtualenv)
 
 ## Installation
 
 ```bash
 cd LLM-Wiki-Knowledge-Base
-poetry install
+poetry install --with dev --all-extras
 ```
 
-This creates a local `.venv` and installs all dependencies. The CLI entrypoint is registered as `kb`.
+This creates a local `.venv` with the development tools and optional provider/converter/export dependencies used by the full test and real-document workflows. Minimal package installs can choose extras such as `graphwiki-kb[openai]`, `graphwiki-kb[pdf]`, or `graphwiki-kb[all]`. The CLI entrypoint is registered as `kb`.
+
+## GraphRAG Workspace
+
+Microsoft GraphRAG is installed as a library/CLI dependency, not a separate paid hosted service. Running real GraphRAG indexing or query jobs can still create model and embedding costs through the configured provider.
+
+The repository contains an initialized GraphRAG workspace under `graph/graphrag/`. The committed scaffold includes `settings.yaml`, default prompts, and `input/`; local runtime files such as `.env`, generated `input/sources.json`, `output/`, `cache/`, `logs/`, and run metadata under `graph/runs/*.json` stay ignored.
+
+```bash
+poetry run graphrag --help
+poetry run kb init
+poetry run kb update
+```
+
+GraphRAG runtime defaults live in the `graph` section of `kb.config.yaml`. `kb init` calls the installed GraphRAG Python initialization entrypoint to create the workspace, then syncs the selected completion provider, embedding provider, models, JSON input settings, chunking defaults, technical extraction defaults, prompt paths, source-size limit, and resolved API-key environment variables into `graph/graphrag/settings.yaml`. The CLI owns those managed fields, but it preserves unrelated user-owned GraphRAG settings such as cache, vector-store, and search tuning when it rewrites the file. Bundled prompt templates under `graph/graphrag/prompts/` are copied only when missing; if a bundled template changes and a user-tuned prompt already exists, GraphWiki KB writes a sibling `*.new` file instead of overwriting the tuned prompt. By default, GraphRAG reuses the OpenAI provider entry and references `OPENAI_API_KEY`, so a separate `GRAPHRAG_API_KEY` is not required unless you explicitly set a graph-specific override. The standalone `graphrag` command is still available for diagnostics. `kb` uses signature-aware Python entrypoint adapters first and can fall back to the documented `graphrag` CLI command shape when an upstream entrypoint contract changes.
+
+`kb update` uses the existing knowledge-base corpus as the source of truth. It reads `raw/_manifest.json` plus the normalized artifacts in `raw/normalized/`, refuses manifest paths that resolve outside the project `raw/` tree, rejects normalized sources above `graph.input.max_source_bytes`, writes compact `graph/graphrag/input/sources.json`, configures GraphRAG for JSON input with metadata prepended into chunks, and then auto-decides whether to run a full index, incremental update, retry after a failed latest attempt, or skip because the graph is already current. Use `--graph-method auto|standard|fast|standard-update|fast-update` to request a specific GraphRAG index method. The preflight decision path plans those settings and input changes without mutating `settings.yaml` or `input/sources.json`, so skipped or credential-blocked graph runs do not leave partial workspace state behind. Normal updates can skip isolated missing normalized artifacts with a warning so one stale manifest entry does not block the entire graph refresh; run `kb lint` to catch and fix the manifest drift. Successful and failed index attempts record source digest, source hashes, runtime settings/prompt digest, selected method, active output directory when available, and command result under ignored run metadata for reproducibility. If GraphRAG credentials are missing during a normal `kb update`, the wiki compile still completes and graph indexing is skipped with a warning; `kb update --graph-only` fails clearly because the requested graph-only operation cannot run. Use `kb update --no-graph` when you intentionally want the legacy wiki compile/index refresh without touching the graph.
+
+`kb status` checks whether settings, synced input, the active complete GraphRAG output tables, vector store, and last recorded index run are present. It distinguishes missing, unreadable, and dependency-missing Parquet table states; missing, empty, unreadable, incompatible, and ready vector-store states; and corrupt run metadata. `kb status --strict` exits non-zero unless the project sources are compiled and the GraphRAG index is complete, fresh, and query-ready. Status compares the current graph input digest, source hashes, settings, prompts, and GraphRAG runtime identity against the last successful index run, so complete-looking output is still marked stale when reproducibility metadata is missing or no longer matches. It prefers the active output directory recorded by the latest successful run when that directory is still complete, rather than trusting the newest output folder blindly. `kb ask --method auto|basic|local|global|drift` checks the artifacts required by the selected query method, calls GraphRAG query entrypoints, passes the active output directory explicitly to GraphRAG, prints the selected route reason, and preserves returned non-streaming answers even when GraphRAG logs instead of printing them. Saved GraphRAG answers become unique analysis pages with support-level and source-trace metadata plus separate raw stdout/stderr sections; blank answers are refused. `kb export` reads GraphRAG Parquet tables in batches and writes human-readable documents, entities, relationships, communities, and text units under `wiki/graph/` when graph output exists.
+
+### GraphRAG compatibility
+
+GraphWiki KB currently pins Microsoft GraphRAG to `>=3.0.9,<3.1` and supports GraphRAG workflows on Python 3.11 and 3.12. Minor GraphRAG upgrades can change generated workspace settings and prompts, so after changing the GraphRAG version or graph runtime config, run `kb init` and then `kb update` to refresh managed workspace files and rebuild stale graph output. Local `.env`, generated input, output, cache, logs, and `graph/runs/*.json` metadata are safe runtime artifacts; hand edits to CLI-managed fields in `graph/graphrag/settings.yaml` will be overwritten from `kb.config.yaml`.
+
+## Evaluation Harness
+
+Phase 8 adds an evaluation harness for comparing the deprecated legacy FTS path against GraphRAG Basic, Local, Global, and DRIFT query modes. The benchmark lives in `eval/benchmark.yaml`; generated reports are written under `eval/results/`.
+
+```bash
+# Local-safe baseline: legacy find + auto-router fit, provider-backed rows skipped
+poetry run python scripts/evaluate_graph_modes.py
+
+# Retrieval-only CSV
+poetry run python scripts/evaluate_retrieval.py
+
+# Provider-backed answer comparison when the graph provider/API key is ready
+poetry run python scripts/evaluate_graph_modes.py --allow-provider-calls --include-legacy-ask
+```
+
+The default run does not call model providers. It records skipped rows for GraphRAG and legacy answer commands unless `--allow-provider-calls` is passed, because those jobs can incur provider costs and may include local corpus text in generated artifacts. Per-question JSON artifacts are written under `eval/results/artifacts/`, which is ignored by Git.
 
 ## Quick Start
 
 ```bash
-# 1. Initialize a new project
+# 1. Initialize project and graph workspace
 poetry run kb init
 
-# 2. Add some source documents
-poetry run kb add path/to/paper.pdf
-poetry run kb add path/to/notes.md
-poetry run kb add path/to/slides.pptx
-poetry run kb add path/to/research-folder
+# 2. Add source documents or folders
+poetry run kb add path/to/research-papers/
 
-# 3. Update the knowledge base (generates pages, concepts, and search indexes)
+# 3. Refresh wiki + GraphRAG artifacts
+#    This compiles, builds the graph index, and exports graph wiki pages.
 poetry run kb update
 
-# 4. Search the wiki
-poetry run kb find "knowledge base traceability"
+# 4. Ask GraphRAG-backed questions
+poetry run kb ask "How does REALM differ from RAG?"
+poetry run kb ask "What are the main retrieval themes across the corpus?" --method global
 
-# 5. Ask a question with citations
-poetry run kb ask "How does the wiki handle stale pages?"
+# 5. Check project health
+poetry run kb status
+poetry run kb doctor
+
+# 6. Export to Obsidian vault
+poetry run kb export
 ```
 
-That's the everyday workflow: **add → update → find / ask**. Everything else
-is optional. For a slower first-run walkthrough that keeps the repository and
-knowledge-base project in separate directories, see
-[docs/start-guide.md](docs/start-guide.md).
+Use `kb add` when you want to stage one or more files or folders before running
+maintenance. `kb update` then syncs normalized sources into GraphRAG input, runs
+a preflight check, auto-detects whether a full, incremental, or retry graph index
+is needed, and exports graph artifacts to the wiki when complete output exists.
 
-Before running `kb update`, `kb ask`, or `kb review`, configure the active
+Shortcut: `kb update path/to/research-papers/` adds sources and runs the
+maintenance pipeline in one command. Use `--no-graph` for quick wiki-only
+updates, or `--force` for a full rebuild including the graph index.
+
+That's the current GraphRAG-first workflow: **init -> add -> update -> status -> ask -> export**.
+The legacy commands exist only for comparison and exact lexical lookup.
+There is no silent fallback from GraphRAG to FTS5.
+
+For a slower first-run walkthrough that keeps the repository and knowledge-base
+project in separate directories, see [docs/start-guide.md](docs/start-guide.md).
+
+Before running `kb update`, `kb legacy ask`, or `kb review`, configure the active
 provider in `kb.config.yaml` and set the matching API key environment
 variable. If you ingest `.pdf`, `.docx`, `.pptx`, supported images, or
 `.html` / `.htm`, also set `MISTRAL_API_KEY`. HTML inputs additionally require
-`wkhtmltopdf` on your `PATH` or configured in `kb.config.yaml`. See
+either `wkhtmltopdf` on your `PATH` or the bundled pure-Python `xhtml2pdf`
+fallback. See
 `Provider Configuration` and `Conversion Configuration` below.
+
+## Architecture Flow
+
+```text
+Documents
+  |
+  v
+kb init
+  - project scaffold
+  - GraphRAG workspace and settings
+  |
+  v
+kb add
+  - ingest and normalize files or folders
+  - update the source manifest
+  |
+  v
+kb update
+  - optionally add sources passed on the command line
+  - compile source pages with provenance
+  - optionally refresh legacy concept pages and FTS comparator index
+  - sync GraphRAG JSON input
+  - auto-select full index, incremental update, or skip
+  - export graph tables to wiki/graph/
+  |
+  v
+kb ask
+  - GraphRAG-first controller
+  - auto-routes to basic, local, global, or drift
+  - saves graph-backed analysis pages when requested
+  |
+  v
+kb status / kb doctor / kb lint
+  - project and graph health
+  - hash-based freshness checks
+  |
+  v
+kb export
+  - Obsidian vault
+  - refreshed graph wiki inspection pages
+```
 
 ## Global Options
 
@@ -69,16 +168,18 @@ poetry run kb --project-root /path/to/project status
 
 ### Everyday Commands
 
-These are the commands you will use most often. The happy path is
-**init → add → update → find / ask**.
+These are the commands you will use most often today. The GraphRAG-first happy
+path is **init -> add -> update -> status -> ask -> export**. `update` can also
+accept source paths as a shortcut when you want add-and-refresh in one command.
 
 | Command | Description |
 | --- | --- |
-| `init` | Create project folders, config, schema, and manifest |
-| `add` | Add and normalize source documents |
-| `update` | Build wiki pages, generate concepts, and refresh indexes |
-| `find` | Search the wiki |
-| `ask` | Answer a question from compiled evidence |
+| `init` | Create project folders, config, schema, manifest, and GraphRAG workspace |
+| `add` | Add and normalize source files or folders without running the full update |
+| `update` | Build wiki pages, refresh the legacy comparator index, sync/index GraphRAG, and export graph pages |
+| `find` | Search direct graph artifacts plus the maintained wiki index |
+| `ask` | GraphRAG-aware answer controller with deterministic auto-routing |
+| `legacy` | Deprecated SQLite FTS5 search and ask commands for comparison |
 | `status` | Show project state and what to do next |
 
 ### Advanced Commands
@@ -112,8 +213,8 @@ Creates:
 - `wiki/sources/` — directory for compiled source pages
 - `vault/obsidian/` — directory for vault export
 
-Running `init` again is safe — it skips files that already exist.
-The scaffold writes `kb.config.yaml` at config version 4. Older configs are migrated in place on load so deprecated fields are removed and newer sections such as `providers`, `conversion`, and `storage.raw_normalized_dir` are persisted automatically.
+Running `init` again is safe — it skips files that already exist. If an existing config file is malformed, `init` writes a timestamped `kb.config.yaml.bak.*` copy before regenerating the default file.
+The scaffold writes `kb.config.yaml` at config version 7. Older configs are migrated in place on load so deprecated fields are removed and newer sections such as `providers`, `conversion`, `graph.routing`, `conversion.html.allow_local_file_access`, and `storage.raw_normalized_dir` are persisted automatically.
 
 ### `kb doctor`
 
@@ -155,30 +256,91 @@ Interactive terminals show directory-ingest progress; non-interactive runs print
 
 ### `kb update [SOURCE_PATHS...]`
 
-Bring the knowledge base current. Optionally add new sources first, then build wiki pages, generate concepts, and refresh indexes.
+Bring the knowledge base current. Optionally add new sources first, then build wiki pages, sync GraphRAG, and refresh indexes.
 
 ```bash
 poetry run kb update
 poetry run kb update path/to/new-paper.pdf
 poetry run kb update --force
 poetry run kb update --resume
+poetry run kb update --graph-only
+poetry run kb update --graph-method fast
 ```
 
 | Option | Default | Description |
 | --- | --- | --- |
 | `--force` | off | Rebuild every source page even if nothing changed. |
 | `--resume` | off | Resume the most recent failed or interrupted update run. Cannot be combined with `--force`. |
+| `--no-graph` | off | Skip GraphRAG input sync, index refresh, and graph wiki export. |
+| `--graph-only` | off | Run GraphRAG sync/index/export without legacy compile or search refresh. |
+| `--graph-method` | `auto` | Request `auto`, `standard`, `fast`, `standard-update`, or `fast-update` for GraphRAG indexing. |
+| `--allow-partial` | off | Treat GraphRAG sync/index/export failures as warnings during a normal update. |
+| `--concepts` / `--no-concepts` | config | Opt in or out of legacy concept page generation for this run. |
 
-When source paths are provided, the command adds them first. Always generates concept pages and refreshes the search index after building.
-Compile summaries request structured provider output (`summary`, `key_points`, `open_questions`, and `title_suggestion`) and persist the extra fields when returned. Concept clustering uses the configured provider when available, parses direct, fenced, or prefaced JSON through the shared structured-output parser, caches valid cluster output by source-page digest, and falls back to deterministic collocation-based grouping if provider clustering fails.
+When source paths are provided, the command adds them first. Legacy concept pages are skipped by default now that GraphRAG is the default cross-document retrieval layer; pass `--concepts` or set `concepts.enabled: true` in `kb.config.yaml` to refresh them.
+Compile summaries request structured provider output (`summary`, `key_points`, `open_questions`, and `title_suggestion`) and persist the extra fields when returned. When concept generation is enabled, concept clustering uses deterministic collocation-based grouping by default. Set `concepts.provider_backed: true` to let the configured provider propose clusters; provider output is parsed through the shared structured-output parser, cached by source-page digest, and falls back to deterministic grouping if provider clustering fails.
+
+`kb update` also owns routine GraphRAG maintenance. It prints `Mode: full`, `Mode: graph-only`, or `Mode: wiki-only` at the start, creates the graph workspace if needed, syncs normalized artifacts into `graph/graphrag/input/sources.json`, checks the current GraphRAG output and digest-based run metadata, selects a full `fast` build, `fast-update`, retry after the latest failed attempt, or skip, runs the selected index when graph credentials are available, and exports graph inspection pages under `wiki/graph/` whenever complete output exists. It prints the GraphRAG output path after indexing and surfaces a search warning if the legacy SQLite FTS5 refresh falls back to markdown scanning. Graph indexing is skipped with an explicit warning when provider credentials are missing during a normal update; the compile/wiki update still completes. Normal updates skip isolated missing normalized graph inputs with a warning instead of failing every source; `kb update --graph-only` keeps strict graph-input behavior and treats missing graph credentials as a hard error because no non-graph work was requested.
+
+### Main GraphRAG behavior
+
+The `kb graph` command group has been removed. GraphRAG setup, input sync, indexing, status, querying, and wiki export are now handled by the main commands:
+
+| Main command | GraphRAG behavior |
+| --- | --- |
+| `kb init` | Initializes `graph/graphrag/` through GraphRAG's Python initialization entrypoint, then syncs project input, prompt, provider, model, and key-env settings. |
+| `kb update` | Syncs normalized sources, auto-selects the graph index action, runs GraphRAG indexing when credentials are present, records run metadata, prints the graph output path after indexing, warns on skipped missing normalized inputs or legacy search fallback, and exports graph wiki pages from complete output even when indexing is skipped. |
+| `kb update --force` | Rebuilds source pages and forces a full GraphRAG rebuild. |
+| `kb update --no-graph` | Updates the wiki and legacy index without syncing or indexing GraphRAG. |
+| `kb status` / `kb status --json` / `kb status --strict` | Includes GraphRAG workspace, input, active output directory, output-table, vector-store, freshness, last-index-run, row-count, strict-readiness, and next-action fields. |
+| `kb ask --method auto|basic|local|global|drift` | Queries GraphRAG through the default controller after method-specific readiness checks. |
+| `kb export` | Exports the vault and refreshes `wiki/graph/` when GraphRAG output exists. |
+
+GraphRAG indexing uses the same decision table that powered the former graph sync wrapper:
+
+| State | Default action |
+| --- | --- |
+| No GraphRAG Parquet output or vector store exists | Full rebuild with `fast` |
+| Output exists but required tables or vector store are incomplete | Full rebuild with `fast` |
+| Source hashes changed since the last successful index | Incremental update with `fast-update` |
+| Latest index attempt failed after an older success | Retry with `fast-update` when complete output exists, otherwise `fast` |
+| Graph runtime settings, prompts, GraphRAG package version, or managed schema version changed | Full rebuild with `fast` |
+| Complete output exists but successful-run digest metadata is missing | Full rebuild with `fast` |
+| Sources and runtime config match the last successful index | Skip indexing |
+
+Graph wiki export reads standard GraphRAG tables such as `documents`, `text_units`, `entities`, `relationships`, `communities`, and `community_reports` from the active complete output directory under `graph/graphrag/output/`. A complete output directory means those tables are present and readable, and the configured vector store is ready. It writes:
+
+- `wiki/graph/index.md`
+- `wiki/graph/documents/*.md`
+- `wiki/graph/entities/*.md`
+- `wiki/graph/relationships/*.md`
+- `wiki/graph/communities/*.md`
+- `wiki/graph/text-units/*.md`
+
+Generated graph pages use frontmatter types such as `graph_entity`, `graph_relationship`, `graph_community`, `graph_text_unit`, and `graph_document`. Document and text-unit pages render raw GraphRAG text in fenced code blocks so paper-internal markdown links and headings remain inspectable without becoming wiki lint targets. Large relationship tables are counted in `wiki/graph/index.md`, but only the strongest 500 relationship pages are materialized and entity pages show a bounded relationship table. Existing `wiki/concepts/` pages are not deleted; they are now legacy LLM-wiki concept pages beside the GraphRAG-derived `wiki/graph/` layer and are refreshed only when legacy concept generation is explicitly enabled.
+
+Troubleshooting paths:
+
+- Workspace: `graph/graphrag/`
+- Synced GraphRAG input: `graph/graphrag/input/sources.json`
+- Generated GraphRAG output: `graph/graphrag/output/`
+- GraphRAG vector store: normally `graph/graphrag/output/lancedb/`
+- Active output in JSON status: `graph_status.active_output_dir`
+- Graph wiki pages: `wiki/graph/`
+- Local index-run metadata: `graph/runs/graph_index_runs.json`
 
 ### `kb find <terms>`
 
-Search the wiki for relevant pages and snippets.
+Searches direct GraphRAG entity and relationship artifacts and the maintained
+wiki index, then deduplicates and ranks all candidates together so weak graph
+hits do not hide stronger wiki pages. Use
+`kb legacy find` only when you specifically need the deprecated source-page-only
+FTS5 comparator path.
 
 ```bash
 poetry run kb find "traceability citation"
 poetry run kb find --limit 10 "agent architecture"
+poetry run kb find --json "REALM vs RAG"
 ```
 
 | Option | Default | Description |
@@ -186,18 +348,86 @@ poetry run kb find --limit 10 "agent architecture"
 | `--limit` | 5 | Maximum number of results to return. |
 | `--json` | off | Output results as JSON for scripting. |
 
-Uses a SQLite FTS5 chunk index stored at `graph/exports/search_index.sqlite3`. `kb find` searches source pages, generated concept pages, and saved analysis pages, ranks hits with BM25-style FTS ordering, and returns page-level results using the best matching chunk snippet. Evidence chunks skip metadata-only sections such as `Source Details`, `Source Pages`, `Related Concept Pages`, and `Citations` so retrieval and citations point at content rather than wiki bookkeeping.
+This is non-generative navigation over the maintained wiki search index. JSON
+output includes `retriever: "wiki-index"`. It does not call GraphRAG query
+modes or the deprecated FTS ask path.
+
+### `kb legacy find <terms>`
+
+Search the deprecated SQLite FTS5 comparator index for source-page snippets.
+
+```bash
+poetry run kb legacy find "traceability citation"
+poetry run kb legacy find --limit 10 "agent architecture"
+poetry run kb legacy find --json "REALM vs RAG"
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--limit` | 5 | Maximum number of results to return. |
+| `--json` | off | Output results as JSON for scripting. |
+
+Uses a SQLite FTS5 chunk index stored at `graph/exports/search_index.sqlite3`.
+This is temporary legacy behavior rather than the final retrieval engine.
+The command searches compiled source pages only, ranks hits with BM25-style FTS
+ordering, and returns page-level results using the best matching chunk snippet.
+JSON output includes
+`retriever: "legacy-fts"` and `deprecated: true` metadata. Evidence chunks skip
+metadata-only sections such as `Source Details`, `Source Pages`,
+`Related Concept Pages`, and `Citations` so retrieval and citations point at
+content rather than wiki bookkeeping.
 
 ### `kb ask <question>`
 
-Answer a question from compiled wiki evidence with provider-backed synthesis and citations.
+Ask a question through the GraphRAG-aware answer controller.
 
 ```bash
-poetry run kb ask "How does the wiki handle stale pages?"
-poetry run kb ask --limit 5 "What normalization converters are supported?"
-poetry run kb ask --save "What does the update pipeline do?"
-poetry run kb ask --save-as freshness "How is freshness tracked?"
-poetry run kb ask --show-evidence "What formats are supported?"
+poetry run kb ask "How does REALM differ from RAG?"
+poetry run kb ask --method global "What are the main retrieval themes across the corpus?"
+poetry run kb ask --method drift --save "Compare RAG, REALM, FiD, Self-RAG, and GraphRAG."
+poetry run kb ask --show-source-trace "How does the graph index support source traceability?"
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--method` | `auto` | Use deterministic auto-routing or force `basic`, `local`, `global`, or `drift`. |
+| `--community-level` | | Forward GraphRAG's community-level option. |
+| `--dynamic-community-selection` / `--no-dynamic-selection` | GraphRAG default | Forward GraphRAG dynamic community selection behavior. |
+| `--response-type` | GraphRAG default | Forward GraphRAG's response type option when the installed entrypoint accepts it; GraphRAG Basic Search builds that omit this argument are handled automatically. |
+| `--save` | off | Save the graph answer as an analysis page under `wiki/analysis/`. |
+| `--save-as` | | Save with a custom analysis slug. Implies `--save`. |
+| `--show-source-trace` | off | Print source trace, route reason, and current support level before the answer. |
+| `--json` | off | Include GraphRAG answer metadata as JSON. |
+
+The controller checks workspace, input, freshness, and the artifacts required by
+the selected query method before querying. For example, `global` queries require
+community tables, while `basic`, `local`, and `drift` require a readable vector
+store. It does not silently fall back to FTS5. If the graph is missing or not
+ready, run `kb init` and `kb update` as directed by the error.
+The deprecated top-level `--limit` compatibility flag is rejected for GraphRAG
+answers because result limiting belongs to the legacy source-page evidence path.
+Saved pages use `retriever: graph`, `method`, `planner`, `claim_support`,
+`index_run_id`, `graph_input_hash`, `input_manifest_hash`, and source-trace
+metadata. `graph_input_hash` is the hash of the synced GraphRAG input file;
+`input_manifest_hash` is the raw manifest hash recorded in that input when
+available. The current GraphRAG wrapper records command traces and parsed
+`[Data: ...]` references, including GraphRAG report/community-report labels,
+when GraphRAG emits them; it does not claim full citation evidence until source
+spans are parsed. Raw stdout and stderr are preserved in separate sections for
+audit, answer prose is cleaned before the `## Answer` section, blank GraphRAG
+answers are refused, and repeated saves use unique filenames instead of
+overwriting the prior analysis page.
+
+### `kb legacy ask <question>`
+
+Answer a question from compiled source-page evidence with provider-backed synthesis and citations through the deprecated SQLite FTS5 retrieval path.
+
+```bash
+poetry run kb legacy ask "How does the wiki handle stale pages?"
+poetry run kb legacy ask --limit 5 "What normalization converters are supported?"
+poetry run kb legacy ask --save "What does the update pipeline do?"
+poetry run kb legacy ask --save-as freshness "How is freshness tracked?"
+poetry run kb legacy ask --show-evidence "What formats are supported?"
 ```
 
 | Option | Default | Description |
@@ -211,7 +441,7 @@ Requires a configured provider. Retrieves the best-matching source-page chunks a
 
 Provider-backed answers must be both parseable and useful. Empty `answer_markdown`, missing claims when `insufficient_evidence` is false, claims without citation refs, and citation refs outside the retrieved evidence set fail the command instead of being treated as a successful answer. Provider failures include response diagnostics such as finish reason and token counts when the selected SDK exposes them.
 
-Use `--save` or `--save-as` to persist the answer as a markdown analysis page in `wiki/analysis/` with YAML frontmatter (`type: analysis`), the question, a timestamp, `insufficient_evidence`, claim/citation counts, structured claims/provider citations when available, provider status diagnostics, and backlinks to cited source chunks. Blank answers are refused rather than saved. Saved analysis pages are indexed for `kb find` and appear in `wiki/index.md` immediately, but later `kb ask` runs exclude analysis pages from the evidence set so saved answers are not recursively cited as primary evidence. Repeated saves use unique `wiki/log.md` headings so lint does not treat a rerun as a duplicate-heading issue.
+Use `--save` or `--save-as` to persist the answer as a markdown analysis page in `wiki/analysis/` with YAML frontmatter (`type: analysis`), the question, a timestamp, `insufficient_evidence`, claim/citation counts, structured claims/provider citations when available, provider status diagnostics, and backlinks to cited source chunks. Blank answers are refused rather than saved. Saved analysis pages are indexed for top-level `kb find` and appear in `wiki/index.md` immediately, but `kb legacy find` and later legacy ask runs stay source-only so saved answers are not recursively cited as primary evidence. Repeated saves use unique `wiki/log.md` headings so lint does not treat a rerun as a duplicate-heading issue.
 
 ### `kb lint`
 
@@ -230,6 +460,7 @@ Checks for:
 - Typed frontmatter validation: string, date (ISO format), and list fields
 - Empty compiled pages that have no body content beyond headings
 - Source pages missing `type` frontmatter field (warning; run `kb update --force` to refresh)
+- Manifest entries whose raw source file or normalized artifact no longer exists
 - Orphan pages with no inbound wiki or markdown links
 - Stale compiled pages whose source hash changed
 - Other structural issues
@@ -247,10 +478,10 @@ poetry run kb status --changed
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--changed` | off | Show a preview of new, changed, and up-to-date sources. |
+| `--changed` | off | Show a preview of new, changed, missing, and up-to-date sources. |
 | `--json` | off | Output results as JSON for scripting. |
 
-Default view shows a Knowledge Base overview with source and wiki counts, the last update timestamp, and a suggestion for what to do next. With `--changed`, shows each source with a status tag (`[NEW]`, `[CHANGED]`, `[OK]`) followed by a summary section with counts.
+Default view shows a Knowledge Base overview with source and wiki counts, the last update timestamp, and a suggestion for what to do next. With `--changed`, shows each source with a status tag (`[NEW]`, `[CHANGED]`, `[MISSING]`, `[OK]`) followed by a summary section with counts.
 
 ### `kb review`
 
@@ -281,9 +512,9 @@ poetry run kb export --clean
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--clean` | off | Remove stale vault files that no longer exist in the wiki. |
+| `--clean` | off | Remove stale vault markdown files that were not exported from the current wiki set. |
 
-Copies compiled wiki pages into `vault/obsidian/` in a format compatible with [Obsidian](https://obsidian.md/). With `--clean`, any markdown files in the vault that no longer correspond to a wiki page are deleted automatically.
+Copies compiled wiki pages into `vault/obsidian/` in a format compatible with [Obsidian](https://obsidian.md/). With `--clean`, stale markdown files are deleted only after the current export set is built, so the cleanup decision uses the exact destination paths created by the run.
 
 
 ### `kb config`
@@ -325,8 +556,8 @@ poetry run kb sources show <slug>
 | --- | --- | --- |
 | Markdown | `.md`, `.markdown` | Direct (no conversion needed) |
 | Plain text | `.txt` | Direct (no conversion needed) |
-| PDF | `.pdf` | Mistral OCR (Docling fallback) |
-| HTML | `.htm`, `.html` | `wkhtmltopdf` → Mistral OCR (MarkItDown fallback) |
+| PDF | `.pdf` | Mistral OCR primary (Docling, then MarkItDown fallback) |
+| HTML | `.htm`, `.html` | `wkhtmltopdf` or `xhtml2pdf` → Mistral OCR (MarkItDown fallback; preserves the source `<title>` when available) |
 | CSV | `.csv` | MarkItDown |
 | Word | `.docx` | Mistral OCR (MarkItDown fallback) |
 | PowerPoint | `.pptx` | Mistral OCR (MarkItDown fallback) |
@@ -335,47 +566,70 @@ poetry run kb sources show <slug>
 | Jupyter Notebook | `.ipynb` | MarkItDown |
 | Images | `.png`, `.jpg`, `.jpeg`, `.avif` | Mistral OCR |
 
-All non-text formats are normalized into canonical markdown and stored in `raw/normalized/` before compilation.
+All non-text formats are normalized into canonical markdown and stored in
+`raw/normalized/` before compilation. PDFs intentionally use the paid Mistral
+OCR API as the primary converter because conversion accuracy determines the
+quality of every downstream source page, graph index, retrieval result, and
+answer. Local PDF converters are resilience fallbacks only; fallback metadata is
+recorded so lower-confidence conversions can be reviewed or rerun with Mistral.
+For HTML, the source document `<title>` is extracted before rendering and kept as
+the normalized page title when available, which prevents navigation chrome such
+as "Skip to content" from becoming the durable source title after OCR.
 
 ## Provider Configuration
 
-`kb update`, `kb ask`, and `kb review` require a configured provider.
+`kb update`, `kb legacy ask`, and `kb review` require a configured provider
+for legacy compile/review work. `kb update --graph-only` can refresh GraphRAG
+without the legacy text-provider section when the GraphRAG provider credentials
+are available.
 If the provider is missing, those commands fail with a configuration error.
-`kb ask` and `kb review` fail on provider execution errors; `kb update` keeps
-deterministic fallbacks for compile summaries and concept clustering after a
-provider call failure.
+`kb legacy ask` and `kb review` fail on provider execution errors; `kb update`
+keeps deterministic fallbacks for compile summaries and concept clustering after
+a provider call failure. During a normal `kb update`, missing GraphRAG credentials
+skip graph indexing with an explicit warning after the wiki compile finishes.
+`kb update --graph-only` fails on missing graph credentials. Other GraphRAG
+sync/index/export failures are hard failures by default; use
+`kb update --allow-partial` only when you intentionally want the legacy wiki
+refresh to finish while graph work is reported as a warning.
 
 Provider responses carry the returned text plus model/provider diagnostics such
-as finish reason and token counts when the SDK exposes them. Saved `kb ask`
+as finish reason and token counts when the SDK exposes them. Saved `kb legacy ask`
 analysis pages persist those parsed/validated diagnostics under `provider_status`
 when the answer comes from a provider. Structured provider
 outputs are parsed through the shared JSON parser, which accepts direct JSON,
 fenced JSON, and common prose-prefaced JSON before schema and semantic
 validation. Services can override provider reasoning effort and output budgets
 per operation; schema-bound commands use lower reasoning settings and larger
-visible-output budgets where needed. Gemini receives a provider-compatible JSON
-schema subset with unsupported `additionalProperties` fields removed before the
-SDK call.
+visible-output budgets where needed. OpenAI reasoning arguments are sent only to
+known reasoning-capable model families, and configured effort names are
+validated before SDK calls. Anthropic schema-bound requests use
+`output_config.format` instead of prompt-only JSON instructions. Gemini
+preserves supported JSON Schema keys such as `additionalProperties`, recursively
+resolves local schema definitions where possible, removes unsupported keywords,
+and records a schema-transformation report whenever the provider schema is
+weakened for Gemini compatibility.
 
 Provider configuration lives entirely in `kb.config.yaml`. The top-level
 `provider.name` selects the active provider, and the `providers` section holds
 the built-in settings for `openai`, `anthropic`, and `gemini`:
 
 ```yaml
-version: 4
+version: 7
 provider:
   name: openai
 providers:
   openai:
-    model: gpt-5.4-mini
+    model: gpt-5.4-nano
     api_key_env: OPENAI_API_KEY
     reasoning_effort: high
+    api: responses
+    store_responses: false
   anthropic:
     model: claude-sonnet-4-6
     api_key_env: ANTHROPIC_API_KEY
-    thinking_budget: 10000
+    thinking_effort: medium
   gemini:
-    model: gemini-3.1-flash-lite-preview
+    model: gemini-2.5-flash
     api_key_env: GEMINI_API_KEY
     reasoning_effort: high
 conversion:
@@ -386,11 +640,46 @@ conversion:
   html:
     renderer: wkhtmltopdf
     wkhtmltopdf_path: null
+    allow_local_file_access: false
   fallbacks:
-    pdf: docling
-    docx: markitdown
-    pptx: markitdown
-    html: markitdown
+    pdf:
+      - docling
+      - markitdown
+    docx:
+      - markitdown
+    pptx:
+      - markitdown
+    html:
+      - markitdown
+graph:
+  provider: openai
+  model: gpt-5.4-nano
+  embedding_provider: openai
+  embedding_model: text-embedding-3-small
+  api_key_env: null
+  embedding_api_key_env: null
+  chunking:
+    size: 1200
+    overlap: 150
+  extraction:
+    entity_types:
+      - concept
+      - technology
+      - method
+      - algorithm
+      - dataset
+      - model
+      - benchmark
+      - framework
+      - component
+      - api
+      - paper
+      - claim
+    max_gleanings: 2
+  input:
+    max_source_bytes: 26214400
+  routing:
+    aliases: {}
 ```
 
 To customize a provider, edit its entry under `providers`:
@@ -402,15 +691,38 @@ providers:
   anthropic:
     model: claude-opus-4-6
     api_key_env: MY_ANTHROPIC_KEY
-    thinking_budget: 2048
+    thinking_effort: high
 ```
 
-`kb.config.yaml` is versioned. The current schema version is 4, and the CLI automatically migrates older files when it loads project configuration.
+Modern Claude 4.6-style models use Anthropic adaptive thinking through
+`thinking_effort`. The provider sends Anthropic's adaptive-thinking flag plus
+the requested effort, and schema-bound Anthropic requests use the API-enforced
+structured-output format. A legacy `thinking_budget` value is still accepted
+for older models that require manual extended-thinking token budgets. Gemini
+uses model-sensitive thinking configuration: Gemini 2.5 receives a
+`thinking_budget`, while Gemini 3.x receives a `thinking_level`. Config
+validation accepts `none`, `minimal`, `low`, `medium`, and `high` for Gemini
+reasoning effort; `xhigh` is rejected instead of silently mapping down to
+`high`. Gemini schemas are normalized to the subset accepted by the API before
+generation.
+The adaptive-thinking detector is version-pattern based for Claude 4.6 and
+newer Sonnet/Opus model identifiers rather than locked to a single model name.
+OpenAI uses the Responses API by default for reasoning controls and structured
+JSON output; set `providers.openai.api: chat_completions` only when you need the
+legacy fallback path. OpenAI response storage is disabled by default through
+`providers.openai.store_responses: false`; set it to `true` only when you
+explicitly want provider-side response retention for your account.
+
+The `graph` section controls GraphRAG runtime setup independently from the text-provider section used by `kb update`, `kb review`, and `kb legacy ask`, but it does not duplicate API keys by default. `api_key_env: null` means "resolve this from `providers.<graph.provider>.api_key_env`"; `embedding_api_key_env: null` does the same for `providers.<graph.embedding_provider>.api_key_env`. `graph.chunking`, `graph.extraction`, and `graph.input.max_source_bytes` are CLI-managed GraphRAG settings; the default entity taxonomy is tuned for technical and research corpora rather than person/place/news corpora. Run `kb init` after editing it to refresh the managed provider/model/API-key/chunking/extraction/input fields in `graph/graphrag/settings.yaml`; `kb update` also syncs those managed fields before deciding whether model or prompt changes require a rebuild while preserving unrelated GraphRAG tuning in the workspace settings file.
+
+OpenAI and Google Gemini both expose embedding models that can be configured for GraphRAG. Anthropic does not currently provide its own embedding model; Anthropic's embedding guidance points users to Voyage AI instead. GraphRAG uses LiteLLM underneath and supports non-OpenAI providers, but its own docs say OpenAI GPT-4-series models remain the most thoroughly tested path.
+
+`kb.config.yaml` is versioned. The current schema version is 7, and the CLI automatically migrates older files when it loads project configuration.
 
 You can also override the provider per-invocation without editing the config file:
 
 ```bash
-kb --provider anthropic ask "How does REALM differ from RAG?"
+kb --provider anthropic legacy ask "How does REALM differ from RAG?"
 kb --provider gemini review
 ```
 
@@ -419,9 +731,11 @@ seeded into `kb.config.yaml`:
 
 | Provider | Default model | Env variable | Alternatives |
 | --- | --- | --- | --- |
-| `openai` | `gpt-5.4-mini` | `OPENAI_API_KEY` | `gpt-5.4`, `gpt-5.4-nano` |
+| `openai` | `gpt-5.4-nano` | `OPENAI_API_KEY` | `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini` |
 | `anthropic` | `claude-sonnet-4-6` | `ANTHROPIC_API_KEY` | `claude-opus-4-6`, `claude-haiku-4-5` |
-| `gemini` | `gemini-3.1-flash-lite-preview` | `GEMINI_API_KEY` | `gemini-3.1-pro-preview`, `gemini-2.5-flash` |
+| `gemini` | `gemini-2.5-flash` | `GEMINI_API_KEY` | `gemini-3.1-pro-preview`, `gemini-2.5-flash` |
+
+As of the latest OpenAI model docs checked for this branch, `gpt-5.5` is the flagship model, while the cost-sensitive current smaller variants are `gpt-5.4-mini` and `gpt-5.4-nano`; there is no documented `gpt-5.5-mini` or `gpt-5.5-nano` model ID. OpenAI also documents `gpt-5-nano`, but recommends starting with `gpt-5.4-nano` for most new speed- and cost-sensitive workloads. The project uses `gpt-5.4-nano` as the default to keep graph rebuilds and routine provider-backed maintenance inexpensive, with `gpt-5.4-mini`, `gpt-5.4`, or `gpt-5.5` available as explicit quality/cost upgrades.
 
 See the official model documentation for the full list of available models, pricing, and capabilities:
 
@@ -429,12 +743,12 @@ See the official model documentation for the full list of available models, pric
 - **Anthropic:** [docs.anthropic.com/en/docs/about-claude/models](https://docs.anthropic.com/en/docs/about-claude/models)
 - **Google Gemini:** [ai.google.dev/gemini-api/docs/models](https://ai.google.dev/gemini-api/docs/models)
 
-If the provider is not configured, `kb update`, `kb ask`, and `kb review`
+If the provider is not configured, `kb update`, `kb legacy ask`, and `kb review`
 fail with a configuration error. If the provider is configured but the API key
 is missing, those commands fail before provider-backed work begins. Provider
 calls retry transient failures (rate limits, timeouts, server errors)
 automatically with exponential backoff and jitter; after retries are exhausted,
-`kb ask` and `kb review` fail while `kb update` can fall back for summaries and
+`kb legacy ask` and `kb review` fail while `kb update` can fall back for summaries and
 concept clustering.
 
 ### Windows and Corporate TLS
@@ -454,8 +768,13 @@ poetry run kb doctor --strict
 ## Conversion Configuration
 
 Document conversion settings also live in `kb.config.yaml`. The `conversion`
-section controls which converter is used for Mistral-native document types and
-how HTML is rendered before OCR:
+section keeps Mistral OCR as the primary route for PDFs and the other
+Mistral-native formats, then controls the ordered fallback chain used only after
+that primary route fails. This is intentional: paying for higher OCR accuracy is
+the right default for this project because bad conversion contaminates compile
+summaries, citations, graph entities, relationships, retrieval, and final
+answers. HTML rendering tries `wkhtmltopdf` first when available and falls back
+to the bundled pure-Python `xhtml2pdf` renderer before OCR:
 
 ```yaml
 conversion:
@@ -467,23 +786,38 @@ conversion:
     renderer: wkhtmltopdf
     wkhtmltopdf_path: null
   fallbacks:
-    pdf: docling
-    docx: markitdown
-    pptx: markitdown
-    html: markitdown
+    pdf:
+      - docling
+      - markitdown
+    docx:
+      - markitdown
+    pptx:
+      - markitdown
+    html:
+      - markitdown
 ```
 
 Default routing is:
 
-- `.pdf`, `.docx`, `.pptx` → Mistral OCR first
+- `.pdf` → Mistral OCR first, then Docling, then MarkItDown if needed
+- `.docx`, `.pptx` → Mistral OCR first, then MarkItDown if needed
 - `.png`, `.jpg`, `.jpeg`, `.avif` → Mistral OCR first
-- `.htm`, `.html` → `wkhtmltopdf` then Mistral OCR first
+- `.htm`, `.html` → `wkhtmltopdf` first, then `xhtml2pdf` if needed, then Mistral OCR, with the original HTML `<title>` retained when available
 - `.csv`, `.epub`, `.ipynb`, `.xls`, `.xlsx` → MarkItDown
 - `.md`, `.markdown`, `.txt` → direct passthrough
 
 If a Mistral-first conversion fails quality checks, the configured fallback
-converter is tried before the file is rejected. Image inputs currently have no
-local fallback and fail cleanly if Mistral OCR cannot process them.
+chain is tried before the file is rejected. Treat `fallback_used: true` in the
+manifest as a lower-confidence conversion signal; for serious corpus work, set
+`MISTRAL_API_KEY` and rerun the source through Mistral instead of accepting a
+local PDF fallback as equivalent. Image inputs currently have no local fallback
+and fail cleanly if Mistral OCR cannot process them.
+HTML rendering disables `wkhtmltopdf` local-file access by default; set
+`conversion.html.allow_local_file_access: true` only for trusted local HTML that
+must load adjacent local assets.
+Inline Mistral OCR payloads are preflight-limited to 100 MB before file bytes
+are read or sent to the SDK. Split larger documents or switch to a provider
+upload/document-url workflow before ingesting them.
 
 ## Environment Variables
 
@@ -503,12 +837,36 @@ provider:
 providers:
   openai:
     api_key_env: MY_CUSTOM_OPENAI_KEY
+graph:
+  provider: openai
+  embedding_provider: openai
+  api_key_env: null
+  embedding_api_key_env: null
 conversion:
   mistral_ocr:
     api_key_env: MY_CUSTOM_MISTRAL_KEY
   html:
     wkhtmltopdf_path: C:/Program Files/wkhtmltopdf/bin/wkhtmltopdf.exe
+    allow_local_file_access: false
 ```
+
+## Quality Gates
+
+Python source and tests are formatted with Black, linted with Ruff, and checked
+with mypy across `src/graphwiki_kb`. CI runs those checks on Python 3.11 and
+3.12 before the full pytest coverage suite, then builds the wheel, installs it
+with all extras in a clean environment, and smoke-tests the installed `kb`
+entrypoint:
+
+```powershell
+poetry run black --check src tests
+poetry run ruff check src tests
+poetry run mypy src/graphwiki_kb
+poetry run pytest tests -q
+poetry build
+```
+
+The same Black, Ruff, and mypy checks are available through pre-commit hooks.
 
 ## Project Layout
 
@@ -524,15 +882,30 @@ project-root/
 │   └── normalized/         # Canonical markdown/text artifacts
 ├── wiki/
 │   ├── sources/            # Generated source pages
-│   ├── concepts/           # Generated concept pages
-│   ├── analysis/           # Saved analysis pages from kb ask --save
+│   ├── concepts/           # Legacy generated concept pages
+│   ├── graph/              # GraphRAG-derived markdown artifacts
+│   │   ├── index.md
+│   │   ├── documents/
+│   │   ├── entities/
+│   │   ├── relationships/
+│   │   ├── communities/
+│   │   └── text-units/
+│   ├── analysis/           # Saved analysis pages from graph/legacy ask --save
 │   ├── index.md            # Wiki index (human-readable)
 │   ├── _index.json         # Wiki index (machine-readable)
 │   └── log.md              # Update activity log
 ├── graph/
-│   └── exports/
-│       ├── compile_runs.json      # Resume/failure state for update runs
-│       └── search_index.sqlite3   # SQLite FTS5 chunk index
+│   ├── exports/
+│   │   ├── compile_runs.json      # Resume/failure state for update runs
+│   │   └── search_index.sqlite3   # Temporary legacy SQLite FTS5 index
+│   ├── runs/
+│   │   └── graph_index_runs.json  # Local GraphRAG index run metadata, ignored
+│   └── graphrag/
+│       ├── settings.yaml          # GraphRAG JSON input configuration
+│       ├── prompts/               # GraphRAG prompt templates
+│       ├── output/                # Generated GraphRAG index tables, ignored
+│       └── input/
+│           └── sources.json       # Generated by kb update, ignored by Git
 └── vault/
     └── obsidian/           # Obsidian-friendly export
         └── sources/

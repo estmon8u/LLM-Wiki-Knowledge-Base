@@ -1,11 +1,23 @@
+"""Tests for test real corpus smoke.
+
+This module belongs to `tests.test_real_corpus_smoke` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
 from __future__ import annotations
 
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 
 def test_smoke_script_runs_clean_on_temporary_corpus(tmp_path: Path) -> None:
+    """Verifies that smoke script runs clean on temporary corpus.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     repo_root = Path(__file__).resolve().parents[1]
     raw_root = tmp_path / "raw"
     project_root = tmp_path / "project"
@@ -34,6 +46,8 @@ def test_smoke_script_runs_clean_on_temporary_corpus(tmp_path: Path) -> None:
 
     assert result.returncode == 0
     log_text = (project_root / "command-smoke-log.txt").read_text(encoding="utf-8")
-    assert "python -m src.cli --help" in log_text
-    assert "python -m src.cli --project-root" in log_text
+    assert "python -m graphwiki_kb.cli --help" in log_text
+    assert "python -m graphwiki_kb.cli --project-root" in log_text
+    assert "legacy find" in log_text
+    assert "legacy ask" in log_text
     assert "export" in log_text

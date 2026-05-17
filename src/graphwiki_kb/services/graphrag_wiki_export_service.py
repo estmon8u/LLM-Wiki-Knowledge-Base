@@ -1,0 +1,756 @@
+"""Exports GraphRAG parquet artifacts into navigable wiki pages."""
+
+from __future__ import annotations
+
+import json
+import math
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+from graphwiki_kb.services.file_lock import workspace_lock
+from graphwiki_kb.services.graphrag_freshness_service import graph_input_manifest_hash
+from graphwiki_kb.services.graphrag_status_service import (
+    GRAPH_OUTPUT_TABLES,
+    GraphRAGStatus,
+    GraphRAGStatusService,
+)
+from graphwiki_kb.services.project_service import (
+    ProjectPaths,
+    atomic_write_text,
+    slugify,
+    utc_now_iso,
+)
+from graphwiki_kb.services.search_service import SearchService
+
+GRAPH_TABLE_DIRS = {
+    "documents": "documents",
+    "text_units": "text-units",
+    "entities": "entities",
+    "relationships": "relationships",
+    "communities": "communities",
+    "community_reports": "communities",
+}
+MAX_EXPORTED_RELATIONSHIP_PAGES = 500
+MAX_ENTITY_RELATIONSHIP_ROWS = 50
+
+
+class GraphRAGWikiExportError(RuntimeError):
+    """Raised when GraphRAG artifacts cannot be exported to wiki pages."""
+
+
+@dataclass(frozen=True)
+class GraphRAGWikiExportResult:
+    """Summary of GraphRAG wiki pages written by an export run."""
+
+    exported_paths: list[str]
+    table_counts: dict[str, int]
+    missing_tables: list[str] = field(default_factory=list)
+
+    @property
+    def exported_count(self) -> int:
+        """Return the number of exported wiki pages."""
+        return len(self.exported_paths)
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a JSON-friendly export summary."""
+        return {
+            "exported_count": self.exported_count,
+            "exported_paths": self.exported_paths,
+            "table_counts": self.table_counts,
+            "missing_tables": self.missing_tables,
+        }
+
+
+class GraphRAGWikiExportService:
+    """Reads GraphRAG output tables and writes managed `wiki/graph` pages."""
+
+    def __init__(
+        self,
+        paths: ProjectPaths,
+        status_service: GraphRAGStatusService,
+        search_service: SearchService,
+        *,
+        refresh_index: Callable[[], None] | None = None,
+    ) -> None:
+        self.paths = paths
+        self.status_service = status_service
+        self.search_service = search_service
+        self._refresh_index = refresh_index
+        self.graph_wiki_dir = paths.wiki_dir / "graph"
+        self._export_runtime_digest: str | None = None
+
+    def export_wiki(self) -> GraphRAGWikiExportResult:
+        """Export GraphRAG artifacts while holding the workspace lock."""
+        with workspace_lock(self.paths.graph_dir / "graphrag"):
+            return self._export_wiki_unlocked()
+
+    def _export_wiki_unlocked(self) -> GraphRAGWikiExportResult:
+        status = self.status_service.status()
+        self._require_export_ready(status)
+        self._export_runtime_digest = status.last_index_config_digest
+        tables, missing = self._load_tables()
+        self._clear_graph_wiki_dir()
+
+        exported_paths: list[str] = []
+        index_run_id = status.last_index_run_id
+        relationships = tables.get("relationships", [])
+        context = _ExportContext(
+            index_run_id=index_run_id,
+            graph_output_dir=_relative_path(status.active_output_dir, self.paths.root),
+            graph_input_hash=status.current_input_digest,
+            input_manifest_hash=graph_input_manifest_hash(status.input_path),
+            runtime_digest=status.last_index_config_digest,
+            relationships=relationships,
+            relationships_by_entity=_relationships_by_entity(relationships),
+            community_reports=tables.get("community_reports", []),
+            generated_at=utc_now_iso(),
+        )
+
+        exported_paths.extend(
+            self._write_documents(tables.get("documents", []), context)
+        )
+        exported_paths.extend(
+            self._write_text_units(tables.get("text_units", []), context)
+        )
+        exported_paths.extend(self._write_entities(tables.get("entities", []), context))
+        exported_paths.extend(
+            self._write_relationships(tables.get("relationships", []), context)
+        )
+        exported_paths.extend(
+            self._write_communities(
+                tables.get("communities", []),
+                tables.get("community_reports", []),
+                context,
+            )
+        )
+        index_path = self._write_index(
+            tables=tables,
+            missing_tables=missing,
+            index_run_id=index_run_id,
+            runtime_digest=status.last_index_config_digest,
+        )
+        exported_paths.insert(0, index_path)
+
+        if self._refresh_index is not None:
+            self._refresh_index()
+        self.search_service.refresh(force=True)
+
+        return GraphRAGWikiExportResult(
+            exported_paths=sorted(exported_paths),
+            table_counts={name: len(records) for name, records in tables.items()},
+            missing_tables=missing,
+        )
+
+    def _require_export_ready(self, status: GraphRAGStatus) -> None:
+        if not status.workspace_initialized:
+            raise GraphRAGWikiExportError(
+                "GraphRAG workspace is not initialized. Run `kb init` first."
+            )
+        if not status.output_present:
+            raise GraphRAGWikiExportError(
+                "GraphRAG index output not found. Run `kb update` before exporting "
+                "graph wiki pages."
+            )
+        if not status.output_complete:
+            raise GraphRAGWikiExportError(
+                "GraphRAG index output is incomplete. Run `kb update` before "
+                "exporting graph wiki pages."
+            )
+
+    def _load_tables(self) -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
+        tables: dict[str, list[dict[str, Any]]] = {}
+        missing: list[str] = []
+        for table_name in GRAPH_OUTPUT_TABLES:
+            table_path = self.status_service.table_path(table_name)
+            if table_path is None:
+                missing.append(table_name)
+                tables[table_name] = []
+                continue
+            tables[table_name] = _read_parquet_records(table_path)
+        return tables, missing
+
+    def _clear_graph_wiki_dir(self) -> None:
+        if not self.graph_wiki_dir.exists():
+            return
+        for path in sorted(self.graph_wiki_dir.rglob("*.md"), reverse=True):
+            if _is_generated_graph_page(path):
+                path.unlink()
+        for directory in sorted(
+            [p for p in self.graph_wiki_dir.rglob("*") if p.is_dir()],
+            reverse=True,
+        ):
+            try:
+                directory.rmdir()
+            except OSError:
+                continue
+
+    def _write_documents(
+        self, records: list[dict[str, Any]], context: _ExportContext
+    ) -> list[str]:
+        exported: list[str] = []
+        used: set[str] = set()
+        for record in records:
+            title = _first_text(
+                record, "title", "human_readable_id", "id", default="Document"
+            )
+            slug = _unique_slug(slugify(title), used, prefix="document")
+            frontmatter = {
+                "type": "graph_document",
+                "document_id": _first_text(record, "id"),
+                "title": title,
+                "source_document_ids": _source_document_ids(record),
+                **_base_frontmatter(context),
+            }
+            body = [
+                f"# {title}",
+                "",
+                "## GraphRAG Document",
+                "",
+                _field_list(record, exclude={"text", "raw_content", "raw_data"}),
+            ]
+            if _first_text(record, "text", "raw_content"):
+                body.extend(
+                    [
+                        "",
+                        "## Text",
+                        "",
+                        _fenced_text(_first_text(record, "text", "raw_content")),
+                    ]
+                )
+            exported.append(
+                self._write_page("documents", slug, frontmatter, "\n".join(body))
+            )
+        return exported
+
+    def _write_text_units(
+        self, records: list[dict[str, Any]], context: _ExportContext
+    ) -> list[str]:
+        exported: list[str] = []
+        used: set[str] = set()
+        for index, record in enumerate(records, start=1):
+            text_unit_id = _first_text(record, "id", "human_readable_id") or str(index)
+            slug = _unique_slug(
+                slugify(f"text-unit-{text_unit_id}"), used, prefix="text-unit"
+            )
+            frontmatter = {
+                "type": "graph_text_unit",
+                "text_unit_id": text_unit_id,
+                "source_document_ids": _source_document_ids(record),
+                **_base_frontmatter(context),
+            }
+            text = _first_text(record, "text", "content", "chunk", default="")
+            body = [
+                f"# Text Unit {text_unit_id}",
+                "",
+                "## Text",
+                "",
+                _fenced_text(text) if text else "No text content exported by GraphRAG.",
+                "",
+                "## Metadata",
+                "",
+                _field_list(record, exclude={"text", "content", "chunk", "raw_data"}),
+            ]
+            exported.append(
+                self._write_page("text-units", slug, frontmatter, "\n".join(body))
+            )
+        return exported
+
+    def _write_entities(
+        self, records: list[dict[str, Any]], context: _ExportContext
+    ) -> list[str]:
+        exported: list[str] = []
+        used: set[str] = set()
+        for record in records:
+            title = _first_text(record, "title", "name", "id", default="Entity")
+            slug = _unique_slug(slugify(title), used, prefix="entity")
+            frontmatter = {
+                "type": "graph_entity",
+                "entity_id": _first_text(record, "id"),
+                "entity_title": title,
+                "frequency": _sequence_count(record.get("text_unit_ids")),
+                "degree": _first_number(record, "degree", "rank", "combined_degree"),
+                "source_document_ids": _source_document_ids(record),
+                **_base_frontmatter(context),
+            }
+            relationships = _relationships_for_entity(
+                context.relationships_by_entity,
+                title,
+                limit=MAX_ENTITY_RELATIONSHIP_ROWS,
+            )
+            body = [
+                f"# {title}",
+                "",
+                "## GraphRAG Description",
+                "",
+                _first_text(
+                    record,
+                    "description",
+                    default="No description exported by GraphRAG.",
+                ),
+                "",
+                "## Appears In",
+                "",
+                _bullet_values(
+                    record.get("text_unit_ids"), empty="No text units listed."
+                ),
+                "",
+                "## Connected Entities",
+                "",
+                _relationship_table(relationships),
+                "",
+                "## Metadata",
+                "",
+                _field_list(
+                    record,
+                    exclude={"description", "title", "name", "raw_data"},
+                ),
+            ]
+            exported.append(
+                self._write_page("entities", slug, frontmatter, "\n".join(body))
+            )
+        return exported
+
+    def _write_relationships(
+        self, records: list[dict[str, Any]], context: _ExportContext
+    ) -> list[str]:
+        exported: list[str] = []
+        used: set[str] = set()
+        for record in _top_relationships(records, MAX_EXPORTED_RELATIONSHIP_PAGES):
+            source = _first_text(record, "source", "source_title", default="source")
+            target = _first_text(record, "target", "target_title", default="target")
+            slug = _unique_slug(
+                slugify(f"{source}--{target}"),
+                used,
+                prefix="relationship",
+            )
+            frontmatter = {
+                "type": "graph_relationship",
+                "relationship_id": _first_text(record, "id", "human_readable_id"),
+                "source": source,
+                "target": target,
+                "weight": _first_number(record, "weight", "combined_degree", "rank"),
+                "source_document_ids": _source_document_ids(record),
+                **_base_frontmatter(context),
+            }
+            body = [
+                f"# {source} -> {target}",
+                "",
+                "## Description",
+                "",
+                _first_text(
+                    record,
+                    "description",
+                    default="No relationship description exported by GraphRAG.",
+                ),
+                "",
+                "## Metadata",
+                "",
+                _field_list(record, exclude={"description", "raw_data"}),
+            ]
+            exported.append(
+                self._write_page("relationships", slug, frontmatter, "\n".join(body))
+            )
+        return exported
+
+    def _write_communities(
+        self,
+        communities: list[dict[str, Any]],
+        reports: list[dict[str, Any]],
+        context: _ExportContext,
+    ) -> list[str]:
+        exported: list[str] = []
+        used: set[str] = set()
+        reports_by_community = {
+            _first_text(report, "community", "id"): report for report in reports
+        }
+        source_records = reports if reports else communities
+        for index, record in enumerate(source_records, start=1):
+            community_id = _first_text(record, "community", "id") or str(index)
+            report = reports_by_community.get(community_id, {})
+            merged = {**record, **report}
+            title = _first_text(
+                merged,
+                "title",
+                default=f"Community {community_id}",
+            )
+            slug = _unique_slug(
+                slugify(f"community-{community_id}-{title}"), used, prefix="community"
+            )
+            frontmatter = {
+                "type": "graph_community",
+                "community_id": community_id,
+                "level": _first_number(merged, "level"),
+                "entity_count": _sequence_count(merged.get("entity_ids")),
+                "text_unit_count": _sequence_count(merged.get("text_unit_ids")),
+                "source_document_ids": _source_document_ids(merged),
+                **_base_frontmatter(context),
+            }
+            body = [
+                f"# Community {community_id} - {title}",
+                "",
+                "## Summary",
+                "",
+                _first_text(
+                    merged,
+                    "summary",
+                    "full_content",
+                    default="No community summary exported by GraphRAG.",
+                ),
+                "",
+                "## Key Findings",
+                "",
+                _findings_markdown(merged),
+                "",
+                "## Entities",
+                "",
+                _bullet_values(merged.get("entity_ids"), empty="No entities listed."),
+                "",
+                "## Source Text Units",
+                "",
+                _bullet_values(
+                    merged.get("text_unit_ids"), empty="No text units listed."
+                ),
+                "",
+                "## Metadata",
+                "",
+                _field_list(
+                    merged,
+                    exclude={
+                        "summary",
+                        "full_content",
+                        "findings",
+                        "entity_ids",
+                        "text_unit_ids",
+                        "raw_data",
+                    },
+                ),
+            ]
+            exported.append(
+                self._write_page("communities", slug, frontmatter, "\n".join(body))
+            )
+        return exported
+
+    def _write_index(
+        self,
+        *,
+        tables: dict[str, list[dict[str, Any]]],
+        missing_tables: list[str],
+        index_run_id: str | None,
+        runtime_digest: str | None,
+    ) -> str:
+        frontmatter = {
+            "type": "graph_index",
+            "index_run_id": index_run_id,
+            "graph_run_id": index_run_id,
+            "graph_output_dir": _relative_path(
+                self.status_service.active_output_dir(),
+                self.paths.root,
+            ),
+            "graph_runtime_digest": runtime_digest,
+            "input_manifest_hash": graph_input_manifest_hash(
+                self.status_service.input_path
+            ),
+            "generated_at": utc_now_iso(),
+        }
+        lines = [
+            "# GraphRAG Index",
+            "",
+            "## Tables",
+            "",
+            "| Table | Rows |",
+            "| --- | ---: |",
+        ]
+        for table_name in GRAPH_OUTPUT_TABLES:
+            lines.append(f"| {table_name} | {len(tables.get(table_name, []))} |")
+        lines.extend(["", "## Pages", ""])
+        for table_name, directory in GRAPH_TABLE_DIRS.items():
+            if table_name == "community_reports":
+                continue
+            row_count = len(tables.get(table_name, []))
+            if (
+                table_name == "relationships"
+                and row_count > MAX_EXPORTED_RELATIONSHIP_PAGES
+            ):
+                lines.append(
+                    f"- `{directory}/`: {MAX_EXPORTED_RELATIONSHIP_PAGES} of "
+                    f"{row_count} page(s); export capped to the strongest "
+                    "relationships."
+                )
+                continue
+            lines.append(f"- `{directory}/`: {row_count} page(s)")
+        if missing_tables:
+            lines.extend(["", "## Missing Tables", ""])
+            lines.extend(f"- `{table}`" for table in missing_tables)
+        return self._write_page("", "index", frontmatter, "\n".join(lines))
+
+    def _write_page(
+        self,
+        directory: str,
+        slug: str,
+        frontmatter: dict[str, Any],
+        body: str,
+    ) -> str:
+        target_dir = (
+            self.graph_wiki_dir / directory if directory else self.graph_wiki_dir
+        )
+        target_dir.mkdir(parents=True, exist_ok=True)
+        path = target_dir / f"{slug}.md"
+        frontmatter = {**frontmatter, "generated": True}
+        if self._export_runtime_digest:
+            frontmatter.setdefault("graph_runtime_digest", self._export_runtime_digest)
+        yaml_block = yaml.safe_dump(frontmatter, sort_keys=False).strip()
+        atomic_write_text(path, f"---\n{yaml_block}\n---\n\n{body.rstrip()}\n")
+        return path.relative_to(self.paths.root).as_posix()
+
+
+@dataclass(frozen=True)
+class _ExportContext:
+    """Shared metadata and lookup tables used while writing graph pages."""
+
+    index_run_id: str | None
+    graph_output_dir: str | None
+    graph_input_hash: str | None
+    input_manifest_hash: str | None
+    runtime_digest: str | None
+    relationships: list[dict[str, Any]]
+    relationships_by_entity: dict[str, list[dict[str, Any]]]
+    community_reports: list[dict[str, Any]]
+    generated_at: str
+
+
+def _read_parquet_records(path: Path) -> list[dict[str, Any]]:
+    import pyarrow.parquet as parquet
+
+    records: list[dict[str, Any]] = []
+    parquet_file = parquet.ParquetFile(path)
+    for batch in parquet_file.iter_batches():
+        records.extend(
+            {str(key): _clean_value(value) for key, value in row.items()}
+            for row in batch.to_pylist()
+        )
+    return records
+
+
+def _base_frontmatter(context: _ExportContext) -> dict[str, Any]:
+    return {
+        "index_run_id": context.index_run_id,
+        "graph_run_id": context.index_run_id,
+        "graph_output_dir": context.graph_output_dir,
+        "graph_input_hash": context.graph_input_hash,
+        "input_manifest_hash": context.input_manifest_hash,
+        "generated_at": context.generated_at,
+    }
+
+
+def _relative_path(path: Path | None, root: Path) -> str | None:
+    if path is None:
+        return None
+    try:
+        return path.resolve().relative_to(root).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _source_document_ids(record: dict[str, Any]) -> list[str]:
+    for key in ("source_document_ids", "document_ids", "doc_ids", "source_ids"):
+        value = record.get(key)
+        if isinstance(value, str) and value.strip():
+            return [value.strip()]
+        if isinstance(value, (list, tuple, set)):
+            return [str(item).strip() for item in value if str(item).strip()]
+    document_id = _first_text(record, "document_id")
+    return [document_id] if document_id else []
+
+
+def _clean_value(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, float) and math.isnan(value):
+        return None
+    if hasattr(value, "tolist"):
+        return _clean_value(value.tolist())
+    if isinstance(value, dict):
+        return {str(key): _clean_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_clean_value(item) for item in value]
+    return value
+
+
+def _first_text(record: dict[str, Any], *keys: str, default: str = "") -> str:
+    for key in keys:
+        value = record.get(key)
+        if value is None:
+            continue
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        if not isinstance(value, (dict, list, tuple, set)):
+            text = str(value).strip()
+            if text:
+                return text
+    return default
+
+
+def _first_number(record: dict[str, Any], *keys: str) -> int | float | None:
+    for key in keys:
+        value = record.get(key)
+        if isinstance(value, (int, float)) and not (
+            isinstance(value, float) and math.isnan(value)
+        ):
+            return value
+        if isinstance(value, str) and value.strip():
+            try:
+                number = float(value)
+            except ValueError:
+                continue
+            return int(number) if number.is_integer() else number
+    return None
+
+
+def _sequence_count(value: Any) -> int:
+    if isinstance(value, (list, tuple, set)):
+        return len(value)
+    return 0
+
+
+def _field_list(record: dict[str, Any], *, exclude: set[str] | None = None) -> str:
+    excluded = exclude or set()
+    lines: list[str] = []
+    for key, value in sorted(record.items()):
+        if key in excluded or value in (None, "", []):
+            continue
+        lines.append(f"- `{key}`: {_markdown_inline(_format_value(value))}")
+    return "\n".join(lines) if lines else "No additional metadata."
+
+
+def _format_value(value: Any) -> str:
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    return str(value)
+
+
+def _is_generated_graph_page(path: Path) -> bool:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    if not text.startswith("---\n"):
+        return False
+    marker = text.find("\n---\n", 4)
+    if marker == -1:
+        return False
+    try:
+        payload = yaml.safe_load(text[4:marker]) or {}
+    except yaml.YAMLError:
+        return False
+    return isinstance(payload, dict) and payload.get("generated") is True
+
+
+def _bullet_values(value: Any, *, empty: str) -> str:
+    if not isinstance(value, (list, tuple, set)) or not value:
+        return empty
+    return "\n".join(f"- `{_markdown_inline(str(item))}`" for item in value)
+
+
+def _fenced_text(text: str) -> str:
+    fence = "```"
+    while fence in text:
+        fence += "`"
+    return f"{fence}text\n{text.rstrip()}\n{fence}"
+
+
+def _relationships_by_entity(
+    relationships: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    by_entity: dict[str, list[dict[str, Any]]] = {}
+    for relationship in relationships:
+        source = _first_text(relationship, "source", "source_title").casefold()
+        target = _first_text(relationship, "target", "target_title").casefold()
+        if source:
+            by_entity.setdefault(source, []).append(relationship)
+        if target and target != source:
+            by_entity.setdefault(target, []).append(relationship)
+    return by_entity
+
+
+def _relationships_for_entity(
+    relationships_by_entity: dict[str, list[dict[str, Any]]],
+    entity_title: str,
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    return _top_relationships(
+        relationships_by_entity.get(entity_title.casefold(), []),
+        limit,
+    )
+
+
+def _top_relationships(
+    relationships: list[dict[str, Any]],
+    limit: int,
+) -> list[dict[str, Any]]:
+    return sorted(
+        relationships,
+        key=_relationship_sort_key,
+        reverse=True,
+    )[:limit]
+
+
+def _relationship_sort_key(relationship: dict[str, Any]) -> float:
+    score = _first_number(relationship, "weight", "combined_degree", "rank", "degree")
+    return float(score) if score is not None else 0.0
+
+
+def _relationship_table(relationships: list[dict[str, Any]]) -> str:
+    if not relationships:
+        return "No relationships listed."
+    lines = ["| Entity | Relationship |", "| --- | --- |"]
+    for relationship in relationships:
+        source = _first_text(relationship, "source", "source_title")
+        target = _first_text(relationship, "target", "target_title")
+        description = _first_text(relationship, "description", default="related")
+        pair = f"{_markdown_table_cell(source)} -> {_markdown_table_cell(target)}"
+        lines.append(f"| {pair} | {_markdown_table_cell(description)} |")
+    return "\n".join(lines)
+
+
+def _findings_markdown(record: dict[str, Any]) -> str:
+    findings = record.get("findings")
+    if isinstance(findings, list) and findings:
+        lines = []
+        for finding in findings:
+            if isinstance(finding, dict):
+                summary = _first_text(finding, "summary", "explanation", "text")
+                if summary:
+                    lines.append(f"- {_markdown_inline(summary)}")
+            elif str(finding).strip():
+                lines.append(f"- {_markdown_inline(str(finding))}")
+        if lines:
+            return "\n".join(lines)
+    return "No key findings exported by GraphRAG."
+
+
+def _markdown_inline(value: str) -> str:
+    text = value.replace("\r\n", "\n").replace("\r", "\n")
+    text = " ".join(part.strip() for part in text.split("\n") if part.strip())
+    return text.replace("|", r"\|")
+
+
+def _markdown_table_cell(value: str) -> str:
+    return _markdown_inline(value)
+
+
+def _unique_slug(base_slug: str, used: set[str], *, prefix: str) -> str:
+    slug = base_slug or prefix
+    if slug not in used:
+        used.add(slug)
+        return slug
+    suffix = 2
+    while f"{slug}-{suffix}" in used:
+        suffix += 1
+    unique = f"{slug}-{suffix}"
+    used.add(unique)
+    return unique

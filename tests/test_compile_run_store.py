@@ -1,15 +1,30 @@
+"""Tests for test compile run store.
+
+This module belongs to `tests.test_compile_run_store` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
 
-from src.models.source_models import RawSourceRecord
-from src.storage.compile_run_store import CompileRunStore
-from src.services.project_service import utc_now_iso
+from graphwiki_kb.models.source_models import RawSourceRecord
+from graphwiki_kb.services.project_service import utc_now_iso
+from graphwiki_kb.storage.compile_run_store import CompileRunStore
 
 
 def _source(slug: str) -> RawSourceRecord:
+    """Handles source.
+
+    Args:
+        slug: Slug value used by the operation.
+
+    Returns:
+        RawSourceRecord produced by the operation.
+    """
     return RawSourceRecord(
         source_id=f"source-{slug}",
         slug=slug,
@@ -26,6 +41,11 @@ def _source(slug: str) -> RawSourceRecord:
 def test_compile_run_store_marks_failure_and_exposes_resume_candidate(
     tmp_path: Path,
 ) -> None:
+    """Verifies that compile run store marks failure and exposes resume candidate.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     store = CompileRunStore(tmp_path / "compile_runs.json")
     alpha = _source("alpha")
     beta = _source("beta")
@@ -43,6 +63,11 @@ def test_compile_run_store_marks_failure_and_exposes_resume_candidate(
 def test_compile_run_store_completed_run_clears_resume_candidate(
     tmp_path: Path,
 ) -> None:
+    """Verifies that compile run store completed run clears resume candidate.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     store = CompileRunStore(tmp_path / "compile_runs.json")
     alpha = _source("alpha")
 
@@ -58,6 +83,11 @@ def test_compile_run_store_completed_run_clears_resume_candidate(
 def test_compile_run_store_exposes_running_active_run_as_resume_candidate(
     tmp_path: Path,
 ) -> None:
+    """Verifies that compile run store exposes running active run as resume candidate.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     store = CompileRunStore(tmp_path / "compile_runs.json")
 
     run = store.start_run([_source("alpha")], force=False)
@@ -71,6 +101,11 @@ def test_compile_run_store_exposes_running_active_run_as_resume_candidate(
 def test_compile_run_store_active_run_and_clear_resume_candidate(
     tmp_path: Path,
 ) -> None:
+    """Verifies that compile run store active run and clear resume candidate.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     store = CompileRunStore(tmp_path / "compile_runs.json")
 
     assert store.active_run() is None
@@ -89,6 +124,11 @@ def test_compile_run_store_active_run_and_clear_resume_candidate(
 
 
 def test_compile_run_store_raises_for_unknown_active_run(tmp_path: Path) -> None:
+    """Verifies that compile run store raises for unknown active run.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     store = CompileRunStore(tmp_path / "compile_runs.json")
 
     with pytest.raises(ValueError, match="Compile run is not active"):
@@ -98,6 +138,11 @@ def test_compile_run_store_raises_for_unknown_active_run(tmp_path: Path) -> None
 def test_compile_run_store_archives_interrupted_active_run_on_new_start(
     tmp_path: Path,
 ) -> None:
+    """Verifies that compile run store archives interrupted active run on new start.
+
+    Args:
+        tmp_path: Tmp path value used by the operation.
+    """
     store = CompileRunStore(tmp_path / "compile_runs.json")
     store.start_run([_source("alpha")], force=False)
 

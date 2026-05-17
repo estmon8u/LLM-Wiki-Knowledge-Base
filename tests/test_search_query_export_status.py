@@ -1,33 +1,59 @@
+"""Tests for test search query export status.
+
+This module belongs to `tests.test_search_query_export_status` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
 from __future__ import annotations
 
+import hashlib
 import json
-from pathlib import Path
 import sqlite3
 import threading
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from src.models.wiki_models import SearchResult
-from src.providers import (
+from graphwiki_kb.providers import (
     ProviderConfigurationError,
     ProviderExecutionError,
     UnavailableProvider,
 )
-from src.providers.base import ProviderRequest, ProviderResponse, TextProvider
-from src.services.query_service import QueryService
-from src.services.search_service import _extract_snippet
+from graphwiki_kb.providers.base import ProviderRequest, ProviderResponse, TextProvider
+from graphwiki_kb.services.query_service import QueryService
+from graphwiki_kb.services.search_service import _extract_snippet
 
 
 class SequencedProvider(TextProvider):
+    """Represents sequenced provider behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     name = "fake-provider"
 
     def __init__(self, responses: list[object]) -> None:
+        """Initializes the instance.
+
+        Args:
+            responses: Responses value used by the operation.
+        """
         self._responses = list(responses)
         self._lock = threading.Lock()
         self.requests: list[ProviderRequest] = []
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        """Generate.
+
+        Args:
+            request: Request value used by the operation.
+
+        Returns:
+            ProviderResponse produced by the operation.
+        """
         with self._lock:
             self.requests.append(request)
             if not self._responses:
@@ -39,16 +65,44 @@ class SequencedProvider(TextProvider):
 
 
 class DiagnosticProvider(TextProvider):
+    """Represents diagnostic provider behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     name = "diagnostic-provider"
 
     def __init__(self, response: ProviderResponse) -> None:
+        """Initializes the instance.
+
+        Args:
+            response: Response value used by the operation.
+        """
         self._response = response
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        """Generate.
+
+        Args:
+            request: Request value used by the operation.
+
+        Returns:
+            ProviderResponse produced by the operation.
+        """
         return self._response
 
 
 def _provider_query_service(test_project, *responses: object) -> QueryService:
+    """Handles provider query service.
+
+    Args:
+        test_project: Test project value used by the operation.
+        responses: Responses value used by the operation.
+
+    Returns:
+        QueryService produced by the operation.
+    """
     return QueryService(
         test_project.paths,
         test_project.services["search"],
@@ -64,6 +118,18 @@ def _structured_query_response(
     claim: str = "Traceability appears in the source page.",
     insufficient_evidence: bool = False,
 ) -> str:
+    """Handles structured query response.
+
+    Args:
+        answer: Answer value used by the operation.
+        ref: Ref value used by the operation.
+        title: Title value used by the operation.
+        claim: Claim value used by the operation.
+        insufficient_evidence: Insufficient evidence value used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     claims = [] if insufficient_evidence else [{"text": claim, "citation_refs": [ref]}]
     citations = [] if insufficient_evidence else [{"ref": ref, "title": title}]
     return json.dumps(
@@ -77,6 +143,16 @@ def _structured_query_response(
 
 
 def _compiled_page(title: str, body: str, *, summary: str = "Summary") -> str:
+    """Handles compiled page.
+
+    Args:
+        title: Title value used by the operation.
+        body: Body value used by the operation.
+        summary: Summary value used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     return _compiled_page_with_type(title, body, summary=summary)
 
 
@@ -87,6 +163,17 @@ def _compiled_page_with_type(
     summary: str = "Summary",
     page_type: str | None = "source",
 ) -> str:
+    """Handles compiled page with type.
+
+    Args:
+        title: Title value used by the operation.
+        body: Body value used by the operation.
+        summary: Summary value used by the operation.
+        page_type: Page type value used by the operation.
+
+    Returns:
+        str produced by the operation.
+    """
     type_block = f"type: {page_type}\n" if page_type else ""
     return (
         "---\n"
@@ -104,6 +191,7 @@ def _compiled_page_with_type(
 
 
 def test_extract_snippet_uses_matching_window_and_fallback() -> None:
+    """Verifies that extract snippet uses matching window and fallback."""
     text = "Alpha beta gamma delta epsilon zeta"
 
     assert "gamma" in _extract_snippet(text, ["gamma"])
@@ -111,14 +199,19 @@ def test_extract_snippet_uses_matching_window_and_fallback() -> None:
 
 
 def test_extract_frontmatter_handles_invalid_yaml_and_non_mapping_payload() -> None:
-    from src.services.search_service import _extract_frontmatter
+    """Verifies that extract frontmatter handles invalid yaml and non mapping payload."""
+    from graphwiki_kb.services.search_service import _extract_frontmatter
 
     assert _extract_frontmatter("---\ntitle: [oops\n---\n") == {}
     assert _extract_frontmatter("---\n- item\n---\n") == {}
 
 
 def test_frontmatter_value_and_text_helpers_cover_scalar_and_nested_values() -> None:
-    from src.services.search_service import _frontmatter_text, _frontmatter_value
+    """Verifies that frontmatter value and text helpers cover scalar and nested values."""
+    from graphwiki_kb.services.search_service import (
+        _frontmatter_text,
+        _frontmatter_value,
+    )
 
     frontmatter = {
         "title": " Example Title ",
@@ -138,7 +231,8 @@ def test_frontmatter_value_and_text_helpers_cover_scalar_and_nested_values() -> 
 
 
 def test_page_title_falls_back_to_heading_and_filename() -> None:
-    from src.services.search_service import _page_title
+    """Verifies that page title falls back to heading and filename."""
+    from graphwiki_kb.services.search_service import _page_title
 
     heading_title = _page_title(
         Path("wiki/sources/example.md"),
@@ -156,7 +250,8 @@ def test_page_title_falls_back_to_heading_and_filename() -> None:
 
 
 def test_chunk_markdown_body_handles_blank_and_long_sections() -> None:
-    from src.services.search_service import _chunk_markdown_body
+    """Verifies that chunk markdown body handles blank and long sections."""
+    from graphwiki_kb.services.search_service import _chunk_markdown_body
 
     assert _chunk_markdown_body("---\ntitle: Empty\n---\n", "Empty") == []
 
@@ -173,7 +268,8 @@ def test_chunk_markdown_body_handles_blank_and_long_sections() -> None:
 
 
 def test_paragraphs_skip_blank_and_heading_lines() -> None:
-    from src.services.search_service import _paragraphs
+    """Verifies that paragraphs skip blank and heading lines."""
+    from graphwiki_kb.services.search_service import _paragraphs
 
     paragraphs = _paragraphs(
         "# Heading\n\nFirst line\nSecond line\n\n## Next\n\nThird line\n"
@@ -183,6 +279,11 @@ def test_paragraphs_skip_blank_and_heading_lines() -> None:
 
 
 def test_search_service_returns_ranked_results_and_limit(test_project) -> None:
+    """Verifies that search service returns ranked results and limit.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/first.md", "alpha alpha beta")
     test_project.write_file("wiki/sources/second.md", "alpha")
     test_project.write_file("wiki/index.md", "alpha alpha alpha")
@@ -198,6 +299,11 @@ def test_search_service_returns_ranked_results_and_limit(test_project) -> None:
 def test_search_service_refresh_is_noop_when_inventory_is_unchanged(
     test_project,
 ) -> None:
+    """Verifies that search service refresh is noop when inventory is unchanged.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/reindex.md", "alpha body")
     service = test_project.services["search"]
 
@@ -208,6 +314,11 @@ def test_search_service_refresh_is_noop_when_inventory_is_unchanged(
 def test_search_service_refresh_short_circuits_when_fts_is_disabled(
     test_project,
 ) -> None:
+    """Verifies that search service refresh short circuits when fts is disabled.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     service = test_project.services["search"]
     service._fts_available = False
 
@@ -217,11 +328,22 @@ def test_search_service_refresh_short_circuits_when_fts_is_disabled(
 def test_search_service_refresh_marks_fts_unavailable_on_store_error(
     monkeypatch, test_project
 ) -> None:
-    from src.storage.search_index_store import SearchIndexUnavailable
+    """Verifies that search service refresh marks fts unavailable on store error.
+
+    Args:
+        monkeypatch: Monkeypatch value used by the operation.
+        test_project: Test project value used by the operation.
+    """
+    from graphwiki_kb.storage.search_index_store import SearchIndexUnavailable
 
     service = test_project.services["search"]
 
     def raise_unavailable() -> dict[str, tuple[int, int]]:
+        """Raise unavailable.
+
+        Returns:
+            dict[str, tuple[int, int]] produced by the operation.
+        """
         raise SearchIndexUnavailable("fts5 unavailable")
 
     monkeypatch.setattr(service.index_store, "load_indexed_files", raise_unavailable)
@@ -233,7 +355,13 @@ def test_search_service_refresh_marks_fts_unavailable_on_store_error(
 def test_search_service_search_falls_back_when_index_query_fails(
     monkeypatch, test_project
 ) -> None:
-    from src.storage.search_index_store import SearchIndexUnavailable
+    """Verifies that search service search falls back when index query fails.
+
+    Args:
+        monkeypatch: Monkeypatch value used by the operation.
+        test_project: Test project value used by the operation.
+    """
+    from graphwiki_kb.storage.search_index_store import SearchIndexUnavailable
 
     test_project.write_file("wiki/sources/fallback.md", "traceability body")
     service = test_project.services["search"]
@@ -241,6 +369,12 @@ def test_search_service_search_falls_back_when_index_query_fails(
     monkeypatch.setattr(service, "refresh", lambda force=False: False)
 
     def raise_unavailable(*_args, **_kwargs):
+        """Raise unavailable.
+
+        Args:
+            _args: Args value used by the operation.
+            _kwargs: Kwargs value used by the operation.
+        """
         raise SearchIndexUnavailable("fts5 unavailable")
 
     monkeypatch.setattr(service.index_store, "search", raise_unavailable)
@@ -254,6 +388,11 @@ def test_search_service_search_falls_back_when_index_query_fails(
 def test_search_service_builds_sqlite_index_and_returns_best_chunk(
     test_project,
 ) -> None:
+    """Verifies that search service builds sqlite index and returns best chunk.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/chunks.md",
         "---\ntitle: Chunked Page\nsummary: Example\n---\n\n"
@@ -276,16 +415,31 @@ def test_search_service_builds_sqlite_index_and_returns_best_chunk(
 
 
 def test_search_service_returns_empty_for_blank_query(test_project) -> None:
+    """Verifies that search service returns empty for blank query.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     assert test_project.services["search"].search("!!!") == []
 
 
 def test_search_service_inventory_returns_empty_for_missing_wiki_dir(
     uninitialized_project,
 ) -> None:
+    """Verifies that search service inventory returns empty for missing wiki dir.
+
+    Args:
+        uninitialized_project: Uninitialized project value used by the operation.
+    """
     assert uninitialized_project.services["search"]._wiki_inventory() == {}
 
 
 def test_query_service_returns_fallback_when_no_matches(test_project) -> None:
+    """Verifies that query service returns fallback when no matches.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     answer = _provider_query_service(test_project, "unused").answer_question(
         "What is missing?"
     )
@@ -296,6 +450,11 @@ def test_query_service_returns_fallback_when_no_matches(test_project) -> None:
 
 
 def test_query_service_returns_answer_with_citations(test_project) -> None:
+    """Verifies that query service returns answer with citations.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
 
     answer = _provider_query_service(
@@ -311,6 +470,11 @@ def test_query_service_returns_answer_with_citations(test_project) -> None:
 
 
 def test_query_service_parses_structured_answer_with_claims(test_project) -> None:
+    """Verifies that query service parses structured answer with claims.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
     provider = SequencedProvider(
         [
@@ -350,6 +514,11 @@ def test_query_service_parses_structured_answer_with_claims(test_project) -> Non
 
 
 def test_query_service_parses_fenced_structured_answer(test_project) -> None:
+    """Verifies that query service parses fenced structured answer.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
     fenced = "```json\n" + _structured_query_response() + "\n```"
     query_service = _provider_query_service(test_project, fenced)
@@ -361,6 +530,11 @@ def test_query_service_parses_fenced_structured_answer(test_project) -> None:
 
 
 def test_query_service_parses_prefaced_structured_answer(test_project) -> None:
+    """Verifies that query service parses prefaced structured answer.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
     prefaced = "Here is the JSON response:\n" + _structured_query_response()
     query_service = _provider_query_service(test_project, prefaced)
@@ -372,6 +546,11 @@ def test_query_service_parses_prefaced_structured_answer(test_project) -> None:
 
 
 def test_query_service_rejects_empty_provider_response(test_project) -> None:
+    """Verifies that query service rejects empty provider response.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
     query_service = _provider_query_service(test_project, "")
 
@@ -380,6 +559,11 @@ def test_query_service_rejects_empty_provider_response(test_project) -> None:
 
 
 def test_query_service_rejects_empty_structured_answer(test_project) -> None:
+    """Verifies that query service rejects empty structured answer.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
     empty_answer = _structured_query_response(answer="")
     query_service = _provider_query_service(test_project, empty_answer)
@@ -391,6 +575,11 @@ def test_query_service_rejects_empty_structured_answer(test_project) -> None:
 def test_query_service_rejects_structured_answer_without_claims(
     test_project,
 ) -> None:
+    """Verifies that query service rejects structured answer without claims.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
     no_claims = json.dumps(
         {
@@ -409,6 +598,11 @@ def test_query_service_rejects_structured_answer_without_claims(
 
 
 def test_query_service_rejects_structured_claim_without_refs(test_project) -> None:
+    """Verifies that query service rejects structured claim without refs.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
     no_refs = json.dumps(
         {
@@ -425,6 +619,11 @@ def test_query_service_rejects_structured_claim_without_refs(test_project) -> No
 
 
 def test_query_service_rejects_unknown_declared_citation_refs(test_project) -> None:
+    """Verifies that query service rejects unknown declared citation refs.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
     unknown_declared_ref = json.dumps(
         {
@@ -450,6 +649,11 @@ def test_query_service_rejects_unknown_declared_citation_refs(test_project) -> N
 def test_query_service_includes_provider_diagnostics_on_invalid_output(
     test_project,
 ) -> None:
+    """Verifies that query service includes provider diagnostics on invalid output.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
     provider = DiagnosticProvider(
         ProviderResponse(
@@ -473,6 +677,11 @@ def test_query_service_includes_provider_diagnostics_on_invalid_output(
 
 
 def test_query_service_save_answer_writes_analysis_page(test_project) -> None:
+    """Verifies that query service save answer writes analysis page.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
     query_service = _provider_query_service(
         test_project,
@@ -494,6 +703,11 @@ def test_query_service_save_answer_writes_analysis_page(test_project) -> None:
 
 
 def test_save_structured_answer_persists_claims_and_citations(test_project) -> None:
+    """Verifies that save structured answer persists claims and citations.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
     provider = SequencedProvider(
         [
@@ -538,6 +752,11 @@ def test_save_structured_answer_persists_claims_and_citations(test_project) -> N
 
 
 def test_save_structured_answer_persists_provider_status(test_project) -> None:
+    """Verifies that save structured answer persists provider status.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
     provider = DiagnosticProvider(
         ProviderResponse(
@@ -570,7 +789,12 @@ def test_save_structured_answer_persists_provider_status(test_project) -> None:
 
 
 def test_save_answer_formats_claims_without_refs(test_project) -> None:
-    from src.services.query_service import QueryAnswer, QueryClaim
+    """Verifies that save answer formats claims without refs.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+    from graphwiki_kb.services.query_service import QueryAnswer, QueryClaim
 
     answer = QueryAnswer(
         answer="Traceability stays grounded.",
@@ -591,6 +815,11 @@ def test_save_answer_formats_claims_without_refs(test_project) -> None:
 def test_query_rejects_non_json_provider_response(
     test_project,
 ) -> None:
+    """Verifies that query rejects non json provider response.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
     provider = SequencedProvider(["Plain text answer, not JSON."])
     query_service = QueryService(
@@ -604,6 +833,11 @@ def test_query_rejects_non_json_provider_response(
 
 
 def test_structured_answer_rejects_unknown_citation_refs(test_project) -> None:
+    """Verifies that structured answer rejects unknown citation refs.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
     provider = SequencedProvider(
         [
@@ -638,6 +872,11 @@ def test_structured_answer_rejects_unknown_citation_refs(test_project) -> None:
 
 
 def test_query_service_accepts_duplicate_refs_once(test_project) -> None:
+    """Verifies that query service accepts duplicate refs once.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
     duplicated_refs = json.dumps(
         {
@@ -665,6 +904,11 @@ def test_query_service_accepts_duplicate_refs_once(test_project) -> None:
 
 
 def test_save_answer_appends_to_wiki_log(test_project) -> None:
+    """Verifies that save answer appends to wiki log.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
     query_service = _provider_query_service(
         test_project,
@@ -681,6 +925,11 @@ def test_save_answer_appends_to_wiki_log(test_project) -> None:
 
 
 def test_save_answer_deduplicates_repeated_log_headings(test_project) -> None:
+    """Verifies that save answer deduplicates repeated log headings.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
     query_service = _provider_query_service(
         test_project,
@@ -689,7 +938,7 @@ def test_save_answer_deduplicates_repeated_log_headings(test_project) -> None:
     )
 
     with patch(
-        "src.services.query_service.utc_now_iso",
+        "graphwiki_kb.services.query_service.utc_now_iso",
         return_value="2026-04-24T00:00:00+00:00",
     ):
         first_answer = query_service.answer_question("traceability")
@@ -714,6 +963,11 @@ def test_save_answer_deduplicates_repeated_log_headings(test_project) -> None:
 
 
 def test_save_answer_refreshes_index_with_analysis_page(test_project) -> None:
+    """Verifies that save answer refreshes index with analysis page.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
     compile_svc = test_project.services["compile"]
     query_service = QueryService(
@@ -733,7 +987,12 @@ def test_save_answer_refreshes_index_with_analysis_page(test_project) -> None:
 
 
 def test_query_prompt_includes_schema_excerpt(test_project) -> None:
-    from src.services.config_service import DEFAULT_SCHEMA
+    """Verifies that query prompt includes schema excerpt.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+    from graphwiki_kb.services.config_service import DEFAULT_SCHEMA
 
     provider = SequencedProvider([_structured_query_response()])
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
@@ -756,7 +1015,12 @@ def test_query_prompt_includes_schema_excerpt(test_project) -> None:
 
 
 def test_save_answer_sanitizes_log_question_text(test_project) -> None:
-    from src.services.query_service import QueryAnswer
+    """Verifies that save answer sanitizes log question text.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+    from graphwiki_kb.services.query_service import QueryAnswer
 
     answer = QueryAnswer(
         answer="Traceability stays grounded.", citations=[], mode="test"
@@ -780,7 +1044,10 @@ def test_save_answer_sanitizes_log_question_text(test_project) -> None:
 
 def test_save_answer_with_explicit_slug_and_long_question(test_project) -> None:
     """Covers: save_answer slug kwarg, log-file no-trailing-newline, long question truncation."""
-    from src.services.query_service import QueryAnswer, _parse_provider_query_answer
+    from graphwiki_kb.services.query_service import (
+        QueryAnswer,
+        _parse_provider_query_answer,
+    )
 
     with pytest.raises(ValueError, match="was empty"):
         _parse_provider_query_answer("")
@@ -813,6 +1080,11 @@ def test_save_answer_with_explicit_slug_and_long_question(test_project) -> None:
 def test_query_service_save_answer_uses_fallback_slug_for_empty_question(
     test_project,
 ) -> None:
+    """Verifies that query service save answer uses fallback slug for empty question.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
     query_service = _provider_query_service(
         test_project,
@@ -829,15 +1101,25 @@ def test_query_service_save_answer_uses_fallback_slug_for_empty_question(
 def test_query_service_without_provider_raises_configuration_error(
     test_project,
 ) -> None:
+    """Verifies that query service without provider raises configuration error.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
 
-    with pytest.raises(ProviderConfigurationError, match="kb ask requires"):
+    with pytest.raises(ProviderConfigurationError, match="kb legacy ask requires"):
         test_project.services["query"].answer_question("traceability")
 
 
 def test_query_service_unavailable_provider_raises_configuration_error(
     test_project,
 ) -> None:
+    """Verifies that query service unavailable provider raises configuration error.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
     query_service = QueryService(
         test_project.paths,
@@ -853,6 +1135,11 @@ def test_query_service_unavailable_provider_raises_configuration_error(
 
 
 def test_search_special_characters_split_on_word_boundaries(test_project) -> None:
+    """Verifies that search special characters split on word boundaries.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/llm.md", "LLM-based research from 2026")
 
     results = test_project.services["search"].search("LLM-based (2026)")
@@ -862,6 +1149,11 @@ def test_search_special_characters_split_on_word_boundaries(test_project) -> Non
 
 
 def test_search_respects_limit_with_many_pages(test_project) -> None:
+    """Verifies that search respects limit with many pages.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     for i in range(12):
         test_project.write_file(f"wiki/sources/page-{i}.md", f"alpha content {i}")
 
@@ -871,6 +1163,11 @@ def test_search_respects_limit_with_many_pages(test_project) -> None:
 
 
 def test_search_matches_terms_in_frontmatter(test_project) -> None:
+    """Verifies that search matches terms in frontmatter.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/fm-match.md",
         "---\ntitle: traceability overview\n---\n\nBody without the keyword.\n",
@@ -883,6 +1180,7 @@ def test_search_matches_terms_in_frontmatter(test_project) -> None:
 
 
 def test_extract_snippet_term_at_position_zero() -> None:
+    """Verifies that extract snippet term at position zero."""
     text = "gamma delta epsilon zeta theta"
 
     snippet = _extract_snippet(text, ["gamma"])
@@ -891,6 +1189,11 @@ def test_extract_snippet_term_at_position_zero() -> None:
 
 
 def test_save_answer_creates_parent_directory(test_project) -> None:
+    """Verifies that save answer creates parent directory.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     import shutil
 
     concepts_dir = test_project.paths.wiki_concepts_dir
@@ -909,7 +1212,12 @@ def test_save_answer_creates_parent_directory(test_project) -> None:
 
 
 def test_save_answer_refreshes_search_index_for_analysis_pages(test_project) -> None:
-    from src.services.query_service import QueryAnswer
+    """Verifies that save answer refreshes search index for analysis pages.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+    from graphwiki_kb.services.query_service import QueryAnswer
 
     answer = QueryAnswer(
         answer="Persistent traceability analysis lives in the wiki.",
@@ -946,11 +1254,23 @@ def test_indexable_chunks_include_generated_concepts_for_index(test_project) -> 
 def test_indexable_chunks_returns_empty_for_unreadable_file(
     monkeypatch, test_project
 ) -> None:
+    """Verifies that indexable chunks returns empty for unreadable file.
+
+    Args:
+        monkeypatch: Monkeypatch value used by the operation.
+        test_project: Test project value used by the operation.
+    """
     service = test_project.services["search"]
     path = test_project.write_file("wiki/sources/unreadable.md", "content")
     original_read_text = Path.read_text
 
     def fake_read_text(self: Path, *args, **kwargs):
+        """Fake read text.
+
+        Args:
+            args: Parsed or forwarded command arguments.
+            kwargs: Kwargs value used by the operation.
+        """
         if self == path:
             raise OSError("boom")
         return original_read_text(self, *args, **kwargs)
@@ -965,16 +1285,44 @@ def test_indexable_chunks_returns_empty_for_unreadable_file(
 def test_search_index_store_wraps_sqlite_operational_errors(
     monkeypatch, tmp_path
 ) -> None:
-    from src.storage.search_index_store import SearchIndexStore, SearchIndexUnavailable
+    """Verifies that search index store wraps sqlite operational errors.
+
+    Args:
+        monkeypatch: Monkeypatch value used by the operation.
+        tmp_path: Tmp path value used by the operation.
+    """
+    from graphwiki_kb.storage.search_index_store import (
+        SearchIndexStore,
+        SearchIndexUnavailable,
+    )
 
     class BrokenConnection:
+        """Represents broken connection behavior and data.
+
+        Attributes:
+            See annotated class attributes for stored values.
+        """
+
         def execute(self, *_args, **_kwargs):
+            """Execute.
+
+            Args:
+                _args: Args value used by the operation.
+                _kwargs: Kwargs value used by the operation.
+            """
             return None
 
         def executescript(self, *_args, **_kwargs):
+            """Executescript.
+
+            Args:
+                _args: Args value used by the operation.
+                _kwargs: Kwargs value used by the operation.
+            """
             raise sqlite3.OperationalError("no such module: fts5")
 
         def close(self) -> None:
+            """Close."""
             return None
 
     monkeypatch.setattr(sqlite3, "connect", lambda _path: BrokenConnection())
@@ -986,6 +1334,11 @@ def test_search_index_store_wraps_sqlite_operational_errors(
 
 
 def test_export_service_copies_all_markdown_files(test_project) -> None:
+    """Verifies that export service copies all markdown files.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/sources/a.md", "A")
     test_project.write_file("wiki/index.md", "Index")
 
@@ -998,9 +1351,28 @@ def test_export_service_copies_all_markdown_files(test_project) -> None:
     }
 
 
+def test_export_clean_removes_only_unexported_vault_markdown(test_project) -> None:
+    """Verifies clean uses the exported file set, not stale wiki path checks."""
+    test_project.write_file("wiki/sources/current.md", "Current")
+    test_project.write_file("vault/obsidian/sources/current.md", "Old current")
+    test_project.write_file("vault/obsidian/sources/stale.md", "Stale")
+
+    result = test_project.services["export"].export_vault(clean=True)
+
+    assert "vault/obsidian/sources/current.md" in result.exported_paths
+    assert result.removed_paths == ["vault/obsidian/sources/stale.md"]
+    assert (test_project.root / "vault/obsidian/sources/current.md").exists()
+    assert not (test_project.root / "vault/obsidian/sources/stale.md").exists()
+
+
 def test_status_service_counts_sources_compiled_pages_and_last_compile(
     test_project,
 ) -> None:
+    """Verifies that status service counts sources compiled pages and last compile.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     source_path = test_project.write_file("notes/status.md", "# Status\n\nBody\n")
     test_project.services["ingest"].ingest_path(source_path)
     test_project.services["compile"].compile()
@@ -1016,6 +1388,11 @@ def test_status_service_counts_sources_compiled_pages_and_last_compile(
 
 
 def test_diff_service_reports_new_source_before_compile(test_project) -> None:
+    """Verifies that diff service reports new source before compile.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     source_path = test_project.write_file("notes/diff.md", "# Diff\n\nBody\n")
     test_project.services["ingest"].ingest_path(source_path)
 
@@ -1042,6 +1419,12 @@ def test_search_does_not_scan_markdown_when_fts_returns_no_hits(
     original_scan = service._scan_markdown_files
 
     def tracking_scan(*args, **kwargs):
+        """Tracking scan.
+
+        Args:
+            args: Parsed or forwarded command arguments.
+            kwargs: Kwargs value used by the operation.
+        """
         scan_called.append(True)
         return original_scan(*args, **kwargs)
 
@@ -1141,6 +1524,12 @@ def test_search_index_rebuilds_on_version_mismatch(monkeypatch, test_project) ->
     original_rebuild = service.index_store.rebuild
 
     def tracking_rebuild(*args, **kwargs):
+        """Tracking rebuild.
+
+        Args:
+            args: Parsed or forwarded command arguments.
+            kwargs: Kwargs value used by the operation.
+        """
         rebuild_called.append(True)
         return original_rebuild(*args, **kwargs)
 
@@ -1150,6 +1539,33 @@ def test_search_index_rebuilds_on_version_mismatch(monkeypatch, test_project) ->
     result = service.refresh()
     assert result is True
     assert rebuild_called
+
+
+def test_search_refresh_force_retries_after_fts_unavailable(
+    monkeypatch,
+    test_project,
+) -> None:
+    """Verifies a transient FTS failure does not disable forced rebuilds forever."""
+    from graphwiki_kb.storage.search_index_store import SearchIndexUnavailable
+
+    test_project.write_file("wiki/sources/retry.md", "retryable fts content")
+    service = test_project.services["search"]
+    calls = 0
+    original_load = service.index_store.load_indexed_files
+
+    def fail_once():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise SearchIndexUnavailable("fts unavailable")
+        return original_load()
+
+    monkeypatch.setattr(service.index_store, "load_indexed_files", fail_once)
+
+    assert service.refresh() is False
+    assert service._fts_available is False
+    assert service.refresh(force=True) is True
+    assert service._fts_available is True
 
 
 def test_refresh_file_upserts_single_file_without_full_rebuild(
@@ -1166,10 +1582,22 @@ def test_refresh_file_upserts_single_file_without_full_rebuild(
     original_upsert = service.index_store.upsert_file
 
     def tracking_upsert(*args, **kwargs):
+        """Tracking upsert.
+
+        Args:
+            args: Parsed or forwarded command arguments.
+            kwargs: Kwargs value used by the operation.
+        """
         upsert_called.append(True)
         return original_upsert(*args, **kwargs)
 
     def tracking_rebuild(*args, **kwargs):
+        """Tracking rebuild.
+
+        Args:
+            args: Parsed or forwarded command arguments.
+            kwargs: Kwargs value used by the operation.
+        """
         rebuild_called.append(True)
 
     monkeypatch.setattr(service.index_store, "upsert_file", tracking_upsert)
@@ -1184,10 +1612,9 @@ def test_refresh_file_upserts_single_file_without_full_rebuild(
 
 def test_search_index_store_upsert_replaces_stale_chunks(test_project) -> None:
     """upsert_file must replace old chunks so stale terms are no longer searchable."""
-    from src.storage.search_index_store import (
+    from graphwiki_kb.storage.search_index_store import (
         IndexedChunk,
         IndexedFileState,
-        SearchIndexStore,
     )
 
     store = test_project.services["search"].index_store
@@ -1225,7 +1652,7 @@ def test_search_index_store_upsert_replaces_stale_chunks(test_project) -> None:
 
 def test_search_index_store_delete_missing_files(test_project) -> None:
     """delete_missing_files must remove pages no longer in the given path set."""
-    from src.storage.search_index_store import IndexedChunk, IndexedFileState
+    from graphwiki_kb.storage.search_index_store import IndexedChunk, IndexedFileState
 
     store = test_project.services["search"].index_store
     for slug in ("keep", "remove"):
@@ -1318,7 +1745,7 @@ def test_refresh_file_marks_fts_unavailable_on_upsert_error(
     monkeypatch, test_project
 ) -> None:
     """refresh_file() must disable FTS when upsert_file raises SearchIndexUnavailable."""
-    from src.storage.search_index_store import SearchIndexUnavailable
+    from graphwiki_kb.storage.search_index_store import SearchIndexUnavailable
 
     path = test_project.write_file("wiki/sources/upsert-fail.md", "content")
     service = test_project.services["search"]
@@ -1326,6 +1753,12 @@ def test_refresh_file_marks_fts_unavailable_on_upsert_error(
     service.refresh(force=True)
 
     def raise_unavailable(*_a, **_kw):
+        """Raise unavailable.
+
+        Args:
+            _a: A value used by the operation.
+            _kw: Kw value used by the operation.
+        """
         raise SearchIndexUnavailable("broken")
 
     monkeypatch.setattr(service.index_store, "upsert_file", raise_unavailable)
@@ -1359,7 +1792,12 @@ def test_status_provider_summary_not_configured(test_project) -> None:
 
 
 def test_status_provider_summary_configured(test_project) -> None:
-    from src.services.status_service import StatusService
+    """Verifies that status provider summary configured.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+    from graphwiki_kb.services.status_service import StatusService
 
     service = StatusService(
         test_project.paths,
@@ -1372,7 +1810,12 @@ def test_status_provider_summary_configured(test_project) -> None:
 
 
 def test_status_provider_summary_uses_catalog_defaults(test_project) -> None:
-    from src.services.status_service import StatusService
+    """Verifies that status provider summary uses catalog defaults.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+    from graphwiki_kb.services.status_service import StatusService
 
     service = StatusService(
         test_project.paths,
@@ -1391,7 +1834,7 @@ def test_status_provider_summary_uses_catalog_defaults(test_project) -> None:
                     "thinking_budget": 10_000,
                 },
                 "gemini": {
-                    "model": "gemini-3.1-flash-lite-preview",
+                    "model": "gemini-2.5-flash",
                     "api_key_env": "GEMINI_API_KEY",
                     "reasoning_effort": "high",
                 },
@@ -1404,11 +1847,21 @@ def test_status_provider_summary_uses_catalog_defaults(test_project) -> None:
 
 
 def test_status_index_status_not_built(test_project) -> None:
+    """Verifies that status index status not built.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     snap = test_project.services["status"].snapshot(initialized=True)
     assert snap.index_status == "not built"
 
 
 def test_status_index_status_available(test_project) -> None:
+    """Verifies that status index status available.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     index_path = test_project.paths.graph_exports_dir / "search_index.sqlite3"
     index_path.write_bytes(b"fake")
     snap = test_project.services["status"].snapshot(initialized=True)
@@ -1416,15 +1869,25 @@ def test_status_index_status_available(test_project) -> None:
 
 
 def test_status_export_status_not_exported(test_project) -> None:
+    """Verifies that status export status not exported.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     snap = test_project.services["status"].snapshot(initialized=True)
     # vault dir exists (from ensure_structure) but has no files
     assert snap.export_status in ("not exported", "empty")
 
 
 def test_status_export_status_stale(test_project) -> None:
+    """Verifies that status export status stale.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     import time
 
-    vault_file = test_project.write_file("vault/obsidian/page.md", "old")
+    test_project.write_file("vault/obsidian/page.md", "old")
     time.sleep(0.05)
     test_project.write_file("wiki/sources/newer.md", "newer")
     source_path = test_project.write_file("notes/s.md", "# S\n\nBody\n")
@@ -1436,6 +1899,11 @@ def test_status_export_status_stale(test_project) -> None:
 
 
 def test_status_counts_analysis_pages_in_analysis_dir(test_project) -> None:
+    """Verifies that status counts analysis pages in analysis dir.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file("wiki/analysis/q1.md", "---\ntype: analysis\n---\n# Q1\n")
     test_project.write_file("wiki/analysis/q2.md", "---\ntype: analysis\n---\n# Q2\n")
     snap = test_project.services["status"].snapshot(initialized=True)
@@ -1445,7 +1913,7 @@ def test_status_counts_analysis_pages_in_analysis_dir(test_project) -> None:
 
 def test_search_index_returns_empty_snippet_fallback(test_project) -> None:
     """When a FTS hit has no snippet text, the section/title must be used instead."""
-    from src.storage.search_index_store import SearchHit
+    from graphwiki_kb.storage.search_index_store import SearchHit
 
     test_project.write_file("wiki/sources/snippetless.md", "sparse relevant body")
     service = test_project.services["search"]
@@ -1453,6 +1921,12 @@ def test_search_index_returns_empty_snippet_fallback(test_project) -> None:
     original_search = service.index_store.search
 
     def patched_search(query, *, limit):
+        """Patched search.
+
+        Args:
+            query: User query or search text to evaluate.
+            limit: Maximum number of results to return or process.
+        """
         hits = original_search(query, limit=limit)
         # Return hit with empty snippet to exercise the fallback
         return [
@@ -1517,7 +1991,7 @@ def test_indexable_chunks_fallback_for_empty_body_page(test_project) -> None:
 def test_chunk_markdown_body_handles_non_paragraph_section(test_project) -> None:
     """A section with only a run of consecutive non-blank lines (no blank-line separators)
     is returned as one paragraph by _paragraphs; the chunk must still be non-empty."""
-    from src.services.search_service import _chunk_markdown_body
+    from graphwiki_kb.services.search_service import _chunk_markdown_body
 
     text = "## Tight Section\n\nline one\nline two\nline three\n"
     chunks = _chunk_markdown_body(text, "Tight Section")
@@ -1527,7 +2001,7 @@ def test_chunk_markdown_body_handles_non_paragraph_section(test_project) -> None
 
 def test_chunk_markdown_body_skips_blank_normalized_paragraphs() -> None:
     """Normalized empty paragraph strings must be silently skipped."""
-    from src.services.search_service import _chunk_markdown_body
+    from graphwiki_kb.services.search_service import _chunk_markdown_body
 
     text = "# Title\n\n   \n\nReal paragraph content here\n"
     chunks = _chunk_markdown_body(text, "Title")
@@ -1537,7 +2011,8 @@ def test_chunk_markdown_body_skips_blank_normalized_paragraphs() -> None:
 
 
 def test_chunk_markdown_body_skips_non_evidence_sections() -> None:
-    from src.services.search_service import _chunk_markdown_body
+    """Verifies that chunk markdown body skips non evidence sections."""
+    from graphwiki_kb.services.search_service import _chunk_markdown_body
 
     text = (
         "# Paper\n\n"
@@ -1559,7 +2034,8 @@ def test_chunk_markdown_body_skips_non_evidence_sections() -> None:
 
 
 def test_clean_search_snippet_removes_wiki_markup() -> None:
-    from src.services.search_service import _clean_search_snippet
+    """Verifies that clean search snippet removes wiki markup."""
+    from graphwiki_kb.services.search_service import _clean_search_snippet
 
     assert _clean_search_snippet("[[target|Readable Title]] `path.md`") == (
         "Readable Title path.md"
@@ -1568,6 +2044,11 @@ def test_clean_search_snippet_removes_wiki_markup() -> None:
 
 
 def test_diff_service_reports_up_to_date_after_compile(test_project) -> None:
+    """Verifies that diff service reports up to date after compile.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     source_path = test_project.write_file("notes/diff.md", "# Diff\n\nBody\n")
     test_project.services["ingest"].ingest_path(source_path)
     test_project.services["compile"].compile()
@@ -1581,6 +2062,11 @@ def test_diff_service_reports_up_to_date_after_compile(test_project) -> None:
 
 
 def test_diff_service_reports_changed_after_source_modification(test_project) -> None:
+    """Verifies that diff service reports changed after source modification.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     source_path = test_project.write_file("notes/diff.md", "# Diff\n\nBody\n")
     test_project.services["ingest"].ingest_path(source_path)
     test_project.services["compile"].compile()
@@ -1599,7 +2085,56 @@ def test_diff_service_reports_changed_after_source_modification(test_project) ->
     assert report.entries[0].status == "changed"
 
 
+def test_diff_service_distinguishes_manifest_source_change(test_project) -> None:
+    """Verifies diff separates manifest-updated sources from disk-only edits."""
+    source_path = test_project.write_file("notes/diff.md", "# Diff\n\nBody\n")
+    test_project.services["ingest"].ingest_path(source_path)
+    test_project.services["compile"].compile()
+
+    record = test_project.services["manifest"].list_sources()[0]
+    norm_path = test_project.root / (record.normalized_path or record.raw_path)
+    edited = "# Diff\n\nUpdated through ingest metadata.\n"
+    norm_path.write_text(edited, encoding="utf-8")
+    record.content_hash = hashlib.sha256(edited.encode("utf-8")).hexdigest()
+    test_project.services["manifest"].save_source(record)
+
+    report = test_project.services["diff"].diff()
+
+    assert report.entries[0].status == "changed"
+    assert report.entries[0].details == "source changed since last compile"
+
+
+def test_diff_service_reports_missing_after_normalized_file_delete(
+    test_project,
+) -> None:
+    """Verifies that diff service reports missing normalized files explicitly.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+    source_path = test_project.write_file("notes/missing.md", "# Missing\n\nBody\n")
+    test_project.services["ingest"].ingest_path(source_path)
+    test_project.services["compile"].compile()
+
+    record = test_project.services["manifest"].list_sources()[0]
+    norm_path = test_project.root / (record.normalized_path or record.raw_path)
+    norm_path.unlink()
+
+    report = test_project.services["diff"].diff()
+
+    assert report.new_count == 0
+    assert report.changed_count == 0
+    assert report.missing_count == 1
+    assert report.up_to_date_count == 0
+    assert report.entries[0].status == "missing"
+
+
 def test_diff_service_handles_empty_manifest(test_project) -> None:
+    """Verifies that diff service handles empty manifest.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     report = test_project.services["diff"].diff()
 
     assert report.new_count == 0
@@ -1609,6 +2144,7 @@ def test_diff_service_handles_empty_manifest(test_project) -> None:
 
 
 def test_provider_dataclasses_and_base_provider_behavior() -> None:
+    """Verifies that provider dataclasses and base provider behavior."""
     request = ProviderRequest(prompt="hello", system_prompt="system")
     response = ProviderResponse(text="world", model_name="demo")
 
@@ -1630,6 +2166,11 @@ def test_provider_dataclasses_and_base_provider_behavior() -> None:
 
 
 def test_ingest_compile_edit_recompile_lint_stale_cycle(test_project) -> None:
+    """Verifies that ingest compile edit recompile lint stale cycle.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     path = test_project.write_file("notes/cycle.md", "# Cycle\n\nOriginal body.\n")
     test_project.services["ingest"].ingest_path(path)
     test_project.services["compile"].compile()
@@ -1652,6 +2193,11 @@ def test_ingest_compile_edit_recompile_lint_stale_cycle(test_project) -> None:
 
 
 def test_ingest_two_sources_compile_lint_both_orphans(test_project) -> None:
+    """Verifies that ingest two sources compile lint both orphans.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/lonely-a.md",
         _compiled_page("Lonely A", "Body A no links."),
@@ -1669,6 +2215,11 @@ def test_ingest_two_sources_compile_lint_both_orphans(test_project) -> None:
 
 
 def test_ingest_compile_query_save_lint_saved_page(test_project) -> None:
+    """Verifies that ingest compile query save lint saved page.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     path = test_project.write_file("notes/qa.md", "# QA\n\nTraceability evidence.\n")
     test_project.services["ingest"].ingest_path(path)
     test_project.services["compile"].compile()
@@ -1693,6 +2244,11 @@ def test_ingest_compile_query_save_lint_saved_page(test_project) -> None:
 
 
 def test_ingest_compile_export_vault_mirrors_wiki(test_project) -> None:
+    """Verifies that ingest compile export vault mirrors wiki.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     path = test_project.write_file("notes/vault.md", "# Vault\n\nVault body.\n")
     test_project.services["ingest"].ingest_path(path)
     test_project.services["compile"].compile()
@@ -1710,6 +2266,11 @@ def test_ingest_compile_export_vault_mirrors_wiki(test_project) -> None:
 
 
 def test_ingest_duplicate_status_shows_count_one(test_project) -> None:
+    """Verifies that ingest duplicate status shows count one.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     path = test_project.write_file("notes/dup.md", "# Dup\n\nDuplicate body.\n")
     first = test_project.services["ingest"].ingest_path(path)
     second = test_project.services["ingest"].ingest_path(path)
@@ -1722,6 +2283,11 @@ def test_ingest_duplicate_status_shows_count_one(test_project) -> None:
 
 
 def test_ingest_compile_search_returns_correct_paths(test_project) -> None:
+    """Verifies that ingest compile search returns correct paths.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     path = test_project.write_file(
         "notes/search-test.md", "# Search Test\n\nKnowledge base findable.\n"
     )
@@ -1736,6 +2302,11 @@ def test_ingest_compile_search_returns_correct_paths(test_project) -> None:
 
 
 def test_search_snippet_excludes_frontmatter(test_project) -> None:
+    """Verifies that search snippet excludes frontmatter.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/frontmatter-test.md",
         "---\ntitle: Frontmatter Test\nsummary: Meta here\n---\n\n"
@@ -1754,6 +2325,11 @@ def test_search_snippet_excludes_frontmatter(test_project) -> None:
 def test_search_excludes_generated_concept_pages_but_includes_analysis(
     test_project,
 ) -> None:
+    """Verifies that search excludes generated concept pages but includes analysis.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/source-page.md",
         "# Source Page\n\nTraceability evidence.\n",
@@ -1788,6 +2364,11 @@ def test_search_excludes_generated_concept_pages_but_includes_analysis(
 def test_query_service_excludes_saved_analysis_pages_from_evidence(
     test_project,
 ) -> None:
+    """Verifies that query service excludes saved analysis pages from evidence.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     test_project.write_file(
         "wiki/sources/primary.md",
         "---\ntitle: Primary\nsummary: S\ntype: source\n---\n\n"
@@ -1823,7 +2404,50 @@ def test_query_service_excludes_saved_analysis_pages_from_evidence(
     assert "wiki/analysis/prior-answer.md" not in provider.requests[0].prompt
 
 
+def test_query_service_uses_source_pages_only_for_legacy_evidence(
+    test_project,
+) -> None:
+    """Regression: legacy ask must not reuse generated graph pages as evidence."""
+    test_project.write_file(
+        "wiki/sources/primary.md",
+        "---\ntitle: Primary\nsummary: S\ntype: source\n---\n\n"
+        "# Primary\n\ntraceability source evidence.\n",
+    )
+    test_project.write_file(
+        "wiki/graph/entities/traceability.md",
+        "---\ntitle: Traceability Graph\ntype: graph_entity\n---\n\n"
+        "# Traceability Graph\n\ntraceability generated graph page.\n",
+    )
+    provider = SequencedProvider(
+        [
+            _structured_query_response(
+                answer="Traceability comes from source evidence.",
+                ref="wiki/sources/primary.md#chunk-0",
+                title="Primary",
+                claim="Traceability comes from source evidence.",
+            )
+        ]
+    )
+    query_service = QueryService(
+        test_project.paths,
+        test_project.services["search"],
+        provider=provider,
+    )
+
+    answer = query_service.answer_question("traceability", limit=5)
+
+    assert [citation.path for citation in answer.citations] == [
+        "wiki/sources/primary.md"
+    ]
+    assert "wiki/graph/entities/traceability.md" not in provider.requests[0].prompt
+
+
 def test_save_answer_includes_summary_in_frontmatter(test_project) -> None:
+    """Verifies that save answer includes summary in frontmatter.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
     query_service = _provider_query_service(
         test_project,
         _structured_query_response(
@@ -1844,7 +2468,12 @@ def test_save_answer_includes_summary_in_frontmatter(test_project) -> None:
 
 
 def test_save_answer_summary_fallback_for_empty_answer(test_project) -> None:
-    from src.services.query_service import QueryAnswer
+    """Verifies that save answer summary fallback for empty answer.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+    from graphwiki_kb.services.query_service import QueryAnswer
 
     query_service = test_project.services["query"]
     answer = QueryAnswer(answer="", citations=[], mode="test")
@@ -1881,6 +2510,12 @@ def test_refresh_file_triggers_full_rebuild_on_version_mismatch(
     original_rebuild = service.index_store.rebuild
 
     def tracking_rebuild(*args, **kwargs):
+        """Tracking rebuild.
+
+        Args:
+            args: Parsed or forwarded command arguments.
+            kwargs: Kwargs value used by the operation.
+        """
         rebuild_called.append(True)
         return original_rebuild(*args, **kwargs)
 

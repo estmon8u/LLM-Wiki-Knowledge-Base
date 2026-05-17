@@ -1,0 +1,661 @@
+"""Tests for test graphrag status service.
+
+This module belongs to `tests.test_graphrag_status_service` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pandas as pd
+
+from graphwiki_kb.services.graphrag_command_service import GraphRAGCommandResult
+from graphwiki_kb.services.graphrag_freshness_service import (
+    file_digest,
+    graph_input_source_hashes,
+    graph_runtime_digest,
+)
+from graphwiki_kb.services.graphrag_status_service import (
+    GraphRAGStatus,
+    GraphRAGStatusService,
+    graph_not_ready_message,
+    graph_ready_for_query,
+)
+
+
+def _record_fresh_successful_index_run(
+    service: GraphRAGStatusService,
+    *,
+    method: str = "fast",
+    output_state: str = "complete",
+) -> object:
+    workspace_dir = service.paths.graph_dir / "graphrag"
+    input_path = workspace_dir / "input" / "sources.json"
+    return service.record_index_run(
+        method=method,
+        dry_run=False,
+        result=GraphRAGCommandResult(
+            command=("python", "-m", "graphrag", "index"),
+            cwd=service.paths.root,
+            returncode=0,
+            stdout="indexed",
+            stderr="",
+        ),
+        input_digest=file_digest(input_path),
+        config_digest=graph_runtime_digest(workspace_dir),
+        input_source_count=service._input_document_count(),
+        source_hashes=graph_input_source_hashes(input_path),
+        output_state=output_state,
+    )
+
+
+def _write_minimal_parquet(path: Path, table: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame([{"id": f"{table}-1"}]).to_parquet(path)
+
+
+def test_status_reports_workspace_input_outputs_and_last_run(test_project) -> None:
+    """Verifies that status reports workspace input outputs and last run.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "a"}, {"id": "b"}]),
+    )
+    for table in (
+        "documents",
+        "text_units",
+        "entities",
+        "relationships",
+        "communities",
+        "community_reports",
+    ):
+        _write_minimal_parquet(
+            test_project.paths.graph_dir / "graphrag" / "output" / f"{table}.parquet",
+            table,
+        )
+    test_project.write_file(
+        "graph/graphrag/output/lancedb/vector-store.marker",
+        "ready",
+    )
+    service = GraphRAGStatusService(test_project.paths)
+    run = _record_fresh_successful_index_run(service)
+
+    status = service.status()
+
+    assert status.workspace_initialized is True
+    assert status.input_exists is True
+    assert status.input_document_count == 2
+    assert status.output_present is True
+    assert status.documents_present is True
+    assert status.text_units_present is True
+    assert status.entities_present is True
+    assert status.relationships_present is True
+    assert status.communities_present is True
+    assert status.community_reports_present is True
+    assert status.vector_store_exists is True
+    assert status.vector_store_readable is True
+    assert status.vector_store_state == "ready"
+    assert all(state == "ready" for state in status.table_states.values())
+    assert (
+        status.active_output_dir == test_project.paths.graph_dir / "graphrag" / "output"
+    )
+    assert status.last_index_run_id == run.run_id
+    assert status.last_index_method == "fast"
+    assert status.last_index_success is True
+    assert status.graph_freshness_state == "fresh"
+    assert status.state == "complete"
+    assert status.next_action.startswith("Run `kb ask")
+    payload = status.to_dict(test_project.paths.root)
+    assert payload["workspace_dir"] == "graph/graphrag"
+    assert payload["input_path"] == "graph/graphrag/input/sources.json"
+    assert payload["active_output_dir"] == "graph/graphrag/output"
+    assert payload["vector_store_path"] == "graph/graphrag/output/lancedb"
+    assert payload["vector_store_state"] == "ready"
+    assert payload["graph_freshness_state"] == "fresh"
+    assert payload["run_metadata_state"] == "ok"
+
+
+def test_status_counts_realistic_nested_graphrag_parquet_tables(
+    test_project,
+) -> None:
+    """Verifies that status counts realistic nested graphrag parquet tables.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "doc-1", "text": "GraphRAG source text."}]),
+    )
+    output_dir = test_project.paths.graph_dir / "graphrag" / "output" / "artifacts"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    table_rows = {
+        "create_final_documents.parquet": [{"id": "doc-1", "title": "RAG Paper"}],
+        "create_final_text_units.parquet": [{"id": "tu-1", "text": "A chunk."}],
+        "create_final_entities.parquet": [{"id": "ent-1", "title": "RAG"}],
+        "create_final_relationships.parquet": [
+            {"id": "rel-1", "source": "RAG", "target": "REALM"}
+        ],
+        "create_final_communities.parquet": [{"id": "0", "community": 0}],
+        "create_final_community_reports.parquet": [
+            {"id": "report-0", "community": 0, "summary": "Community report."}
+        ],
+    }
+    for filename, rows in table_rows.items():
+        pd.DataFrame(rows).to_parquet(output_dir / filename)
+    test_project.write_file(
+        "graph/graphrag/output/lancedb/vector-store.marker",
+        "ready",
+    )
+    test_project.write_file("wiki/graph/index.md", "# GraphRAG Index\n")
+
+    status = GraphRAGStatusService(test_project.paths).status()
+
+    assert status.output_present is True
+    assert status.documents_present is True
+    assert status.text_units_present is True
+    assert status.entities_present is True
+    assert status.relationships_present is True
+    assert status.communities_present is True
+    assert status.community_reports_present is True
+    assert status.document_count == 1
+    assert status.text_unit_count == 1
+    assert status.entity_count == 1
+    assert status.relationship_count == 1
+    assert status.community_count == 1
+    assert status.community_report_count == 1
+    assert status.vector_store_readable is True
+    assert status.input_updated_at is not None
+    assert status.output_updated_at is not None
+    assert status.wiki_export_present is True
+    assert status.wiki_export_updated_at is not None
+    payload = status.to_dict(test_project.paths.root)
+    assert payload["output_dir"] == "graph/graphrag/output"
+    assert payload["active_output_dir"] == "graph/graphrag/output/artifacts"
+    assert payload["entity_count"] == 1
+
+
+def test_status_treats_missing_vector_store_as_incomplete_output(
+    test_project,
+) -> None:
+    """Regression: Parquet tables alone are not enough for query readiness."""
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "doc-1", "text": "GraphRAG source text."}]),
+    )
+    for table in (
+        "documents",
+        "text_units",
+        "entities",
+        "relationships",
+        "communities",
+        "community_reports",
+    ):
+        _write_minimal_parquet(
+            test_project.paths.graph_dir / "graphrag" / "output" / f"{table}.parquet",
+            table,
+        )
+
+    status = GraphRAGStatusService(test_project.paths).status()
+
+    assert status.output_present is True
+    assert status.vector_store_exists is False
+    assert status.vector_store_readable is False
+    assert status.vector_store_state == "missing"
+    assert status.output_complete is False
+    assert "vector_store" in status.missing_tables
+    assert "vector store" in status.next_action
+
+
+def test_status_rejects_non_lancedb_vector_store_directory(test_project) -> None:
+    """Regression: a non-empty vector-store directory alone is not readable."""
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "doc-1", "text": "GraphRAG source text."}]),
+    )
+    for table in (
+        "documents",
+        "text_units",
+        "entities",
+        "relationships",
+        "communities",
+        "community_reports",
+    ):
+        _write_minimal_parquet(
+            test_project.paths.graph_dir / "graphrag" / "output" / f"{table}.parquet",
+            table,
+        )
+    test_project.write_file("graph/graphrag/output/lancedb/random.txt", "not lancedb")
+
+    status = GraphRAGStatusService(test_project.paths).status()
+
+    assert status.vector_store_exists is True
+    assert status.vector_store_readable is False
+    assert status.vector_store_state in {"empty", "unreadable"}
+    assert status.output_complete is False
+
+
+def test_status_prefers_complete_output_over_newer_partial_output(
+    test_project,
+) -> None:
+    """Verifies active output resolution ignores newer incomplete output folders."""
+    import os
+    import time
+
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "a"}]),
+    )
+    complete_dir = test_project.paths.graph_dir / "graphrag" / "output" / "complete"
+    partial_dir = test_project.paths.graph_dir / "graphrag" / "output" / "partial"
+    for table in (
+        "documents",
+        "text_units",
+        "entities",
+        "relationships",
+        "communities",
+        "community_reports",
+    ):
+        _write_minimal_parquet(
+            test_project.paths.graph_dir
+            / "graphrag"
+            / "output"
+            / "complete"
+            / f"{table}.parquet",
+            table,
+        )
+    test_project.write_file("graph/graphrag/output/partial/entities.parquet", "")
+    older = time.time() - 120
+    newer = time.time()
+    for path in complete_dir.glob("*.parquet"):
+        os.utime(path, (older, older))
+    for path in partial_dir.glob("*.parquet"):
+        os.utime(path, (newer, newer))
+    test_project.write_file(
+        "graph/graphrag/output/lancedb/vector-store.marker",
+        "ready",
+    )
+
+    service = GraphRAGStatusService(test_project.paths)
+    status = service.status()
+
+    assert status.output_complete is True
+    assert status.active_output_dir == complete_dir
+    assert service.table_path("entities") == complete_dir / "entities.parquet"
+    payload = status.to_dict(test_project.paths.root)
+    assert payload["active_output_dir"] == "graph/graphrag/output/complete"
+
+
+def test_status_prefers_recorded_successful_output_dir(test_project) -> None:
+    """Regression: a later complete folder should not override the recorded run."""
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "a"}]),
+    )
+    recorded_dir = test_project.paths.graph_dir / "graphrag" / "output" / "recorded"
+    later_dir = test_project.paths.graph_dir / "graphrag" / "output" / "later"
+    for directory in (recorded_dir, later_dir):
+        for table in (
+            "documents",
+            "text_units",
+            "entities",
+            "relationships",
+            "communities",
+            "community_reports",
+        ):
+            path = directory / f"{table}.parquet"
+            _write_minimal_parquet(path, table)
+    test_project.write_file(
+        "graph/graphrag/output/lancedb/vector-store.marker",
+        "ready",
+    )
+    service = GraphRAGStatusService(test_project.paths)
+    _record_fresh_successful_index_run(service)
+    runs = service._load_runs()
+    runs[-1]["active_output_dir"] = "graph/graphrag/output/recorded"
+    service.runs_file.write_text(json.dumps(runs), encoding="utf-8")
+
+    assert service.status().active_output_dir == recorded_dir
+
+
+def test_status_skips_corrupt_recorded_output_dir_for_complete_candidate(
+    test_project,
+) -> None:
+    """A recorded output directory must be readable before status prefers it."""
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "a"}]),
+    )
+    recorded_dir = test_project.paths.graph_dir / "graphrag" / "output" / "recorded"
+    later_dir = test_project.paths.graph_dir / "graphrag" / "output" / "later"
+    for table in (
+        "documents",
+        "text_units",
+        "entities",
+        "relationships",
+        "communities",
+        "community_reports",
+    ):
+        recorded_path = recorded_dir / f"{table}.parquet"
+        recorded_path.parent.mkdir(parents=True, exist_ok=True)
+        recorded_path.write_text("not parquet", encoding="utf-8")
+        _write_minimal_parquet(later_dir / f"{table}.parquet", table)
+    test_project.write_file(
+        "graph/graphrag/output/lancedb/vector-store.marker",
+        "ready",
+    )
+    service = GraphRAGStatusService(test_project.paths)
+    _record_fresh_successful_index_run(service)
+    runs = service._load_runs()
+    runs[-1]["active_output_dir"] = "graph/graphrag/output/recorded"
+    service.runs_file.write_text(json.dumps(runs), encoding="utf-8")
+
+    status = service.status()
+
+    assert status.active_output_dir == later_dir
+    assert status.output_complete is True
+
+
+def test_status_surfaces_corrupt_run_metadata(test_project) -> None:
+    service = GraphRAGStatusService(test_project.paths)
+    service.runs_file.parent.mkdir(parents=True, exist_ok=True)
+    service.runs_file.write_text("{not json", encoding="utf-8")
+
+    status = service.status()
+
+    assert status.run_metadata_state == "corrupt"
+    assert status.to_dict(test_project.paths.root)["run_metadata_state"] == "corrupt"
+
+
+def test_status_marks_unreadable_parquet_as_not_complete(test_project) -> None:
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "a"}]),
+    )
+    for table in (
+        "documents",
+        "text_units",
+        "entities",
+        "relationships",
+        "communities",
+        "community_reports",
+    ):
+        path = test_project.paths.graph_dir / "graphrag" / "output" / f"{table}.parquet"
+        if table == "entities":
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("not parquet", encoding="utf-8")
+        else:
+            _write_minimal_parquet(path, table)
+    test_project.write_file(
+        "graph/graphrag/output/lancedb/vector-store.marker",
+        "ready",
+    )
+
+    status = GraphRAGStatusService(test_project.paths).status()
+
+    assert status.output_complete is False
+    assert status.state == "present_unreadable"
+    assert status.table_states["entities"] == "present_unreadable"
+    assert "entities" in status.missing_tables
+
+
+def test_method_readiness_rejects_present_but_unreadable_required_table(
+    test_project,
+) -> None:
+    """Regression: file presence alone is not enough for method readiness."""
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "a"}]),
+    )
+    for table in (
+        "documents",
+        "text_units",
+        "entities",
+        "relationships",
+        "communities",
+        "community_reports",
+    ):
+        path = test_project.paths.graph_dir / "graphrag" / "output" / f"{table}.parquet"
+        if table == "entities":
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("not parquet", encoding="utf-8")
+        else:
+            _write_minimal_parquet(path, table)
+    test_project.write_file(
+        "graph/graphrag/output/lancedb/vector-store.marker",
+        "ready",
+    )
+    service = GraphRAGStatusService(test_project.paths)
+    _record_fresh_successful_index_run(service)
+
+    status = service.status()
+
+    assert status.entities_present is True
+    assert status.table_states["entities"] == "present_unreadable"
+    assert graph_ready_for_query(status, method="local") is False
+    assert graph_ready_for_query(status, method="drift") is False
+    assert "entities" in graph_not_ready_message(status, method="local")
+
+
+def test_status_marks_complete_output_stale_when_index_metadata_is_missing(
+    test_project,
+) -> None:
+    """Regression: old run records cannot claim fresh query readiness."""
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "a"}]),
+    )
+    for table in (
+        "documents",
+        "text_units",
+        "entities",
+        "relationships",
+        "communities",
+        "community_reports",
+    ):
+        _write_minimal_parquet(
+            test_project.paths.graph_dir / "graphrag" / "output" / f"{table}.parquet",
+            table,
+        )
+    test_project.write_file(
+        "graph/graphrag/output/lancedb/vector-store.marker",
+        "ready",
+    )
+    service = GraphRAGStatusService(test_project.paths)
+    service.record_index_run(
+        method="fast",
+        dry_run=False,
+        result=GraphRAGCommandResult(
+            command=("python", "-m", "graphrag", "index"),
+            cwd=test_project.paths.root,
+            returncode=0,
+            stdout="indexed",
+            stderr="",
+        ),
+    )
+
+    status = service.status()
+
+    assert status.output_complete is True
+    assert status.graph_freshness_state == "missing-metadata"
+    assert status.state == "stale"
+    assert graph_ready_for_query(status, method="basic") is False
+    assert "kb update --graph-only" in status.next_action
+
+
+def test_status_reports_next_actions_for_missing_workspace(test_project) -> None:
+    """Verifies that status reports next actions for missing workspace.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+    service = GraphRAGStatusService(test_project.paths)
+
+    status = service.status()
+
+    assert status.workspace_initialized is False
+    assert status.input_document_count == 0
+    assert status.output_present is False
+    assert status.next_action == "Run `kb init`."
+
+
+def test_status_counts_documents_from_dict_payload(test_project) -> None:
+    """Verifies that status counts documents from dict payload.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps({"sources": [{"id": "a"}, {"id": "b"}, {"id": "c"}]}),
+    )
+    service = GraphRAGStatusService(test_project.paths)
+
+    status = service.status()
+
+    assert status.input_document_count == 3
+    assert status.next_action == ("Run `kb update` to sync and build the graph index.")
+
+
+def test_status_after_successful_dry_run_points_to_full_index(test_project) -> None:
+    """Verifies that status after successful dry run points to full index.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "a"}]),
+    )
+    service = GraphRAGStatusService(test_project.paths)
+    service.record_index_run(
+        method="fast",
+        dry_run=True,
+        result=GraphRAGCommandResult(
+            command=("python", "-m", "graphrag", "index", "--dry-run"),
+            cwd=test_project.paths.root,
+            returncode=0,
+            stdout="",
+            stderr="",
+        ),
+    )
+
+    status = service.status()
+
+    assert status.output_present is False
+    assert status.next_action == ("Run `kb update` to build the graph index.")
+
+
+def test_status_after_failed_index_points_to_error_recovery(test_project) -> None:
+    """Verifies that status after failed index points to error recovery.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "a"}]),
+    )
+    service = GraphRAGStatusService(test_project.paths)
+    service.record_index_run(
+        method="fast",
+        dry_run=False,
+        result=GraphRAGCommandResult(
+            command=("python", "-m", "graphrag", "index"),
+            cwd=test_project.paths.root,
+            returncode=2,
+            stdout="",
+            stderr="failed",
+        ),
+    )
+
+    status = service.status()
+
+    assert status.last_index_success is False
+    assert status.next_action == (
+        "Fix the last graph index error, then rerun `kb update`."
+    )
+
+
+def test_status_handles_invalid_input_and_run_metadata(test_project) -> None:
+    """Verifies that status handles invalid input and run metadata.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file("graph/graphrag/input/sources.json", "{not json")
+    test_project.write_file("graph/runs/graph_index_runs.json", "{not json")
+    service = GraphRAGStatusService(test_project.paths)
+
+    status = service.status()
+
+    assert status.input_exists is True
+    assert status.input_document_count == 0
+    assert status.last_index_run_id is None
+    assert status.next_action == "Add and compile sources, then run `kb update`."
+
+
+def test_status_ignores_non_list_run_metadata(test_project) -> None:
+    """Verifies that status ignores non list run metadata.
+
+    Args:
+        test_project: Test project value used by the operation.
+    """
+    test_project.write_file("graph/runs/graph_index_runs.json", json.dumps({"run": 1}))
+    service = GraphRAGStatusService(test_project.paths)
+
+    assert service._load_runs() == []
+
+
+def test_status_to_dict_handles_paths_outside_project(test_project, tmp_path) -> None:
+    """Verifies that status to dict handles paths outside project.
+
+    Args:
+        test_project: Test project value used by the operation.
+        tmp_path: Tmp path value used by the operation.
+    """
+    status = GraphRAGStatus(
+        workspace_dir=Path("D:/outside/workspace"),
+        settings_path=Path("D:/outside/workspace/settings.yaml"),
+        input_path=Path("D:/outside/workspace/input/sources.json"),
+        output_dir=Path("D:/outside/workspace/output"),
+        workspace_initialized=False,
+        input_exists=False,
+        input_document_count=0,
+        output_present=False,
+        documents_present=False,
+        text_units_present=False,
+        entities_present=False,
+        relationships_present=False,
+        communities_present=False,
+        community_reports_present=False,
+        last_index_run_id=None,
+        last_index_run_at=None,
+        last_index_method=None,
+        last_index_success=None,
+        next_action="Run `kb init`.",
+    )
+
+    payload = status.to_dict(tmp_path)
+
+    assert payload["workspace_dir"].endswith("outside/workspace")

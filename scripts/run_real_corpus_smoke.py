@@ -1,7 +1,15 @@
+"""Command-line script for run real corpus smoke.
+
+This module belongs to `scripts.run_real_corpus_smoke` and keeps related behavior
+close to the command, service, model, provider, storage, script, or test
+surface that uses it.
+"""
+
 from __future__ import annotations
 
 import argparse
 import locale
+import os
 import shutil
 import subprocess
 import sys
@@ -28,12 +36,26 @@ SUPPORTED_SUFFIXES = {
 
 @dataclass
 class CommandRun:
+    """Represents command run behavior and data.
+
+    Attributes:
+        See annotated class attributes for stored values.
+    """
+
     args: list[str]
     exit_code: int
     output: str
 
 
 def discover_supported_sources(raw_root: Path) -> list[Path]:
+    """Discover supported sources.
+
+    Args:
+        raw_root: Raw root value used by the operation.
+
+    Returns:
+        list[Path] produced by the operation.
+    """
     return sorted(
         path
         for path in raw_root.rglob("*")
@@ -42,6 +64,14 @@ def discover_supported_sources(raw_root: Path) -> list[Path]:
 
 
 def find_unsupported_probe(raw_root: Path) -> Path | None:
+    """Find unsupported probe.
+
+    Args:
+        raw_root: Raw root value used by the operation.
+
+    Returns:
+        Path | None produced by the operation.
+    """
     unsupported = sorted(
         path
         for path in raw_root.rglob("*")
@@ -55,15 +85,34 @@ def run_cli_command(
     log_path: Path,
     args: list[str],
 ) -> CommandRun:
-    command_display = "python -m src.cli " + " ".join(args)
+    """Run cli command.
+
+    Args:
+        repo_root: Repo root value used by the operation.
+        log_path: Log path value used by the operation.
+        args: Parsed or forwarded command arguments.
+
+    Returns:
+        CommandRun produced by the operation.
+    """
+    command_display = "python -m graphwiki_kb.cli " + " ".join(args)
     header = f"\n=== {command_display} ===\n"
     print(header, end="")
     with log_path.open("a", encoding="utf-8") as handle:
         handle.write(header)
 
+    env = os.environ.copy()
+    src_path = str(repo_root / "src")
+    existing_pythonpath = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (
+        src_path
+        if not existing_pythonpath
+        else src_path + os.pathsep + existing_pythonpath
+    )
     result = subprocess.run(
-        [sys.executable, "-m", "src.cli", *args],
+        [sys.executable, "-m", "graphwiki_kb.cli", *args],
         cwd=repo_root,
+        env=env,
         capture_output=True,
         text=True,
         encoding=locale.getpreferredencoding(False),
@@ -87,6 +136,11 @@ def run_cli_command(
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Builds the command-line argument parser.
+
+    Returns:
+        argparse.ArgumentParser produced by the operation.
+    """
     parser = argparse.ArgumentParser(
         description="Run a disposable end-to-end CLI smoke test against a raw corpus."
     )
@@ -102,6 +156,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Runs the command-line entry point.
+
+    Args:
+        argv: Optional argument vector. Uses process arguments when omitted.
+
+    Returns:
+        int produced by the operation.
+    """
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -165,8 +227,20 @@ def main(argv: list[str] | None = None) -> int:
         ["--project-root", str(project_root), "update"],
         ["--project-root", str(project_root), "status", "--changed"],
         ["--project-root", str(project_root), "status"],
-        ["--project-root", str(project_root), "find", *args.search_query.split()],
-        ["--project-root", str(project_root), "ask", *args.question.split()],
+        [
+            "--project-root",
+            str(project_root),
+            "legacy",
+            "find",
+            *args.search_query.split(),
+        ],
+        [
+            "--project-root",
+            str(project_root),
+            "legacy",
+            "ask",
+            *args.question.split(),
+        ],
     ):
         result = run_cli_command(repo_root, log_path, command_args)
         if result.exit_code != 0:
