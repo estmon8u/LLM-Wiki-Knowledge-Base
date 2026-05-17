@@ -411,12 +411,12 @@ Saved pages use `retriever: graph`, `method`, `planner`, `claim_support`,
 metadata. `graph_input_hash` is the hash of the synced GraphRAG input file;
 `input_manifest_hash` is the raw manifest hash recorded in that input when
 available. The current GraphRAG wrapper records command traces and parsed
-`[Data: ...]` references when
-GraphRAG emits them; it does not claim full citation evidence until source spans
-are parsed. Raw stdout and stderr are preserved in separate sections for audit,
-answer prose is cleaned before the `## Answer` section, blank GraphRAG answers
-are refused, and repeated saves use unique filenames instead of overwriting the
-prior analysis page.
+`[Data: ...]` references, including GraphRAG report/community-report labels,
+when GraphRAG emits them; it does not claim full citation evidence until source
+spans are parsed. Raw stdout and stderr are preserved in separate sections for
+audit, answer prose is cleaned before the `## Answer` section, blank GraphRAG
+answers are refused, and repeated saves use unique filenames instead of
+overwriting the prior analysis page.
 
 ### `kb legacy ask <question>`
 
@@ -557,7 +557,7 @@ poetry run kb sources show <slug>
 | Markdown | `.md`, `.markdown` | Direct (no conversion needed) |
 | Plain text | `.txt` | Direct (no conversion needed) |
 | PDF | `.pdf` | Mistral OCR primary (Docling, then MarkItDown fallback) |
-| HTML | `.htm`, `.html` | `wkhtmltopdf` or `xhtml2pdf` → Mistral OCR (MarkItDown fallback) |
+| HTML | `.htm`, `.html` | `wkhtmltopdf` or `xhtml2pdf` → Mistral OCR (MarkItDown fallback; preserves the source `<title>` when available) |
 | CSV | `.csv` | MarkItDown |
 | Word | `.docx` | Mistral OCR (MarkItDown fallback) |
 | PowerPoint | `.pptx` | Mistral OCR (MarkItDown fallback) |
@@ -572,6 +572,9 @@ OCR API as the primary converter because conversion accuracy determines the
 quality of every downstream source page, graph index, retrieval result, and
 answer. Local PDF converters are resilience fallbacks only; fallback metadata is
 recorded so lower-confidence conversions can be reviewed or rerun with Mistral.
+For HTML, the source document `<title>` is extracted before rendering and kept as
+the normalized page title when available, which prevents navigation chrome such
+as "Skip to content" from becoming the durable source title after OCR.
 
 ## Provider Configuration
 
@@ -799,7 +802,7 @@ Default routing is:
 - `.pdf` → Mistral OCR first, then Docling, then MarkItDown if needed
 - `.docx`, `.pptx` → Mistral OCR first, then MarkItDown if needed
 - `.png`, `.jpg`, `.jpeg`, `.avif` → Mistral OCR first
-- `.htm`, `.html` → `wkhtmltopdf` first, then `xhtml2pdf` if needed, then Mistral OCR
+- `.htm`, `.html` → `wkhtmltopdf` first, then `xhtml2pdf` if needed, then Mistral OCR, with the original HTML `<title>` retained when available
 - `.csv`, `.epub`, `.ipynb`, `.xls`, `.xlsx` → MarkItDown
 - `.md`, `.markdown`, `.txt` → direct passthrough
 

@@ -54,6 +54,8 @@ GRAPH_DATA_REFERENCE_KINDS = {
     "relationships": "relationship",
     "community": "community",
     "communities": "community",
+    "report": "community_report",
+    "reports": "community_report",
     "community_report": "community_report",
     "community_reports": "community_report",
 }
@@ -446,7 +448,13 @@ def _normalize_reference_kind(value: str) -> str:
 
 
 def _split_reference_ids(value: str) -> list[str]:
-    return [item.strip() for item in re.split(r"[,;]", value) if item.strip()]
+    ids = []
+    for item in re.split(r"[,;]", value):
+        cleaned = item.strip()
+        if not cleaned or cleaned.startswith("+"):
+            continue
+        ids.append(cleaned)
+    return ids
 
 
 def _relative_path(path: Path, root: Path) -> str:

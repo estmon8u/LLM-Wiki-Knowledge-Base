@@ -9,6 +9,7 @@ import re
 import shutil
 from copy import deepcopy
 from dataclasses import dataclass, field
+from html import unescape
 from importlib.metadata import version as package_version
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -618,8 +619,10 @@ class NormalizationService:
         return self._build_result(source_path, candidate)
 
     def _normalize_html(self, source_path: Path) -> NormalizationResult:
+        html_title = _html_document_title(source_path)
         try:
             candidate = self._candidate_from_html_mistral(source_path)
+            _apply_html_title(candidate, html_title)
             return self._build_result(source_path, candidate)
         except ValueError as primary_error:
             fallback = self._first_fallback_name(source_path.suffix.lower())
@@ -635,9 +638,12 @@ class NormalizationService:
                 ) from primary_error
             return self._build_result_with_fallback(
                 source_path,
-                self._candidate_from_markitdown(
-                    source_path,
-                    route=HTML_FALLBACK_ROUTE,
+                _with_html_title(
+                    self._candidate_from_markitdown(
+                        source_path,
+                        route=HTML_FALLBACK_ROUTE,
+                    ),
+                    html_title,
                 ),
                 fallback_name=fallback,
                 fallback_route=HTML_FALLBACK_ROUTE,
@@ -1119,6 +1125,35 @@ def _extract_title(contents: str, source_path: Path) -> str:
     if post_heading_fallbacks:
         return post_heading_fallbacks[0]
     return _filename_title(source_path)
+
+
+def _html_document_title(source_path: Path) -> str | None:
+    try:
+        contents = source_path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return None
+    match = re.search(r"<title[^>]*>(.*?)</title>", contents, re.IGNORECASE | re.DOTALL)
+    if match is None:
+        return None
+    title = _clean_title_candidate(unescape(match.group(1)))
+    if not title or not _is_probable_title(title):
+        return None
+    return title
+
+
+def _apply_html_title(candidate: _ConvertedText, html_title: str | None) -> None:
+    if not html_title:
+        return
+    candidate.title = html_title
+    candidate.metadata["html_title"] = html_title
+
+
+def _with_html_title(
+    candidate: _ConvertedText,
+    html_title: str | None,
+) -> _ConvertedText:
+    _apply_html_title(candidate, html_title)
+    return candidate
 
 
 def _clean_title_candidate(candidate: str) -> str:

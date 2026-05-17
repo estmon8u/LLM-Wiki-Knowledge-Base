@@ -227,7 +227,7 @@ def test_controller_accepts_graph_env_file_credentials(
     _write_ready_graph(test_project)
     test_project.write_file("graph/graphrag/.env", "OPENAI_API_KEY=local-key\n")
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         """Runner.
 
         Args:
@@ -260,7 +260,7 @@ def test_controller_saves_answer_when_requested(test_project, monkeypatch) -> No
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     _write_ready_graph(test_project)
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         """Runner.
 
         Args:
@@ -423,7 +423,7 @@ def test_controller_claim_support_reports_stale_index(
         json.dumps([{"id": "src-1", "text": "Changed RAG text"}]),
     )
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         """Runner.
 
         Args:
@@ -444,7 +444,7 @@ def test_controller_claim_support_reports_no_answer(test_project, monkeypatch) -
     _write_ready_graph(test_project)
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         """Runner.
 
         Args:

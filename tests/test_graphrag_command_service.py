@@ -70,8 +70,8 @@ class _FakeApiBackend:
 def test_subprocess_backend_builds_documented_cli_commands(test_project) -> None:
     calls = []
 
-    def runner(command, *, cwd, capture_output, text):
-        calls.append((command, cwd, capture_output, text))
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
         return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
 
     backend = SubprocessGraphRAGApiBackend(test_project.paths, runner)
@@ -88,7 +88,10 @@ def test_subprocess_backend_builds_documented_cli_commands(test_project) -> None
 
     assert result.command[:2] == ("graphrag", "index")
     assert "--dry-run" in result.command
-    assert calls[0][1] == test_project.paths.root
+    assert calls[0][1]["cwd"] == test_project.paths.root
+    assert calls[0][1]["encoding"] == "utf-8"
+    assert calls[0][1]["errors"] == "replace"
+    assert calls[0][1]["env"]["PYTHONIOENCODING"] == "utf-8"
 
 
 def test_subprocess_backend_builds_init_index_and_query_options(
@@ -96,7 +99,7 @@ def test_subprocess_backend_builds_init_index_and_query_options(
 ) -> None:
     calls: list[tuple[str, ...]] = []
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, **kwargs):
         calls.append(command)
         return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
 
@@ -160,7 +163,7 @@ def test_command_service_falls_back_to_cli_on_entrypoint_contract_error(
 
     calls = []
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, **kwargs):
         calls.append(command)
         return subprocess.CompletedProcess(command, 0, stdout="cli indexed", stderr="")
 
@@ -190,7 +193,7 @@ def test_command_service_falls_back_to_cli_on_contract_error_stderr(
     )
     calls = []
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, **kwargs):
         calls.append(command)
         return subprocess.CompletedProcess(command, 0, stdout="cli answer", stderr="")
 
@@ -207,11 +210,37 @@ def test_command_service_falls_back_to_cli_on_contract_error_stderr(
     assert calls[0][:2] == ("graphrag", "query")
 
 
+def test_command_service_falls_back_to_cli_on_entrypoint_encoding_error(
+    test_project,
+) -> None:
+    backend = _FakeApiBackend(
+        stderr="'charmap' codec can't encode character at position 1166: "
+        "character maps to <undefined>"
+    )
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="cli answer", stderr="")
+
+    service = GraphRAGCommandService(
+        test_project.paths,
+        api_backend=backend,
+        fallback_backend=SubprocessGraphRAGApiBackend(test_project.paths, runner),
+    )
+
+    result = service.query("What changed?", method="global")
+
+    assert result.stdout == "cli answer"
+    assert backend.calls[0][0] == "query"
+    assert calls[0][:2] == ("graphrag", "query")
+
+
 def test_command_service_can_use_subprocess_backend_directly(test_project) -> None:
     calls = []
 
-    def runner(command, *, cwd, capture_output, text):
-        calls.append((command, cwd))
+    def runner(command, **kwargs):
+        calls.append((command, kwargs["cwd"]))
         return subprocess.CompletedProcess(command, 0, stdout="cli ok", stderr="")
 
     service = GraphRAGCommandService(

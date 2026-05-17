@@ -130,10 +130,16 @@ def _build_query_service(test_project, runner):
 
 def test_graph_data_reference_details_dedupes_and_skips_unknown_refs() -> None:
     assert _graph_data_reference_details(
-        "[Data: Sources (1); Widgets (2); Sources (1); Entities (alpha, beta)]"
+        "[Data: Sources (1); Widgets (2); Sources (1); Entities (alpha, beta)] "
+        "[Data: Reports (92, 73, +more)]"
     ) == [
         {"kind": "source", "ids": ["1"], "raw": "Sources (1)"},
         {"kind": "entity", "ids": ["alpha", "beta"], "raw": "Entities (alpha, beta)"},
+        {
+            "kind": "community_report",
+            "ids": ["92", "73"],
+            "raw": "Reports (92, 73, +more)",
+        },
     ]
 
 
@@ -146,7 +152,7 @@ def test_graph_query_runs_explicit_method_and_options(test_project) -> None:
     _write_ready_graph(test_project)
     calls = []
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         """Runner.
 
         Args:
@@ -218,7 +224,7 @@ def test_graph_query_raw_output_prefers_stdout_over_progress_stderr(
     """
     _write_ready_graph(test_project)
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         """Runner.
 
         Args:
@@ -257,7 +263,7 @@ def test_graph_query_does_not_treat_stderr_as_answer(test_project) -> None:
     """Regression: successful stderr-only GraphRAG noise is not answer text."""
     _write_ready_graph(test_project)
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         """Runner."""
         return subprocess.CompletedProcess(
             command,
@@ -279,7 +285,7 @@ def test_graph_query_filters_noisy_stdout_before_saved_answer(test_project) -> N
     """Regression: stdout progress/log lines are not saved as answer prose."""
     _write_ready_graph(test_project)
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         """Runner."""
         return subprocess.CompletedProcess(
             command,
@@ -319,7 +325,7 @@ def test_graph_query_save_writes_analysis_page_and_refreshes_index(
     """
     _write_ready_graph(test_project)
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         """Runner.
 
         Args:
@@ -456,7 +462,7 @@ def test_graph_query_allows_global_queries_without_vector_store(test_project) ->
     )
     marker.unlink()
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         return subprocess.CompletedProcess(
             command,
             0,
@@ -508,7 +514,7 @@ def test_graph_query_save_does_not_overwrite_existing_analysis_page(
     """Regression: repeated saved GraphRAG answers receive unique slugs."""
     _write_ready_graph(test_project)
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         return subprocess.CompletedProcess(
             command,
             0,
@@ -552,7 +558,7 @@ def test_graph_query_surfaces_command_failure(test_project) -> None:
     """
     _write_ready_graph(test_project)
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         """Runner.
 
         Args:

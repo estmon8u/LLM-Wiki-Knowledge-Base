@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import io
+import os
 import subprocess
 from collections.abc import Callable, Sequence
 from contextlib import redirect_stderr, redirect_stdout
@@ -172,13 +173,13 @@ class GraphRAGCommandService:
         try:
             result = method(**kwargs)
         except GraphRAGCommandError as exc:
-            if self._fallback_backend is None or not _is_entrypoint_contract_error(
+            if self._fallback_backend is None or not _should_fallback_from_entrypoint(
                 str(exc)
             ):
                 raise
             fallback_method = getattr(self._fallback_backend, operation)
             return fallback_method(**kwargs)
-        if self._fallback_backend is not None and _is_entrypoint_contract_error(
+        if self._fallback_backend is not None and _should_fallback_from_entrypoint(
             result.stderr
         ):
             fallback_method = getattr(self._fallback_backend, operation)
@@ -391,6 +392,9 @@ class _RunnerGraphRAGApiBackend:
             cwd=self.paths.root,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=_graphrag_subprocess_env(),
         )
         return _completed_process_result(command, self.paths.root, completed)
 
@@ -420,6 +424,9 @@ class _RunnerGraphRAGApiBackend:
             cwd=self.paths.root,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=_graphrag_subprocess_env(),
         )
         _emit_progress_lines(completed.stdout or "", status_callback)
         _emit_progress_lines(completed.stderr or "", status_callback)
@@ -454,6 +461,9 @@ class _RunnerGraphRAGApiBackend:
             cwd=self.paths.root,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=_graphrag_subprocess_env(),
         )
         return _completed_process_result(command, self.paths.root, completed)
 
@@ -479,6 +489,9 @@ class SubprocessGraphRAGApiBackend:
             cwd=self.paths.root,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=_graphrag_subprocess_env(),
         )
         return _completed_process_result(command, self.paths.root, completed)
 
@@ -508,6 +521,9 @@ class SubprocessGraphRAGApiBackend:
             cwd=self.paths.root,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=_graphrag_subprocess_env(),
         )
         _emit_progress_lines(completed.stdout or "", status_callback)
         _emit_progress_lines(completed.stderr or "", status_callback)
@@ -542,6 +558,9 @@ class SubprocessGraphRAGApiBackend:
             cwd=self.paths.root,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=_graphrag_subprocess_env(),
         )
         return _completed_process_result(command, self.paths.root, completed)
 
@@ -983,6 +1002,27 @@ def _is_entrypoint_contract_error(message: str) -> bool:
             "missing expected parameter",
         )
     )
+
+
+def _is_entrypoint_encoding_error(message: str) -> bool:
+    normalized = message.casefold()
+    return (
+        "unicodedecodeerror" in normalized
+        or "character maps to <undefined>" in normalized
+    )
+
+
+def _should_fallback_from_entrypoint(message: str) -> bool:
+    return _is_entrypoint_contract_error(message) or _is_entrypoint_encoding_error(
+        message
+    )
+
+
+def _graphrag_subprocess_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env.setdefault("PYTHONUTF8", "1")
+    return env
 
 
 def _split_index_method(method: str) -> tuple[str, bool]:

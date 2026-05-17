@@ -19,6 +19,7 @@ from graphwiki_kb.services.graphrag_defaults import (
     DEFAULT_GRAPHRAG_MAX_SOURCE_BYTES,
     DEFAULT_GRAPHRAG_MODEL,
 )
+from graphwiki_kb.services.graphrag_freshness_service import file_digest
 from graphwiki_kb.services.graphrag_input_sync_service import (
     GRAPH_INPUT_METADATA_FIELDS,
     GRAPH_INPUT_SIZE_WARNING_BYTES,
@@ -107,6 +108,7 @@ def test_sync_writes_json_records_and_preserves_provenance(test_project) -> None
     assert result.source_count == 1
     assert result.input_size_bytes > 0
     assert result.output_path == test_project.root / "graph/graphrag/input/sources.json"
+    assert result.input_digest == file_digest(result.output_path)
     assert "\n  " not in result.output_path.read_text(encoding="utf-8")
     records = json.loads(result.output_path.read_text(encoding="utf-8"))
     assert len(records) == 1

@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 import yaml
 from click.testing import CliRunner
 
@@ -296,7 +297,8 @@ def test_find_merges_graph_and_wiki_before_global_ranking() -> None:
 
     results = _merge_results([graph_result], [wiki_result], limit=1)
 
-    assert results == [wiki_result]
+    assert results[0].path == wiki_result.path
+    assert results[0].score == pytest.approx(1 / 61)
 
 
 def test_ask_streaming_option_is_removed() -> None:

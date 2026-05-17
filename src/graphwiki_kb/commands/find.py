@@ -157,7 +157,20 @@ def _merge_results(
         ),
         reverse=True,
     )
-    return [candidates[key] for key in ranked_keys[:limit]]
+    return [
+        _with_score(candidates[key], rrf_scores[key]) for key in ranked_keys[:limit]
+    ]
+
+
+def _with_score(result: SearchResult, score: float) -> SearchResult:
+    return SearchResult(
+        title=result.title,
+        path=result.path,
+        score=score,
+        snippet=result.snippet,
+        section=result.section,
+        chunk_index=result.chunk_index,
+    )
 
 
 def _graph_find_diagnostics(graph_status: dict[str, object]) -> list[str]:

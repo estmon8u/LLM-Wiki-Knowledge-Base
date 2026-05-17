@@ -34,7 +34,7 @@ def test_workspace_service_reports_initialization_state(test_project) -> None:
         test_project: Test project value used by the operation.
     """
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         """Runner.
 
         Args:
@@ -100,7 +100,7 @@ def test_workspace_service_syncs_graph_config_defaults(test_project) -> None:
         "api_key_env": "OPENAI_GRAPH_KEY",
     }
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         """Runner.
 
         Args:
@@ -272,7 +272,7 @@ def test_workspace_service_syncs_separate_embedding_provider(test_project) -> No
         "embedding_model": "gemini-embedding-001",
     }
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         """Runner.
 
         Args:

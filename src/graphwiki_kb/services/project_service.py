@@ -62,7 +62,7 @@ def atomic_write_text(path: Path, contents: str, *, encoding: str = "utf-8") -> 
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = _atomic_temp_path(path)
     try:
-        temp_path.write_text(contents, encoding=encoding)
+        temp_path.write_text(contents, encoding=encoding, newline="")
         _replace_with_retry(temp_path, path)
     finally:
         temp_path.unlink(missing_ok=True)

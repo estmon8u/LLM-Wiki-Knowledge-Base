@@ -48,6 +48,15 @@ def test_utc_now_iso_uses_utc_and_strips_microseconds() -> None:
     assert "." not in timestamp.split("+")[0]
 
 
+def test_atomic_write_text_preserves_exact_newline_bytes(tmp_path: Path) -> None:
+    """Verifies that atomic text writes do not apply platform newline conversion."""
+    output_path = tmp_path / "nested" / "payload.json"
+
+    atomic_write_text(output_path, "one\ntwo\n")
+
+    assert output_path.read_bytes() == b"one\ntwo\n"
+
+
 def test_slugify_normalizes_values_and_handles_empty() -> None:
     """Verifies that slugify normalizes values and handles empty."""
     assert slugify("  A Complex_Title!!  ") == "a-complex-title"

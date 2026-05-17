@@ -362,6 +362,29 @@ def test_normalization_service_routes_html_through_renderer_then_mistral(
     assert result.metadata["wkhtmltopdf_path"] == "C:/wkhtmltopdf.exe"
 
 
+def test_normalization_service_prefers_html_title_metadata_for_html_ocr(
+    tmp_path: Path,
+) -> None:
+    """Regression: HTML OCR boilerplate must not become the source title."""
+    source_path = tmp_path / "graphrag-getting-started.html"
+    source_path.write_text(
+        "<html><head><title>Getting Started - GraphRAG</title></head>"
+        "<body><a>Skip to content</a><main>GraphRAG</main></body></html>",
+        encoding="utf-8",
+    )
+    mistral = FakeMistralConverter(
+        document_text="Skip to content\n\nGraphRAG\n\nGetting Started\n"
+    )
+
+    result = NormalizationService(
+        mistral_ocr_converter=mistral,
+        html_renderer=FakeHtmlRenderer(),
+    ).normalize_path(source_path)
+
+    assert result.title == "Getting Started - GraphRAG"
+    assert result.metadata["html_title"] == "Getting Started - GraphRAG"
+
+
 def test_normalization_service_routes_pdf_to_mistral_by_default(tmp_path: Path) -> None:
     """Verifies that normalization service routes pdf to mistral by default.
 

@@ -298,7 +298,7 @@ def test_sync_does_not_skip_after_latest_failed_attempt(test_project) -> None:
     """Verifies latest failed index metadata forces a retry after prior success."""
     calls = []
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         """Runner.
 
         Args:
@@ -353,7 +353,7 @@ def test_sync_uses_incremental_update_when_source_hash_changes(test_project) -> 
     """
     calls = []
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         """Runner.
 
         Args:
@@ -393,7 +393,7 @@ def test_sync_rebuilds_when_graph_runtime_config_changes(test_project) -> None:
     """
     calls = []
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         """Runner.
 
         Args:
@@ -439,7 +439,7 @@ def test_sync_rebuilds_partial_output_instead_of_incremental_update(
     """
     calls = []
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         """Runner.
 
         Args:
@@ -499,7 +499,7 @@ def test_sync_force_coerces_update_method_to_full_rebuild(test_project) -> None:
     """
     calls = []
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         """Runner.
 
         Args:
@@ -538,7 +538,7 @@ def test_sync_respects_explicit_full_method_override(test_project) -> None:
     """
     calls = []
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         """Runner.
 
         Args:
@@ -570,7 +570,7 @@ def test_sync_coerces_explicit_update_method_when_output_missing(
     """Regression: update methods require complete existing graph output."""
     calls = []
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         """Runner."""
         calls.append(command)
         return subprocess.CompletedProcess(command, 0, stdout="rebuilt\n", stderr="")
@@ -595,7 +595,7 @@ def test_sync_rebuilds_complete_output_when_metadata_is_missing(test_project) ->
     """
     calls = []
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         """Runner.
 
         Args:
@@ -630,7 +630,7 @@ def test_sync_records_failed_index_run_before_reraising(test_project) -> None:
         test_project: Test project value used by the operation.
     """
 
-    def runner(command, *, cwd, capture_output, text):
+    def runner(command, *, cwd, capture_output, text, **_kwargs):
         """Runner.
 
         Args:
