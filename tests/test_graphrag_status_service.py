@@ -13,10 +13,42 @@ from pathlib import Path
 import pandas as pd
 
 from graphwiki_kb.services.graphrag_command_service import GraphRAGCommandResult
+from graphwiki_kb.services.graphrag_freshness_service import (
+    file_digest,
+    graph_input_source_hashes,
+    graph_runtime_digest,
+)
 from graphwiki_kb.services.graphrag_status_service import (
     GraphRAGStatus,
     GraphRAGStatusService,
+    graph_ready_for_query,
 )
+
+
+def _record_fresh_successful_index_run(
+    service: GraphRAGStatusService,
+    *,
+    method: str = "fast",
+    output_state: str = "complete",
+) -> object:
+    workspace_dir = service.paths.graph_dir / "graphrag"
+    input_path = workspace_dir / "input" / "sources.json"
+    return service.record_index_run(
+        method=method,
+        dry_run=False,
+        result=GraphRAGCommandResult(
+            command=("python", "-m", "graphrag", "index"),
+            cwd=service.paths.root,
+            returncode=0,
+            stdout="indexed",
+            stderr="",
+        ),
+        input_digest=file_digest(input_path),
+        config_digest=graph_runtime_digest(workspace_dir),
+        input_source_count=service._input_document_count(),
+        source_hashes=graph_input_source_hashes(input_path),
+        output_state=output_state,
+    )
 
 
 def test_status_reports_workspace_input_outputs_and_last_run(test_project) -> None:
@@ -44,17 +76,7 @@ def test_status_reports_workspace_input_outputs_and_last_run(test_project) -> No
         "ready",
     )
     service = GraphRAGStatusService(test_project.paths)
-    run = service.record_index_run(
-        method="fast",
-        dry_run=False,
-        result=GraphRAGCommandResult(
-            command=("python", "-m", "graphrag", "index"),
-            cwd=test_project.paths.root,
-            returncode=0,
-            stdout="indexed",
-            stderr="",
-        ),
-    )
+    run = _record_fresh_successful_index_run(service)
 
     status = service.status()
 
@@ -77,6 +99,8 @@ def test_status_reports_workspace_input_outputs_and_last_run(test_project) -> No
     assert status.last_index_run_id == run.run_id
     assert status.last_index_method == "fast"
     assert status.last_index_success is True
+    assert status.graph_freshness_state == "fresh"
+    assert status.state == "complete"
     assert status.next_action.startswith("Run `kb ask")
     payload = status.to_dict(test_project.paths.root)
     assert payload["workspace_dir"] == "graph/graphrag"
@@ -84,6 +108,7 @@ def test_status_reports_workspace_input_outputs_and_last_run(test_project) -> No
     assert payload["active_output_dir"] == "graph/graphrag/output"
     assert payload["vector_store_path"] == "graph/graphrag/output/lancedb"
     assert payload["vector_store_state"] == "ready"
+    assert payload["graph_freshness_state"] == "fresh"
 
 
 def test_status_counts_realistic_nested_graphrag_parquet_tables(
@@ -277,6 +302,37 @@ def test_status_prefers_recorded_successful_output_dir(test_project) -> None:
         "ready",
     )
     service = GraphRAGStatusService(test_project.paths)
+    _record_fresh_successful_index_run(service)
+    runs = service._load_runs()
+    runs[-1]["active_output_dir"] = "graph/graphrag/output/recorded"
+    service.runs_file.write_text(json.dumps(runs), encoding="utf-8")
+
+    assert service.status().active_output_dir == recorded_dir
+
+
+def test_status_marks_complete_output_stale_when_index_metadata_is_missing(
+    test_project,
+) -> None:
+    """Regression: old run records cannot claim fresh query readiness."""
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "a"}]),
+    )
+    for table in (
+        "documents",
+        "text_units",
+        "entities",
+        "relationships",
+        "communities",
+        "community_reports",
+    ):
+        test_project.write_file(f"graph/graphrag/output/{table}.parquet", "")
+    test_project.write_file(
+        "graph/graphrag/output/lancedb/vector-store.marker",
+        "ready",
+    )
+    service = GraphRAGStatusService(test_project.paths)
     service.record_index_run(
         method="fast",
         dry_run=False,
@@ -288,11 +344,14 @@ def test_status_prefers_recorded_successful_output_dir(test_project) -> None:
             stderr="",
         ),
     )
-    runs = service._load_runs()
-    runs[-1]["active_output_dir"] = "graph/graphrag/output/recorded"
-    service.runs_file.write_text(json.dumps(runs), encoding="utf-8")
 
-    assert service.status().active_output_dir == recorded_dir
+    status = service.status()
+
+    assert status.output_complete is True
+    assert status.graph_freshness_state == "missing-metadata"
+    assert status.state == "stale"
+    assert graph_ready_for_query(status, method="basic") is False
+    assert "kb update --graph-only" in status.next_action
 
 
 def test_status_reports_next_actions_for_missing_workspace(test_project) -> None:

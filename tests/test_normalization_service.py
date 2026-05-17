@@ -23,6 +23,7 @@ from graphwiki_kb.services.normalization_service import (
     MISTRAL_DOCUMENT_ROUTE,
     MISTRAL_IMAGE_ROUTE,
     PDF_FALLBACK_ROUTE,
+    PDF_MARKITDOWN_FALLBACK_ROUTE,
     DoclingPdfConverter,
     MistralOcrConverter,
     NormalizationService,
@@ -386,6 +387,55 @@ def test_normalization_service_routes_pdf_to_mistral_by_default(tmp_path: Path) 
     assert result.metadata["normalization_route"] == MISTRAL_DOCUMENT_ROUTE
 
 
+def test_normalization_service_rejects_oversized_inline_pdf_before_ocr(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: oversized inline OCR payloads fail before reading/provider calls."""
+    source_path = tmp_path / "large.pdf"
+    source_path.write_bytes(b"12345")
+    mistral = FakeMistralConverter(document_text="# Should Not Run\n")
+    monkeypatch.setattr(
+        normalization_service_module,
+        "MAX_INLINE_OCR_PAYLOAD_BYTES",
+        4,
+    )
+
+    with pytest.raises(ValueError, match="inline OCR upload limit"):
+        NormalizationService(
+            config={"conversion": {"fallbacks": {"pdf": "none"}}},
+            mistral_ocr_converter=mistral,
+        ).normalize_path(source_path)
+
+    assert mistral.document_calls == []
+
+
+def test_normalization_service_rejects_oversized_rendered_html_before_ocr(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: rendered HTML PDFs also respect inline OCR size limits."""
+    source_path = tmp_path / "large.html"
+    source_path.write_text("<html><body><h1>Large</h1></body></html>", encoding="utf-8")
+    mistral = FakeMistralConverter(document_text="# Should Not Run\n")
+    renderer = FakeHtmlRenderer(pdf_bytes=b"12345")
+    monkeypatch.setattr(
+        normalization_service_module,
+        "MAX_INLINE_OCR_PAYLOAD_BYTES",
+        4,
+    )
+
+    with pytest.raises(ValueError, match="inline OCR upload limit"):
+        NormalizationService(
+            config={"conversion": {"fallbacks": {"html": "none"}}},
+            mistral_ocr_converter=mistral,
+            html_renderer=renderer,
+        ).normalize_path(source_path)
+
+    assert renderer.paths == [source_path]
+    assert mistral.document_calls == []
+
+
 def test_normalization_service_falls_back_to_docling_for_pdf(tmp_path: Path) -> None:
     """Verifies that normalization service falls back to docling for pdf.
 
@@ -409,6 +459,35 @@ def test_normalization_service_falls_back_to_docling_for_pdf(tmp_path: Path) -> 
     assert result.metadata["fallback_used"] is True
     assert result.metadata["fallback_converter"] == "docling"
     assert result.metadata["normalization_route"] == PDF_FALLBACK_ROUTE
+
+
+def test_normalization_service_tries_markitdown_after_docling_pdf_fallback_rejects(
+    tmp_path: Path,
+) -> None:
+    """PDF fallback chain keeps Mistral primary, then tries local fallbacks in order."""
+    source_path = tmp_path / "sample.pdf"
+    source_path.write_bytes(b"%PDF-1.4\nfake\n")
+    mistral = FakeMistralConverter(document_error=ValueError("ocr unavailable"))
+    pdf_converter = FakeDoclingFallbackConverter("tiny")
+    markitdown = FakeMarkItDownConverter(
+        "# MarkItDown PDF Fallback\n\n"
+        "This fallback output is long enough to pass validation after Docling fails.\n",
+        title="MarkItDown PDF Fallback",
+    )
+
+    result = NormalizationService(
+        mistral_ocr_converter=mistral,
+        pdf_converter=pdf_converter,
+        converter=markitdown,
+    ).normalize_path(source_path)
+
+    assert pdf_converter.paths == [source_path]
+    assert markitdown.paths == [source_path]
+    assert result.title == "MarkItDown PDF Fallback"
+    assert result.metadata["fallback_used"] is True
+    assert result.metadata["fallback_converter"] == "markitdown"
+    assert result.metadata["primary_converter"] == "mistral-ocr"
+    assert result.metadata["normalization_route"] == PDF_MARKITDOWN_FALLBACK_ROUTE
 
 
 def test_normalization_service_falls_back_when_mistral_key_missing(

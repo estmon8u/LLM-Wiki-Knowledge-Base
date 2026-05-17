@@ -1,9 +1,4 @@
-"""Config service service behavior for the knowledge-base workflow.
-
-This module belongs to `graphwiki_kb.services.config_service` and keeps related behavior
-close to the command, service, model, provider, storage, script, or test
-surface that uses it.
-"""
+"""Configuration defaults, migrations, validation, and persistence."""
 
 from __future__ import annotations
 
@@ -41,16 +36,13 @@ from graphwiki_kb.services.project_service import (
 
 CURRENT_CONFIG_VERSION = 7
 PROVIDER_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh"}
+GEMINI_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high"}
 ANTHROPIC_THINKING_EFFORTS = {"low", "medium", "high", "xhigh", "max"}
 
 
 @dataclass(frozen=True)
 class GraphRAGRuntimeConfig:
-    """Stores graph ragruntime config data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Resolved provider and embedding settings for GraphRAG runtime calls."""
 
     provider: str
     model: str
@@ -132,10 +124,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "allow_local_file_access": False,
         },
         "fallbacks": {
-            "pdf": "docling",
-            "docx": "markitdown",
-            "pptx": "markitdown",
-            "html": "markitdown",
+            "pdf": ["docling", "markitdown"],
+            "docx": ["markitdown"],
+            "pptx": ["markitdown"],
+            "html": ["markitdown"],
         },
     },
 }
@@ -220,21 +212,13 @@ def schema_excerpt(schema_text: str, headings: list[str]) -> str:
 
 
 class ConfigService:
-    """Coordinates config operations.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Loads, validates, migrates, and writes project config files."""
 
     def __init__(self, paths: ProjectPaths) -> None:
         self.paths = paths
 
     def load(self) -> dict[str, Any]:
-        """Load.
-
-        Returns:
-            dict[str, Any] produced by the operation.
-        """
+        """Load config from disk or return defaults for a new project."""
         if not self.paths.config_file.exists():
             return deepcopy(DEFAULT_CONFIG)
         with file_lock(self.paths.config_file):
@@ -505,31 +489,19 @@ def _migrate_v6_to_v7(config: dict[str, Any]) -> dict[str, Any]:
 
 
 class _StrictConfigModel(BaseModel):
-    """Represents strict config model behavior and data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Base model that rejects unknown keys for nested config sections."""
 
     model_config = ConfigDict(extra="forbid")
 
 
 class _ProviderSelection(_StrictConfigModel):
-    """Represents provider selection behavior and data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Top-level active provider selection."""
 
     name: StrictStr | None = None
 
 
 class _OpenAIProviderConfig(_StrictConfigModel):
-    """Stores open aiprovider config data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Validated OpenAI provider settings."""
 
     model: StrictStr
     api_key_env: StrictStr
@@ -554,11 +526,7 @@ class _OpenAIProviderConfig(_StrictConfigModel):
 
 
 class _AnthropicProviderConfig(_StrictConfigModel):
-    """Stores anthropic provider config data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Validated Anthropic provider settings."""
 
     model: StrictStr
     api_key_env: StrictStr
@@ -583,11 +551,7 @@ class _AnthropicProviderConfig(_StrictConfigModel):
 
 
 class _GeminiProviderConfig(_StrictConfigModel):
-    """Stores gemini provider config data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Validated Gemini provider settings."""
 
     model: StrictStr
     api_key_env: StrictStr
@@ -604,18 +568,14 @@ class _GeminiProviderConfig(_StrictConfigModel):
     @classmethod
     def _reasoning_effort_must_be_supported(cls, value: str) -> str:
         normalized = value.strip().lower()
-        if normalized not in PROVIDER_REASONING_EFFORTS:
-            supported = ", ".join(sorted(PROVIDER_REASONING_EFFORTS))
+        if normalized not in GEMINI_REASONING_EFFORTS:
+            supported = ", ".join(sorted(GEMINI_REASONING_EFFORTS))
             raise ValueError(f"must be one of: {supported}")
         return normalized
 
 
 class _ProvidersConfig(_StrictConfigModel):
-    """Stores providers config data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Validated settings for all configured text providers."""
 
     openai: _OpenAIProviderConfig
     anthropic: _AnthropicProviderConfig
@@ -648,11 +608,7 @@ class _GraphRoutingConfig(_StrictConfigModel):
 
 
 class _GraphConfig(_StrictConfigModel):
-    """Stores graph config data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Validated GraphRAG provider, embedding, and routing settings."""
 
     provider: StrictStr
     model: StrictStr
@@ -685,11 +641,7 @@ class _ConceptsConfig(_StrictConfigModel):
 
 
 class _MistralOcrConfig(_StrictConfigModel):
-    """Stores mistral ocr config data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Validated Mistral OCR conversion settings."""
 
     model: StrictStr
     api_key_env: StrictStr
@@ -704,11 +656,7 @@ class _MistralOcrConfig(_StrictConfigModel):
 
 
 class _HtmlConversionConfig(_StrictConfigModel):
-    """Stores html conversion config data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Validated HTML renderer settings."""
 
     renderer: Literal["wkhtmltopdf"]
     wkhtmltopdf_path: StrictStr | None = None
@@ -723,24 +671,32 @@ class _HtmlConversionConfig(_StrictConfigModel):
 
 
 class _FallbacksConfig(_StrictConfigModel):
-    """Stores fallbacks config data.
+    """Validated fallback converter choices."""
 
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    pdf: list[Literal["docling", "markitdown"]]
+    docx: list[Literal["markitdown"]]
+    pptx: list[Literal["markitdown"]]
+    html: list[Literal["markitdown"]]
 
-    pdf: Literal["docling"]
-    docx: Literal["markitdown"]
-    pptx: Literal["markitdown"]
-    html: Literal["markitdown"]
+    @field_validator("pdf", "docx", "pptx", "html", mode="before")
+    @classmethod
+    def _coerce_fallback_list(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return [value]
+        return value
+
+    @field_validator("pdf", "docx", "pptx", "html")
+    @classmethod
+    def _fallbacks_must_be_non_empty_and_unique(cls, value: list[str]) -> list[str]:
+        if not value:
+            raise ValueError("must include at least one fallback converter")
+        if len(set(value)) != len(value):
+            raise ValueError("must not repeat fallback converters")
+        return value
 
 
 class _ConversionConfig(_StrictConfigModel):
-    """Stores conversion config data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Validated document conversion settings."""
 
     mistral_ocr: _MistralOcrConfig
     html: _HtmlConversionConfig
@@ -748,11 +704,7 @@ class _ConversionConfig(_StrictConfigModel):
 
 
 class _KbConfigModel(BaseModel):
-    """Represents kb config model behavior and data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Top-level config schema with strict nested sections."""
 
     model_config = ConfigDict(extra="allow")
 

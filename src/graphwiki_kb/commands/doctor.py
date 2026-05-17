@@ -20,7 +20,7 @@ from graphwiki_kb.models.command_models import CommandContext, CommandSpec
 SUMMARY = "Validate project structure, provider config, API keys, and converters."
 
 
-def build_spec(_: CommandContext = None) -> CommandSpec:
+def build_spec(_: CommandContext | None = None) -> CommandSpec:
     """Builds the command registry specification for this module.
 
     Args:

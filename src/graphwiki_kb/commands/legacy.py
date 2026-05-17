@@ -21,6 +21,7 @@ from graphwiki_kb.commands.common import (
     require_initialized,
 )
 from graphwiki_kb.models.command_models import CommandContext, CommandSpec
+from graphwiki_kb.models.wiki_models import SearchResult
 from graphwiki_kb.providers import ProviderError
 
 SUMMARY = "Deprecated SQLite FTS5 commands for comparison and exact lookup."
@@ -30,7 +31,7 @@ LEGACY_WARNING = (
 )
 
 
-def build_spec(_: CommandContext = None) -> CommandSpec:
+def build_spec(_: CommandContext | None = None) -> CommandSpec:
     """Builds the command registry specification for this module.
 
     Args:
@@ -217,7 +218,7 @@ def _warn_legacy() -> None:
     click.echo(LEGACY_WARNING, err=True)
 
 
-def _search_result_payload(result: object) -> dict[str, object]:
+def _search_result_payload(result: SearchResult) -> dict[str, object]:
     return {
         "retriever": "legacy-fts",
         "deprecated": True,

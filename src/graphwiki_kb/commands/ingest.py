@@ -24,7 +24,7 @@ SUMMARY = "Ingest and normalize a source file or directory into the raw corpus."
 SHORT_HELP = "Ingest source files."
 
 
-def build_spec(_: CommandContext = None) -> CommandSpec:
+def build_spec(_: CommandContext | None = None) -> CommandSpec:
     """Builds the command registry specification for this module.
 
     Args:

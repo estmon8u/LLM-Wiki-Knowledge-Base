@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import types
 
 import pytest
 
@@ -218,6 +219,38 @@ def test_api_backend_index_reports_progress_from_entrypoint_output(
         "Progress: 50%",
         "Running step: summarize",
     ]
+
+
+def test_api_backend_validates_runtime_lazily(monkeypatch, test_project) -> None:
+    """Regression: constructing services must not fail before GraphRAG is used."""
+    calls = []
+
+    def fail_runtime_validation() -> None:
+        calls.append("validated")
+        raise GraphRAGCompatibilityError("GraphRAG runtime is incompatible")
+
+    monkeypatch.setattr(
+        command_module,
+        "validate_graphrag_runtime",
+        fail_runtime_validation,
+    )
+
+    backend = GraphRAGApiBackend(test_project.paths)
+
+    assert calls == []
+    with pytest.raises(GraphRAGCommandError, match="runtime is incompatible"):
+        backend.query(
+            workspace_dir=test_project.paths.graph_dir / "graphrag",
+            question="What is RAG?",
+            method="basic",
+            data_dir=test_project.paths.graph_dir / "graphrag" / "output",
+            community_level=None,
+            dynamic_community_selection=None,
+            response_type=None,
+            streaming=False,
+            verbose=False,
+        )
+    assert calls == ["validated"]
 
 
 def test_default_runner_sets_utf8_encoding(monkeypatch) -> None:
@@ -484,6 +517,46 @@ def test_api_backend_query_uses_returned_answer_when_stdout_empty(
 
     assert result.returncode == 0
     assert result.stdout == "Returned GraphRAG answer\n"
+
+
+def test_run_query_entrypoint_preserves_zero_community_level(
+    monkeypatch,
+    test_project,
+) -> None:
+    """Regression: community_level=0 is explicit and must not become the default."""
+    calls = {}
+    graph_module = types.ModuleType("graphrag")
+    cli_module = types.ModuleType("graphrag.cli")
+    query_module = types.ModuleType("graphrag.cli.query")
+
+    def fake_search(**kwargs):
+        calls.update(kwargs)
+        return "answer"
+
+    query_module.run_basic_search = fake_search
+    query_module.run_drift_search = fake_search
+    query_module.run_global_search = fake_search
+    query_module.run_local_search = fake_search
+    cli_module.query = query_module
+    graph_module.cli = cli_module
+    monkeypatch.setitem(sys.modules, "graphrag", graph_module)
+    monkeypatch.setitem(sys.modules, "graphrag.cli", cli_module)
+    monkeypatch.setitem(sys.modules, "graphrag.cli.query", query_module)
+
+    result = command_module._run_query_entrypoint(
+        workspace_dir=test_project.paths.graph_dir / "graphrag",
+        data_dir=test_project.paths.graph_dir / "graphrag" / "output",
+        method="global",
+        community_level=0,
+        dynamic_community_selection=None,
+        response_type=None,
+        streaming=False,
+        question="What is RAG?",
+        verbose=False,
+    )
+
+    assert result == "answer"
+    assert calls["community_level"] == 0
 
 
 def test_query_return_to_text_uses_first_tuple_item() -> None:

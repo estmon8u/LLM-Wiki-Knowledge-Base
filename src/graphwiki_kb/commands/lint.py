@@ -21,7 +21,7 @@ from graphwiki_kb.models.command_models import CommandContext, CommandSpec
 SUMMARY = "Run deterministic structural lint checks over the maintained wiki."
 
 
-def build_spec(_: CommandContext = None) -> CommandSpec:
+def build_spec(_: CommandContext | None = None) -> CommandSpec:
     """Builds the command registry specification for this module.
 
     Args:

@@ -69,6 +69,11 @@ and HTML, also set:
 $env:MISTRAL_API_KEY = "..."
 ```
 
+Keep `MISTRAL_API_KEY` set for real PDF work. PDFs use the paid Mistral OCR API
+as the primary converter because OCR quality drives the compiled source pages,
+GraphRAG entities, retrieval, citations, and answers. Local PDF converters are
+fallbacks for outage or setup recovery, not equal-quality defaults.
+
 GraphRAG runtime settings live in the `graph` section of `kb.config.yaml`.
 The default graph provider is OpenAI with `gpt-5.4-nano`,
 `text-embedding-3-small`, and the centralized `OPENAI_API_KEY` provider entry.
@@ -134,10 +139,12 @@ poetry run kb --project-root $projectRoot update --force
 ## 6. Check GraphRAG state
 
 After `kb update`, GraphRAG state is determined from the planned or synced
-input, the latest successful index run, and the active complete output
-directory. A complete output directory includes the required GraphRAG Parquet
-tables and the configured vector store. The graph step first plans sync work
-without mutating workspace files. When graph work proceeds, it writes
+input, the latest successful index run, digest-based freshness metadata, and the
+active complete output directory. A complete output directory includes the
+required GraphRAG Parquet tables and the configured vector store, but status and
+ask still require the current input, source hashes, settings, prompts, and
+GraphRAG runtime identity to match the last successful index run. The graph step
+first plans sync work without mutating workspace files. When graph work proceeds, it writes
 `graph/graphrag/input/sources.json`
 from `raw/_manifest.json` and `raw/normalized/`, preserving source IDs, hashes,
 paths, converter metadata, and the normalized text for GraphRAG indexing. The
@@ -202,13 +209,18 @@ answers reject it because source-page evidence limiting only applies to
 The default `--method auto` router uses question wording and a capped scan of
 known graph terms to choose Basic, Local, Global, or DRIFT. It does not fall
 back to FTS5 if the graph is missing or not ready; it fails with the next
-GraphRAG setup command to run. Non-streaming GraphRAG answers are preserved even
-when the underlying entrypoint returns the answer instead of printing it.
+GraphRAG setup command to run. Readiness is checked per query method, so a
+global question can run from community reports while local/basic/drift questions
+still require the vector store and their method-specific tables. Non-streaming
+GraphRAG answers are preserved even when the underlying entrypoint returns the
+answer instead of printing it.
 
 Use `local` for specific entity, method, or paper questions; `global` for
 whole-corpus themes; `drift` for multi-paper comparisons; and `basic` as the
 simple vector-RAG baseline. Saved graph answers go to `wiki/analysis/` with
-graph metadata, source trace, support level, and raw GraphRAG output preserved.
+graph metadata, source trace, support level, separate raw stdout/stderr audit
+sections, and unique filenames on repeated saves. Blank GraphRAG answers are
+not saved.
 
 Export graph artifacts into inspectable wiki pages:
 
@@ -286,7 +298,7 @@ cleanup uses the exact destination paths exported by that run.
 | --- | --- |
 | `Provider is not configured` | Run `kb config provider set openai`, `anthropic`, or `gemini`. |
 | Provider authentication errors | Confirm the matching API key environment variable is set in the same shell. |
-| PDF, DOCX, PPTX, image, or HTML conversion fails | Set `MISTRAL_API_KEY`; for HTML confirm `wkhtmltopdf` or bundled `xhtml2pdf` is available. |
+| PDF, DOCX, PPTX, image, or HTML conversion fails | Set `MISTRAL_API_KEY`; for HTML confirm `wkhtmltopdf` or bundled `xhtml2pdf` is available. If PDF metadata shows `fallback_used: true`, rerun with Mistral before trusting downstream graph or answer quality. |
 | Search returns stale results | Run `kb update` after adding or changing sources. |
 | GraphRAG workspace is missing | Run `kb init`. |
 | GraphRAG input is missing | Run `kb update`. |

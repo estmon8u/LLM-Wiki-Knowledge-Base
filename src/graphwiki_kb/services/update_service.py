@@ -1,18 +1,14 @@
-"""Update service service behavior for the knowledge-base workflow.
-
-This module belongs to `graphwiki_kb.services.update_service` and keeps related behavior
-close to the command, service, model, provider, storage, script, or test
-surface that uses it.
-"""
+"""Coordinates source ingest, compile, concept refresh, search, and GraphRAG sync."""
 
 from __future__ import annotations
 
 import os
-from contextlib import contextmanager
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterator, Optional
+from typing import Any, Callable, Optional
 
+from graphwiki_kb.models.source_models import RawSourceRecord
 from graphwiki_kb.services.compile_service import CompileResult, CompileService
 from graphwiki_kb.services.concept_service import (
     ConceptGenerationResult,
@@ -32,11 +28,7 @@ from graphwiki_kb.services.search_service import SearchService
 
 @dataclass
 class UpdateOptions:
-    """Represents update options behavior and data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Options accepted by the high-level update workflow."""
 
     source_paths: tuple[Path, ...] = ()
     force: bool = False
@@ -49,11 +41,7 @@ class UpdateOptions:
 
 @dataclass
 class IngestSummary:
-    """Represents ingest summary behavior and data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Short CLI-facing summary for one ingest input."""
 
     path: Path
     is_dir: bool
@@ -63,11 +51,7 @@ class IngestSummary:
 
 @dataclass
 class UpdateResult:
-    """Stores update result data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Combined result of a full or graph-only update run."""
 
     ingest_summaries: list[IngestSummary] = field(default_factory=list)
     compile_result: Optional[CompileResult] = None
@@ -80,21 +64,13 @@ class UpdateResult:
 
     @property
     def ok(self) -> bool:
-        """Ok.
-
-        Returns:
-            bool produced by the operation.
-        """
+        """Return true when update produced legacy or GraphRAG work."""
         return self.compile_result is not None or self.graph_result is not None
 
 
 @dataclass
 class GraphUpdateResult:
-    """Stores graph update result data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """GraphRAG-specific result for update preflight, indexing, and export."""
 
     skipped: bool = False
     skip_reason: str = ""
@@ -105,12 +81,14 @@ class GraphUpdateResult:
     warning: str = ""
 
 
-class UpdateService:
-    """Coordinates update operations.
+CompileProgressCallback = Callable[[RawSourceRecord], None]
+CompileProgressFactory = Callable[
+    [int], AbstractContextManager[CompileProgressCallback]
+]
 
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+
+class UpdateService:
+    """Runs the project update workflow across all managed subsystems."""
 
     def __init__(
         self,
@@ -151,24 +129,11 @@ class UpdateService:
         options: UpdateOptions,
         *,
         ingest_progress: Callable[[Path], None] | None = None,
-        compile_progress: Callable[[str], None] | None = None,
-        compile_progress_factory: (
-            Callable[[int], contextmanager[Iterator[Callable]]] | None
-        ) = None,
+        compile_progress: CompileProgressCallback | None = None,
+        compile_progress_factory: CompileProgressFactory | None = None,
         graph_status_callback: Callable[[str], None] | None = None,
     ) -> UpdateResult:
-        """Run.
-
-        Args:
-            options: Options value used by the operation.
-            ingest_progress: Ingest progress value used by the operation.
-            compile_progress: Compile progress value used by the operation.
-            compile_progress_factory: Compile progress factory value used by the operation.
-            graph_status_callback: Graph status callback value used by the operation.
-
-        Returns:
-            UpdateResult produced by the operation.
-        """
+        """Run source ingest, compile, concept/search refresh, and GraphRAG sync."""
         if options.force and options.resume:
             raise ValueError("--resume cannot be combined with --force.")
         if options.no_graph and options.graph_only:
@@ -313,7 +278,7 @@ class UpdateService:
                 force=options.force,
                 dry_run=True,
                 preview_only=True,
-                allow_missing_sources=True,
+                allow_missing_sources=not options.graph_only,
             )
         except Exception as exc:
             message = f"Graph preflight failed: {exc}"
@@ -371,7 +336,7 @@ class UpdateService:
                 force=options.force,
                 dry_run=False,
                 run_index=True,
-                allow_missing_sources=True,
+                allow_missing_sources=not options.graph_only,
                 status_callback=status_callback,
             )
             if status_callback is not None:
@@ -386,6 +351,8 @@ class UpdateService:
         return result
 
     def _missing_graph_credentials(self) -> list[str]:
+        if self._graphrag_sync is None:
+            raise ValueError("Graph sync service unavailable.")
         graph_config = resolve_graph_config(self._config)
         dot_env = self._graphrag_sync.workspace_dir / ".env"
         missing: list[str] = []

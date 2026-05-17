@@ -1,16 +1,8 @@
-"""Graphrag sync service service behavior for the knowledge-base workflow.
-
-This module belongs to `graphwiki_kb.services.graphrag_sync_service` and keeps related behavior
-close to the command, service, model, provider, storage, script, or test
-surface that uses it.
-"""
+"""GraphRAG input, runtime, and indexing sync planner."""
 
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import asdict, dataclass, replace
-from pathlib import Path
 from typing import Any
 
 from graphwiki_kb.services.graphrag_command_service import (
@@ -18,11 +10,17 @@ from graphwiki_kb.services.graphrag_command_service import (
     GraphRAGCommandResult,
     GraphRAGCommandService,
 )
+from graphwiki_kb.services.graphrag_freshness_service import (
+    count_source_hash_changes,
+    file_digest,
+    graph_input_source_hashes,
+    graph_runtime_digest,
+    source_hashes_from_run,
+)
 from graphwiki_kb.services.graphrag_input_sync_service import (
     GraphRAGInputSyncResult,
     GraphRAGInputSyncService,
 )
-from graphwiki_kb.services.graphrag_runtime import graphrag_runtime_identity
 from graphwiki_kb.services.graphrag_status_service import (
     GraphRAGIndexRun,
     GraphRAGStatus,
@@ -47,11 +45,7 @@ class GraphRAGSyncError(ValueError):
 
 @dataclass(frozen=True)
 class GraphRAGSyncDecision:
-    """Represents graph ragsync decision behavior and data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Planner decision describing whether and how the graph should reindex."""
 
     action: str
     method: str | None
@@ -66,11 +60,7 @@ class GraphRAGSyncDecision:
     stale_metadata: bool = False
 
     def to_dict(self) -> dict[str, Any]:
-        """Serializes this value to a dictionary.
-
-        Returns:
-            dict[str, Any] produced by the operation.
-        """
+        """Return a JSON-friendly sync decision."""
         return asdict(self)
 
 
@@ -87,11 +77,7 @@ class GraphRAGSyncChangeState:
 
 @dataclass(frozen=True)
 class GraphRAGSyncResult:
-    """Stores graph ragsync result data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Result of syncing GraphRAG inputs and optionally running indexing."""
 
     input_sync: GraphRAGInputSyncResult
     decision: GraphRAGSyncDecision
@@ -100,11 +86,7 @@ class GraphRAGSyncResult:
 
 
 class GraphRAGSyncService:
-    """Coordinates graph ragsync operations.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Plans and runs GraphRAG input sync, index refreshes, and run recording."""
 
     def __init__(
         self,
@@ -135,23 +117,7 @@ class GraphRAGSyncService:
         allow_missing_sources: bool = False,
         status_callback: Any | None = None,
     ) -> GraphRAGSyncResult:
-        """Sync.
-
-        Args:
-            method: Method value used by the operation.
-            force: Force value used by the operation.
-            dry_run: Dry run value used by the operation.
-            cache: Cache value used by the operation.
-            skip_validation: Skip validation value used by the operation.
-            verbose: Whether to emit verbose command output.
-            run_index: Run index value used by the operation.
-            preview_only: Preview only value used by the operation.
-            allow_missing_sources: Skip sources with missing normalized artifacts.
-            status_callback: Status callback value used by the operation.
-
-        Returns:
-            GraphRAGSyncResult produced by the operation.
-        """
+        """Sync graph input files and run the planned index action when requested."""
         if self.workspace_service.is_initialized() and not preview_only:
             self.workspace_service.sync_settings()
 
@@ -168,7 +134,11 @@ class GraphRAGSyncService:
             )
         self._require_synced_input(status, allow_planned_input=preview_only)
 
-        input_digest = input_sync.input_digest or file_digest(status.input_path)
+        input_digest = (
+            input_sync.input_digest
+            if input_sync.input_digest is not None
+            else file_digest(status.input_path)
+        )
         settings_text = (
             self.workspace_service.render_settings()
             if preview_only and self.workspace_service.is_initialized()
@@ -178,8 +148,10 @@ class GraphRAGSyncService:
             self.workspace_dir,
             settings_text=settings_text,
         )
-        current_source_hashes = input_sync.source_hashes or graph_input_source_hashes(
-            status.input_path
+        current_source_hashes = (
+            input_sync.source_hashes
+            if input_sync.source_hashes is not None
+            else graph_input_source_hashes(status.input_path)
         )
         last_successful_run = self.status_service.last_successful_index_run()
 
@@ -431,14 +403,7 @@ class GraphRAGSyncService:
 
 
 def graph_output_state(status: GraphRAGStatus) -> str:
-    """Graph output state.
-
-    Args:
-        status: Status value used by the operation.
-
-    Returns:
-        str produced by the operation.
-    """
+    """Return the coarse GraphRAG output state used by the sync planner."""
     if not status.output_present:
         return "missing"
     if status.output_complete:
@@ -459,7 +424,7 @@ def detect_sync_changes(
     if last_successful_run:
         last_input_digest = _optional_str(last_successful_run.get("input_digest"))
         last_config_digest = _optional_str(last_successful_run.get("config_digest"))
-        last_source_hashes = _source_hashes_from_run(last_successful_run)
+        last_source_hashes = source_hashes_from_run(last_successful_run)
         return GraphRAGSyncChangeState(
             output_state=output_state,
             input_changed=last_input_digest != input_digest,
@@ -519,142 +484,11 @@ def build_sync_decision(
     )
 
 
-def file_digest(path: Path) -> str:
-    """File digest.
-
-    Args:
-        path: Filesystem path used by the operation.
-
-    Returns:
-        str produced by the operation.
-    """
-    digest = hashlib.sha256()
-    digest.update(path.read_bytes())
-    return digest.hexdigest()
-
-
-def graph_runtime_digest(
-    workspace_dir: Path,
-    *,
-    settings_text: str | None = None,
-) -> str:
-    """Graph runtime digest.
-
-    Args:
-        workspace_dir: Workspace dir value used by the operation.
-
-    Returns:
-        str produced by the operation.
-    """
-    digest = hashlib.sha256()
-    digest.update(
-        json.dumps(
-            graphrag_runtime_identity(),
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    )
-    digest.update(b"\0")
-    if settings_text is None:
-        _digest_file(digest, workspace_dir / "settings.yaml", "settings.yaml")
-    else:
-        digest.update(b"settings.yaml\0")
-        digest.update(settings_text.encode("utf-8"))
-        digest.update(b"\0")
-    prompt_dir = workspace_dir / "prompts"
-    if prompt_dir.exists():
-        for path in sorted(prompt_dir.rglob("*.txt")):
-            _digest_file(digest, path, path.relative_to(workspace_dir).as_posix())
-    return digest.hexdigest()
-
-
-def graph_input_source_hashes(input_path: Path) -> dict[str, str]:
-    """Graph input source hashes.
-
-    Args:
-        input_path: Input path value used by the operation.
-
-    Returns:
-        dict[str, str] produced by the operation.
-    """
-    payload = json.loads(input_path.read_text(encoding="utf-8"))
-    records: list[Any]
-    if isinstance(payload, list):
-        records = payload
-    elif isinstance(payload, dict):
-        records = []
-        for key in ("sources", "documents"):
-            value = payload.get(key)
-            if isinstance(value, list):
-                records.extend(value)
-    else:
-        records = []
-
-    source_hashes: dict[str, str] = {}
-    for record in records:
-        if not isinstance(record, dict):
-            continue
-        source_id = _optional_str(record.get("source_id") or record.get("id"))
-        source_hash = _optional_str(record.get("source_hash"))
-        if source_id and source_hash:
-            source_hashes[source_id] = source_hash
-    return source_hashes
-
-
-def count_source_hash_changes(
-    previous: dict[str, str] | None,
-    current: dict[str, str],
-) -> int | None:
-    """Count source hash changes.
-
-    Args:
-        previous: Previous value used by the operation.
-        current: Current value used by the operation.
-
-    Returns:
-        int | None produced by the operation.
-    """
-    if previous is None:
-        return None
-    changed = 0
-    for source_id, source_hash in current.items():
-        if previous.get(source_id) != source_hash:
-            changed += 1
-    removed = set(previous) - set(current)
-    return changed + len(removed)
-
-
 def cost_warning(method: str) -> str:
-    """Cost warning.
-
-    Args:
-        method: Method value used by the operation.
-
-    Returns:
-        str produced by the operation.
-    """
+    """Return the provider-cost warning for a planned index method."""
     if method in UPDATE_METHODS:
         return "Incremental GraphRAG update can incur provider costs."
     return "Full GraphRAG rebuild can incur model and embedding provider costs."
-
-
-def _digest_file(digest: Any, path: Path, label: str) -> None:
-    digest.update(label.encode("utf-8"))
-    digest.update(b"\0")
-    if path.exists():
-        digest.update(path.read_bytes())
-    digest.update(b"\0")
-
-
-def _source_hashes_from_run(run: dict[str, Any]) -> dict[str, str] | None:
-    payload = run.get("source_hashes")
-    if not isinstance(payload, dict):
-        return None
-    source_hashes: dict[str, str] = {}
-    for key, value in payload.items():
-        if isinstance(key, str) and isinstance(value, str):
-            source_hashes[key] = value
-    return source_hashes
 
 
 def _optional_str(value: Any) -> str | None:

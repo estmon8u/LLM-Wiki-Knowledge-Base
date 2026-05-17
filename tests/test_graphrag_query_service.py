@@ -19,6 +19,11 @@ from graphwiki_kb.services.graphrag_command_service import (
     GraphRAGCommandResult,
     GraphRAGCommandService,
 )
+from graphwiki_kb.services.graphrag_freshness_service import (
+    file_digest,
+    graph_input_source_hashes,
+    graph_runtime_digest,
+)
 from graphwiki_kb.services.graphrag_query_service import (
     GraphRAGQueryError,
     GraphRAGQueryService,
@@ -62,6 +67,8 @@ def _write_ready_graph(test_project, *, index_success: bool = True) -> None:
         "graph/graphrag/output/lancedb/vector-store.marker",
         "ready",
     )
+    workspace_dir = test_project.paths.graph_dir / "graphrag"
+    input_path = workspace_dir / "input" / "sources.json"
     GraphRAGStatusService(test_project.paths).record_index_run(
         method="fast",
         dry_run=False,
@@ -72,6 +79,11 @@ def _write_ready_graph(test_project, *, index_success: bool = True) -> None:
             stdout="indexed" if index_success else "",
             stderr="" if index_success else "failed",
         ),
+        input_digest=file_digest(input_path),
+        config_digest=graph_runtime_digest(workspace_dir),
+        input_source_count=1,
+        source_hashes=graph_input_source_hashes(input_path),
+        output_state="complete",
     )
 
 
@@ -146,7 +158,7 @@ def test_graph_query_runs_explicit_method_and_options(test_project) -> None:
     assert answer.retriever == "graphrag"
     assert answer.method == "local"
     assert answer.answer == "GraphRAG answer"
-    assert answer.raw_output == "GraphRAG answer"
+    assert answer.raw_output == "GraphRAG answer\n"
     assert answer.index_run_id is not None
     assert (
         answer.input_manifest_hash
@@ -192,15 +204,17 @@ def test_graph_query_raw_output_prefers_stdout_over_progress_stderr(
     saved_path = service.save_answer(answer)
 
     assert answer.answer == "GraphRAG answer"
-    assert answer.raw_output == "GraphRAG answer"
+    assert answer.raw_output == "GraphRAG answer\n"
     assert "Progress" in answer.stderr
     saved_text = (test_project.root / saved_path).read_text(encoding="utf-8")
     frontmatter = yaml.safe_load(saved_text.split("---", 2)[1])
     assert frontmatter["citations"] == []
     assert frontmatter["citation_count"] == 0
     assert "GraphRAG answer" in saved_text
-    assert "Warning: noisy dependency output" not in saved_text
-    assert "Progress: 100%" not in saved_text
+    assert "## Raw GraphRAG Stdout" in saved_text
+    assert "## Raw GraphRAG Stderr" in saved_text
+    assert "Warning: noisy dependency output" in saved_text
+    assert "Progress: 100%" in saved_text
 
 
 def test_graph_query_does_not_treat_stderr_as_answer(test_project) -> None:
@@ -250,9 +264,13 @@ def test_graph_query_filters_noisy_stdout_before_saved_answer(test_project) -> N
     saved_text = (test_project.root / saved_path).read_text(encoding="utf-8")
 
     assert answer.answer == "GraphRAG answer after logs."
-    assert answer.raw_output == "GraphRAG answer after logs."
-    assert "INFO: loading" not in saved_text
-    assert "Running workflow" not in saved_text
+    assert "INFO: loading GraphRAG output" in answer.raw_output
+    assert "Running workflow: query" in answer.raw_output
+    answer_section = saved_text.split("## Retrieval Mode", 1)[0]
+    assert "INFO: loading" not in answer_section
+    assert "Running workflow" not in answer_section
+    assert "INFO: loading" in saved_text
+    assert "Running workflow" in saved_text
 
 
 def test_graph_query_save_writes_analysis_page_and_refreshes_index(
@@ -324,7 +342,8 @@ def test_graph_query_save_writes_analysis_page_and_refreshes_index(
     assert "- Dynamic community selection: True" in text
     assert "- Response type: Multiple Paragraphs" in text
     assert "## Source Trace" in text
-    assert "## Raw GraphRAG Output" in text
+    assert "## Raw GraphRAG Stdout" in text
+    assert "## Raw GraphRAG Stderr" in text
     assert "graph ask --save" in test_project.paths.wiki_log_file.read_text(
         encoding="utf-8"
     )
@@ -373,6 +392,89 @@ def test_graph_query_requires_vector_store(test_project) -> None:
 
     with pytest.raises(GraphRAGQueryError, match="vector store"):
         service.ask("What is RAG?", method="basic")
+
+
+def test_graph_query_allows_global_queries_without_vector_store(test_project) -> None:
+    """Regression: global queries only require community tables and fresh metadata."""
+    _write_ready_graph(test_project)
+    marker = (
+        test_project.paths.graph_dir
+        / "graphrag"
+        / "output"
+        / "lancedb"
+        / "vector-store.marker"
+    )
+    marker.unlink()
+
+    def runner(command, *, cwd, capture_output, text):
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="Global answer\n",
+            stderr="",
+        )
+
+    service = _build_query_service(test_project, runner)
+
+    answer = service.ask("What are the graph-wide themes?", method="global")
+
+    assert answer.answer == "Global answer"
+
+
+def test_graph_query_rejects_stale_graph_index_metadata(test_project) -> None:
+    """Regression: complete output is not enough when input/config digests drift."""
+    _write_ready_graph(test_project)
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "src-1", "text": "Changed RAG text"}]),
+    )
+
+    service = _build_query_service(
+        test_project,
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0),
+    )
+
+    with pytest.raises(GraphRAGQueryError, match="GraphRAG index is stale"):
+        service.ask("What is RAG?", method="basic")
+
+
+def test_graph_query_save_rejects_blank_answers(test_project) -> None:
+    """Regression: blank GraphRAG output must not create misleading analysis pages."""
+    _write_ready_graph(test_project)
+    service = _build_query_service(
+        test_project,
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0),
+    )
+
+    with pytest.raises(GraphRAGQueryError, match="empty GraphRAG answer"):
+        service.save_answer(
+            service.ask("What is RAG?", method="basic"),
+        )
+
+
+def test_graph_query_save_does_not_overwrite_existing_analysis_page(
+    test_project,
+) -> None:
+    """Regression: repeated saved GraphRAG answers receive unique slugs."""
+    _write_ready_graph(test_project)
+
+    def runner(command, *, cwd, capture_output, text):
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="GraphRAG answer\n",
+            stderr="",
+        )
+
+    service = _build_query_service(test_project, runner)
+
+    first = service.save_answer(service.ask("What is RAG?", method="basic"))
+    second = service.save_answer(service.ask("What is RAG?", method="basic"))
+
+    assert first == "wiki/analysis/graphrag-what-is-rag.md"
+    assert second == "wiki/analysis/graphrag-what-is-rag-2.md"
+    assert (test_project.root / first).read_text(encoding="utf-8")
+    assert (test_project.root / second).read_text(encoding="utf-8")
 
 
 def test_graph_query_rejects_failed_last_index_run(test_project) -> None:

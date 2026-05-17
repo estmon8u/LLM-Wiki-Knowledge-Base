@@ -36,7 +36,7 @@ GraphRAG runtime defaults live in the `graph` section of `kb.config.yaml`. `kb i
 
 `kb update` uses the existing knowledge-base corpus as the source of truth. It reads `raw/_manifest.json` plus the normalized artifacts in `raw/normalized/`, writes `graph/graphrag/input/sources.json`, configures GraphRAG for JSON input with metadata prepended into chunks, and then auto-decides whether to run a full index, incremental update, retry after a failed latest attempt, or skip because the graph is already current. The preflight decision path plans those settings and input changes without mutating `settings.yaml` or `input/sources.json`, so skipped or credential-blocked graph runs do not leave partial workspace state behind. Normal updates can skip isolated missing normalized artifacts with a warning so one stale manifest entry does not block the entire graph refresh; run `kb lint` to catch and fix the manifest drift. Successful index runs record the source digest, source hashes, runtime settings/prompt digest, selected method, active output directory, and command result under ignored run metadata for reproducibility. If GraphRAG credentials are missing during a normal `kb update`, the wiki compile still completes and graph indexing is skipped with a warning; `kb update --graph-only` fails clearly because the requested graph-only operation cannot run. Use `kb update --no-graph` when you intentionally want the legacy wiki compile/index refresh without touching the graph.
 
-`kb status` checks whether settings, synced input, the active complete GraphRAG output tables, vector store, and last recorded index run are present, and it distinguishes missing, empty, unreadable, and incompatible vector-store states where possible. It prefers the active output directory recorded by the latest successful run when that directory is still complete, rather than trusting the newest output folder blindly. `kb ask --method auto|basic|local|global|drift` calls GraphRAG query entrypoints, passes the active output directory explicitly to GraphRAG, and preserves returned non-streaming answers even when GraphRAG logs instead of printing them. Saved GraphRAG answers become analysis pages with support-level and source-trace metadata. `kb export` reads GraphRAG Parquet tables and writes human-readable documents, entities, relationships, communities, and text units under `wiki/graph/` when graph output exists.
+`kb status` checks whether settings, synced input, the active complete GraphRAG output tables, vector store, and last recorded index run are present, and it distinguishes missing, empty, unreadable, and incompatible vector-store states where possible. It compares the current graph input digest, source hashes, settings, prompts, and GraphRAG runtime identity against the last successful index run, so complete-looking output is still marked stale when reproducibility metadata is missing or no longer matches. It prefers the active output directory recorded by the latest successful run when that directory is still complete, rather than trusting the newest output folder blindly. `kb ask --method auto|basic|local|global|drift` checks the artifacts required by the selected query method, calls GraphRAG query entrypoints, passes the active output directory explicitly to GraphRAG, and preserves returned non-streaming answers even when GraphRAG logs instead of printing them. Saved GraphRAG answers become unique analysis pages with support-level and source-trace metadata plus separate raw stdout/stderr sections; blank answers are refused. `kb export` reads GraphRAG Parquet tables in batches and writes human-readable documents, entities, relationships, communities, and text units under `wiki/graph/` when graph output exists.
 
 ## Evaluation Harness
 
@@ -274,7 +274,7 @@ poetry run kb update --graph-only
 When source paths are provided, the command adds them first. Legacy concept pages are skipped by default now that GraphRAG is the default cross-document retrieval layer; pass `--concepts` or set `concepts.enabled: true` in `kb.config.yaml` to refresh them.
 Compile summaries request structured provider output (`summary`, `key_points`, `open_questions`, and `title_suggestion`) and persist the extra fields when returned. When concept generation is enabled, concept clustering uses deterministic collocation-based grouping by default. Set `concepts.provider_backed: true` to let the configured provider propose clusters; provider output is parsed through the shared structured-output parser, cached by source-page digest, and falls back to deterministic grouping if provider clustering fails.
 
-`kb update` also owns routine GraphRAG maintenance. It prints `Mode: full`, `Mode: graph-only`, or `Mode: wiki-only` at the start, creates the graph workspace if needed, syncs normalized artifacts into `graph/graphrag/input/sources.json`, checks the current GraphRAG output and run metadata, selects a full `fast` build, `fast-update`, retry after the latest failed attempt, or skip, runs the selected index when graph credentials are available, and exports graph inspection pages under `wiki/graph/` whenever complete output exists. It prints the GraphRAG output path after indexing and surfaces a search warning if the legacy SQLite FTS5 refresh falls back to markdown scanning. Graph indexing is skipped with an explicit warning when provider credentials are missing during a normal update; the compile/wiki update still completes. Normal updates skip isolated missing normalized graph inputs with a warning instead of failing every source; `kb update --graph-only` keeps strict graph-input behavior and treats missing graph credentials as a hard error because no non-graph work was requested.
+`kb update` also owns routine GraphRAG maintenance. It prints `Mode: full`, `Mode: graph-only`, or `Mode: wiki-only` at the start, creates the graph workspace if needed, syncs normalized artifacts into `graph/graphrag/input/sources.json`, checks the current GraphRAG output and digest-based run metadata, selects a full `fast` build, `fast-update`, retry after the latest failed attempt, or skip, runs the selected index when graph credentials are available, and exports graph inspection pages under `wiki/graph/` whenever complete output exists. It prints the GraphRAG output path after indexing and surfaces a search warning if the legacy SQLite FTS5 refresh falls back to markdown scanning. Graph indexing is skipped with an explicit warning when provider credentials are missing during a normal update; the compile/wiki update still completes. Normal updates skip isolated missing normalized graph inputs with a warning instead of failing every source; `kb update --graph-only` keeps strict graph-input behavior and treats missing graph credentials as a hard error because no non-graph work was requested.
 
 ### Main GraphRAG behavior
 
@@ -286,8 +286,8 @@ The `kb graph` command group has been removed. GraphRAG setup, input sync, index
 | `kb update` | Syncs normalized sources, auto-selects the graph index action, runs GraphRAG indexing when credentials are present, records run metadata, prints the graph output path after indexing, warns on skipped missing normalized inputs or legacy search fallback, and exports graph wiki pages from complete output even when indexing is skipped. |
 | `kb update --force` | Rebuilds source pages and forces a full GraphRAG rebuild. |
 | `kb update --no-graph` | Updates the wiki and legacy index without syncing or indexing GraphRAG. |
-| `kb status` / `kb status --json` | Includes GraphRAG workspace, input, active output directory, output-table, vector-store, last-index-run, row-count, and next-action fields. |
-| `kb ask --method auto|basic|local|global|drift` | Queries GraphRAG through the default controller. |
+| `kb status` / `kb status --json` | Includes GraphRAG workspace, input, active output directory, output-table, vector-store, freshness, last-index-run, row-count, and next-action fields. |
+| `kb ask --method auto|basic|local|global|drift` | Queries GraphRAG through the default controller after method-specific readiness checks. |
 | `kb export` | Exports the vault and refreshes `wiki/graph/` when GraphRAG output exists. |
 
 GraphRAG indexing uses the same decision table that powered the former graph sync wrapper:
@@ -299,6 +299,7 @@ GraphRAG indexing uses the same decision table that powered the former graph syn
 | Source hashes changed since the last successful index | Incremental update with `fast-update` |
 | Latest index attempt failed after an older success | Retry with `fast-update` when complete output exists, otherwise `fast` |
 | Graph runtime settings, prompts, GraphRAG package version, or managed schema version changed | Full rebuild with `fast` |
+| Complete output exists but successful-run digest metadata is missing | Full rebuild with `fast` |
 | Sources and runtime config match the last successful index | Skip indexing |
 
 Graph wiki export reads standard GraphRAG tables such as `documents`, `text_units`, `entities`, `relationships`, `communities`, and `community_reports` from the active complete output directory under `graph/graphrag/output/`. A complete output directory means those tables and the configured vector store are present. It writes:
@@ -392,16 +393,21 @@ poetry run kb ask --show-source-trace "How does the graph index support source t
 | `--show-source-trace` | off | Print source trace, route reason, and current support level before the answer. |
 | `--json` | off | Include GraphRAG answer metadata as JSON. |
 
-The controller checks workspace, input, and index readiness before querying.
-It does not silently fall back to FTS5. If the graph is missing or not ready, run
-`kb init` and `kb update` as directed by the error.
+The controller checks workspace, input, freshness, and the artifacts required by
+the selected query method before querying. For example, `global` queries require
+community tables, while `basic`, `local`, and `drift` require a readable vector
+store. It does not silently fall back to FTS5. If the graph is missing or not
+ready, run `kb init` and `kb update` as directed by the error.
 The deprecated top-level `--limit` compatibility flag is rejected for GraphRAG
 answers because result limiting belongs to the legacy source-page evidence path.
 Saved pages use `retriever: graph`, `method`, `planner`, `claim_support`,
 `index_run_id`, `input_manifest_hash`, and source-trace metadata. The current
 GraphRAG wrapper records command traces and parsed `[Data: ...]` references when
 GraphRAG emits them; it does not claim full citation evidence until source spans
-are parsed.
+are parsed. Raw stdout and stderr are preserved in separate sections for audit,
+answer prose is cleaned before the `## Answer` section, blank GraphRAG answers
+are refused, and repeated saves use unique filenames instead of overwriting the
+prior analysis page.
 
 ### `kb legacy ask <question>`
 
@@ -541,7 +547,7 @@ poetry run kb sources show <slug>
 | --- | --- | --- |
 | Markdown | `.md`, `.markdown` | Direct (no conversion needed) |
 | Plain text | `.txt` | Direct (no conversion needed) |
-| PDF | `.pdf` | Mistral OCR (Docling fallback) |
+| PDF | `.pdf` | Mistral OCR primary (Docling, then MarkItDown fallback) |
 | HTML | `.htm`, `.html` | `wkhtmltopdf` or `xhtml2pdf` → Mistral OCR (MarkItDown fallback) |
 | CSV | `.csv` | MarkItDown |
 | Word | `.docx` | Mistral OCR (MarkItDown fallback) |
@@ -551,7 +557,12 @@ poetry run kb sources show <slug>
 | Jupyter Notebook | `.ipynb` | MarkItDown |
 | Images | `.png`, `.jpg`, `.jpeg`, `.avif` | Mistral OCR |
 
-All non-text formats are normalized into canonical markdown and stored in `raw/normalized/` before compilation.
+All non-text formats are normalized into canonical markdown and stored in
+`raw/normalized/` before compilation. PDFs intentionally use the paid Mistral
+OCR API as the primary converter because conversion accuracy determines the
+quality of every downstream source page, graph index, retrieval result, and
+answer. Local PDF converters are resilience fallbacks only; fallback metadata is
+recorded so lower-confidence conversions can be reviewed or rerun with Mistral.
 
 ## Provider Configuration
 
@@ -616,10 +627,15 @@ conversion:
     wkhtmltopdf_path: null
     allow_local_file_access: false
   fallbacks:
-    pdf: docling
-    docx: markitdown
-    pptx: markitdown
-    html: markitdown
+    pdf:
+      - docling
+      - markitdown
+    docx:
+      - markitdown
+    pptx:
+      - markitdown
+    html:
+      - markitdown
 graph:
   provider: openai
   model: gpt-5.4-nano
@@ -648,7 +664,10 @@ Modern Claude 4.6-style models use Anthropic adaptive thinking through
 the requested effort, while a legacy `thinking_budget` value is still accepted
 for older models that require manual extended-thinking token budgets. Gemini
 uses model-sensitive thinking configuration: Gemini 2.5 receives a
-`thinking_budget`, while Gemini 3.x receives a `thinking_level`.
+`thinking_budget`, while Gemini 3.x receives a `thinking_level`. Config
+validation accepts `none`, `minimal`, `low`, `medium`, and `high` for Gemini
+reasoning effort; `xhigh` is rejected instead of silently mapping down to
+`high`.
 The adaptive-thinking detector is version-pattern based for Claude 4.6 and
 newer Sonnet/Opus model identifiers rather than locked to a single model name.
 OpenAI uses the Responses API by default for reasoning controls and structured
@@ -710,9 +729,13 @@ poetry run kb doctor --strict
 ## Conversion Configuration
 
 Document conversion settings also live in `kb.config.yaml`. The `conversion`
-section controls which converter is used for Mistral-native document types and
-how HTML is rendered before OCR. HTML rendering tries `wkhtmltopdf` first when
-available and falls back to the bundled pure-Python `xhtml2pdf` renderer:
+section keeps Mistral OCR as the primary route for PDFs and the other
+Mistral-native formats, then controls the ordered fallback chain used only after
+that primary route fails. This is intentional: paying for higher OCR accuracy is
+the right default for this project because bad conversion contaminates compile
+summaries, citations, graph entities, relationships, retrieval, and final
+answers. HTML rendering tries `wkhtmltopdf` first when available and falls back
+to the bundled pure-Python `xhtml2pdf` renderer before OCR:
 
 ```yaml
 conversion:
@@ -724,26 +747,38 @@ conversion:
     renderer: wkhtmltopdf
     wkhtmltopdf_path: null
   fallbacks:
-    pdf: docling
-    docx: markitdown
-    pptx: markitdown
-    html: markitdown
+    pdf:
+      - docling
+      - markitdown
+    docx:
+      - markitdown
+    pptx:
+      - markitdown
+    html:
+      - markitdown
 ```
 
 Default routing is:
 
-- `.pdf`, `.docx`, `.pptx` → Mistral OCR first
+- `.pdf` → Mistral OCR first, then Docling, then MarkItDown if needed
+- `.docx`, `.pptx` → Mistral OCR first, then MarkItDown if needed
 - `.png`, `.jpg`, `.jpeg`, `.avif` → Mistral OCR first
 - `.htm`, `.html` → `wkhtmltopdf` first, then `xhtml2pdf` if needed, then Mistral OCR
 - `.csv`, `.epub`, `.ipynb`, `.xls`, `.xlsx` → MarkItDown
 - `.md`, `.markdown`, `.txt` → direct passthrough
 
 If a Mistral-first conversion fails quality checks, the configured fallback
-converter is tried before the file is rejected. Image inputs currently have no
-local fallback and fail cleanly if Mistral OCR cannot process them.
+chain is tried before the file is rejected. Treat `fallback_used: true` in the
+manifest as a lower-confidence conversion signal; for serious corpus work, set
+`MISTRAL_API_KEY` and rerun the source through Mistral instead of accepting a
+local PDF fallback as equivalent. Image inputs currently have no local fallback
+and fail cleanly if Mistral OCR cannot process them.
 HTML rendering disables `wkhtmltopdf` local-file access by default; set
 `conversion.html.allow_local_file_access: true` only for trusted local HTML that
 must load adjacent local assets.
+Inline Mistral OCR payloads are preflight-limited to 100 MB before file bytes
+are read or sent to the SDK. Split larger documents or switch to a provider
+upload/document-url workflow before ingesting them.
 
 ## Environment Variables
 

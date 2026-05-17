@@ -1,9 +1,4 @@
-"""Normalization service service behavior for the knowledge-base workflow.
-
-This module belongs to `graphwiki_kb.services.normalization_service` and keeps related behavior
-close to the command, service, model, provider, storage, script, or test
-surface that uses it.
-"""
+"""Document normalization and converter routing for source ingestion."""
 
 from __future__ import annotations
 
@@ -72,6 +67,7 @@ HTML_XHTML2PDF_OCR_ROUTE = "xhtml2pdf-mistral-ocr"
 DOCX_PPTX_FALLBACK_ROUTE = "mistral-ocr-document->markitdown-fallback"
 HTML_FALLBACK_ROUTE = "wkhtmltopdf-mistral-ocr->markitdown-fallback"
 PDF_FALLBACK_ROUTE = "mistral-ocr-document->docling-fallback"
+PDF_MARKITDOWN_FALLBACK_ROUTE = "mistral-ocr-document->markitdown-fallback"
 MARKITDOWN_ROUTE = "markitdown-born-digital"
 
 MISTRAL_DOCUMENT_MIME_TYPES = {
@@ -85,6 +81,7 @@ MISTRAL_IMAGE_MIME_TYPES = {
     ".jpeg": "image/jpeg",
     ".avif": "image/avif",
 }
+MAX_INLINE_OCR_PAYLOAD_BYTES = 100 * 1024 * 1024
 _GENERIC_TITLE_HEADINGS = {
     "abstract",
     "acknowledgements",
@@ -121,11 +118,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class NormalizationResult:
-    """Stores normalization result data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Final normalized content, title, suffix, and converter metadata."""
 
     normalized_text: str
     normalized_suffix: str
@@ -135,11 +128,7 @@ class NormalizationResult:
 
 @dataclass
 class _ConvertedText:
-    """Represents converted text behavior and data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Normalized text plus converter metadata before it becomes an ingest result."""
 
     normalized_text: str
     title: str | None = None
@@ -148,24 +137,13 @@ class _ConvertedText:
 
 
 class DoclingPdfConverter:
-    """Represents docling pdf converter behavior and data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Adapter for Docling's local PDF conversion API."""
 
     def __init__(self, converter: Optional[Any] = None) -> None:
         self._converter = converter
 
     def convert_local(self, source_path: Path) -> _ConvertedText:
-        """Convert local.
-
-        Args:
-            source_path: Source path being processed.
-
-        Returns:
-            _ConvertedText produced by the operation.
-        """
+        """Convert one local PDF through Docling."""
         conversion_path, temp_dir = self._prepare_conversion_path(source_path)
         try:
             result = self._converter_instance().convert(conversion_path)
@@ -230,11 +208,7 @@ class DoclingPdfConverter:
 
 
 class MistralOcrConverter:
-    """Represents mistral ocr converter behavior and data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Thin wrapper around the Mistral OCR SDK for document and image bytes."""
 
     def __init__(
         self,
@@ -256,16 +230,7 @@ class MistralOcrConverter:
         mime_type: str,
         document_name: str = "",
     ) -> _ConvertedText:
-        """Convert document bytes.
-
-        Args:
-            document_bytes: Document bytes value used by the operation.
-            mime_type: Mime type value used by the operation.
-            document_name: Document name value used by the operation.
-
-        Returns:
-            _ConvertedText produced by the operation.
-        """
+        """Convert document bytes through Mistral OCR."""
         if not document_bytes:
             raise ValueError("Mistral OCR cannot process an empty document.")
         document_url = _data_uri(mime_type, document_bytes)
@@ -293,15 +258,7 @@ class MistralOcrConverter:
         *,
         mime_type: str,
     ) -> _ConvertedText:
-        """Convert image bytes.
-
-        Args:
-            image_bytes: Image bytes value used by the operation.
-            mime_type: Mime type value used by the operation.
-
-        Returns:
-            _ConvertedText produced by the operation.
-        """
+        """Convert image bytes through Mistral OCR."""
         if not image_bytes:
             raise ValueError("Mistral OCR cannot process an empty image.")
         image_url = _data_uri(mime_type, image_bytes)
@@ -345,11 +302,7 @@ class MistralOcrConverter:
 
 
 class WkhtmltopdfRenderer:
-    """Represents wkhtmltopdf renderer behavior and data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Renders local HTML files to PDF through `wkhtmltopdf`."""
 
     def __init__(
         self,
@@ -495,11 +448,7 @@ class Xhtml2pdfRenderer:
 
 
 class NormalizationService:
-    """Coordinates normalization operations.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Chooses the right converter path for each supported source file."""
 
     def __init__(
         self,
@@ -590,32 +539,49 @@ class NormalizationService:
             candidate = self._candidate_from_mistral_document(source_path)
             return self._build_result(source_path, candidate)
         except ValueError as primary_error:
-            fallback = self._fallback_name(suffix)
+            fallbacks = self._fallback_names(suffix)
             logger.warning(
-                "Primary Mistral OCR route rejected %s; trying %s fallback: %s",
+                "Primary Mistral OCR route rejected %s; trying fallback chain %s: %s",
                 source_path.name,
-                fallback or "no configured",
+                ", ".join(fallbacks) or "none configured",
                 primary_error,
             )
-            if fallback == "docling":
-                return self._build_result_with_fallback(
-                    source_path,
-                    self._candidate_from_docling_pdf(source_path),
-                    fallback_name=fallback,
-                    fallback_route=PDF_FALLBACK_ROUTE,
-                    primary_error=primary_error,
-                )
-            if fallback == "markitdown":
-                return self._build_result_with_fallback(
-                    source_path,
-                    self._candidate_from_markitdown(
-                        source_path,
-                        route=DOCX_PPTX_FALLBACK_ROUTE,
-                    ),
-                    fallback_name=fallback,
-                    fallback_route=DOCX_PPTX_FALLBACK_ROUTE,
-                    primary_error=primary_error,
-                )
+            fallback_errors: list[str] = []
+            for fallback in fallbacks:
+                try:
+                    if fallback == "docling" and suffix == ".pdf":
+                        return self._build_fallback_result(
+                            source_path,
+                            self._candidate_from_docling_pdf(source_path),
+                            fallback_name=fallback,
+                            fallback_route=PDF_FALLBACK_ROUTE,
+                            primary_error=primary_error,
+                        )
+                    if fallback == "markitdown":
+                        fallback_route = (
+                            PDF_MARKITDOWN_FALLBACK_ROUTE
+                            if suffix == ".pdf"
+                            else DOCX_PPTX_FALLBACK_ROUTE
+                        )
+                        return self._build_fallback_result(
+                            source_path,
+                            self._candidate_from_markitdown(
+                                source_path,
+                                route=fallback_route,
+                            ),
+                            fallback_name=fallback,
+                            fallback_route=fallback_route,
+                            primary_error=primary_error,
+                        )
+                    fallback_errors.append(f"{fallback} is not supported for {suffix}")
+                except ValueError as fallback_error:
+                    fallback_errors.append(f"{fallback} failed ({fallback_error})")
+            if fallback_errors:
+                raise ValueError(
+                    f"All conversion routes failed for {source_path.name}: "
+                    f"primary Mistral OCR failed ({primary_error}); "
+                    f"fallbacks failed: {'; '.join(fallback_errors)}."
+                ) from primary_error
             raise ValueError(
                 f"Mistral OCR could not convert {source_path.name}: {primary_error}"
             ) from primary_error
@@ -629,7 +595,7 @@ class NormalizationService:
             candidate = self._candidate_from_html_mistral(source_path)
             return self._build_result(source_path, candidate)
         except ValueError as primary_error:
-            fallback = self._fallback_name(source_path.suffix.lower())
+            fallback = self._first_fallback_name(source_path.suffix.lower())
             logger.warning(
                 "Primary HTML OCR route rejected %s; trying %s fallback: %s",
                 source_path.name,
@@ -664,7 +630,7 @@ class NormalizationService:
         suffix = source_path.suffix.lower()
         mistral_config = self._mistral_config()
         converted = self._mistral_ocr_converter_instance().convert_document_bytes(
-            source_path.read_bytes(),
+            _read_inline_ocr_payload(source_path),
             mime_type=MISTRAL_DOCUMENT_MIME_TYPES[suffix],
             document_name=source_path.name,
         )
@@ -686,7 +652,7 @@ class NormalizationService:
         suffix = source_path.suffix.lower()
         mistral_config = self._mistral_config()
         converted = self._mistral_ocr_converter_instance().convert_image_bytes(
-            source_path.read_bytes(),
+            _read_inline_ocr_payload(source_path),
             mime_type=MISTRAL_IMAGE_MIME_TYPES[suffix],
         )
         converted = _coerce_converted_text(converted)
@@ -731,6 +697,10 @@ class NormalizationService:
                 "Ensure wkhtmltopdf or xhtml2pdf is available."
             )
 
+        _ensure_inline_ocr_payload_size(
+            len(rendered_pdf),
+            f"{source_path.stem}.pdf",
+        )
         converted = self._mistral_ocr_converter_instance().convert_document_bytes(
             rendered_pdf,
             mime_type="application/pdf",
@@ -829,7 +799,13 @@ class NormalizationService:
         primary_error: ValueError,
     ) -> NormalizationResult:
         try:
-            result = self._build_result(source_path, candidate)
+            return self._build_fallback_result(
+                source_path,
+                candidate,
+                fallback_name=fallback_name,
+                fallback_route=fallback_route,
+                primary_error=primary_error,
+            )
         except ValueError as fallback_error:
             raise ValueError(
                 f"All conversion routes failed for {source_path.name}: "
@@ -837,6 +813,16 @@ class NormalizationService:
                 f"fallback {fallback_name} failed ({fallback_error})."
             ) from fallback_error
 
+    def _build_fallback_result(
+        self,
+        source_path: Path,
+        candidate: _ConvertedText,
+        *,
+        fallback_name: str,
+        fallback_route: str,
+        primary_error: ValueError,
+    ) -> NormalizationResult:
+        result = self._build_result(source_path, candidate)
         result.metadata["fallback_used"] = True
         result.metadata["fallback_converter"] = fallback_name
         result.metadata["fallback_route"] = fallback_route
@@ -886,11 +872,15 @@ class NormalizationService:
         html = conversion.get("html", {})
         return html if isinstance(html, dict) else {}
 
-    def _fallback_name(self, suffix: str) -> str:
+    def _first_fallback_name(self, suffix: str) -> str:
+        names = self._fallback_names(suffix)
+        return names[0] if names else ""
+
+    def _fallback_names(self, suffix: str) -> tuple[str, ...]:
         conversion = self._config.get("conversion", {})
         fallbacks = conversion.get("fallbacks", {})
         if not isinstance(fallbacks, dict):
-            return ""
+            return ()
         if suffix == ".pdf":
             key = "pdf"
         elif suffix == ".docx":
@@ -900,7 +890,22 @@ class NormalizationService:
         else:
             key = "html"
         value = fallbacks.get(key, "")
-        return value if isinstance(value, str) else ""
+        if isinstance(value, str):
+            values = [value]
+        elif isinstance(value, (list, tuple)):
+            values = list(value)
+        else:
+            return ()
+        names: list[str] = []
+        for raw_name in values:
+            if not isinstance(raw_name, str):
+                continue
+            name = raw_name.strip().lower()
+            if name == "none":
+                continue
+            if name and name not in names:
+                names.append(name)
+        return tuple(names)
 
 
 def is_supported_source_path(source_path: Path) -> bool:
@@ -958,6 +963,29 @@ def _merge_nested(base: dict[str, Any], incoming: dict[str, Any]) -> dict[str, A
 def _data_uri(mime_type: str, payload: bytes) -> str:
     encoded = base64.b64encode(payload).decode("ascii")
     return f"data:{mime_type};base64,{encoded}"
+
+
+def _read_inline_ocr_payload(path: Path) -> bytes:
+    try:
+        size = path.stat().st_size
+    except OSError as exc:
+        raise ValueError(
+            f"Could not read {path.name} for OCR conversion: {exc}"
+        ) from exc
+    _ensure_inline_ocr_payload_size(size, path.name)
+    return path.read_bytes()
+
+
+def _ensure_inline_ocr_payload_size(size: int, source_name: str) -> None:
+    if size <= MAX_INLINE_OCR_PAYLOAD_BYTES:
+        return
+    limit_mb = MAX_INLINE_OCR_PAYLOAD_BYTES // (1024 * 1024)
+    actual_mb = size / (1024 * 1024)
+    raise ValueError(
+        f"{source_name} is {actual_mb:.1f} MB, which exceeds the {limit_mb} MB "
+        "inline OCR upload limit. Split the file or use a provider upload/document-url "
+        "workflow before ingesting it."
+    )
 
 
 def _join_ocr_pages(pages: list[Any]) -> str:

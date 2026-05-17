@@ -55,10 +55,10 @@ Most commands are flat top-level verbs. The GraphRAG pivot keeps the deprecated 
 
 ## Current Ingest Scope
 
-- The current implementation adds `.md`, `.markdown`, and `.txt` files directly; routes `.pdf`, `.docx`, `.pptx`, `.png`, `.jpg`, `.jpeg`, and `.avif` through Mistral OCR first; renders `.html` / `.htm` to PDF with `wkhtmltopdf` first and pure-Python `xhtml2pdf` as fallback before OCR; and uses MarkItDown for the remaining bounded born-digital subset such as CSV, notebooks, EPUB, and Excel files.
+- The current implementation adds `.md`, `.markdown`, and `.txt` files directly; routes `.pdf`, `.docx`, `.pptx`, `.png`, `.jpg`, `.jpeg`, and `.avif` through Mistral OCR first because OCR accuracy determines downstream wiki, graph, citation, and answer quality; renders `.html` / `.htm` to PDF with `wkhtmltopdf` first and pure-Python `xhtml2pdf` as fallback before OCR; and uses MarkItDown for the remaining bounded born-digital subset such as CSV, notebooks, EPUB, and Excel files.
 - `kb add` is the primary ingestion command; `src/graphwiki_kb/commands/ingest.py` provides the shared implementation.
 - Directory inputs for `kb add` walk recursively by default, add only supported source files, and leave unsupported files untouched.
-- Conversion quality gates reject empty, implausibly short, or suspiciously truncated outputs before `raw/normalized/` artifacts are written. PDF, DOCX, PPTX, and HTML routes then fall back explicitly to Docling or MarkItDown based on config.
+- Conversion quality gates reject empty, implausibly short, or suspiciously truncated outputs before `raw/normalized/` artifacts are written. PDF routes then fall back through the configured ordered local chain, Docling then MarkItDown by default, while DOCX, PPTX, and HTML routes fall back explicitly to MarkItDown based on config.
 
 ## Structural Rules
 

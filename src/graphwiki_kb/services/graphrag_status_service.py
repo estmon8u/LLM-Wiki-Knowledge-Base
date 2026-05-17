@@ -12,6 +12,7 @@ import yaml
 
 from graphwiki_kb.services.file_lock import file_lock, workspace_lock
 from graphwiki_kb.services.graphrag_command_service import GraphRAGCommandResult
+from graphwiki_kb.services.graphrag_freshness_service import evaluate_graph_freshness
 from graphwiki_kb.services.project_service import (
     ProjectPaths,
     atomic_write_text,
@@ -27,15 +28,25 @@ GRAPH_OUTPUT_TABLES: dict[str, tuple[str, ...]] = {
     "community_reports": ("community_reports", "create_final_community_reports"),
 }
 VECTOR_STORE_TABLE_HINTS = ("entity", "document", "text_unit", "text-unit")
+QUERY_REQUIRED_TABLES: dict[str, tuple[str, ...]] = {
+    "basic": ("documents", "text_units"),
+    "global": ("communities", "community_reports"),
+    "local": ("documents", "text_units", "entities", "relationships"),
+    "drift": (
+        "documents",
+        "text_units",
+        "entities",
+        "relationships",
+        "communities",
+        "community_reports",
+    ),
+}
+QUERY_REQUIRES_VECTOR_STORE = {"basic", "local", "drift"}
 
 
 @dataclass(frozen=True)
 class GraphRAGIndexRun:
-    """Represents graph ragindex run behavior and data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Persisted metadata for one GraphRAG index attempt."""
 
     run_id: str
     created_at: str
@@ -55,11 +66,7 @@ class GraphRAGIndexRun:
     active_output_dir: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """Serializes this value to a dictionary.
-
-        Returns:
-            dict[str, Any] produced by the operation.
-        """
+        """Return a JSON-friendly run record."""
         payload = asdict(self)
         payload["command"] = list(self.command)
         return payload
@@ -67,11 +74,7 @@ class GraphRAGIndexRun:
 
 @dataclass(frozen=True)
 class GraphRAGStatus:
-    """Represents graph ragstatus behavior and data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Snapshot of GraphRAG workspace, input, output, and freshness state."""
 
     workspace_dir: Path
     settings_path: Path
@@ -112,6 +115,10 @@ class GraphRAGStatus:
     vector_store_exists: bool = False
     vector_store_readable: bool = False
     vector_store_state: str = "missing"
+    current_input_digest: str | None = None
+    current_config_digest: str | None = None
+    graph_freshness_state: str = "unknown"
+    graph_stale_reasons: tuple[str, ...] = ()
 
     @property
     def missing_tables(self) -> list[str]:
@@ -145,6 +152,8 @@ class GraphRAGStatus:
             return "partial"
         if iso_timestamp_after(self.input_updated_at, self.output_updated_at):
             return "stale"
+        if self.graph_freshness_state in {"stale", "missing-metadata"}:
+            return "stale"
         return "complete"
 
     @property
@@ -162,14 +171,7 @@ class GraphRAGStatus:
         )
 
     def to_dict(self, project_root: Path) -> dict[str, Any]:
-        """Serializes this value to a dictionary.
-
-        Args:
-            project_root: Project root used to resolve knowledge-base paths.
-
-        Returns:
-            dict[str, Any] produced by the operation.
-        """
+        """Return a JSON-friendly status payload with project-relative paths."""
         payload = asdict(self)
         for key in (
             "workspace_dir",
@@ -199,11 +201,7 @@ class GraphRAGStatus:
 
 
 class GraphRAGStatusService:
-    """Coordinates graph ragstatus operations.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Builds GraphRAG status snapshots and persists index-run history."""
 
     def __init__(self, paths: ProjectPaths) -> None:
         self.paths = paths
@@ -214,11 +212,7 @@ class GraphRAGStatusService:
         self.runs_file = paths.graph_dir / "runs" / "graph_index_runs.json"
 
     def status(self) -> GraphRAGStatus:
-        """Status.
-
-        Returns:
-            GraphRAGStatus produced by the operation.
-        """
+        """Return the current GraphRAG status under a workspace read lock."""
         with workspace_lock(self.workspace_dir):
             return self._status_unlocked()
 
@@ -242,6 +236,11 @@ class GraphRAGStatusService:
         input_document_count = self._input_document_count()
         workspace_initialized = self.settings_path.exists()
         input_exists = self.input_path.exists()
+        freshness = evaluate_graph_freshness(
+            input_path=self.input_path,
+            workspace_dir=self.workspace_dir,
+            last_successful_run=self.last_successful_index_run(),
+        )
         wiki_export_path = self.paths.wiki_dir / "graph" / "index.md"
         return GraphRAGStatus(
             workspace_dir=self.workspace_dir,
@@ -270,6 +269,8 @@ class GraphRAGStatusService:
                 output_complete=output_complete,
                 vector_store_exists=vector_store_exists,
                 vector_store_readable=vector_store_readable,
+                freshness_state=freshness.state,
+                stale_reasons=freshness.reasons,
                 last_run=last_run,
             ),
             last_index_input_digest=last_run.get("input_digest") if last_run else None,
@@ -296,6 +297,10 @@ class GraphRAGStatusService:
             vector_store_exists=vector_store_exists,
             vector_store_readable=vector_store_readable,
             vector_store_state=vector_store_state,
+            current_input_digest=freshness.current_input_digest,
+            current_config_digest=freshness.current_config_digest,
+            graph_freshness_state=freshness.state,
+            graph_stale_reasons=freshness.reasons,
         )
 
     def record_index_run(
@@ -310,21 +315,7 @@ class GraphRAGStatusService:
         source_hashes: dict[str, str] | None = None,
         output_state: str | None = None,
     ) -> GraphRAGIndexRun:
-        """Record index run.
-
-        Args:
-            method: Method value used by the operation.
-            dry_run: Dry run value used by the operation.
-            result: Result value used by the operation.
-            input_digest: Input digest value used by the operation.
-            config_digest: Config digest value used by the operation.
-            input_source_count: Input source count value used by the operation.
-            source_hashes: Source hashes value used by the operation.
-            output_state: Output state value used by the operation.
-
-        Returns:
-            GraphRAGIndexRun produced by the operation.
-        """
+        """Append one GraphRAG index run to the persisted history."""
         created_at = utc_now_iso()
         active_output_dir = None
         if result.returncode == 0 and not dry_run:
@@ -361,11 +352,7 @@ class GraphRAGStatusService:
         return record
 
     def last_successful_index_run(self) -> dict[str, Any] | None:
-        """Last successful index run.
-
-        Returns:
-            dict[str, Any] | None produced by the operation.
-        """
+        """Return the newest successful non-dry-run index record, if any."""
         for run in reversed(self._load_runs()):
             if run.get("success") is True and run.get("dry_run") is False:
                 return run
@@ -585,6 +572,8 @@ class GraphRAGStatusService:
         output_complete: bool,
         vector_store_exists: bool = True,
         vector_store_readable: bool = True,
+        freshness_state: str = "unknown",
+        stale_reasons: tuple[str, ...] = (),
         last_run: dict[str, Any] | None = None,
     ) -> str:
         if not workspace_initialized:
@@ -605,23 +594,50 @@ class GraphRAGStatusService:
             if not vector_store_readable:
                 return "Run `kb update --graph-only` to rebuild the unreadable graph vector store."
             return "Run `kb update` to rebuild incomplete graph index output."
+        if freshness_state in {"stale", "missing-metadata"}:
+            if stale_reasons:
+                return f"Run `kb update --graph-only`: {stale_reasons[0]}"
+            return "Run `kb update --graph-only` to refresh the graph index."
         return 'Run `kb ask --method drift "..."` or `kb export`.'
 
 
-def graph_ready_for_query(status: GraphRAGStatus) -> bool:
+def graph_ready_for_query(status: GraphRAGStatus, *, method: str | None = None) -> bool:
     """Return whether GraphRAG has every artifact required for querying."""
     return (
         status.workspace_initialized
         and status.input_exists
         and status.input_document_count > 0
         and status.output_present
-        and status.output_complete
-        and status.vector_store_readable
+        and not missing_artifacts_for_query(status, method=method)
+        and status.graph_freshness_state == "fresh"
         and status.last_index_success is not False
     )
 
 
-def graph_not_ready_message(status: GraphRAGStatus) -> str:
+def missing_artifacts_for_query(
+    status: GraphRAGStatus,
+    *,
+    method: str | None = None,
+) -> list[str]:
+    """Return missing artifacts for a specific GraphRAG query method."""
+    if method is None:
+        return status.missing_tables
+    normalized = method.strip().lower()
+    table_names = QUERY_REQUIRED_TABLES.get(normalized, tuple(GRAPH_OUTPUT_TABLES))
+    missing: list[str] = []
+    for table_name in table_names:
+        if not getattr(status, f"{table_name}_present"):
+            missing.append(table_name)
+    if normalized in QUERY_REQUIRES_VECTOR_STORE and not status.vector_store_readable:
+        missing.append("vector_store")
+    return missing
+
+
+def graph_not_ready_message(
+    status: GraphRAGStatus,
+    *,
+    method: str | None = None,
+) -> str:
     """Return a precise next-step message for an unqueryable graph."""
     if not status.workspace_initialized:
         return "GraphRAG workspace is not initialized. Run `kb init` first."
@@ -636,21 +652,28 @@ def graph_not_ready_message(status: GraphRAGStatus) -> str:
         return "The last GraphRAG index run failed. Re-run `kb update` before asking."
     if not status.output_present:
         return "GraphRAG index output not found. Run `kb update`."
-    if not status.vector_store_exists:
+    missing = missing_artifacts_for_query(status, method=method)
+    if "vector_store" in missing and not status.vector_store_exists:
         return (
             "GraphRAG vector store not found. Run `kb update --graph-only` to "
             "rebuild the graph index."
         )
-    if not status.vector_store_readable:
+    if "vector_store" in missing and not status.vector_store_readable:
         return (
             "GraphRAG vector store is empty or unreadable. Run `kb update --graph-only` "
             "to rebuild the graph index."
         )
-    if not status.output_complete:
+    if missing:
+        method_detail = f" for `{method}` queries" if method else ""
         return (
-            "GraphRAG index output is incomplete. Run `kb update --graph-only` to "
-            "rebuild it."
+            f"GraphRAG index output is incomplete{method_detail}: "
+            f"{', '.join(missing)}. Run `kb update --graph-only` to rebuild it."
         )
+    if status.graph_freshness_state in {"stale", "missing-metadata"}:
+        reason = (
+            f" {status.graph_stale_reasons[0]}" if status.graph_stale_reasons else ""
+        )
+        return f"GraphRAG index is stale.{reason} Run `kb update --graph-only`."
     return f"GraphRAG index is not ready. {status.next_action}"
 
 

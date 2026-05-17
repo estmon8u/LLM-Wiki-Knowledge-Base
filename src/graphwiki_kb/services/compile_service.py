@@ -454,17 +454,19 @@ class CompileService:
     def _write_index(self, sources: list[RawSourceRecord]) -> None:
         concept_entries = _discover_concept_pages(self.paths)
         analysis_entries = _discover_analysis_pages(self.paths)
+        generated_at = utc_now_iso()
+        source_entries = [
+            {
+                "title": source.title,
+                "slug": source.slug,
+                "path": f"wiki/sources/{source.slug}.md",
+                "compiled_at": source.compiled_at,
+            }
+            for source in _sorted_sources(sources)
+        ]
         index_payload = {
-            "generated_at": utc_now_iso(),
-            "source_pages": [
-                {
-                    "title": source.title,
-                    "slug": source.slug,
-                    "path": f"wiki/sources/{source.slug}.md",
-                    "compiled_at": source.compiled_at,
-                }
-                for source in _sorted_sources(sources)
-            ],
+            "generated_at": generated_at,
+            "source_pages": source_entries,
             "concept_pages": concept_entries,
             "analysis_pages": analysis_entries,
         }
@@ -477,21 +479,21 @@ class CompileService:
         lines = [
             "# Knowledge Base Index",
             "",
-            f"Generated: {index_payload['generated_at']}",
+            f"Generated: {generated_at}",
             "",
         ]
-        if index_payload["source_pages"]:
+        if source_entries:
             lines.extend(["## Source Pages", ""])
-            for page in index_payload["source_pages"]:
-                lines.append(f"- [[{page['slug']}]]")
+            for source_entry in source_entries:
+                lines.append(f"- [[{source_entry['slug']}]]")
             lines.append("")
         else:
             lines.extend(["## Source Pages", "", "- No source pages compiled yet.", ""])
 
         if concept_entries:
             lines.extend(["## Concept Pages", ""])
-            for page in concept_entries:
-                lines.append(f"- [[{page['slug']}]]")
+            for concept_entry in concept_entries:
+                lines.append(f"- [[{concept_entry['slug']}]]")
             lines.append("")
         else:
             lines.extend(
@@ -500,8 +502,8 @@ class CompileService:
 
         if analysis_entries:
             lines.extend(["## Analysis Pages", ""])
-            for page in analysis_entries:
-                lines.append(f"- [[{page['slug']}]]")
+            for analysis_entry in analysis_entries:
+                lines.append(f"- [[{analysis_entry['slug']}]]")
             lines.append("")
         else:
             lines.extend(

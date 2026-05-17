@@ -710,6 +710,26 @@ class LintService:
                         message="Graph input changed since last index. Run `kb update`.",
                     )
                 )
+        if (
+            status.output_present
+            and status.output_complete
+            and status.graph_freshness_state in {"stale", "missing-metadata"}
+        ):
+            reason = (
+                status.graph_stale_reasons[0]
+                if status.graph_stale_reasons
+                else "Graph index metadata no longer matches current inputs."
+            )
+            issues.append(
+                LintIssue(
+                    severity="warning",
+                    code="graph-index-stale",
+                    path=(status.active_output_dir or status.output_dir)
+                    .relative_to(self.paths.root)
+                    .as_posix(),
+                    message=f"{reason} Run `kb update --graph-only`.",
+                )
+            )
         graph_index_path = self.paths.wiki_dir / "graph" / "index.md"
         if status.last_index_run_id and graph_index_path.exists():
             try:

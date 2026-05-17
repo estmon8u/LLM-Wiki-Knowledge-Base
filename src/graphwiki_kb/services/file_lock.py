@@ -5,9 +5,9 @@ from __future__ import annotations
 import threading
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Iterator
 
-_HELD_LOCKS: dict[Path, int] = {}
+_HELD_LOCKS: dict[tuple[Path, int], int] = {}
 _HELD_LOCKS_GUARD = threading.Lock()
 
 
@@ -42,37 +42,46 @@ def workspace_lock(workspace_dir: Path) -> Iterator[None]:
 
 
 def _enter_reentrant_lock(lock_path: Path) -> bool:
+    key = _thread_lock_key(lock_path)
     with _HELD_LOCKS_GUARD:
-        count = _HELD_LOCKS.get(lock_path)
+        count = _HELD_LOCKS.get(key)
         if count is None:
             return False
-        _HELD_LOCKS[lock_path] = count + 1
+        _HELD_LOCKS[key] = count + 1
         return True
 
 
 def _leave_reentrant_lock(lock_path: Path) -> None:
+    key = _thread_lock_key(lock_path)
     with _HELD_LOCKS_GUARD:
-        count = _HELD_LOCKS.get(lock_path, 0)
+        count = _HELD_LOCKS.get(key, 0)
         if count <= 1:
-            _HELD_LOCKS.pop(lock_path, None)
+            _HELD_LOCKS.pop(key, None)
         else:
-            _HELD_LOCKS[lock_path] = count - 1
+            _HELD_LOCKS[key] = count - 1
 
 
 def _mark_lock_held(lock_path: Path) -> None:
+    key = _thread_lock_key(lock_path)
     with _HELD_LOCKS_GUARD:
-        _HELD_LOCKS[lock_path] = _HELD_LOCKS.get(lock_path, 0) + 1
+        _HELD_LOCKS[key] = _HELD_LOCKS.get(key, 0) + 1
 
 
 def _unmark_lock_held(lock_path: Path) -> None:
     _leave_reentrant_lock(lock_path)
 
 
+def _thread_lock_key(lock_path: Path) -> tuple[Path, int]:
+    return lock_path, threading.get_ident()
+
+
 def _acquire_lock(handle) -> None:
     try:
         import msvcrt
     except ImportError:  # pragma: no cover - POSIX fallback
-        import fcntl
+        import fcntl as fcntl_module
+
+        fcntl: Any = fcntl_module
 
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         return
@@ -88,7 +97,9 @@ def _release_lock(handle) -> None:
     try:
         import msvcrt
     except ImportError:  # pragma: no cover - POSIX fallback
-        import fcntl
+        import fcntl as fcntl_module
+
+        fcntl: Any = fcntl_module
 
         fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
         return

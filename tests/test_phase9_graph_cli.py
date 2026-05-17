@@ -947,6 +947,8 @@ def test_update_graph_only_skips_legacy_provider_preflight(
     assert result.compile_result is None
     assert result.graph_result is not None
     assert result.graph_result.export_result is not None
+    assert sync.calls[0]["allow_missing_sources"] is False
+    assert sync.calls[1]["allow_missing_sources"] is False
 
 
 def test_graph_hash_helpers_handle_missing_and_dict_inputs(tmp_path) -> None:

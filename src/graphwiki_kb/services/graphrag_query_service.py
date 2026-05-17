@@ -1,9 +1,4 @@
-"""Graphrag query service service behavior for the knowledge-base workflow.
-
-This module belongs to `graphwiki_kb.services.graphrag_query_service` and keeps related behavior
-close to the command, service, model, provider, storage, script, or test
-surface that uses it.
-"""
+"""GraphRAG query execution and saved-answer artifacts."""
 
 from __future__ import annotations
 
@@ -25,6 +20,7 @@ from graphwiki_kb.services.graphrag_status_service import (
     GraphRAGStatus,
     GraphRAGStatusService,
     graph_not_ready_message,
+    graph_ready_for_query,
 )
 from graphwiki_kb.services.graphrag_sync_service import file_digest
 from graphwiki_kb.services.project_service import (
@@ -75,11 +71,7 @@ class GraphRAGQueryError(RuntimeError):
 
 @dataclass
 class GraphRAGQueryAnswer:
-    """Represents graph ragquery answer behavior and data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Answer text, diagnostics, and provenance from a GraphRAG query."""
 
     question: str
     answer: str
@@ -103,22 +95,14 @@ class GraphRAGQueryAnswer:
     staleness_warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
-        """Serializes this value to a dictionary.
-
-        Returns:
-            dict[str, object] produced by the operation.
-        """
+        """Return a JSON-friendly representation of the answer."""
         payload = asdict(self)
         payload["command"] = list(self.command)
         return payload
 
 
 class GraphRAGQueryService:
-    """Coordinates graph ragquery operations.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Executes GraphRAG queries and persists optional analysis pages."""
 
     def __init__(
         self,
@@ -146,22 +130,9 @@ class GraphRAGQueryService:
         streaming: bool | None = None,
         verbose: bool = False,
     ) -> GraphRAGQueryAnswer:
-        """Ask.
-
-        Args:
-            question: User question to answer from available evidence.
-            method: Method value used by the operation.
-            community_level: Community level value used by the operation.
-            dynamic_community_selection: Dynamic community selection value used by the operation.
-            response_type: Response type value used by the operation.
-            streaming: GraphRAG streaming flag forwarded to the query CLI.
-            verbose: Whether to emit verbose command output.
-
-        Returns:
-            GraphRAGQueryAnswer produced by the operation.
-        """
+        """Run a GraphRAG query after checking method-specific readiness."""
         status = self.status_service.status()
-        self._require_query_ready(status)
+        self._require_query_ready(status, method=method)
         input_manifest_hash = self._input_manifest_hash(status.input_path)
         try:
             result = self.command_service.query(
@@ -181,7 +152,7 @@ class GraphRAGQueryService:
         return GraphRAGQueryAnswer(
             question=question,
             answer=answer,
-            raw_output=answer,
+            raw_output=result.stdout,
             method=method,
             created_at=utc_now_iso(),
             index_run_id=status.last_index_run_id,
@@ -209,20 +180,17 @@ class GraphRAGQueryService:
         *,
         slug: str | None = None,
     ) -> str:
-        """Saves answer.
-
-        Args:
-            answer: Answer value used by the operation.
-            slug: Slug value used by the operation.
-
-        Returns:
-            str produced by the operation.
-        """
+        """Persist a non-empty GraphRAG answer as a unique analysis page."""
+        if not answer.answer.strip():
+            raise GraphRAGQueryError(
+                "Refusing to save an empty GraphRAG answer. Re-run `kb ask` after "
+                "refreshing the graph index or inspect the terminal diagnostics."
+            )
         safe_slug = slugify(slug) if slug else slugify(answer.question)
         if not safe_slug or safe_slug == "untitled":
             safe_slug = "analysis"
         safe_slug = f"graphrag-{safe_slug}"
-        dest = self.paths.wiki_analysis_dir / f"{safe_slug}.md"
+        dest = _unique_analysis_path(self.paths.wiki_analysis_dir / f"{safe_slug}.md")
         page_text = self._render_saved_page(answer)
         atomic_write_text(dest, page_text)
         self.search_service.refresh_file(dest)
@@ -286,7 +254,8 @@ class GraphRAGQueryService:
             f"- GraphRAG output: {answer.source_trace.get('output_dir')}",
             "- Direct citation parsing: not available from this raw CLI wrapper yet",
         ]
-        raw_output = answer.raw_output or "No raw GraphRAG output captured."
+        raw_stdout = answer.raw_output or "No raw GraphRAG stdout captured."
+        raw_stderr = answer.stderr or "No raw GraphRAG stderr captured."
         return (
             f"---\n{yaml_block}\n---\n\n"
             f"# {answer.question}\n\n"
@@ -296,9 +265,15 @@ class GraphRAGQueryService:
             f"{chr(10).join(retrieval_lines)}\n\n"
             "## Source Trace\n\n"
             f"{chr(10).join(trace_lines)}\n\n"
-            "## Raw GraphRAG Output\n\n"
+            "## Raw GraphRAG Stdout\n\n"
             "```text\n"
-            f"{raw_output}\n"
+            f"{raw_stdout}"
+            f"{'' if raw_stdout.endswith(chr(10)) else chr(10)}"
+            "```\n\n"
+            "## Raw GraphRAG Stderr\n\n"
+            "```text\n"
+            f"{raw_stderr}"
+            f"{'' if raw_stderr.endswith(chr(10)) else chr(10)}"
             "```\n"
         )
 
@@ -318,21 +293,9 @@ class GraphRAGQueryService:
             current += f"\n{heading}\n"
             atomic_write_text(self.paths.wiki_log_file, current)
 
-    def _require_query_ready(self, status: GraphRAGStatus) -> None:
-        if not status.workspace_initialized:
-            raise GraphRAGQueryError(graph_not_ready_message(status))
-        if not status.input_exists:
-            raise GraphRAGQueryError(graph_not_ready_message(status))
-        if status.input_document_count == 0:
-            raise GraphRAGQueryError(graph_not_ready_message(status))
-        if not status.output_present:
-            raise GraphRAGQueryError(graph_not_ready_message(status))
-        if not status.vector_store_exists or not status.vector_store_readable:
-            raise GraphRAGQueryError(graph_not_ready_message(status))
-        if not status.output_complete:
-            raise GraphRAGQueryError(graph_not_ready_message(status))
-        if status.last_index_success is False:
-            raise GraphRAGQueryError(graph_not_ready_message(status))
+    def _require_query_ready(self, status: GraphRAGStatus, *, method: str) -> None:
+        if not graph_ready_for_query(status, method=method):
+            raise GraphRAGQueryError(graph_not_ready_message(status, method=method))
 
     @staticmethod
     def _input_manifest_hash(input_path: Path) -> str:
@@ -406,3 +369,16 @@ def _relative_path(path: Path, root: Path) -> str:
         return path.resolve().relative_to(root).as_posix()
     except ValueError:
         return path.as_posix()
+
+
+def _unique_analysis_path(path: Path) -> Path:
+    if not path.exists():
+        return path
+    stem = path.stem
+    suffix = path.suffix
+    counter = 2
+    while True:
+        candidate = path.with_name(f"{stem}-{counter}{suffix}")
+        if not candidate.exists():
+            return candidate
+        counter += 1

@@ -15,7 +15,7 @@ from graphwiki_kb.models.command_models import CommandContext, CommandSpec
 SUMMARY = "Add and normalize source files or folders."
 
 
-def build_spec(_: CommandContext = None) -> CommandSpec:
+def build_spec(_: CommandContext | None = None) -> CommandSpec:
     """Builds the command registry specification for this module.
 
     Args:

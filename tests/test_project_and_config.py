@@ -226,6 +226,22 @@ def test_project_service_creates_structure_and_relative_paths(
     assert project_service.to_relative_path(some_file) == "wiki/sources/item.md"
 
 
+def test_project_service_to_relative_path_handles_paths_outside_project(
+    test_project,
+    tmp_path: Path,
+) -> None:
+    """Regression: diagnostics for outside paths should not raise ValueError."""
+    outside_dir = tmp_path.parent / f"{tmp_path.name}-outside"
+    outside_dir.mkdir()
+    outside_file = outside_dir / "outside.md"
+    outside_file.write_text("outside", encoding="utf-8")
+
+    assert (
+        ProjectService(test_project.paths).to_relative_path(outside_file)
+        == outside_file.resolve().as_posix()
+    )
+
+
 def test_config_service_loads_defaults_and_creates_files(uninitialized_project) -> None:
     """Verifies that config service loads defaults and creates files.
 
@@ -360,6 +376,27 @@ def test_config_service_rejects_unknown_reasoning_effort_names(test_project) -> 
     )
 
     with pytest.raises(ValueError, match="providers.anthropic.thinking_effort"):
+        ConfigService(test_project.paths).load()
+
+    test_project.paths.config_file.write_text(
+        "version: 7\n"
+        "providers:\n"
+        "  openai:\n"
+        "    model: gpt-5.4-nano\n"
+        "    api_key_env: OPENAI_API_KEY\n"
+        "    reasoning_effort: xhigh\n"
+        "  anthropic:\n"
+        "    model: claude-sonnet-4-6\n"
+        "    api_key_env: ANTHROPIC_API_KEY\n"
+        "    thinking_effort: high\n"
+        "  gemini:\n"
+        "    model: gemini-2.5-flash\n"
+        "    api_key_env: GEMINI_API_KEY\n"
+        "    reasoning_effort: xhigh\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="providers.gemini.reasoning_effort"):
         ConfigService(test_project.paths).load()
 
 
@@ -539,7 +576,7 @@ def test_config_service_migrates_v3_file_to_v4_with_conversion_defaults(
     assert loaded["version"] == CURRENT_CONFIG_VERSION
     assert loaded["conversion"]["mistral_ocr"]["model"] == "mistral-ocr-latest"
     assert loaded["conversion"]["html"]["renderer"] == "wkhtmltopdf"
-    assert loaded["conversion"]["fallbacks"]["pdf"] == "docling"
+    assert loaded["conversion"]["fallbacks"]["pdf"] == ["docling", "markitdown"]
     assert loaded["graph"]["model"] == DEFAULT_GRAPHRAG_MODEL
     assert loaded["graph"]["embedding_model"] == DEFAULT_GRAPHRAG_EMBEDDING_MODEL
 
@@ -574,6 +611,7 @@ def test_config_service_migrates_v4_file_to_v5_with_graph_defaults(
 
     assert loaded["version"] == CURRENT_CONFIG_VERSION
     assert loaded["graph"] == DEFAULT_CONFIG["graph"]
+    assert loaded["conversion"]["fallbacks"]["pdf"] == ["docling"]
 
 
 def test_config_service_loads_custom_graph_config(test_project) -> None:
@@ -835,7 +873,7 @@ def test_config_service_rejects_invalid_conversion_fallbacks(test_project) -> No
         "version: 4\n"
         "conversion:\n"
         "  fallbacks:\n"
-        "    pdf: markitdown\n"
+        "    pdf: tika\n"
         "    docx: markitdown\n"
         "    pptx: markitdown\n"
         "    html: markitdown\n",
@@ -844,6 +882,27 @@ def test_config_service_rejects_invalid_conversion_fallbacks(test_project) -> No
 
     with pytest.raises(ValueError, match="conversion.fallbacks.pdf"):
         ConfigService(test_project.paths).load()
+
+
+def test_config_service_accepts_ordered_pdf_fallback_chain(test_project) -> None:
+    """PDF fallbacks can be ordered after Mistral while legacy scalars still load."""
+    test_project.paths.config_file.write_text(
+        "version: 4\n"
+        "conversion:\n"
+        "  fallbacks:\n"
+        "    pdf:\n"
+        "      - docling\n"
+        "      - markitdown\n"
+        "    docx: markitdown\n"
+        "    pptx: markitdown\n"
+        "    html: markitdown\n",
+        encoding="utf-8",
+    )
+
+    loaded = ConfigService(test_project.paths).load()
+
+    assert loaded["conversion"]["fallbacks"]["pdf"] == ["docling", "markitdown"]
+    assert loaded["conversion"]["fallbacks"]["docx"] == ["markitdown"]
 
 
 def test_config_service_load_schema_reads_custom_schema(test_project) -> None:

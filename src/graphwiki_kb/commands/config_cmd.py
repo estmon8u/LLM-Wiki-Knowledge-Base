@@ -17,7 +17,7 @@ from graphwiki_kb.providers import validate_provider_name
 SUMMARY = "View or edit project configuration."
 
 
-def build_spec(_: CommandContext = None) -> CommandSpec:
+def build_spec(_: CommandContext | None = None) -> CommandSpec:
     """Builds the command registry specification for this module.
 
     Args:

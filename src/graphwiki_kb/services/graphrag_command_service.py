@@ -164,10 +164,16 @@ class GraphRAGApiBackend:
 
     def __init__(self, paths: ProjectPaths) -> None:
         self.paths = paths
+        self._runtime_validated = False
+
+    def _ensure_runtime(self) -> None:
+        if self._runtime_validated:
+            return
         try:
             validate_graphrag_runtime()
         except GraphRAGCompatibilityError as exc:
             raise GraphRAGCommandError(str(exc)) from exc
+        self._runtime_validated = True
 
     def init_workspace(
         self,
@@ -177,6 +183,7 @@ class GraphRAGApiBackend:
         embedding: str,
         force: bool,
     ) -> GraphRAGCommandResult:  # pragma: no cover - exercised by GraphRAG package
+        self._ensure_runtime()
         command = _init_command(workspace_dir, model, embedding, force)
         try:
             from graphrag.cli.initialize import initialize_project_at
@@ -206,6 +213,7 @@ class GraphRAGApiBackend:
         verbose: bool,
         status_callback: StatusCallback,
     ) -> GraphRAGCommandResult:  # pragma: no cover - exercised by GraphRAG package
+        self._ensure_runtime()
         command = _index_command(
             workspace_dir,
             method=method,
@@ -275,6 +283,7 @@ class GraphRAGApiBackend:
         streaming: bool | None,
         verbose: bool,
     ) -> GraphRAGCommandResult:  # pragma: no cover - exercised by GraphRAG package
+        self._ensure_runtime()
         command = _query_command(
             workspace_dir,
             question,
@@ -470,7 +479,9 @@ def _run_query_entrypoint(
     )
 
     response_type = response_type or DEFAULT_QUERY_RESPONSE_TYPE
-    community_level = community_level or DEFAULT_QUERY_COMMUNITY_LEVEL
+    community_level = (
+        DEFAULT_QUERY_COMMUNITY_LEVEL if community_level is None else community_level
+    )
     dynamic_community_selection = bool(dynamic_community_selection)
     kwargs = {
         "config_filepath": None,

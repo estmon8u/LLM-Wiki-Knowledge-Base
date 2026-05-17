@@ -278,6 +278,10 @@ class ConceptService:
         self,
         source_pages: list[_SourcePage],
     ) -> list[_ConceptDraft] | None:
+        provider = self.provider
+        if provider is None:
+            return None
+
         source_digest = _source_pages_digest(source_pages)
         cached = _load_concept_cache(self._concept_cache_path(), source_digest)
         if cached is not None:
@@ -285,7 +289,7 @@ class ConceptService:
 
         prompt = _provider_concept_prompt(source_pages)
         try:
-            response = self.provider.generate(
+            response = provider.generate(
                 ProviderRequest(
                     prompt=prompt,
                     system_prompt=_CONCEPT_SYSTEM_PROMPT,
@@ -515,11 +519,11 @@ def _drafts_from_provider_report(
         seen_pages: set[str] = set()
         for raw_page in concept.source_pages:
             page_key = raw_page.strip()
-            page = pages_by_key.get(page_key)
-            if page is None or page.relative_path in seen_pages:
+            matched_page = pages_by_key.get(page_key)
+            if matched_page is None or matched_page.relative_path in seen_pages:
                 continue
-            seen_pages.add(page.relative_path)
-            group.append(page)
+            seen_pages.add(matched_page.relative_path)
+            group.append(matched_page)
 
         if len(group) < _MIN_SOURCE_PAGES:
             continue

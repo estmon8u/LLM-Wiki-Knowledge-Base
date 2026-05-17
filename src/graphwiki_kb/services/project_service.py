@@ -1,9 +1,4 @@
-"""Project service service behavior for the knowledge-base workflow.
-
-This module belongs to `graphwiki_kb.services.project_service` and keeps related behavior
-close to the command, service, model, provider, storage, script, or test
-surface that uses it.
-"""
+"""Project path helpers and filesystem setup for a knowledge-base workspace."""
 
 from __future__ import annotations
 
@@ -19,23 +14,12 @@ from slugify import slugify as library_slugify
 
 
 def utc_now_iso() -> str:
-    """Utc now iso.
-
-    Returns:
-        str produced by the operation.
-    """
+    """Return the current UTC timestamp as second-precision ISO-8601 text."""
     return datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat()
 
 
 def slugify(value: str) -> str:
-    """Slugify.
-
-    Args:
-        value: Input value being normalized, validated, or serialized.
-
-    Returns:
-        str produced by the operation.
-    """
+    """Return a filesystem-safe slug, falling back to `untitled`."""
     normalized = library_slugify(value)
     return normalized or "untitled"
 
@@ -74,13 +58,7 @@ def _replace_with_retry(source: Path, destination: Path) -> None:
 
 
 def atomic_write_text(path: Path, contents: str, *, encoding: str = "utf-8") -> None:
-    """Atomic write text.
-
-    Args:
-        path: Filesystem path used by the operation.
-        contents: Contents value used by the operation.
-        encoding: Encoding value used by the operation.
-    """
+    """Write text through a temporary file and atomic replace."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = _atomic_temp_path(path)
     try:
@@ -91,12 +69,7 @@ def atomic_write_text(path: Path, contents: str, *, encoding: str = "utf-8") -> 
 
 
 def atomic_copy_file(source: Path, destination: Path) -> None:
-    """Atomic copy file.
-
-    Args:
-        source: Source record or path being processed.
-        destination: Destination value used by the operation.
-    """
+    """Copy a file through a temporary file and atomic replace."""
     destination.parent.mkdir(parents=True, exist_ok=True)
     temp_path = _atomic_temp_path(destination)
     try:
@@ -108,11 +81,7 @@ def atomic_copy_file(source: Path, destination: Path) -> None:
 
 @dataclass(frozen=True)
 class ProjectPaths:
-    """Represents project paths behavior and data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Canonical paths for every managed project directory and state file."""
 
     root: Path
     config_file: Path
@@ -135,14 +104,7 @@ class ProjectPaths:
 
 
 def discover_project_root(start: Path) -> Path:
-    """Discover project root.
-
-    Args:
-        start: Start value used by the operation.
-
-    Returns:
-        Path produced by the operation.
-    """
+    """Find the nearest parent that looks like a KB project root."""
     resolved = start.resolve()
     candidates = [resolved, *resolved.parents]
     for candidate in candidates:
@@ -154,14 +116,7 @@ def discover_project_root(start: Path) -> Path:
 
 
 def build_project_paths(root: Path) -> ProjectPaths:
-    """Builds project paths.
-
-    Args:
-        root: Root path used for discovery or relative path resolution.
-
-    Returns:
-        ProjectPaths produced by the operation.
-    """
+    """Build canonical project paths from a root directory."""
     resolved_root = root.resolve()
     raw_dir = resolved_root / "raw"
     wiki_dir = resolved_root / "wiki"
@@ -190,29 +145,17 @@ def build_project_paths(root: Path) -> ProjectPaths:
 
 
 class ProjectService:
-    """Coordinates project operations.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Creates and inspects the managed project structure."""
 
     def __init__(self, paths: ProjectPaths) -> None:
         self.paths = paths
 
     def is_initialized(self) -> bool:
-        """Is initialized.
-
-        Returns:
-            bool produced by the operation.
-        """
+        """Return whether required project config files exist."""
         return self.paths.config_file.exists() and self.paths.schema_file.exists()
 
     def ensure_structure(self) -> list[str]:
-        """Ensure structure.
-
-        Returns:
-            list[str] produced by the operation.
-        """
+        """Create required directories/files and return created relative paths."""
         created: list[str] = []
         for directory in (
             self.paths.root,
@@ -239,12 +182,9 @@ class ProjectService:
         return created
 
     def to_relative_path(self, path: Path) -> str:
-        """To relative path.
-
-        Args:
-            path: Filesystem path used by the operation.
-
-        Returns:
-            str produced by the operation.
-        """
-        return path.resolve().relative_to(self.paths.root).as_posix()
+        """Return a project-relative path, or an absolute POSIX path if outside."""
+        resolved = path.resolve()
+        try:
+            return resolved.relative_to(self.paths.root).as_posix()
+        except ValueError:
+            return resolved.as_posix()

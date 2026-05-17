@@ -27,7 +27,7 @@ SUMMARY = (
 _SEVERITY_RANK = {"suggestion": 0, "warning": 1, "error": 2}
 
 
-def build_spec(_: CommandContext = None) -> CommandSpec:
+def build_spec(_: CommandContext | None = None) -> CommandSpec:
     """Builds the command registry specification for this module.
 
     Args:

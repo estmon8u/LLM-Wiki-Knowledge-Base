@@ -22,6 +22,11 @@ from graphwiki_kb.services.graphrag_command_service import (
     GraphRAGCommandService,
 )
 from graphwiki_kb.services.graphrag_defaults import env_file_has_key
+from graphwiki_kb.services.graphrag_freshness_service import (
+    file_digest,
+    graph_input_source_hashes,
+    graph_runtime_digest,
+)
 from graphwiki_kb.services.graphrag_query_service import GraphRAGQueryService
 from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
 from graphwiki_kb.services.query_router_service import QueryRouterService
@@ -62,6 +67,8 @@ def _write_ready_graph(test_project) -> None:
         "graph/graphrag/output/lancedb/vector-store.marker",
         "ready",
     )
+    workspace_dir = test_project.paths.graph_dir / "graphrag"
+    input_path = workspace_dir / "input" / "sources.json"
     GraphRAGStatusService(test_project.paths).record_index_run(
         method="fast",
         dry_run=False,
@@ -72,6 +79,11 @@ def _write_ready_graph(test_project) -> None:
             stdout="indexed",
             stderr="",
         ),
+        input_digest=file_digest(input_path),
+        config_digest=graph_runtime_digest(workspace_dir),
+        input_source_count=1,
+        source_hashes=graph_input_source_hashes(input_path),
+        output_state="complete",
     )
 
 

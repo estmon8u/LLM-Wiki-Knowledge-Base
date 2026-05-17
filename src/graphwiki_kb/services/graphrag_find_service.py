@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import heapq
 import logging
 import math
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from graphwiki_kb.models.wiki_models import SearchResult
 from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
@@ -56,25 +57,30 @@ class GraphRAGFindService:
         if not terms or limit <= 0:
             return []
 
-        results: list[SearchResult] = []
+        heap: list[tuple[tuple[float, int, str], int, SearchResult]] = []
+        counter = 0
         for table_name in _GRAPH_FIND_TABLES:
             table_path = self.status_service.table_path(table_name)
             if table_path is None:
                 continue
-            for record in _read_parquet_records(table_path):
+            for record in _iter_parquet_records(table_path):
                 result = _record_result(table_name, record, terms)
                 if result is not None:
-                    results.append(result)
+                    counter += 1
+                    item = (_result_sort_key(result), counter, result)
+                    if len(heap) < limit:
+                        heapq.heappush(heap, item)
+                    elif item[0] > heap[0][0]:
+                        heapq.heapreplace(heap, item)
 
-        results.sort(
-            key=lambda item: (
-                item.score,
-                1 if item.section == "GraphRAG Entity" else 0,
-                item.title.casefold(),
-            ),
-            reverse=True,
-        )
-        return results[:limit]
+        return [
+            item[2]
+            for item in sorted(
+                heap,
+                key=lambda item: item[0],
+                reverse=True,
+            )
+        ]
 
 
 def _record_result(
@@ -120,6 +126,10 @@ def _record_result(
 
 
 def _read_parquet_records(path: Path) -> list[dict[str, Any]]:
+    return list(_iter_parquet_records(path))
+
+
+def _iter_parquet_records(path: Path) -> Iterator[dict[str, Any]]:
     try:
         import pyarrow.lib as arrow_lib
         import pyarrow.parquet as parquet
@@ -129,7 +139,7 @@ def _read_parquet_records(path: Path) -> list[dict[str, Any]]:
             path,
             exc_info=True,
         )
-        return []
+        return
 
     try:
         parquet_file = parquet.ParquetFile(path)
@@ -151,14 +161,11 @@ def _read_parquet_records(path: Path) -> list[dict[str, Any]]:
             exc,
             exc_info=True,
         )
-        return []
-    records: list[dict[str, Any]] = []
+        return
     try:
         for batch in batches:
             for row in batch.to_pylist():
-                records.append(
-                    {str(key): _clean_value(value) for key, value in row.items()}
-                )
+                yield {str(key): _clean_value(value) for key, value in row.items()}
     except (RuntimeError, arrow_lib.ArrowException) as exc:
         logger.debug(
             "Unable to scan GraphRAG parquet table %s for kb find: %s",
@@ -166,7 +173,14 @@ def _read_parquet_records(path: Path) -> list[dict[str, Any]]:
             exc,
             exc_info=True,
         )
-    return records
+
+
+def _result_sort_key(result: SearchResult) -> tuple[float, int, str]:
+    return (
+        result.score,
+        1 if result.section == "GraphRAG Entity" else 0,
+        result.title.casefold(),
+    )
 
 
 def _projected_columns(path: Path) -> tuple[str, ...]:

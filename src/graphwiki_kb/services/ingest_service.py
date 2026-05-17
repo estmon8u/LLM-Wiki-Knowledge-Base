@@ -1,9 +1,4 @@
-"""Ingest service service behavior for the knowledge-base workflow.
-
-This module belongs to `graphwiki_kb.services.ingest_service` and keeps related behavior
-close to the command, service, model, provider, storage, script, or test
-surface that uses it.
-"""
+"""Source ingestion, duplicate detection, and normalized artifact writing."""
 
 from __future__ import annotations
 
@@ -30,11 +25,7 @@ from graphwiki_kb.services.project_service import (
 
 @dataclass
 class IngestResult:
-    """Stores ingest result data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Outcome for a single source-file ingest attempt."""
 
     created: bool
     source: Optional[RawSourceRecord]
@@ -44,11 +35,7 @@ class IngestResult:
 
 @dataclass
 class IngestDirectoryResult:
-    """Stores ingest directory result data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Outcome for scanning and ingesting one source directory."""
 
     directory_path: Path
     scanned_file_count: int
@@ -56,47 +43,27 @@ class IngestDirectoryResult:
 
     @property
     def created_results(self) -> tuple[IngestResult, ...]:
-        """Created results.
-
-        Returns:
-            tuple[IngestResult, ...] produced by the operation.
-        """
+        """Return results that created new manifest entries."""
         return tuple(result for result in self.results if result.created)
 
     @property
     def duplicate_results(self) -> tuple[IngestResult, ...]:
-        """Duplicate results.
-
-        Returns:
-            tuple[IngestResult, ...] produced by the operation.
-        """
+        """Return results skipped as duplicate sources."""
         return tuple(result for result in self.results if not result.created)
 
     @property
     def created_count(self) -> int:
-        """Created count.
-
-        Returns:
-            int produced by the operation.
-        """
+        """Return the number of newly ingested sources."""
         return len(self.created_results)
 
     @property
     def duplicate_count(self) -> int:
-        """Duplicate count.
-
-        Returns:
-            int produced by the operation.
-        """
+        """Return the number of duplicate sources."""
         return len(self.duplicate_results)
 
 
 class IngestService:
-    """Coordinates ingest operations.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Copies source files, normalizes content, and records manifest entries."""
 
     def __init__(
         self,
@@ -112,21 +79,14 @@ class IngestService:
         )
 
     def ingest_path(self, raw_input_path: Path) -> IngestResult:
-        """Ingest path.
-
-        Args:
-            raw_input_path: Raw input path value used by the operation.
-
-        Returns:
-            IngestResult produced by the operation.
-        """
+        """Ingest one supported source file into raw and normalized storage."""
         source_path = raw_input_path.resolve()
         if not source_path.exists():
             raise FileNotFoundError(f"Source file not found: {source_path}")
         if source_path.is_dir():
             raise ValueError(f"Directory ingest requires --recursive: {source_path}")
 
-        origin_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
+        origin_hash = _file_sha256(source_path)
         duplicate = self.manifest_service.find_by_origin_hash(origin_hash)
         if duplicate is not None:
             return IngestResult(
@@ -189,14 +149,7 @@ class IngestService:
         )
 
     def discover_source_paths(self, raw_input_path: Path) -> tuple[Path, ...]:
-        """Discover source paths.
-
-        Args:
-            raw_input_path: Raw input path value used by the operation.
-
-        Returns:
-            tuple[Path, ...] produced by the operation.
-        """
+        """Return supported source files under a directory in stable order."""
         directory_path = raw_input_path.resolve()
         if not directory_path.exists():
             raise FileNotFoundError(f"Source directory not found: {directory_path}")
@@ -210,15 +163,7 @@ class IngestService:
         raw_input_path: Path,
         progress_callback: Optional[Callable[[Path], None]] = None,
     ) -> IngestDirectoryResult:
-        """Ingest directory.
-
-        Args:
-            raw_input_path: Raw input path value used by the operation.
-            progress_callback: Progress callback value used by the operation.
-
-        Returns:
-            IngestDirectoryResult produced by the operation.
-        """
+        """Ingest every supported source file under a directory."""
         directory_path = raw_input_path.resolve()
         candidate_paths = self.discover_source_paths(directory_path)
 
@@ -260,3 +205,11 @@ class IngestService:
                 key=lambda path: path.relative_to(directory_path).as_posix().lower(),
             )
         )
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()

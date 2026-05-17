@@ -1,9 +1,4 @@
-"""Graphrag wiki export service service behavior for the knowledge-base workflow.
-
-This module belongs to `graphwiki_kb.services.graphrag_wiki_export_service` and keeps related behavior
-close to the command, service, model, provider, storage, script, or test
-surface that uses it.
-"""
+"""Exports GraphRAG parquet artifacts into navigable wiki pages."""
 
 from __future__ import annotations
 
@@ -41,22 +36,14 @@ MAX_ENTITY_RELATIONSHIP_ROWS = 50
 
 
 class GraphRAGWikiExportError(RuntimeError):
-    """Error raised for graph ragwiki export failures.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Raised when GraphRAG artifacts cannot be exported to wiki pages."""
 
     pass
 
 
 @dataclass(frozen=True)
 class GraphRAGWikiExportResult:
-    """Stores graph ragwiki export result data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Summary of GraphRAG wiki pages written by an export run."""
 
     exported_paths: list[str]
     table_counts: dict[str, int]
@@ -64,19 +51,11 @@ class GraphRAGWikiExportResult:
 
     @property
     def exported_count(self) -> int:
-        """Exported count.
-
-        Returns:
-            int produced by the operation.
-        """
+        """Return the number of exported wiki pages."""
         return len(self.exported_paths)
 
     def to_dict(self) -> dict[str, object]:
-        """Serializes this value to a dictionary.
-
-        Returns:
-            dict[str, object] produced by the operation.
-        """
+        """Return a JSON-friendly export summary."""
         return {
             "exported_count": self.exported_count,
             "exported_paths": self.exported_paths,
@@ -86,11 +65,7 @@ class GraphRAGWikiExportResult:
 
 
 class GraphRAGWikiExportService:
-    """Coordinates graph ragwiki export operations.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Reads GraphRAG output tables and writes managed `wiki/graph` pages."""
 
     def __init__(
         self,
@@ -108,11 +83,7 @@ class GraphRAGWikiExportService:
         self._export_runtime_digest: str | None = None
 
     def export_wiki(self) -> GraphRAGWikiExportResult:
-        """Export wiki.
-
-        Returns:
-            GraphRAGWikiExportResult produced by the operation.
-        """
+        """Export GraphRAG artifacts while holding the workspace lock."""
         with workspace_lock(self.paths.graph_dir / "graphrag"):
             return self._export_wiki_unlocked()
 
@@ -519,11 +490,7 @@ class GraphRAGWikiExportService:
 
 @dataclass(frozen=True)
 class _ExportContext:
-    """Represents export context behavior and data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Shared metadata and lookup tables used while writing graph pages."""
 
     index_run_id: str | None
     runtime_digest: str | None
@@ -535,10 +502,14 @@ class _ExportContext:
 def _read_parquet_records(path: Path) -> list[dict[str, Any]]:
     import pyarrow.parquet as parquet
 
-    rows = parquet.read_table(path).to_pylist()
-    return [
-        {str(key): _clean_value(value) for key, value in row.items()} for row in rows
-    ]
+    records: list[dict[str, Any]] = []
+    parquet_file = parquet.ParquetFile(path)
+    for batch in parquet_file.iter_batches():
+        records.extend(
+            {str(key): _clean_value(value) for key, value in row.items()}
+            for row in batch.to_pylist()
+        )
+    return records
 
 
 def _clean_value(value: Any) -> Any:

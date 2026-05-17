@@ -12,6 +12,10 @@ import yaml
 from graphwiki_kb.providers import resolve_provider_settings, supported_provider_names
 from graphwiki_kb.services.config_service import resolve_graph_config
 from graphwiki_kb.services.graphrag_defaults import env_file_has_key
+from graphwiki_kb.services.graphrag_runtime import (
+    GraphRAGCompatibilityError,
+    validate_graphrag_runtime,
+)
 from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
 from graphwiki_kb.services.normalization_service import resolve_wkhtmltopdf_binary
 from graphwiki_kb.services.project_service import ProjectPaths
@@ -19,11 +23,7 @@ from graphwiki_kb.services.project_service import ProjectPaths
 
 @dataclass
 class DoctorCheck:
-    """Represents doctor check behavior and data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """One project health check and its severity."""
 
     name: str
     ok: bool
@@ -33,57 +33,33 @@ class DoctorCheck:
 
 @dataclass
 class DoctorReport:
-    """Stores doctor report data.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Aggregated project health check results."""
 
     checks: list[DoctorCheck] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
-        """Ok.
-
-        Returns:
-            bool produced by the operation.
-        """
+        """Return true when no check has error severity."""
         return all(c.severity != "error" for c in self.checks)
 
     @property
     def passed_count(self) -> int:
-        """Passed count.
-
-        Returns:
-            int produced by the operation.
-        """
+        """Return the number of passing checks."""
         return sum(1 for c in self.checks if c.severity == "ok")
 
     @property
     def warning_count(self) -> int:
-        """Warning count.
-
-        Returns:
-            int produced by the operation.
-        """
+        """Return the number of warning checks."""
         return sum(1 for c in self.checks if c.severity == "warning")
 
     @property
     def failed_count(self) -> int:
-        """Failed count.
-
-        Returns:
-            int produced by the operation.
-        """
+        """Return the number of failing checks."""
         return sum(1 for c in self.checks if c.severity == "error")
 
 
 class DoctorService:
-    """Coordinates doctor operations.
-
-    Attributes:
-        See annotated class attributes for stored values.
-    """
+    """Runs project, provider, converter, and GraphRAG readiness checks."""
 
     def __init__(
         self,
@@ -98,14 +74,7 @@ class DoctorService:
         self.graphrag_status_service = graphrag_status_service
 
     def diagnose(self, *, strict: bool = False) -> DoctorReport:
-        """Diagnose.
-
-        Args:
-            strict: Strict value used by the operation.
-
-        Returns:
-            DoctorReport produced by the operation.
-        """
+        """Run all doctor checks, treating optional checks as errors when strict."""
         checks: list[DoctorCheck] = []
         checks.append(self._check_project_structure())
         checks.append(self._check_config_file())
@@ -368,22 +337,20 @@ class DoctorService:
     def _check_graphrag(self, *, strict: bool = False) -> list[DoctorCheck]:
         sev = "error" if strict else "warning"
         checks: list[DoctorCheck] = []
+        graphrag_importable = importlib.util.find_spec("graphrag") is not None
         checks.append(
             DoctorCheck(
                 name="graphrag_dependency",
-                ok=importlib.util.find_spec("graphrag") is not None,
+                ok=graphrag_importable,
                 detail=(
                     "GraphRAG dependency is importable."
-                    if importlib.util.find_spec("graphrag") is not None
+                    if graphrag_importable
                     else "GraphRAG dependency is missing. Run `poetry install`."
                 ),
-                severity=(
-                    "ok"
-                    if importlib.util.find_spec("graphrag") is not None
-                    else "error"
-                ),
+                severity="ok" if graphrag_importable else "error",
             )
         )
+        checks.append(self._check_graphrag_runtime(strict=strict))
         status = (
             self.graphrag_status_service.status()
             if self.graphrag_status_service is not None
@@ -459,6 +426,24 @@ class DoctorService:
             )
         )
         return checks
+
+    def _check_graphrag_runtime(self, *, strict: bool = False) -> DoctorCheck:
+        sev = "error" if strict else "warning"
+        try:
+            validate_graphrag_runtime()
+        except GraphRAGCompatibilityError as exc:
+            return DoctorCheck(
+                name="graphrag_runtime",
+                ok=False,
+                detail=str(exc),
+                severity=sev,
+            )
+        return DoctorCheck(
+            name="graphrag_runtime",
+            ok=True,
+            detail="GraphRAG runtime version and Python entrypoints are compatible.",
+            severity="ok",
+        )
 
     def _check_graphrag_settings(
         self, status: Any | None, *, strict: bool = False

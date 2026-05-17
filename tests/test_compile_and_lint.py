@@ -2226,6 +2226,37 @@ def test_lint_reports_graph_index_stale(test_project) -> None:
     assert any(issue.code == "graph-index-stale" for issue in report.issues)
 
 
+def test_lint_reports_graph_index_stale_when_freshness_metadata_missing(
+    test_project,
+) -> None:
+    """Regression: legacy run records cannot make complete output look fresh."""
+    manifest_hash = _sha256(test_project.paths.raw_manifest_file)
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    input_path = test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "src-1", "manifest_hash": manifest_hash}]),
+    )
+    for table in (
+        "documents",
+        "text_units",
+        "entities",
+        "relationships",
+        "communities",
+        "community_reports",
+    ):
+        test_project.write_file(f"graph/graphrag/output/{table}.parquet", "")
+    test_project.write_file("graph/graphrag/output/lancedb/vector-store.marker", "ok")
+    _record_graph_run(test_project, input_hash=_sha256(input_path))
+
+    report = test_project.services["lint"].lint()
+
+    stale_messages = [
+        issue.message for issue in report.issues if issue.code == "graph-index-stale"
+    ]
+    assert any("metadata" in message for message in stale_messages)
+    assert any("kb update --graph-only" in message for message in stale_messages)
+
+
 def test_lint_reports_graph_export_stale(test_project) -> None:
     """Verifies that lint reports graph export stale.
 
