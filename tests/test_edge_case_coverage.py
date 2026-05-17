@@ -338,6 +338,17 @@ def test_graphrag_status_edge_cases(tmp_path) -> None:
         ).state
         == "stale"
     )
+    assert (
+        GraphRAGStatus(
+            **{
+                **base,
+                "input_updated_at": "2026-05-11T00:00:02+00:00",
+                "output_updated_at": "2026-05-11T00:00:01+00:00",
+                "graph_freshness_state": "fresh",
+            }
+        ).state
+        == "complete"
+    )
     service.output_dir.mkdir(parents=True)
     assert service._active_output_dir() is None
     table = service.output_dir / "create_final_entities.parquet"

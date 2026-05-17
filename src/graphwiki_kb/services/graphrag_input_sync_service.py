@@ -147,7 +147,7 @@ class GraphRAGInputSyncService:
         warnings = _input_size_warnings(input_size_bytes)
         if not preview_only:
             settings_updated = self.configure_settings()
-            atomic_write_text(self.input_file, payload)
+            _atomic_write_text_if_changed(self.input_file, payload)
 
         return GraphRAGInputSyncResult(
             source_count=len(records),
@@ -423,6 +423,12 @@ def _input_size_warnings(input_size_bytes: int) -> list[str]:
         f"{mib:.1f} MiB; consider splitting the corpus or using graph-only "
         f"updates intentionally above {limit_mib} MiB."
     ]
+
+
+def _atomic_write_text_if_changed(path: Path, contents: str) -> None:
+    if path.exists() and path.read_text(encoding="utf-8") == contents:
+        return
+    atomic_write_text(path, contents)
 
 
 def _source_hashes(records: list[dict[str, Any]]) -> dict[str, str]:

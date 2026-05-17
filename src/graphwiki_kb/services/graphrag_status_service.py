@@ -163,9 +163,12 @@ class GraphRAGStatus:
             return "present_unreadable"
         if not self.output_complete:
             return "partial"
-        if iso_timestamp_after(self.input_updated_at, self.output_updated_at):
-            return "stale"
         if self.graph_freshness_state in {"stale", "missing-metadata"}:
+            return "stale"
+        if self.graph_freshness_state != "fresh" and iso_timestamp_after(
+            self.input_updated_at,
+            self.output_updated_at,
+        ):
             return "stale"
         return "complete"
 

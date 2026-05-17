@@ -1655,7 +1655,7 @@ def test_search_index_store_delete_missing_files(test_project) -> None:
     from graphwiki_kb.storage.search_index_store import IndexedChunk, IndexedFileState
 
     store = test_project.services["search"].index_store
-    for slug in ("keep", "remove"):
+    for slug in ("keep", "remove", "remove-too"):
         store.upsert_file(
             IndexedFileState(
                 page_path=f"wiki/sources/{slug}.md", mtime_ns=1, size_bytes=5
@@ -1675,10 +1675,11 @@ def test_search_index_store_delete_missing_files(test_project) -> None:
 
     deleted = store.delete_missing_files({"wiki/sources/keep.md"})
 
-    assert deleted == 1
+    assert deleted == 2
     indexed = store.load_indexed_files()
     assert "wiki/sources/keep.md" in indexed
     assert "wiki/sources/remove.md" not in indexed
+    assert "wiki/sources/remove-too.md" not in indexed
 
 
 def test_page_dedup_returns_enough_unique_pages(test_project) -> None:

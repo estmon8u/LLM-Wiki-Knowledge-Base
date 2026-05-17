@@ -30,6 +30,7 @@ from graphwiki_kb.services.graphrag_status_service import (
 )
 from graphwiki_kb.services.graphrag_workspace_service import GraphRAGWorkspaceService
 from graphwiki_kb.services.project_service import ProjectPaths
+from graphwiki_kb.services.wiki_priors_service import WikiPriorsService
 
 AUTO_SYNC_METHOD = "auto"
 GRAPH_SYNC_METHODS = ("auto", "standard", "fast", "standard-update", "fast-update")
@@ -97,12 +98,14 @@ class GraphRAGSyncService:
         input_sync_service: GraphRAGInputSyncService,
         status_service: GraphRAGStatusService,
         command_service: GraphRAGCommandService,
+        wiki_priors_service: WikiPriorsService | None = None,
     ) -> None:
         self.paths = paths
         self.workspace_service = workspace_service
         self.input_sync_service = input_sync_service
         self.status_service = status_service
         self.command_service = command_service
+        self.wiki_priors_service = wiki_priors_service
         self.workspace_dir = paths.graph_dir / "graphrag"
 
     def sync(
@@ -148,8 +151,18 @@ class GraphRAGSyncService:
         allow_missing_sources: bool,
         status_callback: Any | None,
     ) -> GraphRAGSyncResult:
+        wiki_priors_result = (
+            self.wiki_priors_service.sync(preview_only=preview_only)
+            if self.wiki_priors_service is not None
+            else None
+        )
+        wiki_priors = (
+            wiki_priors_result.artifact
+            if wiki_priors_result is not None and wiki_priors_result.enabled
+            else None
+        )
         if self.workspace_service.is_initialized() and not preview_only:
-            self.workspace_service.sync_settings()
+            self.workspace_service.sync_settings(wiki_priors=wiki_priors)
 
         input_sync = self.input_sync_service.sync(
             preview_only=preview_only,
@@ -170,13 +183,23 @@ class GraphRAGSyncService:
             else file_digest(status.input_path)
         )
         settings_text = (
-            self.workspace_service.render_settings()
+            self.workspace_service.render_settings(wiki_priors=wiki_priors)
             if preview_only and self.workspace_service.is_initialized()
             else None
         )
+        extra_prompt_texts: dict[str, str] | None = None
+        if preview_only and self.workspace_service.is_initialized():
+            prompt_text = self.workspace_service.render_wiki_priors_prompt(
+                wiki_priors=wiki_priors,
+            )
+            if prompt_text is not None:
+                extra_prompt_texts = {
+                    "prompts/extract_graph_wiki_priors.txt": prompt_text
+                }
         config_digest = graph_runtime_digest(
             self.workspace_dir,
             settings_text=settings_text,
+            extra_prompt_texts=extra_prompt_texts,
         )
         current_source_hashes = (
             input_sync.source_hashes

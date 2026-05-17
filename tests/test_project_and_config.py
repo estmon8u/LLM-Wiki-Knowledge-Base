@@ -1029,10 +1029,12 @@ def test_build_services_returns_expected_keys(test_project) -> None:
         "graphrag_query",
         "graphrag_find",
         "graphrag_wiki_export",
+        "wiki_priors",
         "query_router",
         "graph_ask_controller",
         "compile_run_store",
     }
+    assert services.graphrag_sync.wiki_priors_service is services.wiki_priors
 
 
 # --- P1 boundary/negative tests ---

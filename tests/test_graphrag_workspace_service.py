@@ -22,6 +22,7 @@ from graphwiki_kb.services.graphrag_defaults import (
     DEFAULT_GRAPHRAG_EXTRACTION_MAX_GLEANINGS,
 )
 from graphwiki_kb.services.graphrag_workspace_service import (
+    MANAGED_WIKI_PRIORS_PROMPT,
     GraphRAGWorkspaceService,
     _bundled_prompt_dirs,
 )
@@ -210,6 +211,88 @@ def test_workspace_service_uses_custom_graph_extraction_and_chunking_config(
     assert settings["chunking"]["overlap"] == 90
     assert settings["extract_graph"]["entity_types"] == ["concept", "api"]
     assert settings["extract_graph"]["max_gleanings"] == 3
+
+
+def test_workspace_service_applies_and_removes_wiki_priors_prompt_overlay(
+    test_project,
+) -> None:
+    """Wiki priors can steer extract_graph settings through a managed prompt."""
+    test_project.config["graph"]["wiki_priors"] = {
+        **test_project.config["graph"]["wiki_priors"],
+        "prompt_overlay": True,
+        "max_entity_types": 2,
+    }
+    prompt_path = (
+        test_project.paths.graph_dir / "graphrag" / "prompts" / "extract_graph.txt"
+    )
+    prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    prompt_path.write_text("Base extraction prompt.\n", encoding="utf-8")
+    settings_path = test_project.paths.graph_dir / "graphrag" / "settings.yaml"
+    settings_path.write_text(
+        "extract_graph:\n"
+        "  prompt: prompts/extract_graph.txt\n"
+        "  entity_types:\n"
+        "    - stale\n",
+        encoding="utf-8",
+    )
+    service = GraphRAGWorkspaceService(
+        test_project.paths,
+        GraphRAGCommandService(test_project.paths),
+        config=test_project.config,
+    )
+    wiki_priors = {
+        "entity_types": ["Concept", "API", "Extra"],
+        "glossary": [{"term": "Graph RAG", "aliases": ["RAG", ""]}],
+    }
+
+    rendered = yaml.safe_load(service.render_settings(wiki_priors=wiki_priors))
+    prompt_text = service.render_wiki_priors_prompt(wiki_priors=wiki_priors)
+    empty_prompt_text = service.render_wiki_priors_prompt(
+        wiki_priors={"entity_types": [], "glossary": []}
+    )
+    service.sync_settings(wiki_priors=wiki_priors)
+    managed_prompt_path = (
+        test_project.paths.graph_dir / "graphrag" / MANAGED_WIKI_PRIORS_PROMPT
+    )
+
+    assert rendered["extract_graph"]["prompt"] == MANAGED_WIKI_PRIORS_PROMPT
+    assert rendered["extract_graph"]["entity_types"] == ["concept", "api"]
+    assert prompt_text is not None
+    assert "Base extraction prompt." in prompt_text
+    assert "Wiki priors behavior digest:" in prompt_text
+    assert "- Graph RAG (RAG)" in prompt_text
+    assert empty_prompt_text is not None
+    assert (
+        "- No glossary terms met the configured support threshold." in empty_prompt_text
+    )
+    assert managed_prompt_path.read_text(encoding="utf-8") == prompt_text
+
+    service.sync_settings(wiki_priors=None)
+
+    fallback_settings = yaml.safe_load(settings_path.read_text(encoding="utf-8"))
+    assert managed_prompt_path.exists() is False
+    assert fallback_settings["extract_graph"]["prompt"] == "prompts/extract_graph.txt"
+
+
+def test_workspace_service_base_prompt_uses_safe_fallback(
+    test_project,
+    monkeypatch,
+) -> None:
+    """The managed wiki-priors prompt has a deterministic fallback base prompt."""
+    service = GraphRAGWorkspaceService(
+        test_project.paths,
+        GraphRAGCommandService(test_project.paths),
+        config=test_project.config,
+    )
+    monkeypatch.setattr(
+        "graphwiki_kb.services.graphrag_workspace_service._bundled_prompt_dirs",
+        list,
+    )
+
+    assert (
+        service._base_extract_graph_prompt()
+        == "Extract entities and relationships from the source text."
+    )
 
 
 def test_workspace_service_normalizes_stock_windows_vector_store_path(

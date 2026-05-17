@@ -30,6 +30,7 @@ from graphwiki_kb.services.query_service import QueryService
 from graphwiki_kb.services.review_service import ReviewService
 from graphwiki_kb.services.search_service import SearchService
 from graphwiki_kb.services.status_service import StatusService
+from graphwiki_kb.services.wiki_priors_service import WikiPriorsService
 from graphwiki_kb.storage.compile_run_store import CompileRunStore
 
 
@@ -62,6 +63,11 @@ def build_services(
     graphrag_workspace_service = GraphRAGWorkspaceService(
         paths,
         graphrag_command_service,
+        config=config,
+    )
+    wiki_priors_service = WikiPriorsService(
+        paths,
+        manifest_service,
         config=config,
     )
     query_router_service = QueryRouterService(
@@ -138,6 +144,7 @@ def build_services(
             search_service,
             refresh_index=compile_service.refresh_index,
         ),
+        wiki_priors=wiki_priors_service,
         graphrag_input_sync=graphrag_input_sync_service,
         graphrag_sync=GraphRAGSyncService(
             paths,
@@ -145,6 +152,7 @@ def build_services(
             graphrag_input_sync_service,
             graphrag_status_service,
             graphrag_command_service,
+            wiki_priors_service=wiki_priors_service,
         ),
         review=ReviewService(paths, provider=provider),
         compile_run_store=compile_run_store,

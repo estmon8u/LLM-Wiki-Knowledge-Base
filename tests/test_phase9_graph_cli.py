@@ -806,18 +806,25 @@ def test_update_service_exports_graph_wiki_when_index_skips_with_complete_output
     from graphwiki_kb.services.update_service import UpdateOptions
 
     graph_export = _FakeGraphExport()
+    sync = _FakeGraphSync(
+        test_project.root,
+        _sync_result(
+            test_project.root,
+            action="skip",
+            method=None,
+            output_state="complete",
+        ),
+        _sync_result(
+            test_project.root,
+            action="input-only",
+            method=None,
+            output_state="complete",
+        ),
+    )
     service = _update_service_for_graph(
         test_project,
         workspace=_FakeWorkspace(initialized=True),
-        sync=_FakeGraphSync(
-            test_project.root,
-            _sync_result(
-                test_project.root,
-                action="skip",
-                method=None,
-                output_state="complete",
-            ),
-        ),
+        sync=sync,
         export=graph_export,
     )
 
@@ -825,6 +832,9 @@ def test_update_service_exports_graph_wiki_when_index_skips_with_complete_output
 
     assert result.skipped is True
     assert result.skip_reason == "test decision"
+    assert result.sync_result is not None
+    assert sync.calls[1]["run_index"] is False
+    assert sync.calls[1]["preview_only"] is False
     assert result.export_result is not None
     assert graph_export.calls == 1
 

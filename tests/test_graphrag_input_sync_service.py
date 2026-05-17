@@ -8,6 +8,7 @@ surface that uses it.
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 import yaml
@@ -140,6 +141,29 @@ def test_sync_writes_json_records_and_preserves_provenance(test_project) -> None
             "title": "Retrieval-Augmented Generation",
         }
     ]
+
+
+def test_sync_does_not_touch_unchanged_input_payload(test_project) -> None:
+    """Repeated syncs should not make an unchanged graph index look stale."""
+    _write_graphrag_settings(test_project)
+    test_project.write_file(
+        "raw/normalized/rag.md",
+        "# Retrieval-Augmented Generation\n\nRAG combines retrieval and generation.\n",
+    )
+    test_project.services["manifest"].save_source(_source_record())
+
+    service = GraphRAGInputSyncService(
+        test_project.paths,
+        test_project.services["manifest"],
+    )
+    first = service.sync()
+    old_mtime = 1_700_000_000
+    os.utime(first.output_path, (old_mtime, old_mtime))
+
+    second = service.sync()
+
+    assert second.input_digest == first.input_digest
+    assert int(second.output_path.stat().st_mtime) == old_mtime
 
 
 def test_sync_configures_json_input_and_metadata_prepending(test_project) -> None:

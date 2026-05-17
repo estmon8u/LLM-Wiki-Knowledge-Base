@@ -248,9 +248,15 @@ class SearchIndexStore:
             stale = stored_paths - current_page_paths
             if not stale:
                 return 0
-            for path in stale:
-                conn.execute("DELETE FROM page_chunks WHERE page_path = ?", (path,))
-                conn.execute("DELETE FROM indexed_files WHERE page_path = ?", (path,))
+            stale_params = [(path,) for path in sorted(stale)]
+            conn.executemany(
+                "DELETE FROM page_chunks WHERE page_path = ?",
+                stale_params,
+            )
+            conn.executemany(
+                "DELETE FROM indexed_files WHERE page_path = ?",
+                stale_params,
+            )
             conn.execute(
                 "INSERT INTO page_chunks_fts(page_chunks_fts) VALUES('rebuild')"
             )

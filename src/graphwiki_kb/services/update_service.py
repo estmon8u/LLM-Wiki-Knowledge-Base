@@ -308,12 +308,21 @@ class UpdateService:
             result.skip_reason = decision.reason
             if decision.output_state == "complete":
                 try:
+                    result.sync_result = self._graphrag_sync.sync(
+                        method=options.graph_method,
+                        force=False,
+                        dry_run=False,
+                        run_index=False,
+                        preview_only=False,
+                        allow_missing_sources=not options.graph_only,
+                        status_callback=status_callback,
+                    )
                     if status_callback is not None:
                         status_callback("exporting graph pages")
                     result.export_result = self._graphrag_wiki_export.export_wiki()
                     result.active_output_dir = self._active_graph_output_dir()
                 except Exception as exc:
-                    message = f"Graph export failed after skipped index: {exc}"
+                    message = f"Graph sync/export failed after skipped index: {exc}"
                     if options.allow_partial:
                         result.warning = message
                         return result
