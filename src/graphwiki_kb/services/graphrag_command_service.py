@@ -65,16 +65,31 @@ class GraphRAGCommandService:
         *,
         runner: Runner | None = None,
         api_backend: "GraphRAGApiBackend | None" = None,
+        fallback_backend: "SubprocessGraphRAGApiBackend | None" = None,
+        use_subprocess_backend: bool = False,
     ) -> None:
         self.paths = paths
         self.runner = runner or self._default_runner
-        self.api_backend: GraphRAGApiBackend | _RunnerGraphRAGApiBackend
-        if api_backend is not None:
+        self.api_backend: (
+            GraphRAGApiBackend
+            | _RunnerGraphRAGApiBackend
+            | SubprocessGraphRAGApiBackend
+        )
+        self._fallback_backend: SubprocessGraphRAGApiBackend | None = None
+        if use_subprocess_backend:
+            self.api_backend = fallback_backend or SubprocessGraphRAGApiBackend(
+                paths, self.runner
+            )
+        elif api_backend is not None:
             self.api_backend = api_backend
+            self._fallback_backend = fallback_backend
         elif runner is not None:
             self.api_backend = _RunnerGraphRAGApiBackend(paths, runner)
         else:
             self.api_backend = GraphRAGApiBackend(paths)
+            self._fallback_backend = fallback_backend or SubprocessGraphRAGApiBackend(
+                paths, self.runner
+            )
         self.workspace_dir = paths.graph_dir / "graphrag"
 
     def init_workspace(
@@ -86,7 +101,8 @@ class GraphRAGCommandService:
     ) -> GraphRAGCommandResult:
         """Initialize the GraphRAG workspace through GraphRAG's Python helper."""
         with workspace_lock(self.workspace_dir):
-            result = self.api_backend.init_workspace(
+            result = self._call_backend(
+                "init_workspace",
                 workspace_dir=self.workspace_dir,
                 model=model,
                 embedding=embedding,
@@ -107,7 +123,8 @@ class GraphRAGCommandService:
     ) -> GraphRAGCommandResult:
         """Run GraphRAG indexing through installed Python entrypoints."""
         with workspace_lock(self.workspace_dir):
-            result = self.api_backend.index(
+            result = self._call_backend(
+                "index",
                 workspace_dir=self.workspace_dir,
                 method=method,
                 dry_run=dry_run,
@@ -133,7 +150,8 @@ class GraphRAGCommandService:
     ) -> GraphRAGCommandResult:
         """Run a GraphRAG search query through installed Python entrypoints."""
         with workspace_lock(self.workspace_dir):
-            result = self.api_backend.query(
+            result = self._call_backend(
+                "query",
                 workspace_dir=self.workspace_dir,
                 question=question,
                 method=method,
@@ -145,6 +163,24 @@ class GraphRAGCommandService:
                 verbose=verbose,
             )
         self._raise_if_failed(result)
+        return result
+
+    def _call_backend(self, operation: str, **kwargs: Any) -> GraphRAGCommandResult:
+        method = getattr(self.api_backend, operation)
+        try:
+            result = method(**kwargs)
+        except GraphRAGCommandError as exc:
+            if self._fallback_backend is None or not _is_entrypoint_contract_error(
+                str(exc)
+            ):
+                raise
+            fallback_method = getattr(self._fallback_backend, operation)
+            return fallback_method(**kwargs)
+        if self._fallback_backend is not None and _is_entrypoint_contract_error(
+            result.stderr
+        ):
+            fallback_method = getattr(self._fallback_backend, operation)
+            return fallback_method(**kwargs)
         return result
 
     def _raise_if_failed(self, result: GraphRAGCommandResult) -> None:
@@ -401,6 +437,94 @@ class _RunnerGraphRAGApiBackend:
         verbose: bool,
     ) -> GraphRAGCommandResult:
         command = _query_command(
+            workspace_dir,
+            question,
+            method=method,
+            data_dir=data_dir,
+            community_level=community_level,
+            dynamic_community_selection=dynamic_community_selection,
+            response_type=response_type,
+            streaming=streaming,
+            verbose=verbose,
+        )
+        completed = self.runner(
+            command,
+            cwd=self.paths.root,
+            capture_output=True,
+            text=True,
+        )
+        return _completed_process_result(command, self.paths.root, completed)
+
+
+class SubprocessGraphRAGApiBackend:
+    """Compatibility backend that shells out to GraphRAG's documented CLI."""
+
+    def __init__(self, paths: ProjectPaths, runner: Runner) -> None:
+        self.paths = paths
+        self.runner = runner
+
+    def init_workspace(
+        self,
+        *,
+        workspace_dir: Path,
+        model: str,
+        embedding: str,
+        force: bool,
+    ) -> GraphRAGCommandResult:
+        command = _cli_init_command(workspace_dir, model, embedding, force)
+        completed = self.runner(
+            command,
+            cwd=self.paths.root,
+            capture_output=True,
+            text=True,
+        )
+        return _completed_process_result(command, self.paths.root, completed)
+
+    def index(
+        self,
+        *,
+        workspace_dir: Path,
+        method: str,
+        dry_run: bool,
+        cache: bool,
+        skip_validation: bool,
+        verbose: bool,
+        status_callback: StatusCallback,
+    ) -> GraphRAGCommandResult:
+        command = _cli_index_command(
+            workspace_dir,
+            method=method,
+            dry_run=dry_run,
+            cache=cache,
+            skip_validation=skip_validation,
+            verbose=verbose,
+        )
+        if status_callback is not None:
+            status_callback("starting graph index")
+        completed = self.runner(
+            command,
+            cwd=self.paths.root,
+            capture_output=True,
+            text=True,
+        )
+        _emit_progress_lines(completed.stdout or "", status_callback)
+        _emit_progress_lines(completed.stderr or "", status_callback)
+        return _completed_process_result(command, self.paths.root, completed)
+
+    def query(
+        self,
+        *,
+        workspace_dir: Path,
+        question: str,
+        method: str,
+        data_dir: Path | None,
+        community_level: int | None,
+        dynamic_community_selection: bool | None,
+        response_type: str | None,
+        streaming: bool | None,
+        verbose: bool,
+    ) -> GraphRAGCommandResult:
+        command = _cli_query_command(
             workspace_dir,
             question,
             method=method,
@@ -753,6 +877,107 @@ def _query_command(
         args.append("--verbose")
     args.append(question)
     return tuple(args)
+
+
+def _cli_init_command(
+    workspace_dir: Path,
+    model: str,
+    embedding: str,
+    force: bool,
+) -> tuple[str, ...]:
+    args = [
+        "graphrag",
+        "init",
+        "--root",
+        str(workspace_dir),
+        "--model",
+        model,
+        "--embedding",
+        embedding,
+    ]
+    if force:
+        args.append("--force")
+    return tuple(args)
+
+
+def _cli_index_command(
+    workspace_dir: Path,
+    *,
+    method: str,
+    dry_run: bool,
+    cache: bool,
+    skip_validation: bool,
+    verbose: bool,
+) -> tuple[str, ...]:
+    args = [
+        "graphrag",
+        "index",
+        "--root",
+        str(workspace_dir),
+        "--method",
+        method,
+    ]
+    if dry_run:
+        args.append("--dry-run")
+    if not cache:
+        args.append("--no-cache")
+    if skip_validation:
+        args.append("--skip-validation")
+    if verbose:
+        args.append("--verbose")
+    return tuple(args)
+
+
+def _cli_query_command(
+    workspace_dir: Path,
+    question: str,
+    *,
+    method: str,
+    data_dir: Path | None,
+    community_level: int | None,
+    dynamic_community_selection: bool | None,
+    response_type: str | None,
+    streaming: bool | None,
+    verbose: bool,
+) -> tuple[str, ...]:
+    args = [
+        "graphrag",
+        "query",
+        "--root",
+        str(workspace_dir),
+        "--method",
+        method,
+    ]
+    if data_dir is not None:
+        args.extend(["--data", str(data_dir)])
+    if community_level is not None:
+        args.extend(["--community-level", str(community_level)])
+    if dynamic_community_selection is True:
+        args.append("--dynamic-community-selection")
+    elif dynamic_community_selection is False:
+        args.append("--no-dynamic-selection")
+    if response_type:
+        args.extend(["--response-type", response_type])
+    if streaming is True:
+        args.append("--streaming")
+    elif streaming is False:
+        args.append("--no-streaming")
+    if verbose:
+        args.append("--verbose")
+    args.append(question)
+    return tuple(args)
+
+
+def _is_entrypoint_contract_error(message: str) -> bool:
+    normalized = message.casefold()
+    return any(
+        marker in normalized
+        for marker in (
+            "cli entrypoints are unavailable",
+            "unsupported required parameter",
+            "missing expected parameter",
+        )
+    )
 
 
 def _split_index_method(method: str) -> tuple[str, bool]:

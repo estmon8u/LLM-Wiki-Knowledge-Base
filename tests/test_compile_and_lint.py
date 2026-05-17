@@ -11,6 +11,8 @@ import hashlib
 import json
 from pathlib import Path
 
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 from graphwiki_kb.models.wiki_models import LintIssue, LintReport
@@ -2183,6 +2185,11 @@ def _record_graph_run(test_project, *, input_hash: str) -> str:
     return run.run_id
 
 
+def _write_valid_graph_parquet(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pq.write_table(pa.table({"id": ["row-1"]}), path)
+
+
 def test_lint_reports_graph_input_stale(test_project) -> None:
     """Verifies that lint reports graph input stale.
 
@@ -2244,7 +2251,9 @@ def test_lint_reports_graph_index_stale_when_freshness_metadata_missing(
         "communities",
         "community_reports",
     ):
-        test_project.write_file(f"graph/graphrag/output/{table}.parquet", "")
+        _write_valid_graph_parquet(
+            test_project.paths.graph_dir / "graphrag" / "output" / f"{table}.parquet"
+        )
     test_project.write_file("graph/graphrag/output/lancedb/vector-store.marker", "ok")
     _record_graph_run(test_project, input_hash=_sha256(input_path))
 

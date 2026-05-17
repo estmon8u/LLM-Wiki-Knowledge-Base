@@ -824,6 +824,27 @@ def test_config_service_rejects_unknown_graph_keys(test_project) -> None:
         ConfigService(test_project.paths).load()
 
 
+def test_config_service_rejects_unknown_top_level_keys(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 7\nunexpected: true\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="unknown top-level keys"):
+        ConfigService(test_project.paths).load()
+
+
+def test_config_service_allows_custom_values_under_extensions(test_project) -> None:
+    test_project.paths.config_file.write_text(
+        "version: 7\nextensions:\n  local_note: keep\n",
+        encoding="utf-8",
+    )
+
+    loaded = ConfigService(test_project.paths).load()
+
+    assert loaded["extensions"] == {"local_note": "keep"}
+
+
 def test_config_service_rejects_invalid_conversion_table_format(test_project) -> None:
     """Verifies that config service rejects invalid conversion table format.
 
@@ -970,8 +991,8 @@ def test_build_services_returns_expected_keys(test_project) -> None:
 # --- P1 boundary/negative tests ---
 
 
-def test_config_unknown_key_preserved_through_merge(test_project) -> None:
-    """Verifies that config unknown key preserved through merge.
+def test_config_unknown_key_rejected_through_merge(test_project) -> None:
+    """Verifies that config unknown key rejected through merge.
 
     Args:
         test_project: Test project value used by the operation.
@@ -980,10 +1001,8 @@ def test_config_unknown_key_preserved_through_merge(test_project) -> None:
         "custom_key: custom_value\n", encoding="utf-8"
     )
 
-    loaded = ConfigService(test_project.paths).load()
-
-    assert loaded["custom_key"] == "custom_value"
-    assert loaded["project"]["name"] == DEFAULT_CONFIG["project"]["name"]
+    with pytest.raises(ValueError, match="unknown top-level keys: custom_key"):
+        ConfigService(test_project.paths).load()
 
 
 def test_config_nested_override_excerpt_character_limit(test_project) -> None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.metadata
 import inspect
 import re
+import sys
 from typing import Any, Callable
 
 MANAGED_GRAPHRAG_SETTINGS_VERSION = 1
@@ -37,6 +38,12 @@ def installed_graphrag_version() -> str:
 
 def validate_graphrag_runtime() -> None:
     """Validate the installed GraphRAG package version and callable shapes."""
+    if sys.version_info >= (3, 13):
+        raise GraphRAGCompatibilityError(
+            "GraphRAG currently documents support for Python 3.10-3.12. "
+            "Use Python 3.11 or 3.12 for GraphWiki KB GraphRAG workflows."
+        )
+
     version = installed_graphrag_version()
     if version == "uninstalled":
         raise GraphRAGCompatibilityError(

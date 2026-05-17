@@ -494,6 +494,20 @@ def test_ingest_service_recursively_ingests_supported_directory_files(
     assert (test_project.root / "raw/sources/beta-title.txt").exists()
 
 
+def test_ingest_service_directory_skips_project_managed_outputs(test_project) -> None:
+    """Adding a project folder must not re-ingest generated KB artifacts."""
+    test_project.write_file("notes/alpha.md", "# Alpha\n\nAlpha body.\n")
+    test_project.write_file("wiki/sources/generated.md", "# Generated\n\nSkip.\n")
+    test_project.write_file("raw/normalized/generated.md", "# Raw Generated\n\nSkip.\n")
+    test_project.write_file("graph/graphrag/input/generated.md", "# Graph\n\nSkip.\n")
+
+    result = test_project.services["ingest"].ingest_directory(test_project.root)
+
+    assert result.scanned_file_count == 1
+    assert result.created_count == 1
+    assert result.created_results[0].source.slug == "alpha"
+
+
 def test_ingest_service_directory_progress_callback_tracks_files(test_project) -> None:
     """Verifies that ingest service directory progress callback tracks files.
 

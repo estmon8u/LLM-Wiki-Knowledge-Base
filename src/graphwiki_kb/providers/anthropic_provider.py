@@ -7,9 +7,9 @@ surface that uses it.
 
 from __future__ import annotations
 
-import json
 import os
 import re
+from typing import Any
 
 from anthropic import Anthropic
 
@@ -56,19 +56,18 @@ class AnthropicProvider(TextProvider):
         max_tokens = request.max_tokens
         if self._thinking_budget and not use_adaptive_thinking:
             max_tokens = max(request.max_tokens, self._thinking_budget + 4096)
-        kwargs: dict = {
+        kwargs: dict[str, Any] = {
             "model": self.model,
             "max_tokens": max_tokens,
             "messages": [{"role": "user", "content": request.prompt}],
         }
+        output_config: dict[str, Any] = {}
         if use_adaptive_thinking:
             kwargs["thinking"] = {"type": "adaptive"}
-            kwargs["output_config"] = {
-                "effort": _request_thinking_effort(
-                    request.reasoning_effort,
-                    self._thinking_effort,
-                ),
-            }
+            output_config["effort"] = _request_thinking_effort(
+                request.reasoning_effort,
+                self._thinking_effort,
+            )
         elif self._thinking_budget and self._thinking_budget > 0:
             kwargs["thinking"] = {
                 "type": "enabled",
@@ -76,12 +75,16 @@ class AnthropicProvider(TextProvider):
             }
         system_prompt = request.system_prompt
         if request.response_schema:
-            schema_text = json.dumps(request.response_schema, indent=2, sort_keys=True)
+            output_config["format"] = {
+                "type": "json_schema",
+                "schema": request.response_schema,
+            }
             system_prompt = (f"{system_prompt}\n\n" if system_prompt else "") + (
-                "Return only JSON matching this schema. This output-format "
-                "requirement overrides any conflicting prose or markdown "
-                f"instructions:\n{schema_text}"
+                "Return only JSON matching the configured response schema. "
+                "Do not wrap the JSON in markdown."
             )
+        if output_config:
+            kwargs["output_config"] = output_config
         if system_prompt:
             kwargs["system"] = system_prompt
         message = self._client.messages.create(**kwargs)

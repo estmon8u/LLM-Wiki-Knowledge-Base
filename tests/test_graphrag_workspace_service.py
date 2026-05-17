@@ -191,6 +191,30 @@ def test_workspace_service_normalizes_stock_windows_vector_store_path(
     assert settings["vector_store"]["db_uri"] == "output/lancedb"
 
 
+def test_workspace_service_writes_changed_prompt_templates_as_new_files(
+    test_project,
+) -> None:
+    """User-tuned prompt files must not be overwritten by bundled templates."""
+    prompt_path = (
+        test_project.paths.graph_dir / "graphrag" / "prompts" / "extract_graph.txt"
+    )
+    prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    prompt_path.write_text("custom tuned prompt", encoding="utf-8")
+    command_service = GraphRAGCommandService(test_project.paths)
+    workspace_service = GraphRAGWorkspaceService(
+        test_project.paths,
+        command_service,
+        config=test_project.config,
+    )
+
+    created = workspace_service._ensure_prompt_templates()
+
+    assert prompt_path.read_text(encoding="utf-8") == "custom tuned prompt"
+    candidate = prompt_path.with_suffix(".txt.new")
+    assert candidate.exists()
+    assert candidate.relative_to(test_project.root).as_posix() in created
+
+
 def test_workspace_service_syncs_separate_embedding_provider(test_project) -> None:
     """Verifies that workspace service syncs separate embedding provider.
 

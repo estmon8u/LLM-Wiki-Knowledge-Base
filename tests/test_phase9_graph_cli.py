@@ -258,6 +258,21 @@ def test_find_json_searches_direct_graph_artifacts() -> None:
         assert payload["results"][0]["section"] == "GraphRAG Relationship"
 
 
+def test_find_json_reports_unreadable_graph_artifacts() -> None:
+    runner = CliRunner(mix_stderr=False)
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+        output = Path("graph/graphrag/output")
+        output.mkdir(parents=True, exist_ok=True)
+        (output / "entities.parquet").write_text("not parquet", encoding="utf-8")
+
+        result = runner.invoke(main, ["find", "--json", "RAG"])
+
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        assert any("entities artifacts" in item for item in payload["diagnostics"])
+
+
 def test_find_merges_graph_and_wiki_before_global_ranking() -> None:
     """Verifies weak graph hits do not starve stronger wiki candidates."""
     graph_result = SearchResult(
@@ -389,6 +404,25 @@ def test_update_output_renders_non_index_graph_decision() -> None:
 
         assert result.exit_code == 0
         assert "Graph index action: test decision" in result.output
+
+
+def test_update_passes_explicit_graph_method_to_preflight(test_project) -> None:
+    """The CLI and update service expose GraphRAG's documented index methods."""
+    from graphwiki_kb.services.update_service import UpdateOptions
+
+    sync = _FakeGraphSync(
+        test_project.root,
+        _sync_result(test_project.root, action="skip", method=None),
+    )
+    service = _update_service_for_graph(
+        test_project,
+        workspace=_FakeWorkspace(initialized=True),
+        sync=sync,
+    )
+
+    service._run_graph_sync(UpdateOptions(graph_method="standard"))
+
+    assert sync.calls[0]["method"] == "standard"
 
 
 def test_init_sets_up_graph_workspace_settings() -> None:
@@ -530,6 +564,19 @@ def test_status_json_includes_graph_status() -> None:
         assert payload["graph_status"]["state"] == "missing"
         assert "documents" in payload["graph_status"]["missing_tables"]
         assert "graph" not in payload
+
+
+def test_status_strict_fails_when_graph_is_not_ready() -> None:
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"]).exit_code == 0
+
+        result = runner.invoke(main, ["status", "--strict", "--json"])
+
+        assert result.exit_code == 1
+        payload = json.loads(result.output)
+        assert payload["strict_ok"] is False
+        assert "GraphRAG input has no documents" in payload["strict_failures"]
 
 
 def test_status_human_output_includes_last_graph_index() -> None:

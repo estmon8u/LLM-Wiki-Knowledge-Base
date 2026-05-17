@@ -12,7 +12,7 @@ import logging
 from tenacity import (
     before_sleep_log,
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential_jitter,
 )
@@ -83,6 +83,7 @@ except ImportError:  # pragma: no cover
     pass
 
 TRANSIENT_EXCEPTIONS: tuple[type, ...] = tuple(dict.fromkeys(_TRANSIENT))
+RETRYABLE_STATUS_CODES = {408, 409, 429, 500, 502, 503, 504}
 
 
 def provider_retry():
@@ -90,7 +91,17 @@ def provider_retry():
     return retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential_jitter(initial=1, max=20),
-        retry=retry_if_exception_type(TRANSIENT_EXCEPTIONS),
+        retry=retry_if_exception(_is_retryable_provider_error),
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,
     )
+
+
+def _is_retryable_provider_error(exc: BaseException) -> bool:
+    status_code = getattr(exc, "status_code", None)
+    if isinstance(status_code, int):
+        return status_code in RETRYABLE_STATUS_CODES
+    code = getattr(exc, "code", None)
+    if isinstance(code, int):
+        return code in RETRYABLE_STATUS_CODES
+    return isinstance(exc, TRANSIENT_EXCEPTIONS)

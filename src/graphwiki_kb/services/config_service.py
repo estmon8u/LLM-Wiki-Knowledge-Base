@@ -130,6 +130,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "html": ["markitdown"],
         },
     },
+    "extensions": {},
 }
 
 
@@ -706,7 +707,7 @@ class _ConversionConfig(_StrictConfigModel):
 class _KbConfigModel(BaseModel):
     """Top-level config schema with strict nested sections."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     version: StrictInt = Field(ge=1)
     project: dict[str, Any]
@@ -718,6 +719,7 @@ class _KbConfigModel(BaseModel):
     graph: _GraphConfig
     providers: _ProvidersConfig
     conversion: _ConversionConfig
+    extensions: dict[str, Any] = Field(default_factory=dict)
 
 
 def resolve_graph_config(config: dict[str, Any]) -> GraphRAGRuntimeConfig:
@@ -902,6 +904,13 @@ def _format_config_validation_error(exc: ValidationError) -> str:
                 f"kb.config.yaml 'conversion.{section}' contains unknown keys: "
                 f"{loc_parts[-1]}."
             )
+
+    if len(loc_parts) <= 1 and error_type == "extra_forbidden":
+        key = loc_parts[-1] if loc_parts else "unknown"
+        return (
+            "kb.config.yaml contains unknown top-level keys: "
+            f"{key}. Put custom values under 'extensions'."
+        )
 
     message = error.get("msg", "is invalid")
     return f"kb.config.yaml '{location}' {message}."

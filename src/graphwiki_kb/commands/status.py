@@ -61,14 +61,25 @@ def create_command(
         ),
     )
     @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+    @click.option(
+        "--strict",
+        is_flag=True,
+        help="Exit non-zero unless the project and GraphRAG index are ready.",
+    )
     @click.pass_obj
-    def command(command_context: CommandContext, changed: bool, as_json: bool) -> None:
+    def command(
+        command_context: CommandContext,
+        changed: bool,
+        as_json: bool,
+        strict: bool,
+    ) -> None:
         """Command.
 
         Args:
             command_context: Command context value used by the operation.
             changed: Changed value used by the operation.
             as_json: As json value used by the operation.
+            strict: Whether to fail when the KB is not query-ready.
         """
         project_service = command_context.services.project
         status_service = command_context.services.status
@@ -76,6 +87,7 @@ def create_command(
         graph_status = (
             snapshot.graph_status if isinstance(snapshot.graph_status, dict) else {}
         )
+        strict_failures = _strict_status_failures(snapshot, graph_status)
 
         if changed:
             require_initialized(command_context)
@@ -135,8 +147,12 @@ def create_command(
                     "index_status": snapshot.index_status,
                     "export_status": snapshot.export_status,
                     "graph_status": graph_status,
+                    "strict_ok": not strict_failures,
+                    "strict_failures": strict_failures,
                 }
             )
+            if strict and strict_failures:
+                raise click.exceptions.Exit(1)
             return
 
         echo_section("Knowledge Base")
@@ -198,6 +214,21 @@ def create_command(
             ):
                 value = graph.get(key)
                 console.print(f"  {label}: {value if value is not None else 'unknown'}")
+            console.print(f"  Vector store: {graph.get('vector_store_state')}")
+            if graph.get("run_metadata_state") in {"corrupt"}:
+                console.print("  [yellow]Run metadata: corrupt[/yellow]")
+            table_states = graph.get("table_states")
+            if isinstance(table_states, dict):
+                unhealthy = {
+                    name: state
+                    for name, state in table_states.items()
+                    if state not in {"ready", "missing"}
+                }
+                if unhealthy:
+                    details = ", ".join(
+                        f"{name}={state}" for name, state in sorted(unhealthy.items())
+                    )
+                    console.print(f"  [yellow]Artifact health: {details}[/yellow]")
             console.print(f"  Next action: {graph.get('next_action')}")
             console.print("")
 
@@ -211,4 +242,45 @@ def create_command(
         else:
             console.print("Next\n  Knowledge base is current.")
 
+        if strict and strict_failures:
+            raise click.ClickException(
+                "Strict status failed: " + "; ".join(strict_failures)
+            )
+
     return command
+
+
+def _strict_status_failures(snapshot, graph_status: dict[str, object]) -> list[str]:
+    failures: list[str] = []
+    if not snapshot.initialized:
+        failures.append("project is not initialized")
+        return failures
+    if snapshot.source_count == 0:
+        failures.append("no sources are ingested")
+    stale_sources = snapshot.source_count - snapshot.compiled_source_count
+    if stale_sources > 0:
+        failures.append(f"{stale_sources} source(s) need compiling")
+
+    if not graph_status:
+        failures.append("GraphRAG status is unavailable")
+        return failures
+    if graph_status.get("workspace_initialized") is not True:
+        failures.append("GraphRAG workspace is missing")
+    if int(graph_status.get("input_document_count") or 0) == 0:
+        failures.append("GraphRAG input has no documents")
+    if graph_status.get("last_index_success") is False:
+        failures.append("last GraphRAG index run failed")
+    if graph_status.get("output_complete") is not True:
+        missing = graph_status.get("missing_tables")
+        if isinstance(missing, list) and missing:
+            failures.append("GraphRAG output is incomplete: " + ", ".join(missing))
+        else:
+            failures.append("GraphRAG output is incomplete")
+    if graph_status.get("state") not in {"complete"}:
+        failures.append(f"GraphRAG state is {graph_status.get('state') or 'unknown'}")
+    if graph_status.get("graph_freshness_state") not in {"fresh"}:
+        failures.append(
+            "GraphRAG freshness is "
+            f"{graph_status.get('graph_freshness_state') or 'unknown'}"
+        )
+    return failures

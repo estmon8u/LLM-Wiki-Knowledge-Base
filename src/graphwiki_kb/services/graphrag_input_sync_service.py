@@ -36,6 +36,7 @@ GRAPH_INPUT_METADATA_FIELDS = (
     "normalization_route",
     "ingested_at",
 )
+GRAPH_INPUT_SIZE_WARNING_BYTES = 100 * 1024 * 1024
 
 
 class GraphRAGInputSyncError(ValueError):
@@ -58,6 +59,8 @@ class GraphRAGInputSyncResult:
     input_digest: str | None = None
     source_hashes: dict[str, str] = field(default_factory=dict)
     skipped_sources: tuple[str, ...] = ()
+    input_size_bytes: int = 0
+    warnings: tuple[str, ...] = ()
 
 
 class GraphRAGInputSyncService:
@@ -131,7 +134,9 @@ class GraphRAGInputSyncService:
             allow_missing_sources=allow_missing_sources
         )
         settings_updated = self._settings_would_update()
-        payload = json.dumps(records, indent=2, sort_keys=True, default=str) + "\n"
+        payload = _records_payload(records)
+        input_size_bytes = len(payload.encode("utf-8"))
+        warnings = _input_size_warnings(input_size_bytes)
         if not preview_only:
             settings_updated = self.configure_settings()
             atomic_write_text(self.input_file, payload)
@@ -145,6 +150,8 @@ class GraphRAGInputSyncService:
             input_digest=_text_digest(payload),
             source_hashes=_source_hashes(records),
             skipped_sources=tuple(skipped_sources),
+            input_size_bytes=input_size_bytes,
+            warnings=tuple(warnings),
         )
 
     def configure_settings(self) -> bool:
@@ -333,6 +340,30 @@ class GraphRAGInputSyncService:
 
 def _text_digest(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _records_payload(records: list[dict[str, Any]]) -> str:
+    return (
+        json.dumps(
+            records,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+        + "\n"
+    )
+
+
+def _input_size_warnings(input_size_bytes: int) -> list[str]:
+    if input_size_bytes <= GRAPH_INPUT_SIZE_WARNING_BYTES:
+        return []
+    mib = input_size_bytes / (1024 * 1024)
+    limit_mib = GRAPH_INPUT_SIZE_WARNING_BYTES // (1024 * 1024)
+    return [
+        "GraphRAG input is "
+        f"{mib:.1f} MiB; consider splitting the corpus or using graph-only "
+        f"updates intentionally above {limit_mib} MiB."
+    ]
 
 
 def _source_hashes(records: list[dict[str, Any]]) -> dict[str, str]:

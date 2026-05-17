@@ -221,11 +221,17 @@ class GraphRAGWorkspaceService:
             target = prompt_dir / source.name
             if source.resolve() == target.resolve():
                 continue
-            if target.exists() and target.read_bytes() == source.read_bytes():
-                continue
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, target)
-            created.append(target.relative_to(self.paths.root).as_posix())
+            if not target.exists():
+                shutil.copy2(source, target)
+                created.append(target.relative_to(self.paths.root).as_posix())
+                continue
+            if target.read_bytes() == source.read_bytes():
+                continue
+            candidate = target.with_suffix(target.suffix + ".new")
+            if not candidate.exists() or candidate.read_bytes() != source.read_bytes():
+                shutil.copy2(source, candidate)
+                created.append(candidate.relative_to(self.paths.root).as_posix())
         return created
 
 

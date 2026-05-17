@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from graphwiki_kb.services.graphrag_find_service import _read_parquet_records
+from graphwiki_kb.services.graphrag_find_service import _read_parquet_records, _score
 
 
 def test_read_parquet_records_logs_debug_on_invalid_table(tmp_path, caplog) -> None:
@@ -21,3 +21,8 @@ def test_read_parquet_records_logs_debug_on_invalid_table(tmp_path, caplog) -> N
     assert records == []
     assert "Unable to read GraphRAG parquet table" in caplog.text
     assert str(table_path) in caplog.text
+
+
+def test_score_requires_exact_token_match_for_short_terms() -> None:
+    assert _score(["ai"], title="Chain of Thought", searchable="chain graph") == 0
+    assert _score(["ai"], title="AI", searchable="ai graph") > 0

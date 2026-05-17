@@ -15,6 +15,7 @@ from graphwiki_kb.services.graphrag_command_service import (
     GraphRAGCommandError,
     GraphRAGCommandResult,
     GraphRAGCommandService,
+    SubprocessGraphRAGApiBackend,
     _call_graphrag_entrypoint,
     _extract_progress_label,
     _index_command,
@@ -64,6 +65,166 @@ class _FakeApiBackend:
             stdout="answer\n",
             stderr=self.stderr,
         )
+
+
+def test_subprocess_backend_builds_documented_cli_commands(test_project) -> None:
+    calls = []
+
+    def runner(command, *, cwd, capture_output, text):
+        calls.append((command, cwd, capture_output, text))
+        return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
+
+    backend = SubprocessGraphRAGApiBackend(test_project.paths, runner)
+
+    result = backend.index(
+        workspace_dir=test_project.paths.graph_dir / "graphrag",
+        method="fast",
+        dry_run=True,
+        cache=True,
+        skip_validation=False,
+        verbose=False,
+        status_callback=None,
+    )
+
+    assert result.command[:2] == ("graphrag", "index")
+    assert "--dry-run" in result.command
+    assert calls[0][1] == test_project.paths.root
+
+
+def test_subprocess_backend_builds_init_index_and_query_options(
+    test_project,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def runner(command, *, cwd, capture_output, text):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
+
+    backend = SubprocessGraphRAGApiBackend(test_project.paths, runner)
+    workspace_dir = test_project.paths.graph_dir / "graphrag"
+    data_dir = workspace_dir / "output"
+    labels: list[str] = []
+
+    init_result = backend.init_workspace(
+        workspace_dir=workspace_dir,
+        model="chat",
+        embedding="embed",
+        force=True,
+    )
+    index_result = backend.index(
+        workspace_dir=workspace_dir,
+        method="standard-update",
+        dry_run=False,
+        cache=False,
+        skip_validation=True,
+        verbose=True,
+        status_callback=labels.append,
+    )
+    query_result = backend.query(
+        workspace_dir=workspace_dir,
+        question="What changed?",
+        method="global",
+        data_dir=data_dir,
+        community_level=1,
+        dynamic_community_selection=False,
+        response_type="Multiple paragraphs",
+        streaming=True,
+        verbose=True,
+    )
+
+    assert init_result.command[:2] == ("graphrag", "init")
+    assert "--force" in init_result.command
+    assert index_result.command[:2] == ("graphrag", "index")
+    assert "--no-cache" in index_result.command
+    assert "--skip-validation" in index_result.command
+    assert "--verbose" in index_result.command
+    assert labels == ["starting graph index", "ok"]
+    assert query_result.command[:2] == ("graphrag", "query")
+    assert "--data" in query_result.command
+    assert str(data_dir) in query_result.command
+    assert "--community-level" in query_result.command
+    assert "--no-dynamic-selection" in query_result.command
+    assert "--response-type" in query_result.command
+    assert "--streaming" in query_result.command
+    assert calls[-1][-1] == "What changed?"
+
+
+def test_command_service_falls_back_to_cli_on_entrypoint_contract_error(
+    test_project,
+) -> None:
+    class BrokenBackend:
+        def index(self, **kwargs):
+            raise GraphRAGCommandError(
+                "graphrag.cli.index.index_cli has unsupported required parameter(s): x."
+            )
+
+    calls = []
+
+    def runner(command, *, cwd, capture_output, text):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="cli indexed", stderr="")
+
+    service = GraphRAGCommandService(
+        test_project.paths,
+        api_backend=BrokenBackend(),
+        fallback_backend=SubprocessGraphRAGApiBackend(test_project.paths, runner),
+    )
+
+    result = service.index(
+        method="fast",
+        dry_run=False,
+        cache=True,
+        skip_validation=False,
+        verbose=False,
+    )
+
+    assert result.stdout == "cli indexed"
+    assert calls[0][:2] == ("graphrag", "index")
+
+
+def test_command_service_falls_back_to_cli_on_contract_error_stderr(
+    test_project,
+) -> None:
+    backend = _FakeApiBackend(
+        stderr="graphrag.cli.query missing expected parameter: query"
+    )
+    calls = []
+
+    def runner(command, *, cwd, capture_output, text):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="cli answer", stderr="")
+
+    service = GraphRAGCommandService(
+        test_project.paths,
+        api_backend=backend,
+        fallback_backend=SubprocessGraphRAGApiBackend(test_project.paths, runner),
+    )
+
+    result = service.query("What changed?", method="basic")
+
+    assert result.stdout == "cli answer"
+    assert backend.calls[0][0] == "query"
+    assert calls[0][:2] == ("graphrag", "query")
+
+
+def test_command_service_can_use_subprocess_backend_directly(test_project) -> None:
+    calls = []
+
+    def runner(command, *, cwd, capture_output, text):
+        calls.append((command, cwd))
+        return subprocess.CompletedProcess(command, 0, stdout="cli ok", stderr="")
+
+    service = GraphRAGCommandService(
+        test_project.paths,
+        runner=runner,
+        use_subprocess_backend=True,
+    )
+
+    result = service.init_workspace(model="chat", embedding="embed", force=False)
+
+    assert result.stdout == "cli ok"
+    assert calls[0][0][:2] == ("graphrag", "init")
+    assert calls[0][1] == test_project.paths.root
 
 
 def test_init_uses_python_api_backend(test_project) -> None:
@@ -452,6 +613,13 @@ def test_runtime_validation_rejects_unsupported_versions(monkeypatch) -> None:
             runtime_module.validate_graphrag_runtime()
 
 
+def test_runtime_validation_rejects_python_313(monkeypatch) -> None:
+    monkeypatch.setattr(runtime_module.sys, "version_info", (3, 13, 0))
+
+    with pytest.raises(GraphRAGCompatibilityError, match="Python 3.10-3.12"):
+        runtime_module.validate_graphrag_runtime()
+
+
 def test_runtime_validation_rejects_unavailable_entrypoints(monkeypatch) -> None:
     """Regression: missing GraphRAG CLI entrypoints fail with a crisp message."""
     import builtins
@@ -564,3 +732,49 @@ def test_query_return_to_text_uses_first_tuple_item() -> None:
     assert _query_return_to_text(("answer", {"context": []})) == "answer"
     assert _query_return_to_text((b"answer",)) == "answer"
     assert _query_return_to_text(()) == ""
+
+
+def test_query_return_to_text_handles_response_like_objects() -> None:
+    class TextValue:
+        text = " text answer "
+
+    class FallbackValue:
+        def __str__(self) -> str:
+            return " fallback answer "
+
+    assert _query_return_to_text(TextValue()) == "text answer"
+    assert _query_return_to_text(FallbackValue()) == "fallback answer"
+    assert _query_return_to_text(None) == ""
+
+
+def test_progress_capture_flushes_pending_status_line() -> None:
+    labels: list[str] = []
+    capture = command_module._ProgressCapture(labels.append)
+
+    assert capture.write("Running workflow: extract_graph\nProgress: 50") > 0
+    capture.flush()
+
+    assert labels == ["Running workflow: extract_graph", "Progress: 50"]
+
+
+def test_command_output_helper_edges() -> None:
+    assert command_module._append_error("", "detail") == "detail"
+    assert command_module._append_error("stderr", "") == "stderr"
+    assert command_module._append_error("stderr\n", "detail") == "stderr\ndetail"
+    assert command_module._is_entrypoint_contract_error(
+        "GraphRAG CLI entrypoints are unavailable"
+    )
+    assert not command_module._is_entrypoint_contract_error("regular runtime error")
+    assert command_module._sanitize_stderr(("graphrag", "index"), "err") == "err"
+    assert (
+        command_module._sanitize_stderr(
+            ("graphrag", "index", "--dry-run"),
+            "--- Logging error ---\n"
+            "Dry run complete, exiting...\n"
+            "logger.info\n"
+            "Arguments: (True,)",
+        )
+        == ""
+    )
+    long_line = "x" * (command_module.MAX_PROGRESS_LABEL_LENGTH + 10)
+    assert _extract_progress_label(long_line).endswith("...")

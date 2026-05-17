@@ -600,6 +600,36 @@ def test_anthropic_provider_does_not_send_adaptive_thinking_to_older_claude() ->
     assert "output_config" not in call_kwargs
 
 
+def test_anthropic_provider_uses_output_config_format_for_schema() -> None:
+    """Anthropic structured output should be API-enforced, not prompt-only."""
+    schema = {
+        "type": "object",
+        "properties": {"answer": {"type": "string"}},
+        "required": ["answer"],
+    }
+    with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test"}):
+        with patch("graphwiki_kb.providers.anthropic_provider.Anthropic") as MockClient:
+            from graphwiki_kb.providers.anthropic_provider import AnthropicProvider
+
+            provider = AnthropicProvider(model="claude-sonnet-4-6")
+            mock_message = MagicMock()
+            mock_block = MagicMock()
+            mock_block.type = "text"
+            mock_block.text = '{"answer":"ok"}'
+            mock_message.content = [mock_block]
+            MockClient.return_value.messages.create.return_value = mock_message
+
+            provider.generate(ProviderRequest(prompt="test", response_schema=schema))
+
+    call_kwargs = MockClient.return_value.messages.create.call_args.kwargs
+    assert call_kwargs["output_config"]["effort"] == "medium"
+    assert call_kwargs["output_config"]["format"] == {
+        "type": "json_schema",
+        "schema": schema,
+    }
+    assert "properties" not in call_kwargs["system"]
+
+
 def test_anthropic_provider_generate_without_system_prompt() -> None:
     """Verifies that anthropic provider generate without system prompt."""
     with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test"}):
@@ -706,6 +736,38 @@ def test_gemini_response_schema_preserves_additional_properties() -> None:
     assert converted_with_report == schema
     assert report.removed_keywords == ()
     assert report.weakened is False
+
+
+def test_gemini_response_schema_removes_unsupported_keywords() -> None:
+    """Gemini receives the supported JSON Schema subset with weakening reported."""
+    from graphwiki_kb.providers.gemini_provider import (
+        _gemini_response_schema_with_report,
+    )
+
+    schema = {
+        "$defs": {"item": {"type": "string", "pattern": "^[A-Z]+$"}},
+        "type": "object",
+        "properties": {
+            "name": {"$ref": "#/$defs/item", "default": "RAG"},
+            "maybe": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        },
+        "oneOf": [{"required": ["name"]}],
+    }
+
+    converted, report = _gemini_response_schema_with_report(schema)
+
+    assert converted == {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "maybe": {"type": ["string", "null"]},
+        },
+    }
+    assert report.weakened is True
+    assert "$.$defs" in report.removed_keywords
+    assert "$.oneOf" in report.removed_keywords
+    assert "$.properties.name.default" in report.removed_keywords
+    assert "$.properties.name.pattern" in report.removed_keywords
 
 
 def test_gemini_provider_sends_strict_schema_without_downgrade_warning(caplog) -> None:

@@ -3034,7 +3034,6 @@ click = ">=8.1.7"
 numpy = [
     {version = ">=1.24", markers = "python_version < \"3.12\""},
     {version = ">=1.26", markers = "python_version == \"3.12\""},
-    {version = ">=2.1.0", markers = "python_version >= \"3.13\""},
 ]
 onnxruntime = [
     {version = ">=1.17.0,<=1.20.1", markers = "sys_platform == \"win32\" and python_version > \"3.9\""},
@@ -8245,5 +8244,5 @@ type = ["pytest-mypy"]
 
 [metadata]
 lock-version = "2.1"
-python-versions = ">=3.11,<3.14"
-content-hash = "8126e185cd40c0add0c887d0f9389978c4e6cfeaf9fd5786c27b685f70cacbf1"
+python-versions = ">=3.11,<3.13"
+content-hash = "c0bd70b35996ef959b6fc02a883ae611ce8f6b66b5bfb4cdcf9cc7289fddc02c"

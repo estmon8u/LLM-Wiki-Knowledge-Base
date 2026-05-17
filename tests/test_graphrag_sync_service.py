@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import subprocess
 
+import pandas as pd
 import pytest
 
 from graphwiki_kb.models.source_models import RawSourceRecord
@@ -107,7 +108,9 @@ def _write_complete_output(test_project) -> None:
         "communities",
         "community_reports",
     ):
-        test_project.write_file(f"graph/graphrag/output/{table}.parquet", "")
+        output_path = test_project.root / "graph/graphrag/output" / f"{table}.parquet"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame([{"id": f"{table}-1"}]).to_parquet(output_path)
     test_project.write_file(
         "graph/graphrag/output/lancedb/vector-store.marker",
         "ready",
@@ -600,6 +603,30 @@ def test_sync_records_failed_index_run_before_reraising(test_project) -> None:
     assert runs[0]["config_digest"]
     assert runs[0]["source_hashes"] == {"src-1": "hash-1"}
     assert runs[0]["output_state"] == "missing"
+
+
+def test_sync_records_early_index_failure_without_result(test_project) -> None:
+    _write_settings(test_project)
+    _write_source(test_project)
+    service = _build_service(
+        test_project,
+        lambda command, *, cwd, capture_output, text: subprocess.CompletedProcess(
+            command, 0, stdout="", stderr=""
+        ),
+    )
+
+    def fail_before_result(**kwargs):
+        raise GraphRAGCommandError("runtime contract failed before command result")
+
+    service.command_service.index = fail_before_result
+
+    with pytest.raises(GraphRAGCommandError, match="runtime contract failed"):
+        service.sync()
+
+    runs = service.status_service._load_runs()
+    assert runs[0]["success"] is False
+    assert runs[0]["stderr_tail"] == "runtime contract failed before command result"
+    assert runs[0]["method"] == "fast"
 
 
 def test_graph_runtime_digest_includes_prompt_files(test_project) -> None:

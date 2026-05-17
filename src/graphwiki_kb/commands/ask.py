@@ -174,6 +174,8 @@ def create_command() -> click.Command:
             f"planner: {answer.planner or 'none'}, "
             f"index_run_id: {answer.index_run_id or 'unknown'}][/dim]"
         )
+        if answer.route_reason:
+            console.print(f"[dim]Route: {answer.route_reason}[/dim]")
         if show_source_trace or show_evidence:
             console.print("")
             console.print("Source Trace")

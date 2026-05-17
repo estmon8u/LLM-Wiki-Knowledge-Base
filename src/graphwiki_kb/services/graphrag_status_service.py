@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -119,22 +119,31 @@ class GraphRAGStatus:
     current_config_digest: str | None = None
     graph_freshness_state: str = "unknown"
     graph_stale_reasons: tuple[str, ...] = ()
+    table_states: dict[str, str] = field(default_factory=dict)
+    run_metadata_state: str = "missing"
 
     @property
     def missing_tables(self) -> list[str]:
-        """Return required GraphRAG output artifacts missing from active output."""
-        missing = [
-            name
-            for name, present in (
-                ("documents", self.documents_present),
-                ("text_units", self.text_units_present),
-                ("entities", self.entities_present),
-                ("relationships", self.relationships_present),
-                ("communities", self.communities_present),
-                ("community_reports", self.community_reports_present),
-            )
-            if not present
-        ]
+        """Return required GraphRAG output artifacts that are not query-ready."""
+        if self.table_states:
+            missing = [
+                name
+                for name in GRAPH_OUTPUT_TABLES
+                if self.table_states.get(name) != "ready"
+            ]
+        else:
+            missing = [
+                name
+                for name, present in (
+                    ("documents", self.documents_present),
+                    ("text_units", self.text_units_present),
+                    ("entities", self.entities_present),
+                    ("relationships", self.relationships_present),
+                    ("communities", self.communities_present),
+                    ("community_reports", self.community_reports_present),
+                )
+                if not present
+            ]
         if not self.vector_store_readable:
             missing.append("vector_store")
         return missing
@@ -148,6 +157,10 @@ class GraphRAGStatus:
             return "missing"
         if not self.output_present:
             return "missing"
+        if any(state == "dependency_missing" for state in self.table_states.values()):
+            return "dependency_missing"
+        if any(state == "present_unreadable" for state in self.table_states.values()):
+            return "present_unreadable"
         if not self.output_complete:
             return "partial"
         if iso_timestamp_after(self.input_updated_at, self.output_updated_at):
@@ -159,14 +172,25 @@ class GraphRAGStatus:
     @property
     def output_complete(self) -> bool:
         """Return True only when all required GraphRAG output artifacts are present."""
+        if not self.table_states:
+            return (
+                self.output_present
+                and self.documents_present
+                and self.text_units_present
+                and self.entities_present
+                and self.relationships_present
+                and self.communities_present
+                and self.community_reports_present
+                and self.vector_store_readable
+            )
         return (
             self.output_present
-            and self.documents_present
-            and self.text_units_present
-            and self.entities_present
-            and self.relationships_present
-            and self.communities_present
-            and self.community_reports_present
+            and self.table_states.get("documents") == "ready"
+            and self.table_states.get("text_units") == "ready"
+            and self.table_states.get("entities") == "ready"
+            and self.table_states.get("relationships") == "ready"
+            and self.table_states.get("communities") == "ready"
+            and self.table_states.get("community_reports") == "ready"
             and self.vector_store_readable
         )
 
@@ -218,20 +242,29 @@ class GraphRAGStatusService:
 
     def _status_unlocked(self) -> GraphRAGStatus:
         """Build status while the workspace read lock is held."""
-        runs = self._load_runs()
+        runs, run_metadata_state = self._load_runs_with_state()
         last_run = runs[-1] if runs else None
         active_output_dir = self._active_output_dir()
         table_paths = self._table_paths(active_output_dir)
         tables = {name: path is not None for name, path in table_paths.items()}
+        table_states = {
+            name: self._table_state(path) for name, path in table_paths.items()
+        }
         vector_store_path = self._vector_store_path(active_output_dir)
         vector_store_exists = bool(vector_store_path and vector_store_path.exists())
         vector_store_state = self._vector_store_state(vector_store_path)
         vector_store_readable = vector_store_state == "ready"
-        output_complete = all(tables.values()) and vector_store_readable
-        table_counts = {
-            name: self._table_row_count(path) if path is not None else None
-            for name, path in table_paths.items()
-        }
+        output_complete = (
+            all(state == "ready" for state in table_states.values())
+            and vector_store_readable
+        )
+        table_counts: dict[str, int | None] = {}
+        for name, path in table_paths.items():
+            table_counts[name] = (
+                self._table_row_count(path)
+                if path is not None and table_states[name] == "ready"
+                else None
+            )
         output_present = active_output_dir is not None
         input_document_count = self._input_document_count()
         workspace_initialized = self.settings_path.exists()
@@ -301,6 +334,8 @@ class GraphRAGStatusService:
             current_config_digest=freshness.current_config_digest,
             graph_freshness_state=freshness.state,
             graph_stale_reasons=freshness.reasons,
+            table_states=table_states,
+            run_metadata_state=run_metadata_state,
         )
 
     def record_index_run(
@@ -450,11 +485,9 @@ class GraphRAGStatusService:
 
     @staticmethod
     def _table_row_count(path: Path) -> int | None:
-        try:
-            import pyarrow.lib as arrow_lib
-            import pyarrow.parquet as parquet
-        except ImportError:
-            return None
+        import pyarrow.lib as arrow_lib
+        import pyarrow.parquet as parquet
+
         try:
             return int(parquet.read_metadata(path).num_rows)
         except (
@@ -465,6 +498,27 @@ class GraphRAGStatusService:
             arrow_lib.ArrowException,
         ):
             return None
+
+    @staticmethod
+    def _table_state(path: Path | None) -> str:
+        if path is None:
+            return "missing"
+        try:
+            import pyarrow.lib as arrow_lib
+            import pyarrow.parquet as parquet
+        except ImportError:
+            return "dependency_missing"
+        try:
+            parquet.read_metadata(path)
+        except (
+            OSError,
+            TypeError,
+            ValueError,
+            RuntimeError,
+            arrow_lib.ArrowException,
+        ):
+            return "present_unreadable"
+        return "ready"
 
     def _vector_store_path(self, active_output_dir: Path | None) -> Path | None:
         candidates: list[Path] = []
@@ -552,15 +606,19 @@ class GraphRAGStatusService:
             return None
 
     def _load_runs(self) -> list[dict[str, Any]]:
+        runs, _state = self._load_runs_with_state()
+        return runs
+
+    def _load_runs_with_state(self) -> tuple[list[dict[str, Any]], str]:
         if not self.runs_file.exists():
-            return []
+            return [], "missing"
         try:
             payload = json.loads(self.runs_file.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
-            return []
+            return [], "corrupt"
         if not isinstance(payload, list):
-            return []
-        return [item for item in payload if isinstance(item, dict)]
+            return [], "corrupt"
+        return [item for item in payload if isinstance(item, dict)], "ok"
 
     @staticmethod
     def _next_action(

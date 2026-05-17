@@ -10,7 +10,7 @@ Requirements:
 
 | Tool | Required | Notes |
 | --- | --- | --- |
-| Python 3.11, 3.12, or 3.13 | Yes | The project is pinned to Python `>=3.11,<3.14`. |
+| Python 3.11 or 3.12 | Yes | The project is pinned to Python `>=3.11,<3.13` while Microsoft GraphRAG documents Python 3.10-3.12 support. |
 | Poetry | Yes | Installs dependencies and runs the `kb` entrypoint. |
 | LLM API key | Yes for `kb update`, `kb legacy ask`, `kb review`, and real GraphRAG index/query jobs | Normal `kb update` warns and skips graph indexing if GraphRAG credentials are missing; `kb update --graph-only` requires them. |
 | Mistral API key | Required for PDFs, Office docs, images, and HTML OCR | Markdown and plain text do not need it. |
@@ -145,7 +145,7 @@ required GraphRAG Parquet tables and the configured vector store, but status and
 ask still require the current input, source hashes, settings, prompts, and
 GraphRAG runtime identity to match the last successful index run. The graph step
 first plans sync work without mutating workspace files. When graph work proceeds, it writes
-`graph/graphrag/input/sources.json`
+compact `graph/graphrag/input/sources.json`
 from `raw/_manifest.json` and `raw/normalized/`, preserving source IDs, hashes,
 paths, converter metadata, and the normalized text for GraphRAG indexing. The
 generated JSON file can contain local corpus text and stays untracked.
@@ -158,7 +158,8 @@ work to complete.
 The same graph decision checks whether the GraphRAG index needs a full `fast`
 rebuild, an incremental `fast-update`, a retry after the latest failed attempt,
 or no index job because sources and runtime settings already match the last
-successful run.
+successful run. Use `--graph-method auto|standard|fast|standard-update|fast-update`
+only when you need to override that planner.
 When complete graph output already exists and indexing is skipped, `kb update`
 still refreshes `wiki/graph/` from the active output directory recorded by the
 latest successful complete run.
@@ -167,13 +168,20 @@ Check readiness after update:
 
 ```powershell
 poetry run kb --project-root $projectRoot status
+poetry run kb --project-root $projectRoot status --strict
 ```
 
+`status --strict` exits non-zero unless the wiki sources are compiled and the
+GraphRAG index is complete, fresh, and query-ready. Status distinguishes corrupt
+run metadata, unreadable or dependency-missing Parquet tables, and vector-store
+health instead of collapsing those states into "not ready."
+
 Real GraphRAG index actions call GraphRAG's installed Python entrypoints through
-a signature-aware adapter and use the configured GraphRAG model and embedding
-provider, so set the provider API key such as `OPENAI_API_KEY`, or put the same
-variable in the local GraphRAG `.env` file, before running graph indexing,
-`kb ask`, or `kb update --graph-only`. A normal `kb update` without GraphRAG
+a signature-aware adapter with documented CLI fallback for entrypoint contract
+drift, and use the configured GraphRAG model and embedding provider. Set the
+provider API key such as `OPENAI_API_KEY`, or put the same variable in the local
+GraphRAG `.env` file, before running graph indexing, `kb ask`, or
+`kb update --graph-only`. A normal `kb update` without GraphRAG
 credentials still compiles the wiki and reports graph indexing as skipped.
 Interactive terminals show a live indexing status spinner while GraphRAG runs.
 After indexing, the command prints the active GraphRAG output path; if legacy
@@ -182,7 +190,9 @@ warning for `kb find`.
 Use `kb update --force` for a full source-page and GraphRAG rebuild after
 model/prompt changes or suspected corrupt output. Use `kb update --no-graph`
 only when you want to refresh the wiki and legacy index without touching
-GraphRAG.
+GraphRAG. Bundled GraphRAG prompt templates are copied only when missing; if a
+bundled prompt changes after you tune a workspace prompt, the new default is
+written beside it as `*.new` instead of overwriting your tuned prompt.
 
 ## 7. Search and ask
 

@@ -22,6 +22,28 @@ from graphwiki_kb.services.project_service import (
     utc_now_iso,
 )
 
+_TOOLING_DIRECTORY_NAMES = {
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".tox",
+    ".venv",
+    "__pycache__",
+    "node_modules",
+}
+_PROJECT_MANAGED_DIRECTORY_NAMES = {
+    "graph",
+    "raw",
+    "vault",
+    "wiki",
+}
+_PROJECT_MANAGED_FILE_NAMES = {
+    "kb.config.yaml",
+    "kb.schema.md",
+}
+
 
 @dataclass
 class IngestResult:
@@ -197,7 +219,9 @@ class IngestService:
         candidates = [
             path
             for path in directory_path.rglob("*")
-            if path.is_file() and is_supported_source_path(path)
+            if path.is_file()
+            and is_supported_source_path(path)
+            and not self._is_excluded_directory_candidate(path)
         ]
         return tuple(
             sorted(
@@ -205,6 +229,17 @@ class IngestService:
                 key=lambda path: path.relative_to(directory_path).as_posix().lower(),
             )
         )
+
+    def _is_excluded_directory_candidate(self, path: Path) -> bool:
+        if any(part in _TOOLING_DIRECTORY_NAMES for part in path.parts):
+            return True
+        try:
+            relative = path.resolve().relative_to(self.paths.root.resolve())
+        except ValueError:
+            return False
+        if relative.as_posix() in _PROJECT_MANAGED_FILE_NAMES:
+            return True
+        return any(part in _PROJECT_MANAGED_DIRECTORY_NAMES for part in relative.parts)
 
 
 def _file_sha256(path: Path) -> str:

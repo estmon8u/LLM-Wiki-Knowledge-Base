@@ -25,6 +25,8 @@ from graphwiki_kb.services.graphrag_wiki_export_service import GraphRAGWikiExpor
 from graphwiki_kb.services.ingest_service import IngestService
 from graphwiki_kb.services.search_service import SearchService
 
+GRAPH_INDEX_METHODS = ("auto", "standard", "fast", "standard-update", "fast-update")
+
 
 @dataclass
 class UpdateOptions:
@@ -37,6 +39,7 @@ class UpdateOptions:
     graph_only: bool = False
     allow_partial: bool = False
     concepts: bool | None = None
+    graph_method: str = "auto"
 
 
 @dataclass
@@ -142,6 +145,12 @@ class UpdateService:
             raise ValueError("--graph-only cannot ingest new source paths.")
         if options.graph_only and options.resume:
             raise ValueError("--graph-only cannot resume legacy compile runs.")
+        if options.graph_method not in GRAPH_INDEX_METHODS:
+            supported = ", ".join(GRAPH_INDEX_METHODS)
+            raise ValueError(
+                f"Unsupported GraphRAG index method '{options.graph_method}'. "
+                f"Use one of: {supported}."
+            )
 
         result = UpdateResult()
         if options.graph_only:
@@ -274,7 +283,7 @@ class UpdateService:
 
         try:
             preflight = self._graphrag_sync.sync(
-                method="auto",
+                method=options.graph_method,
                 force=options.force,
                 dry_run=True,
                 preview_only=True,

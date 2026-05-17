@@ -22,6 +22,7 @@ from graphwiki_kb.commands.common import (
 )
 from graphwiki_kb.models.command_models import CommandContext, CommandSpec
 from graphwiki_kb.services.update_service import (
+    GRAPH_INDEX_METHODS,
     UpdateOptions,
     UpdatePreflightError,
     UpdateService,
@@ -107,6 +108,13 @@ def create_command() -> click.Command:
         help="Sync/index/export GraphRAG without legacy compile or search refresh.",
     )
     @click.option(
+        "--graph-method",
+        type=click.Choice(GRAPH_INDEX_METHODS),
+        default="auto",
+        show_default=True,
+        help="GraphRAG indexing method to use.",
+    )
+    @click.option(
         "--allow-partial",
         is_flag=True,
         help="Treat GraphRAG sync/index/export failures as warnings.",
@@ -124,6 +132,7 @@ def create_command() -> click.Command:
         resume: bool,
         no_graph: bool,
         graph_only: bool,
+        graph_method: str,
         allow_partial: bool,
         concepts: bool | None,
     ) -> None:
@@ -136,6 +145,7 @@ def create_command() -> click.Command:
             resume: Resume value used by the operation.
             no_graph: No graph value used by the operation.
             graph_only: Graph only value used by the operation.
+            graph_method: GraphRAG indexing method to request.
             allow_partial: Allow partial value used by the operation.
             concepts: Concepts value used by the operation.
         """
@@ -148,6 +158,7 @@ def create_command() -> click.Command:
             resume=resume,
             no_graph=no_graph,
             graph_only=graph_only,
+            graph_method=graph_method,
             allow_partial=allow_partial,
             concepts=concepts,
         )

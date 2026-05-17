@@ -6,6 +6,7 @@ import heapq
 import logging
 import math
 import re
+from collections import Counter
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -233,12 +234,30 @@ def _join_search_text(*values: str) -> str:
 
 def _score(terms: list[str], *, title: str, searchable: str) -> float:
     title_text = title.casefold()
+    title_tokens = Counter(_query_terms(title_text))
+    searchable_tokens = Counter(_query_terms(searchable))
     score = 0.0
     for term in terms:
-        if term in title_text:
+        title_matches = _token_match_count(term, title_tokens)
+        searchable_matches = _token_match_count(term, searchable_tokens)
+        if title_matches:
+            score += 10.0 * title_matches
+        elif len(term) > 2 and re.search(rf"\b{re.escape(term)}\b", title_text):
             score += 10.0
-        score += float(searchable.count(term))
+        score += float(searchable_matches)
     return score
+
+
+def _token_match_count(term: str, tokens: Counter[str]) -> int:
+    if len(term) <= 2:
+        return tokens[term]
+    exact = tokens[term]
+    prefix = sum(
+        count
+        for token, count in tokens.items()
+        if token != term and token.startswith(term)
+    )
+    return exact + prefix
 
 
 def _fallback_snippet(record: dict[str, Any]) -> str:

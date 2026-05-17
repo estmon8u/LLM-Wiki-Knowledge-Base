@@ -20,8 +20,10 @@ from graphwiki_kb.services.graphrag_defaults import (
 )
 from graphwiki_kb.services.graphrag_input_sync_service import (
     GRAPH_INPUT_METADATA_FIELDS,
+    GRAPH_INPUT_SIZE_WARNING_BYTES,
     GraphRAGInputSyncError,
     GraphRAGInputSyncService,
+    _input_size_warnings,
 )
 
 
@@ -102,7 +104,9 @@ def test_sync_writes_json_records_and_preserves_provenance(test_project) -> None
     result = service.sync()
 
     assert result.source_count == 1
+    assert result.input_size_bytes > 0
     assert result.output_path == test_project.root / "graph/graphrag/input/sources.json"
+    assert "\n  " not in result.output_path.read_text(encoding="utf-8")
     records = json.loads(result.output_path.read_text(encoding="utf-8"))
     assert len(records) == 1
     manifest_hash = records[0].pop("manifest_hash")
@@ -280,6 +284,13 @@ def test_sync_reports_missing_graphrag_settings(test_project) -> None:
     assert f"--model {DEFAULT_GRAPHRAG_MODEL}" in str(exc_info.value)
     assert f"--embedding {DEFAULT_GRAPHRAG_EMBEDDING_MODEL}" in str(exc_info.value)
     assert not service.input_file.exists()
+
+
+def test_input_size_warning_reports_large_graph_payload() -> None:
+    warnings = _input_size_warnings(GRAPH_INPUT_SIZE_WARNING_BYTES + 1)
+
+    assert len(warnings) == 1
+    assert "GraphRAG input" in warnings[0]
 
 
 def test_sync_reports_invalid_graphrag_settings(test_project) -> None:

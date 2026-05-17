@@ -11,6 +11,7 @@ import logging
 import os
 from copy import deepcopy
 from dataclasses import dataclass
+from typing import Any
 
 from google import genai
 from google.genai import types
@@ -19,6 +20,33 @@ from graphwiki_kb.providers.base import ProviderRequest, ProviderResponse, TextP
 from graphwiki_kb.providers.retry import provider_retry
 
 logger = logging.getLogger(__name__)
+_SUPPORTED_SCHEMA_TYPES = {
+    "string",
+    "number",
+    "integer",
+    "boolean",
+    "object",
+    "array",
+    "null",
+}
+_SUPPORTED_SCHEMA_KEYS = {
+    "type",
+    "title",
+    "description",
+    "properties",
+    "required",
+    "additionalProperties",
+    "enum",
+    "format",
+    "minimum",
+    "maximum",
+    "items",
+    "prefixItems",
+    "minItems",
+    "maxItems",
+    "propertyOrdering",
+}
+_DEFINITION_KEYS = ("$defs", "definitions")
 
 
 class GeminiProvider(TextProvider):
@@ -134,7 +162,170 @@ def _gemini_response_schema_with_report(
     schema: object,
 ) -> tuple[object, GeminiSchemaTransformationReport]:
     """Return schema plus any compatibility downgrades applied."""
-    return deepcopy(schema), GeminiSchemaTransformationReport()
+    removed: list[str] = []
+    root = deepcopy(schema)
+    converted = _normalize_gemini_schema(root, root=root, removed=removed, path="$")
+    removed_keywords = tuple(dict.fromkeys(removed))
+    return converted, GeminiSchemaTransformationReport(
+        removed_keywords=removed_keywords,
+        weakened=bool(removed_keywords),
+    )
+
+
+def _normalize_gemini_schema(
+    schema: object,
+    *,
+    root: object,
+    removed: list[str],
+    path: str,
+) -> object:
+    if isinstance(schema, bool):
+        return schema
+    if not isinstance(schema, dict):
+        return deepcopy(schema)
+
+    resolved = _resolve_schema_ref(schema, root=root, removed=removed, path=path)
+    if resolved is not schema:
+        return _normalize_gemini_schema(resolved, root=root, removed=removed, path=path)
+
+    nullable = _collapse_nullable_composition(schema)
+    if nullable is not None:
+        schema = nullable
+
+    normalized: dict[str, Any] = {}
+    for key, value in schema.items():
+        if key in _DEFINITION_KEYS or key == "$schema":
+            removed.append(f"{path}.{key}")
+            continue
+        if key not in _SUPPORTED_SCHEMA_KEYS:
+            removed.append(f"{path}.{key}")
+            continue
+        if key == "type":
+            normalized_type = _normalize_schema_type(value)
+            if normalized_type is None:
+                removed.append(f"{path}.type")
+                continue
+            normalized[key] = normalized_type
+        elif key == "properties" and isinstance(value, dict):
+            normalized[key] = {
+                str(name): _normalize_gemini_schema(
+                    prop,
+                    root=root,
+                    removed=removed,
+                    path=f"{path}.properties.{name}",
+                )
+                for name, prop in value.items()
+                if isinstance(prop, (dict, bool))
+            }
+        elif key == "required" and isinstance(value, list):
+            normalized[key] = [str(item) for item in value if isinstance(item, str)]
+        elif key == "items" and isinstance(value, (dict, bool)):
+            normalized[key] = _normalize_gemini_schema(
+                value,
+                root=root,
+                removed=removed,
+                path=f"{path}.items",
+            )
+        elif key == "prefixItems" and isinstance(value, list):
+            normalized[key] = [
+                _normalize_gemini_schema(
+                    item,
+                    root=root,
+                    removed=removed,
+                    path=f"{path}.prefixItems.{index}",
+                )
+                for index, item in enumerate(value)
+                if isinstance(item, (dict, bool))
+            ]
+        elif key == "additionalProperties" and isinstance(value, (dict, bool)):
+            normalized[key] = (
+                _normalize_gemini_schema(
+                    value,
+                    root=root,
+                    removed=removed,
+                    path=f"{path}.additionalProperties",
+                )
+                if isinstance(value, dict)
+                else value
+            )
+        else:
+            normalized[key] = deepcopy(value)
+    return normalized
+
+
+def _resolve_schema_ref(
+    schema: dict[str, Any],
+    *,
+    root: object,
+    removed: list[str],
+    path: str,
+) -> object:
+    ref = schema.get("$ref")
+    if not isinstance(ref, str):
+        return schema
+    resolved = _local_schema_ref(root, ref)
+    if resolved is None:
+        removed.append(f"{path}.$ref")
+        return {key: value for key, value in schema.items() if key != "$ref"}
+    merged = deepcopy(resolved)
+    if isinstance(merged, dict):
+        for key, value in schema.items():
+            if key != "$ref":
+                merged[key] = value
+    return merged
+
+
+def _local_schema_ref(root: object, ref: str) -> object | None:
+    if not ref.startswith("#/"):
+        return None
+    current = root
+    for raw_part in ref[2:].split("/"):
+        part = raw_part.replace("~1", "/").replace("~0", "~")
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
+
+
+def _collapse_nullable_composition(schema: dict[str, Any]) -> dict[str, Any] | None:
+    for key in ("anyOf", "oneOf"):
+        value = schema.get(key)
+        if not isinstance(value, list) or len(value) != 2:
+            continue
+        typed = [item for item in value if isinstance(item, dict)]
+        if len(typed) != 2:
+            continue
+        null_item = next((item for item in typed if item.get("type") == "null"), None)
+        other = next((item for item in typed if item.get("type") != "null"), None)
+        if null_item is None or other is None:
+            continue
+        collapsed = {k: v for k, v in schema.items() if k != key}
+        collapsed.update(other)
+        other_type = other.get("type")
+        if isinstance(other_type, list):
+            types = [*other_type, "null"]
+        elif isinstance(other_type, str):
+            types = [other_type, "null"]
+        else:
+            types = ["null"]
+        collapsed["type"] = list(dict.fromkeys(types))
+        return collapsed
+    return None
+
+
+def _normalize_schema_type(value: object) -> str | list[str] | None:
+    if isinstance(value, str):
+        return value if value in _SUPPORTED_SCHEMA_TYPES else None
+    if isinstance(value, list):
+        types = [
+            item
+            for item in value
+            if isinstance(item, str) and item in _SUPPORTED_SCHEMA_TYPES
+        ]
+        if not types:
+            return None
+        return list(dict.fromkeys(types))
+    return None
 
 
 def _uses_thinking_budget(model: str) -> bool:

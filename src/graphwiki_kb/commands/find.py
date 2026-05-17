@@ -59,6 +59,10 @@ def create_command() -> click.Command:
             raise click.ClickException("Provide at least one search term.")
         search_service = command_context.services.search
         graph_find_service = command_context.services.graphrag_find
+        graph_status = command_context.services.graphrag_status.status().to_dict(
+            command_context.project_root
+        )
+        graph_diagnostics = _graph_find_diagnostics(graph_status)
         query = " ".join(query_terms).strip()
         candidate_limit = max(limit * 4, 20)
         graph_results = graph_find_service.search(query, limit=candidate_limit)
@@ -74,11 +78,14 @@ def create_command() -> click.Command:
                 {
                     "retriever": "graph-and-wiki-index",
                     "query": query,
+                    "diagnostics": graph_diagnostics,
                     "results": [_search_result_payload(result) for result in results],
                 }
             )
             return
 
+        for diagnostic in graph_diagnostics:
+            console.print(f"[yellow]{diagnostic}[/yellow]")
         if not results:
             console.print("No graph artifacts or wiki pages matched that query.")
             return
@@ -145,6 +152,21 @@ def _merge_results(
         reverse=True,
     )
     return ranked[:limit]
+
+
+def _graph_find_diagnostics(graph_status: dict[str, object]) -> list[str]:
+    table_states = graph_status.get("table_states")
+    if not isinstance(table_states, dict):
+        return []
+    messages: list[str] = []
+    for table_name in ("entities", "relationships"):
+        state = table_states.get(table_name)
+        if state in {"dependency_missing", "present_unreadable"}:
+            messages.append(
+                "GraphRAG "
+                f"{table_name} artifacts are {state}; run `kb status` for details."
+            )
+    return messages
 
 
 def _max_score(results: list[SearchResult]) -> float:

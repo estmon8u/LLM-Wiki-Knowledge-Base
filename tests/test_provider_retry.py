@@ -7,7 +7,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from graphwiki_kb.providers.base import ProviderRequest, ProviderResponse
-from graphwiki_kb.providers.retry import TRANSIENT_EXCEPTIONS, provider_retry
+from graphwiki_kb.providers.retry import (
+    RETRYABLE_STATUS_CODES,
+    TRANSIENT_EXCEPTIONS,
+    _is_retryable_provider_error,
+    provider_retry,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -142,6 +147,17 @@ def test_non_retriable_runtime_error_propagates_immediately() -> None:
     with pytest.raises(RuntimeError, match="something unexpected"):
         provider.generate(ProviderRequest(prompt="test"))
     assert mock.call_count == 1
+
+
+def test_retry_policy_uses_status_code_when_available() -> None:
+    retryable = RuntimeError("rate limited")
+    retryable.status_code = 429
+    bad_request = RuntimeError("bad request")
+    bad_request.status_code = 400
+
+    assert 429 in RETRYABLE_STATUS_CODES
+    assert _is_retryable_provider_error(retryable) is True
+    assert _is_retryable_provider_error(bad_request) is False
 
 
 # ---------------------------------------------------------------------------

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
+from pathlib import Path
 from typing import Any
 
 from graphwiki_kb.services.graphrag_command_service import (
@@ -184,6 +185,17 @@ class GraphRAGSyncService:
                     method=decision.method,
                     dry_run=dry_run,
                     result=exc.result,
+                    input_digest=input_digest,
+                    config_digest=config_digest,
+                    input_source_count=status.input_document_count,
+                    source_hashes=current_source_hashes,
+                    output_state=decision.output_state,
+                )
+            else:
+                self.status_service.record_index_run(
+                    method=decision.method,
+                    dry_run=dry_run,
+                    result=_failed_before_result(decision.method, str(exc)),
                     input_digest=input_digest,
                     config_digest=config_digest,
                     input_source_count=status.input_document_count,
@@ -489,6 +501,16 @@ def cost_warning(method: str) -> str:
     if method in UPDATE_METHODS:
         return "Incremental GraphRAG update can incur provider costs."
     return "Full GraphRAG rebuild can incur model and embedding provider costs."
+
+
+def _failed_before_result(method: str, detail: str) -> GraphRAGCommandResult:
+    return GraphRAGCommandResult(
+        command=("kb", "internal", "graphrag", "index", "--method", method),
+        cwd=Path("."),
+        returncode=1,
+        stdout="",
+        stderr=detail,
+    )
 
 
 def _optional_str(value: Any) -> str | None:
