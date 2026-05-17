@@ -39,25 +39,10 @@ from graphwiki_kb.services.project_service import (
     utc_now_iso,
 )
 
-CURRENT_CONFIG_VERSION = 8
+CURRENT_CONFIG_VERSION = 7
 PROVIDER_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh"}
 GEMINI_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high"}
 ANTHROPIC_THINKING_EFFORTS = {"low", "medium", "high", "xhigh", "max"}
-DEFAULT_WIKI_PRIORS_MAX_GLOSSARY_TERMS = 100
-DEFAULT_WIKI_PRIORS_MAX_ENTITY_TYPES = 12
-DEFAULT_WIKI_PRIORS_MIN_SUPPORT_COUNT = 2
-
-
-@dataclass(frozen=True)
-class GraphWikiPriorsRuntimeConfig:
-    """Resolved wiki-priors settings for GraphRAG prompt steering."""
-
-    enabled: bool
-    prompt_overlay: bool
-    max_glossary_terms: int
-    max_entity_types: int
-    include_legacy_concepts: bool
-    min_support_count: int
 
 
 @dataclass(frozen=True)
@@ -75,7 +60,6 @@ class GraphRAGRuntimeConfig:
     entity_types: tuple[str, ...]
     max_gleanings: int
     max_source_bytes: int
-    wiki_priors: GraphWikiPriorsRuntimeConfig
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -126,14 +110,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
         },
         "input": {
             "max_source_bytes": DEFAULT_GRAPHRAG_MAX_SOURCE_BYTES,
-        },
-        "wiki_priors": {
-            "enabled": True,
-            "prompt_overlay": False,
-            "max_glossary_terms": DEFAULT_WIKI_PRIORS_MAX_GLOSSARY_TERMS,
-            "max_entity_types": DEFAULT_WIKI_PRIORS_MAX_ENTITY_TYPES,
-            "include_legacy_concepts": False,
-            "min_support_count": DEFAULT_WIKI_PRIORS_MIN_SUPPORT_COUNT,
         },
         "routing": {
             "aliases": {},
@@ -401,11 +377,6 @@ def _apply_config_migrations(config: dict[str, Any]) -> tuple[dict[str, Any], bo
             changed = True
             version = _config_version(migrated)
             continue
-        if version == 7:
-            migrated = _migrate_v7_to_v8(migrated)
-            changed = True
-            version = _config_version(migrated)
-            continue
         raise ValueError(f"Unsupported kb.config.yaml version: {version}")
 
     return migrated, changed
@@ -537,20 +508,6 @@ def _migrate_v6_to_v7(config: dict[str, Any]) -> dict[str, Any]:
         migrated["conversion"] = conversion
 
     migrated["version"] = 7
-    return migrated
-
-
-def _migrate_v7_to_v8(config: dict[str, Any]) -> dict[str, Any]:
-    migrated = deepcopy(config)
-
-    existing_graph = migrated.get("graph", {})
-    graph = deepcopy(DEFAULT_CONFIG["graph"])
-    if isinstance(existing_graph, dict):
-        graph = _deep_merge(graph, existing_graph)
-    graph.setdefault("wiki_priors", deepcopy(DEFAULT_CONFIG["graph"]["wiki_priors"]))
-    migrated["graph"] = graph
-
-    migrated["version"] = 8
     return migrated
 
 
@@ -725,29 +682,6 @@ class _GraphInputConfig(_StrictConfigModel):
     )
 
 
-class _GraphWikiPriorsConfig(_StrictConfigModel):
-    """Validated deterministic wiki-priors settings."""
-
-    enabled: StrictBool = True
-    prompt_overlay: StrictBool = False
-    max_glossary_terms: StrictInt = Field(
-        default=DEFAULT_WIKI_PRIORS_MAX_GLOSSARY_TERMS,
-        ge=1,
-        le=1000,
-    )
-    max_entity_types: StrictInt = Field(
-        default=DEFAULT_WIKI_PRIORS_MAX_ENTITY_TYPES,
-        ge=1,
-        le=50,
-    )
-    include_legacy_concepts: StrictBool = False
-    min_support_count: StrictInt = Field(
-        default=DEFAULT_WIKI_PRIORS_MIN_SUPPORT_COUNT,
-        ge=1,
-        le=100,
-    )
-
-
 class _GraphConfig(_StrictConfigModel):
     """Validated GraphRAG provider, embedding, and routing settings."""
 
@@ -760,7 +694,6 @@ class _GraphConfig(_StrictConfigModel):
     chunking: _GraphChunkingConfig = Field(default_factory=_GraphChunkingConfig)
     extraction: _GraphExtractionConfig = Field(default_factory=_GraphExtractionConfig)
     input: _GraphInputConfig = Field(default_factory=_GraphInputConfig)
-    wiki_priors: _GraphWikiPriorsConfig = Field(default_factory=_GraphWikiPriorsConfig)
     routing: _GraphRoutingConfig = Field(default_factory=_GraphRoutingConfig)
 
     @field_validator("provider", "model", "embedding_model")
@@ -924,16 +857,6 @@ def resolve_graph_config(config: dict[str, Any]) -> GraphRAGRuntimeConfig:
         entity_types=tuple(validated["extraction"]["entity_types"]),
         max_gleanings=int(validated["extraction"]["max_gleanings"]),
         max_source_bytes=int(validated["input"]["max_source_bytes"]),
-        wiki_priors=GraphWikiPriorsRuntimeConfig(
-            enabled=bool(validated["wiki_priors"]["enabled"]),
-            prompt_overlay=bool(validated["wiki_priors"]["prompt_overlay"]),
-            max_glossary_terms=int(validated["wiki_priors"]["max_glossary_terms"]),
-            max_entity_types=int(validated["wiki_priors"]["max_entity_types"]),
-            include_legacy_concepts=bool(
-                validated["wiki_priors"]["include_legacy_concepts"]
-            ),
-            min_support_count=int(validated["wiki_priors"]["min_support_count"]),
-        ),
     )
 
 

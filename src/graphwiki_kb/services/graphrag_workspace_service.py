@@ -27,9 +27,6 @@ from graphwiki_kb.services.graphrag_defaults import (
     DEFAULT_GRAPHRAG_EXTRACTION_MAX_GLEANINGS,
 )
 from graphwiki_kb.services.project_service import ProjectPaths, atomic_write_text
-from graphwiki_kb.services.wiki_priors_service import wiki_priors_behavior_digest
-
-MANAGED_WIKI_PRIORS_PROMPT = "prompts/extract_graph_wiki_priors.txt"
 
 
 @dataclass(frozen=True)
@@ -168,7 +165,6 @@ class GraphRAGWorkspaceService:
                 entity_types=graph_config.entity_types,
                 max_gleanings=graph_config.max_gleanings,
                 max_source_bytes=graph_config.max_source_bytes,
-                wiki_priors=graph_config.wiki_priors,
             )
         )
         return GraphRAGWorkspaceInitResult(
@@ -183,28 +179,16 @@ class GraphRAGWorkspaceService:
             embedding_api_key_env=graph_config.embedding_api_key_env,
         )
 
-    def sync_settings(
-        self,
-        graph_config: GraphRAGRuntimeConfig | None = None,
-        *,
-        wiki_priors: dict[str, Any] | None = None,
-    ) -> None:
+    def sync_settings(self, graph_config: GraphRAGRuntimeConfig | None = None) -> None:
         """Sync settings.
 
         Args:
             graph_config: Graph config value used by the operation.
         """
-        graph_config = graph_config or resolve_graph_config(self.config)
-        self._sync_wiki_priors_prompt(graph_config, wiki_priors)
-        settings_text = self.render_settings(graph_config, wiki_priors=wiki_priors)
+        settings_text = self.render_settings(graph_config)
         atomic_write_text(self.settings_path, settings_text)
 
-    def render_settings(
-        self,
-        graph_config: GraphRAGRuntimeConfig | None = None,
-        *,
-        wiki_priors: dict[str, Any] | None = None,
-    ) -> str:
+    def render_settings(self, graph_config: GraphRAGRuntimeConfig | None = None) -> str:
         """Return the settings payload that sync_settings would write."""
         graph_config = graph_config or resolve_graph_config(self.config)
         settings = _deep_merge(_default_settings(), self._load_settings())
@@ -231,86 +215,11 @@ class GraphRAGWorkspaceService:
 
         extract_graph = settings.setdefault("extract_graph", {})
         extract_graph["completion_model_id"] = "default_completion_model"
-        if _wiki_priors_overlay_enabled(graph_config, wiki_priors):
-            extract_graph["prompt"] = MANAGED_WIKI_PRIORS_PROMPT
-            extract_graph["entity_types"] = _wiki_priors_entity_types(
-                graph_config,
-                wiki_priors,
-            )
-        else:
-            if extract_graph.get("prompt") == MANAGED_WIKI_PRIORS_PROMPT:
-                extract_graph["prompt"] = "prompts/extract_graph.txt"
-            else:
-                extract_graph.setdefault("prompt", "prompts/extract_graph.txt")
-            extract_graph["entity_types"] = list(graph_config.entity_types)
+        extract_graph.setdefault("prompt", "prompts/extract_graph.txt")
+        extract_graph["entity_types"] = list(graph_config.entity_types)
         extract_graph["max_gleanings"] = graph_config.max_gleanings
 
         return yaml.safe_dump(settings, sort_keys=False)
-
-    def render_wiki_priors_prompt(
-        self,
-        graph_config: GraphRAGRuntimeConfig | None = None,
-        *,
-        wiki_priors: dict[str, Any] | None = None,
-    ) -> str | None:
-        """Return the managed extraction prompt text, or ``None`` when disabled."""
-        graph_config = graph_config or resolve_graph_config(self.config)
-        if not _wiki_priors_overlay_enabled(graph_config, wiki_priors):
-            return None
-        base_prompt = self._base_extract_graph_prompt()
-        digest = wiki_priors_behavior_digest(wiki_priors or {})
-        glossary = wiki_priors.get("glossary") if isinstance(wiki_priors, dict) else []
-        rows = glossary if isinstance(glossary, list) else []
-        lines = [
-            "Domain glossary hints:",
-            "The following terms are common in this corpus. Use them as hints only.",
-            "Do not extract an entity or relationship unless it is supported by the source text.",
-            f"Wiki priors behavior digest: {digest}",
-            "",
-        ]
-        if rows:
-            for row in rows:
-                term = str(row.get("term", "")).strip()
-                aliases = row.get("aliases")
-                alias_text = ""
-                if isinstance(aliases, list) and aliases:
-                    clean_aliases = [
-                        str(alias).strip() for alias in aliases if str(alias).strip()
-                    ]
-                    if clean_aliases:
-                        alias_text = f" ({', '.join(clean_aliases)})"
-                if term:
-                    lines.append(f"- {term}{alias_text}")
-        else:
-            lines.append("- No glossary terms met the configured support threshold.")
-        return f"{base_prompt.rstrip()}\n\n" + "\n".join(lines).rstrip() + "\n"
-
-    def _sync_wiki_priors_prompt(
-        self,
-        graph_config: GraphRAGRuntimeConfig,
-        wiki_priors: dict[str, Any] | None,
-    ) -> None:
-        prompt_path = self.workspace_dir / MANAGED_WIKI_PRIORS_PROMPT
-        prompt_text = self.render_wiki_priors_prompt(
-            graph_config,
-            wiki_priors=wiki_priors,
-        )
-        if prompt_text is None:
-            if prompt_path.exists():
-                prompt_path.unlink()
-            return
-        atomic_write_text(prompt_path, prompt_text)
-
-    def _base_extract_graph_prompt(self) -> str:
-        prompt_path = self.workspace_dir / "prompts" / "extract_graph.txt"
-        if prompt_path.exists():
-            return prompt_path.read_text(encoding="utf-8")
-        prompt_dirs = _bundled_prompt_dirs()
-        if prompt_dirs:
-            bundled = prompt_dirs[0] / "extract_graph.txt"
-            if bundled.exists():
-                return bundled.read_text(encoding="utf-8")
-        return "Extract entities and relationships from the source text."
 
     def _load_settings(self) -> dict[str, Any]:
         if not self.settings_path.exists():
@@ -465,33 +374,6 @@ def _normalize_stock_vector_store_path(settings: dict[str, Any]) -> None:
         return
     if vector_store.get("db_uri") == "output\\lancedb":
         vector_store["db_uri"] = "output/lancedb"
-
-
-def _wiki_priors_overlay_enabled(
-    graph_config: GraphRAGRuntimeConfig,
-    wiki_priors: dict[str, Any] | None,
-) -> bool:
-    return bool(
-        graph_config.wiki_priors.enabled
-        and graph_config.wiki_priors.prompt_overlay
-        and isinstance(wiki_priors, dict)
-    )
-
-
-def _wiki_priors_entity_types(
-    graph_config: GraphRAGRuntimeConfig,
-    wiki_priors: dict[str, Any] | None,
-) -> list[str]:
-    entity_types = (
-        wiki_priors.get("entity_types") if isinstance(wiki_priors, dict) else None
-    )
-    if isinstance(entity_types, list):
-        clean = [
-            str(item).strip().lower() for item in entity_types if str(item).strip()
-        ]
-        if clean:
-            return clean[: graph_config.wiki_priors.max_entity_types]
-    return list(graph_config.entity_types[: graph_config.wiki_priors.max_entity_types])
 
 
 def _bundled_prompt_dirs(module_file: Path | None = None) -> list[Path]:

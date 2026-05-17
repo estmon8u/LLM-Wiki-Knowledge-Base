@@ -130,7 +130,6 @@ def graph_runtime_digest(
     workspace_dir: Path,
     *,
     settings_text: str | None = None,
-    extra_prompt_texts: dict[str, str] | None = None,
 ) -> str:
     digest = hashlib.sha256()
     digest.update(
@@ -148,19 +147,9 @@ def graph_runtime_digest(
         digest.update(settings_text.encode("utf-8"))
         digest.update(b"\0")
     prompt_dir = workspace_dir / "prompts"
-    extra_prompt_texts = extra_prompt_texts or {}
-    extra_prompt_labels = set(extra_prompt_texts)
     if prompt_dir.exists():
         for path in sorted(prompt_dir.rglob("*.txt")):
-            label = path.relative_to(workspace_dir).as_posix()
-            if label in extra_prompt_labels:
-                continue
-            _digest_file(digest, path, label)
-    for label, text in sorted(extra_prompt_texts.items()):
-        digest.update(label.encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(text.encode("utf-8"))
-        digest.update(b"\0")
+            _digest_file(digest, path, path.relative_to(workspace_dir).as_posix())
     return digest.hexdigest()
 
 

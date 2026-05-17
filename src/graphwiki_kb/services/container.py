@@ -40,7 +40,6 @@ if TYPE_CHECKING:
     from graphwiki_kb.services.review_service import ReviewService
     from graphwiki_kb.services.search_service import SearchService
     from graphwiki_kb.services.status_service import StatusService
-    from graphwiki_kb.services.wiki_priors_service import WikiPriorsService
     from graphwiki_kb.storage.compile_run_store import CompileRunStore
 
 
@@ -69,7 +68,6 @@ class ServiceContainer(Mapping[str, Any]):
     query_router: QueryRouterService
     graph_ask_controller: GraphAskControllerService
     graphrag_wiki_export: GraphRAGWikiExportService
-    wiki_priors: WikiPriorsService
     graphrag_input_sync: GraphRAGInputSyncService
     graphrag_sync: GraphRAGSyncService
     review: ReviewService

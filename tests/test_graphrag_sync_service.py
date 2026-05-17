@@ -748,6 +748,18 @@ def test_graph_input_source_hashes_supports_object_payload_and_ignores_bad_recor
     ) == {"src-1": "hash-1"}
 
 
+def test_graph_input_source_hashes_ignores_scalar_payload(test_project) -> None:
+    """Scalar GraphRAG input payloads are treated as empty source lists."""
+    test_project.write_file("graph/graphrag/input/sources.json", '"not-a-record-list"')
+
+    assert (
+        graph_input_source_hashes(
+            test_project.paths.graph_dir / "graphrag" / "input" / "sources.json"
+        )
+        == {}
+    )
+
+
 def test_count_source_hash_changes_handles_missing_previous_snapshot() -> None:
     """Verifies that count source hash changes handles missing previous snapshot."""
     assert count_source_hash_changes(None, {"src-1": "hash-1"}) is None
