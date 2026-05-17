@@ -535,7 +535,7 @@ def cost_warning(method: str) -> str:
 def _failed_before_result(method: str, detail: str) -> GraphRAGCommandResult:
     return GraphRAGCommandResult(
         command=("kb", "internal", "graphrag", "index", "--method", method),
-        cwd=Path("."),
+        cwd=Path(),
         returncode=1,
         stdout="",
         stderr=detail,

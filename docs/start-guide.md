@@ -20,9 +20,12 @@ From the repository root:
 
 ```powershell
 cd LLM-Wiki-Knowledge-Base
-poetry install
+poetry install --with dev --all-extras
 poetry run kb --help
 ```
+
+For package installs outside the repo, choose the extras you need, such as
+`graphwiki-kb[openai]`, `graphwiki-kb[pdf]`, or `graphwiki-kb[all]`.
 
 ## 2. Create a project
 
@@ -83,11 +86,20 @@ Set that key before running a real graph index or query job:
 $env:OPENAI_API_KEY = "..."
 ```
 
+OpenAI response storage is disabled by default through
+`providers.openai.store_responses: false`; only set it to `true` when you
+explicitly want provider-side response retention for your account.
+
 `kb init` creates the project-local GraphRAG workspace and syncs the managed
-provider, model, embedding, and API-key fields into
+provider, model, embedding, API-key, chunking, technical extraction, and
+GraphRAG input-safety fields into
 `graph/graphrag/settings.yaml`. Later `kb init` or `kb update` runs refresh
-those managed fields while preserving user-owned GraphRAG tuning such as
-chunking, cache, vector-store, and search settings.
+those managed fields while preserving unrelated user-owned GraphRAG tuning such
+as cache, vector-store, and search settings. The default graph extraction entity
+types are tuned for technical corpora (`concept`, `technology`, `method`,
+`algorithm`, `dataset`, `model`, `benchmark`, `framework`, `component`, `api`,
+`paper`, and `claim`), and `graph.input.max_source_bytes` rejects unexpectedly
+large normalized sources before GraphRAG input sync reads them.
 
 Check the setup before adding sources:
 

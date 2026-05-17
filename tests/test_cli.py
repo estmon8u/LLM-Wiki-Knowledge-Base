@@ -169,7 +169,7 @@ def test_init_regenerates_malformed_config() -> None:
         assert result.exit_code == 0
         assert "kb.config.yaml (regenerated" in result.output
         assert "backup: kb.config.yaml.bak." in result.output
-        assert list(Path(".").glob("kb.config.yaml.bak.*"))
+        assert list(Path().glob("kb.config.yaml.bak.*"))
         assert isinstance(
             yaml.safe_load(Path("kb.config.yaml").read_text(encoding="utf-8")),
             dict,

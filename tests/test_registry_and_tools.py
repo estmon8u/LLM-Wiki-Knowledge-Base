@@ -66,7 +66,7 @@ class _FakeProgressBar:
         """Initializes the instance."""
         self.updates: list[int] = []
 
-    def __enter__(self) -> "_FakeProgressBar":
+    def __enter__(self) -> _FakeProgressBar:
         """Handles enter.
 
         Returns:
@@ -113,7 +113,7 @@ class _FakeRichProgress:
         See annotated class attributes for stored values.
     """
 
-    instances: list["_FakeRichProgress"] = []
+    instances: list[_FakeRichProgress] = []
 
     def __init__(self, *, console, transient: bool) -> None:
         """Initializes the instance.
@@ -127,7 +127,7 @@ class _FakeRichProgress:
         self.advanced: list[str] = []
         _FakeRichProgress.instances.append(self)
 
-    def __enter__(self) -> "_FakeRichProgress":
+    def __enter__(self) -> _FakeRichProgress:
         """Handles enter.
 
         Returns:
@@ -178,7 +178,7 @@ class _FakeStatus:
         See annotated class attributes for stored values.
     """
 
-    instances: list["_FakeStatus"] = []
+    instances: list[_FakeStatus] = []
 
     def __init__(self, label: str, *, console, spinner: str) -> None:
         """Initializes the instance.

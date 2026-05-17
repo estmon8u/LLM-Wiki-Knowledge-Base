@@ -13,7 +13,12 @@ from typing import Any
 
 from anthropic import Anthropic
 
-from graphwiki_kb.providers.base import ProviderRequest, ProviderResponse, TextProvider
+from graphwiki_kb.providers.base import (
+    ProviderCapabilities,
+    ProviderRequest,
+    ProviderResponse,
+    TextProvider,
+)
 from graphwiki_kb.providers.retry import provider_retry
 
 _SUPPORTED_THINKING_EFFORTS = {"low", "medium", "high", "xhigh", "max"}
@@ -23,6 +28,11 @@ class AnthropicProvider(TextProvider):
     """Anthropic messages provider."""
 
     name = "anthropic"
+    capabilities = ProviderCapabilities(
+        strict_json_schema=True,
+        native_structured_output=True,
+        reasoning_effort_values=tuple(sorted(_SUPPORTED_THINKING_EFFORTS)),
+    )
 
     def __init__(
         self,

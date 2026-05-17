@@ -5,10 +5,11 @@ from __future__ import annotations
 import inspect
 import io
 import subprocess
+from collections.abc import Callable, Sequence
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any
 
 from graphwiki_kb.services.file_lock import workspace_lock
 from graphwiki_kb.services.graphrag_runtime import (
@@ -26,6 +27,7 @@ _KNOWN_GRAPHRAG_ENTRYPOINT_DEFAULTS: dict[str, Any] = {
     "config_filepath": None,
     "memprofile": False,
     "output_dir": None,
+    "streaming": False,
 }
 
 
@@ -64,8 +66,8 @@ class GraphRAGCommandService:
         paths: ProjectPaths,
         *,
         runner: Runner | None = None,
-        api_backend: "GraphRAGApiBackend | None" = None,
-        fallback_backend: "SubprocessGraphRAGApiBackend | None" = None,
+        api_backend: GraphRAGApiBackend | None = None,
+        fallback_backend: SubprocessGraphRAGApiBackend | None = None,
         use_subprocess_backend: bool = False,
     ) -> None:
         self.paths = paths
@@ -230,7 +232,7 @@ class GraphRAGApiBackend:
                 model=model,
                 embedding_model=embedding,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return _api_result(command, self.paths.root, returncode=1, stderr=str(exc))
         return _api_result(
             command,
@@ -286,7 +288,7 @@ class GraphRAGApiBackend:
                 stdout=stdout.getvalue(),
                 stderr=stderr_text,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             stdout.flush()
             stderr.flush()
             stderr_text = _append_error(stderr.getvalue(), str(exc))
@@ -342,11 +344,11 @@ class GraphRAGApiBackend:
                     community_level=community_level,
                     dynamic_community_selection=dynamic_community_selection,
                     response_type=response_type,
-                    streaming=bool(streaming),
+                    streaming=streaming,
                     question=question,
                     verbose=verbose,
                 )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             stderr_text = _append_error(stderr.getvalue(), str(exc))
             return _api_result(
                 command,
@@ -591,7 +593,7 @@ def _run_query_entrypoint(
     community_level: int | None,
     dynamic_community_selection: bool | None,
     response_type: str | None,
-    streaming: bool,
+    streaming: bool | None,
     question: str,
     verbose: bool,
 ) -> Any:  # pragma: no cover - thin wrapper around GraphRAG package
@@ -602,22 +604,25 @@ def _run_query_entrypoint(
         run_local_search,
     )
 
-    response_type = response_type or DEFAULT_QUERY_RESPONSE_TYPE
-    community_level = (
-        DEFAULT_QUERY_COMMUNITY_LEVEL if community_level is None else community_level
-    )
-    dynamic_community_selection = bool(dynamic_community_selection)
-    kwargs = {
+    kwargs: dict[str, Any] = {
         "config_filepath": None,
         "data_dir": data_dir,
         "root_dir": workspace_dir,
-        "community_level": community_level,
-        "dynamic_community_selection": dynamic_community_selection,
-        "response_type": response_type,
-        "streaming": streaming,
         "query": question,
         "verbose": verbose,
     }
+    if community_level is not None:
+        kwargs["community_level"] = community_level
+    elif method in {"global", "local", "drift"}:
+        kwargs["community_level"] = DEFAULT_QUERY_COMMUNITY_LEVEL
+    if dynamic_community_selection is not None:
+        kwargs["dynamic_community_selection"] = dynamic_community_selection
+    if response_type is not None:
+        kwargs["response_type"] = response_type
+    elif method in {"global", "local", "drift"}:
+        kwargs["response_type"] = DEFAULT_QUERY_RESPONSE_TYPE
+    if streaming is not None:
+        kwargs["streaming"] = streaming
     if method == "global":
         return _call_graphrag_entrypoint(
             run_global_search,

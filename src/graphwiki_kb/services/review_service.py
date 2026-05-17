@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import re
 from itertools import combinations
-from typing import Literal, Optional
+from typing import Literal
 
 from nltk.stem import SnowballStemmer
 from pydantic import BaseModel, Field
@@ -123,7 +123,7 @@ class ReviewService:
         self,
         paths: ProjectPaths,
         *,
-        provider: Optional[TextProvider] = None,
+        provider: TextProvider | None = None,
     ) -> None:
         self.paths = paths
         self.provider = provider
@@ -366,10 +366,7 @@ def _variant_stem(term: str) -> str:
 
 
 def _is_reviewable_page(relative_path: str, text: str) -> bool:
-    if not (
-        relative_path.startswith("wiki/sources/")
-        or relative_path.startswith("wiki/concepts/")
-    ):
+    if not relative_path.startswith(("wiki/sources/", "wiki/concepts/")):
         return False
     page_type = markdown_parse_frontmatter(text).get("type")
     return not isinstance(page_type, str) or page_type in _REVIEWABLE_PAGE_TYPES

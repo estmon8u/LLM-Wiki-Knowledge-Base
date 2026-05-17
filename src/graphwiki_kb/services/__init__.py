@@ -54,7 +54,11 @@ def build_services(
     compile_run_store = CompileRunStore(paths.graph_exports_dir / "compile_runs.json")
     graphrag_command_service = GraphRAGCommandService(paths)
     graphrag_status_service = GraphRAGStatusService(paths)
-    graphrag_input_sync_service = GraphRAGInputSyncService(paths, manifest_service)
+    graphrag_input_sync_service = GraphRAGInputSyncService(
+        paths,
+        manifest_service,
+        config=config,
+    )
     graphrag_workspace_service = GraphRAGWorkspaceService(
         paths,
         graphrag_command_service,

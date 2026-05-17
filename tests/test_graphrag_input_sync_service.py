@@ -16,6 +16,7 @@ from graphwiki_kb.models.source_models import RawSourceRecord
 from graphwiki_kb.services.graphrag_defaults import (
     DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
     DEFAULT_GRAPHRAG_ENCODING_MODEL,
+    DEFAULT_GRAPHRAG_MAX_SOURCE_BYTES,
     DEFAULT_GRAPHRAG_MODEL,
 )
 from graphwiki_kb.services.graphrag_input_sync_service import (
@@ -187,6 +188,48 @@ def test_sync_reports_missing_normalized_artifact(test_project) -> None:
         service.sync()
 
 
+def test_sync_rejects_normalized_path_outside_project_raw_dir(
+    test_project,
+    tmp_path,
+) -> None:
+    """Manifest paths must not let graph sync read arbitrary local files."""
+    _write_graphrag_settings(test_project)
+    outside = tmp_path / "outside.md"
+    outside.write_text("# Outside\n\nDo not read me.\n", encoding="utf-8")
+    test_project.services["manifest"].save_source(
+        _source_record(normalized_path=str(outside))
+    )
+    service = GraphRAGInputSyncService(
+        test_project.paths,
+        test_project.services["manifest"],
+    )
+
+    with pytest.raises(GraphRAGInputSyncError, match="outside project raw"):
+        service.sync(allow_missing_sources=True)
+
+
+def test_sync_rejects_large_normalized_source(test_project) -> None:
+    """Configured source-size limits fail before large text is read into memory."""
+    _write_graphrag_settings(test_project)
+    test_project.write_file("raw/normalized/rag.md", "# RAG\n\nlarge text\n")
+    test_project.services["manifest"].save_source(_source_record())
+    config = {
+        **test_project.config,
+        "graph": {
+            **test_project.config["graph"],
+            "input": {"max_source_bytes": 8},
+        },
+    }
+    service = GraphRAGInputSyncService(
+        test_project.paths,
+        test_project.services["manifest"],
+        config=config,
+    )
+
+    with pytest.raises(GraphRAGInputSyncError, match="too large"):
+        service.sync()
+
+
 def test_sync_can_skip_missing_normalized_artifacts_when_allowed(test_project) -> None:
     """Verifies one broken source does not block every graph input record."""
     _write_graphrag_settings(test_project)
@@ -291,6 +334,7 @@ def test_input_size_warning_reports_large_graph_payload() -> None:
 
     assert len(warnings) == 1
     assert "GraphRAG input" in warnings[0]
+    assert DEFAULT_GRAPHRAG_MAX_SOURCE_BYTES > 0
 
 
 def test_sync_reports_invalid_graphrag_settings(test_project) -> None:

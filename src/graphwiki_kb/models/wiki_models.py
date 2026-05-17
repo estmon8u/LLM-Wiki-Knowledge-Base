@@ -8,7 +8,7 @@ surface that uses it.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -76,7 +76,7 @@ class SearchResult:
     score: float
     snippet: str
     section: str = ""
-    chunk_index: Optional[int] = None
+    chunk_index: int | None = None
 
     @property
     def citation_ref(self) -> str:
@@ -103,7 +103,7 @@ class StatusSnapshot:
     compiled_source_count: int
     concept_page_count: int
     analysis_page_count: int
-    last_compile_at: Optional[str]
+    last_compile_at: str | None
     provider_summary: str
     index_status: str
     export_status: str

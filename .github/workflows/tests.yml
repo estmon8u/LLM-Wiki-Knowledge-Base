@@ -37,7 +37,7 @@ jobs:
       - name: Install project dependencies
         run: |
           poetry env use python
-          poetry install --with dev --no-interaction
+          poetry install --with dev --all-extras --no-interaction
 
       - name: Check formatting with Black
         run: poetry run black --check src tests
@@ -45,20 +45,28 @@ jobs:
       - name: Run Ruff lint
         run: poetry run ruff check src tests
 
-      - name: Type-check provider and GraphRAG boundaries
-        run: >
-          poetry run mypy
-          src/graphwiki_kb/providers
-          src/graphwiki_kb/services/graphrag_command_service.py
-          src/graphwiki_kb/services/graphrag_runtime.py
-          src/graphwiki_kb/services/graphrag_status_service.py
-          src/graphwiki_kb/services/query_router_service.py
+      - name: Type-check project
+        run: poetry run mypy src/graphwiki_kb
 
       - name: Smoke test CLI entry points
         run: |
           poetry run kb --help
+          poetry run kb init --help
+          poetry run kb update --help
           poetry run kb ask --help
           poetry run kb status --help
+
+      - name: Build and smoke test installed wheel
+        run: |
+          poetry build
+          python -m venv /tmp/kb-install-test
+          /tmp/kb-install-test/bin/pip install --upgrade pip
+          wheel=$(ls dist/graphwiki_kb-*.whl)
+          /tmp/kb-install-test/bin/pip install "${wheel}[all]"
+          /tmp/kb-install-test/bin/kb --help
+          /tmp/kb-install-test/bin/kb init --help
+          /tmp/kb-install-test/bin/kb update --help
+          /tmp/kb-install-test/bin/kb ask --help
 
       - name: Run tests with coverage
         run: poetry run pytest

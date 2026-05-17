@@ -16,6 +16,7 @@ import pytest
 from graphwiki_kb.services.graph_ask_controller_service import (
     GraphAskControllerError,
     GraphAskControllerService,
+    _assess_claim_support,
 )
 from graphwiki_kb.services.graphrag_command_service import (
     GraphRAGCommandResult,
@@ -27,8 +28,14 @@ from graphwiki_kb.services.graphrag_freshness_service import (
     graph_input_source_hashes,
     graph_runtime_digest,
 )
-from graphwiki_kb.services.graphrag_query_service import GraphRAGQueryService
-from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
+from graphwiki_kb.services.graphrag_query_service import (
+    GraphRAGQueryAnswer,
+    GraphRAGQueryService,
+)
+from graphwiki_kb.services.graphrag_status_service import (
+    GraphRAGStatus,
+    GraphRAGStatusService,
+)
 from graphwiki_kb.services.query_router_service import QueryRouterService
 
 
@@ -114,6 +121,97 @@ def _build_controller(test_project, runner) -> GraphAskControllerService:
         router,
         query_service,
     )
+
+
+def _status_for_freshness(
+    test_project,
+    *,
+    state: str,
+    reasons: tuple[str, ...] = (),
+) -> GraphRAGStatus:
+    return GraphRAGStatus(
+        workspace_dir=test_project.paths.graph_dir / "graphrag",
+        settings_path=test_project.paths.graph_dir / "graphrag" / "settings.yaml",
+        input_path=test_project.paths.graph_dir / "graphrag" / "input" / "sources.json",
+        output_dir=test_project.paths.graph_dir / "graphrag" / "output",
+        workspace_initialized=True,
+        input_exists=True,
+        input_document_count=1,
+        output_present=True,
+        documents_present=True,
+        text_units_present=True,
+        entities_present=True,
+        relationships_present=True,
+        communities_present=True,
+        community_reports_present=True,
+        last_index_run_id="run-1",
+        last_index_run_at="2026-05-16T00:00:00+00:00",
+        last_index_method="fast",
+        last_index_success=True,
+        next_action="No action required.",
+        graph_freshness_state=state,
+        graph_stale_reasons=reasons,
+    )
+
+
+def _query_answer(
+    *,
+    answer: str = "Answer",
+    source_trace: dict[str, str | None] | None = None,
+) -> GraphRAGQueryAnswer:
+    return GraphRAGQueryAnswer(
+        question="What changed?",
+        answer=answer,
+        raw_output=answer,
+        method="global",
+        created_at="2026-05-16T00:00:00+00:00",
+        index_run_id=None,
+        command=("graphrag", "query"),
+        stdout=answer,
+        stderr="",
+        graph_input_hash="hash",
+        source_trace=source_trace or {},
+    )
+
+
+def test_controller_staleness_warnings_use_digest_state(test_project) -> None:
+    controller = _build_controller(
+        test_project,
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0),
+    )
+
+    assert (
+        controller._check_staleness(_status_for_freshness(test_project, state="fresh"))
+        == []
+    )
+    assert controller._check_staleness(
+        _status_for_freshness(
+            test_project,
+            state="stale",
+            reasons=("Graph input digest changed since the last successful index.",),
+        )
+    ) == [
+        "Graph index is stale: Graph input digest changed since the last successful "
+        "index. Run `kb update`."
+    ]
+    assert controller._check_staleness(
+        _status_for_freshness(test_project, state="missing-metadata")
+    ) == ["Graph index is missing-metadata. Run `kb update`."]
+    assert (
+        controller._check_staleness(
+            _status_for_freshness(test_project, state="unknown")
+        )
+        == []
+    )
+
+
+def test_assess_claim_support_uses_staleness_citations_and_trace() -> None:
+    assert _assess_claim_support(_query_answer(), ["stale"]) == "stale-index"
+    assert (
+        _assess_claim_support(_query_answer(answer="Answer. [Data: Sources (1)]"), [])
+        == "cited-graph-answer"
+    )
+    assert _assess_claim_support(_query_answer(), []) == "unverified"
 
 
 def test_controller_accepts_graph_env_file_credentials(
@@ -316,19 +414,14 @@ def test_env_file_has_key_ignores_invalid_lines_and_io_errors(tmp_path) -> None:
 def test_controller_claim_support_reports_stale_index(
     test_project, monkeypatch
 ) -> None:
-    """When manifest is newer than graph input, claim_support should be stale-index."""
+    """When graph input digest changes, claim_support should be stale-index."""
     _write_ready_graph(test_project)
     test_project.write_file("graph/graphrag/.env", "OPENAI_API_KEY=local-key\n")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-
-    import os
-    import time
-
-    now = time.time()
-    input_path = test_project.paths.graph_dir / "graphrag" / "input" / "sources.json"
-    os.utime(input_path, (now - 120, now - 120))
-    manifest_path = test_project.paths.raw_manifest_file
-    os.utime(manifest_path, (now, now))
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "src-1", "text": "Changed RAG text"}]),
+    )
 
     def runner(command, *, cwd, capture_output, text):
         """Runner.
@@ -342,12 +435,8 @@ def test_controller_claim_support_reports_stale_index(
         return subprocess.CompletedProcess(command, 0, stdout="Answer.\n", stderr="")
 
     controller = _build_controller(test_project, runner)
-    answer = controller.ask("What is RAG?")
-
-    assert answer.claim_support == "stale-index"
-    assert answer.staleness_warnings == [
-        "Manifest is newer than graph input. Run `kb update`."
-    ]
+    with pytest.raises(GraphAskControllerError, match="GraphRAG index is stale"):
+        controller.ask("What is RAG?")
 
 
 def test_controller_claim_support_reports_no_answer(test_project, monkeypatch) -> None:

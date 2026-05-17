@@ -70,6 +70,14 @@ def _mode_label(options: UpdateOptions) -> str:
     return "full"
 
 
+def _status_label(options: UpdateOptions) -> str:
+    if options.graph_only:
+        return "Updating GraphRAG"
+    if options.no_graph:
+        return "Updating wiki"
+    return "Updating knowledge base"
+
+
 def create_command() -> click.Command:
     """Creates the Click command exposed by this module.
 
@@ -174,7 +182,7 @@ def create_command() -> click.Command:
                     item_label="source",
                 )
 
-            with lazy_live_status("GraphRAG indexing") as graph_status_update:
+            with lazy_live_status(_status_label(options)) as graph_status_update:
                 result = service.run(
                     options,
                     compile_progress_factory=_progress_factory,
@@ -257,7 +265,14 @@ def create_command() -> click.Command:
             if graph_result.sync_result and graph_result.sync_result.index_run:
                 run = graph_result.sync_result.index_run
                 console.print(f"Graph index run: {run.run_id} ({run.method})")
-                output_path = run.active_output_dir or "graph/graphrag/output"
+            output_path = graph_result.active_output_dir
+            if (
+                not output_path
+                and graph_result.sync_result
+                and graph_result.sync_result.index_run
+            ):
+                output_path = graph_result.sync_result.index_run.active_output_dir
+            if output_path:
                 console.print(f"Graph output: {output_path}")
             if graph_result.export_result:
                 console.print(

@@ -8,7 +8,7 @@ surface that uses it.
 from __future__ import annotations
 
 import json
-from typing import Any, Optional
+from typing import Any
 
 from graphwiki_kb.models.source_models import RawSourceRecord
 from graphwiki_kb.services.file_lock import file_lock
@@ -55,7 +55,7 @@ class ManifestService:
         payload = self._read()
         return [RawSourceRecord.from_dict(item) for item in payload["sources"]]
 
-    def find_by_hash(self, content_hash: str) -> Optional[RawSourceRecord]:
+    def find_by_hash(self, content_hash: str) -> RawSourceRecord | None:
         """Find by hash.
 
         Args:
@@ -69,7 +69,7 @@ class ManifestService:
                 return source
         return None
 
-    def find_by_origin_hash(self, origin_hash: str) -> Optional[RawSourceRecord]:
+    def find_by_origin_hash(self, origin_hash: str) -> RawSourceRecord | None:
         """Find by origin hash.
 
         Args:

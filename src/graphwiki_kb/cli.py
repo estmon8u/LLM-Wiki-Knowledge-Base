@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from typing import Optional
 
 import click
 import yaml
@@ -40,7 +39,7 @@ def build_runtime_context(
     project_root: Path,
     *,
     verbose: bool,
-    provider_override: Optional[str] = None,
+    provider_override: str | None = None,
     allow_default_config_on_error: bool = False,
 ) -> CommandContext:
     """Builds runtime context.
@@ -109,7 +108,7 @@ class KBGroup(click.Group):
         """
         return list_command_names()
 
-    def get_command(self, ctx: click.Context, cmd_name: str) -> Optional[click.Command]:
+    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
         """Get command.
 
         Args:
@@ -144,9 +143,9 @@ class KBGroup(click.Group):
 @click.pass_context
 def main(
     ctx: click.Context,
-    project_root: Optional[Path],
+    project_root: Path | None,
     verbose: bool,
-    provider_override: Optional[str],
+    provider_override: str | None,
 ) -> None:
     """Runs the command-line entry point.
 

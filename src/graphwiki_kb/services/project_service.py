@@ -7,7 +7,7 @@ import shutil
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from slugify import slugify as library_slugify
@@ -15,7 +15,7 @@ from slugify import slugify as library_slugify
 
 def utc_now_iso() -> str:
     """Return the current UTC timestamp as second-precision ISO-8601 text."""
-    return datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat()
+    return datetime.now(tz=UTC).replace(microsecond=0).isoformat()
 
 
 def slugify(value: str) -> str:

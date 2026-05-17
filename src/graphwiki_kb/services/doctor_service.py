@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib.util
 import os
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 import yaml
 
@@ -65,7 +65,7 @@ class DoctorService:
         self,
         paths: ProjectPaths,
         config: dict[str, Any],
-        provider: Optional[Any] = None,
+        provider: Any | None = None,
         graphrag_status_service: GraphRAGStatusService | None = None,
     ) -> None:
         self.paths = paths

@@ -117,6 +117,7 @@ def test_build_provider_uses_catalog_defaults_for_openai() -> None:
                 "model": "gpt-5.4",
                 "api_key_env": "OPENAI_ALT_KEY",
                 "reasoning_effort": "medium",
+                "store_responses": True,
             },
             "anthropic": {
                 "model": "claude-sonnet-4-6",
@@ -138,6 +139,7 @@ def test_build_provider_uses_catalog_defaults_for_openai() -> None:
     assert provider is not None
     assert provider.model == "gpt-5.4"
     assert provider._reasoning_effort == "medium"
+    assert provider._store_responses is True
 
 
 def test_build_provider_creates_openai_provider_with_custom_model() -> None:
@@ -295,6 +297,25 @@ def test_openai_provider_generate() -> None:
 
     assert result.text == "Hello world"
     assert result.model_name == "gpt-5.4-nano"
+    call_kwargs = MockClient.return_value.responses.create.call_args.kwargs
+    assert call_kwargs["store"] is False
+
+
+def test_openai_provider_store_responses_override() -> None:
+    """Verifies OpenAI response storage is opt-in for private KB data."""
+    with patch.dict("os.environ", {"OPENAI_API_KEY": "test"}):
+        with patch("graphwiki_kb.providers.openai_provider.OpenAI") as MockClient:
+            from graphwiki_kb.providers.openai_provider import OpenAIProvider
+
+            provider = OpenAIProvider(store_responses=True)
+            mock_response = MagicMock()
+            mock_response.output_text = "response"
+            MockClient.return_value.responses.create.return_value = mock_response
+
+            provider.generate(ProviderRequest(prompt="test"))
+
+    call_kwargs = MockClient.return_value.responses.create.call_args.kwargs
+    assert call_kwargs["store"] is True
 
 
 def test_openai_provider_uses_request_reasoning_effort_override() -> None:
@@ -468,6 +489,8 @@ def test_openai_provider_keeps_chat_completions_fallback() -> None:
 
     assert result.text == "fallback"
     assert MockClient.return_value.chat.completions.create.called
+    call_kwargs = MockClient.return_value.chat.completions.create.call_args.kwargs
+    assert call_kwargs["store"] is False
 
 
 def test_openai_chat_fallback_omits_reasoning_for_non_reasoning_model() -> None:
@@ -1187,3 +1210,14 @@ def test_provider_request_reasoning_effort_override() -> None:
     """Verifies that provider request reasoning effort override."""
     req = ProviderRequest(prompt="hi", reasoning_effort="low")
     assert req.reasoning_effort == "low"
+
+
+def test_provider_capabilities_are_explicit() -> None:
+    from graphwiki_kb.providers.anthropic_provider import AnthropicProvider
+    from graphwiki_kb.providers.gemini_provider import GeminiProvider
+    from graphwiki_kb.providers.openai_provider import OpenAIProvider
+
+    assert OpenAIProvider.capabilities.supports_store_false is True
+    assert OpenAIProvider.capabilities.native_structured_output is True
+    assert AnthropicProvider.capabilities.native_structured_output is True
+    assert GeminiProvider.capabilities.native_structured_output is True

@@ -258,8 +258,13 @@ def test_config_service_loads_defaults_and_creates_files(uninitialized_project) 
     assert graph["embedding_model"] == DEFAULT_GRAPHRAG_EMBEDDING_MODEL
     assert graph["api_key_env"] is None
     assert graph["embedding_api_key_env"] is None
+    assert graph["chunking"] == {"size": 1200, "overlap": 150}
+    assert "api" in graph["extraction"]["entity_types"]
+    assert graph["extraction"]["max_gleanings"] == 2
+    assert graph["input"]["max_source_bytes"] > 0
     assert graph["routing"] == {"aliases": {}}
     assert config_service.load()["providers"]["openai"]["api"] == "responses"
+    assert config_service.load()["providers"]["openai"]["store_responses"] is False
     assert (
         config_service.load()["conversion"]["html"]["allow_local_file_access"] is False
     )
@@ -640,6 +645,39 @@ def test_config_service_loads_custom_graph_config(test_project) -> None:
     assert graph_config.embedding_model == "gemini-embedding-001"
     assert graph_config.api_key_env == "OPENAI_GRAPH_KEY"
     assert graph_config.embedding_api_key_env == "GEMINI_API_KEY"
+    assert graph_config.chunk_size == 1200
+    assert graph_config.chunk_overlap == 150
+    assert graph_config.entity_types
+    assert graph_config.max_gleanings == 2
+    assert graph_config.max_source_bytes > 0
+
+
+def test_config_service_loads_graph_tuning_and_input_limits(test_project) -> None:
+    """Verifies GraphRAG extraction, chunking, and sync limits are configurable."""
+    test_project.paths.config_file.write_text(
+        "version: 7\n"
+        "graph:\n"
+        "  provider: openai\n"
+        "  model: gpt-4.1\n"
+        "  embedding_model: text-embedding-3-small\n"
+        "  chunking:\n"
+        "    size: 900\n"
+        "    overlap: 90\n"
+        "  extraction:\n"
+        "    entity_types: [concept, api]\n"
+        "    max_gleanings: 3\n"
+        "  input:\n"
+        "    max_source_bytes: 2048\n",
+        encoding="utf-8",
+    )
+
+    graph_config = resolve_graph_config(ConfigService(test_project.paths).load())
+
+    assert graph_config.chunk_size == 900
+    assert graph_config.chunk_overlap == 90
+    assert graph_config.entity_types == ("concept", "api")
+    assert graph_config.max_gleanings == 3
+    assert graph_config.max_source_bytes == 2048
 
 
 def test_graph_config_resolves_api_keys_from_provider_catalog(test_project) -> None:

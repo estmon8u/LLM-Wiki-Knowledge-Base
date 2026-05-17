@@ -7,9 +7,10 @@ surface that uses it.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from graphwiki_kb.services.container import ServiceContainer
@@ -59,5 +60,5 @@ class CommandSpec:
 
     name: str
     summary: str
-    availability: Optional[AvailabilityChecker] = None
-    run: Optional[CommandRunner] = None
+    availability: AvailabilityChecker | None = None
+    run: CommandRunner | None = None

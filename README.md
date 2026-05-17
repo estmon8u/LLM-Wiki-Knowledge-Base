@@ -15,10 +15,10 @@ This branch is in the GraphRAG pivot. GraphRAG is the target default retrieval a
 
 ```bash
 cd LLM-Wiki-Knowledge-Base
-poetry install
+poetry install --with dev --all-extras
 ```
 
-This creates a local `.venv` and installs all dependencies. The CLI entrypoint is registered as `kb`.
+This creates a local `.venv` with the development tools and optional provider/converter/export dependencies used by the full test and real-document workflows. Minimal package installs can choose extras such as `graphwiki-kb[openai]`, `graphwiki-kb[pdf]`, or `graphwiki-kb[all]`. The CLI entrypoint is registered as `kb`.
 
 ## GraphRAG Workspace
 
@@ -32,11 +32,15 @@ poetry run kb init
 poetry run kb update
 ```
 
-GraphRAG runtime defaults live in the `graph` section of `kb.config.yaml`. `kb init` calls the installed GraphRAG Python initialization entrypoint to create the workspace, then syncs the selected completion provider, embedding provider, models, JSON input settings, prompt paths, and resolved API-key environment variables into `graph/graphrag/settings.yaml`. The CLI owns those managed fields, but it preserves user-owned GraphRAG settings such as chunking, cache, vector-store, and search tuning when it rewrites the file. Bundled prompt templates under `graph/graphrag/prompts/` are copied only when missing; if a bundled template changes and a user-tuned prompt already exists, GraphWiki KB writes a sibling `*.new` file instead of overwriting the tuned prompt. By default, GraphRAG reuses the OpenAI provider entry and references `OPENAI_API_KEY`, so a separate `GRAPHRAG_API_KEY` is not required unless you explicitly set a graph-specific override. The standalone `graphrag` command is still available for diagnostics. `kb` uses signature-aware Python entrypoint adapters first and can fall back to the documented `graphrag` CLI command shape when an upstream entrypoint contract changes.
+GraphRAG runtime defaults live in the `graph` section of `kb.config.yaml`. `kb init` calls the installed GraphRAG Python initialization entrypoint to create the workspace, then syncs the selected completion provider, embedding provider, models, JSON input settings, chunking defaults, technical extraction defaults, prompt paths, source-size limit, and resolved API-key environment variables into `graph/graphrag/settings.yaml`. The CLI owns those managed fields, but it preserves unrelated user-owned GraphRAG settings such as cache, vector-store, and search tuning when it rewrites the file. Bundled prompt templates under `graph/graphrag/prompts/` are copied only when missing; if a bundled template changes and a user-tuned prompt already exists, GraphWiki KB writes a sibling `*.new` file instead of overwriting the tuned prompt. By default, GraphRAG reuses the OpenAI provider entry and references `OPENAI_API_KEY`, so a separate `GRAPHRAG_API_KEY` is not required unless you explicitly set a graph-specific override. The standalone `graphrag` command is still available for diagnostics. `kb` uses signature-aware Python entrypoint adapters first and can fall back to the documented `graphrag` CLI command shape when an upstream entrypoint contract changes.
 
-`kb update` uses the existing knowledge-base corpus as the source of truth. It reads `raw/_manifest.json` plus the normalized artifacts in `raw/normalized/`, writes compact `graph/graphrag/input/sources.json`, configures GraphRAG for JSON input with metadata prepended into chunks, and then auto-decides whether to run a full index, incremental update, retry after a failed latest attempt, or skip because the graph is already current. Use `--graph-method auto|standard|fast|standard-update|fast-update` to request a specific GraphRAG index method. The preflight decision path plans those settings and input changes without mutating `settings.yaml` or `input/sources.json`, so skipped or credential-blocked graph runs do not leave partial workspace state behind. Normal updates can skip isolated missing normalized artifacts with a warning so one stale manifest entry does not block the entire graph refresh; run `kb lint` to catch and fix the manifest drift. Successful and failed index attempts record source digest, source hashes, runtime settings/prompt digest, selected method, active output directory when available, and command result under ignored run metadata for reproducibility. If GraphRAG credentials are missing during a normal `kb update`, the wiki compile still completes and graph indexing is skipped with a warning; `kb update --graph-only` fails clearly because the requested graph-only operation cannot run. Use `kb update --no-graph` when you intentionally want the legacy wiki compile/index refresh without touching the graph.
+`kb update` uses the existing knowledge-base corpus as the source of truth. It reads `raw/_manifest.json` plus the normalized artifacts in `raw/normalized/`, refuses manifest paths that resolve outside the project `raw/` tree, rejects normalized sources above `graph.input.max_source_bytes`, writes compact `graph/graphrag/input/sources.json`, configures GraphRAG for JSON input with metadata prepended into chunks, and then auto-decides whether to run a full index, incremental update, retry after a failed latest attempt, or skip because the graph is already current. Use `--graph-method auto|standard|fast|standard-update|fast-update` to request a specific GraphRAG index method. The preflight decision path plans those settings and input changes without mutating `settings.yaml` or `input/sources.json`, so skipped or credential-blocked graph runs do not leave partial workspace state behind. Normal updates can skip isolated missing normalized artifacts with a warning so one stale manifest entry does not block the entire graph refresh; run `kb lint` to catch and fix the manifest drift. Successful and failed index attempts record source digest, source hashes, runtime settings/prompt digest, selected method, active output directory when available, and command result under ignored run metadata for reproducibility. If GraphRAG credentials are missing during a normal `kb update`, the wiki compile still completes and graph indexing is skipped with a warning; `kb update --graph-only` fails clearly because the requested graph-only operation cannot run. Use `kb update --no-graph` when you intentionally want the legacy wiki compile/index refresh without touching the graph.
 
 `kb status` checks whether settings, synced input, the active complete GraphRAG output tables, vector store, and last recorded index run are present. It distinguishes missing, unreadable, and dependency-missing Parquet table states; missing, empty, unreadable, incompatible, and ready vector-store states; and corrupt run metadata. `kb status --strict` exits non-zero unless the project sources are compiled and the GraphRAG index is complete, fresh, and query-ready. Status compares the current graph input digest, source hashes, settings, prompts, and GraphRAG runtime identity against the last successful index run, so complete-looking output is still marked stale when reproducibility metadata is missing or no longer matches. It prefers the active output directory recorded by the latest successful run when that directory is still complete, rather than trusting the newest output folder blindly. `kb ask --method auto|basic|local|global|drift` checks the artifacts required by the selected query method, calls GraphRAG query entrypoints, passes the active output directory explicitly to GraphRAG, prints the selected route reason, and preserves returned non-streaming answers even when GraphRAG logs instead of printing them. Saved GraphRAG answers become unique analysis pages with support-level and source-trace metadata plus separate raw stdout/stderr sections; blank answers are refused. `kb export` reads GraphRAG Parquet tables in batches and writes human-readable documents, entities, relationships, communities, and text units under `wiki/graph/` when graph output exists.
+
+### GraphRAG compatibility
+
+GraphWiki KB currently pins Microsoft GraphRAG to `>=3.0.9,<3.1` and supports GraphRAG workflows on Python 3.11 and 3.12. Minor GraphRAG upgrades can change generated workspace settings and prompts, so after changing the GraphRAG version or graph runtime config, run `kb init` and then `kb update` to refresh managed workspace files and rebuild stale graph output. Local `.env`, generated input, output, cache, logs, and `graph/runs/*.json` metadata are safe runtime artifacts; hand edits to CLI-managed fields in `graph/graphrag/settings.yaml` will be overwritten from `kb.config.yaml`.
 
 ## Evaluation Harness
 
@@ -616,6 +620,7 @@ providers:
     api_key_env: OPENAI_API_KEY
     reasoning_effort: high
     api: responses
+    store_responses: false
   anthropic:
     model: claude-sonnet-4-6
     api_key_env: ANTHROPIC_API_KEY
@@ -650,6 +655,26 @@ graph:
   embedding_model: text-embedding-3-small
   api_key_env: null
   embedding_api_key_env: null
+  chunking:
+    size: 1200
+    overlap: 150
+  extraction:
+    entity_types:
+      - concept
+      - technology
+      - method
+      - algorithm
+      - dataset
+      - model
+      - benchmark
+      - framework
+      - component
+      - api
+      - paper
+      - claim
+    max_gleanings: 2
+  input:
+    max_source_bytes: 26214400
   routing:
     aliases: {}
 ```
@@ -681,9 +706,11 @@ The adaptive-thinking detector is version-pattern based for Claude 4.6 and
 newer Sonnet/Opus model identifiers rather than locked to a single model name.
 OpenAI uses the Responses API by default for reasoning controls and structured
 JSON output; set `providers.openai.api: chat_completions` only when you need the
-legacy fallback path.
+legacy fallback path. OpenAI response storage is disabled by default through
+`providers.openai.store_responses: false`; set it to `true` only when you
+explicitly want provider-side response retention for your account.
 
-The `graph` section controls GraphRAG runtime setup independently from the text-provider section used by `kb update`, `kb review`, and `kb legacy ask`, but it does not duplicate API keys by default. `api_key_env: null` means "resolve this from `providers.<graph.provider>.api_key_env`"; `embedding_api_key_env: null` does the same for `providers.<graph.embedding_provider>.api_key_env`. Run `kb init` after editing it to refresh the managed provider/model/API-key fields in `graph/graphrag/settings.yaml`; `kb update` also syncs those managed fields before deciding whether model or prompt changes require a rebuild while preserving unrelated GraphRAG tuning in the workspace settings file.
+The `graph` section controls GraphRAG runtime setup independently from the text-provider section used by `kb update`, `kb review`, and `kb legacy ask`, but it does not duplicate API keys by default. `api_key_env: null` means "resolve this from `providers.<graph.provider>.api_key_env`"; `embedding_api_key_env: null` does the same for `providers.<graph.embedding_provider>.api_key_env`. `graph.chunking`, `graph.extraction`, and `graph.input.max_source_bytes` are CLI-managed GraphRAG settings; the default entity taxonomy is tuned for technical and research corpora rather than person/place/news corpora. Run `kb init` after editing it to refresh the managed provider/model/API-key/chunking/extraction/input fields in `graph/graphrag/settings.yaml`; `kb update` also syncs those managed fields before deciding whether model or prompt changes require a rebuild while preserving unrelated GraphRAG tuning in the workspace settings file.
 
 OpenAI and Google Gemini both expose embedding models that can be configured for GraphRAG. Anthropic does not currently provide its own embedding model; Anthropic's embedding guidance points users to Voyage AI instead. GraphRAG uses LiteLLM underneath and supports non-OpenAI providers, but its own docs say OpenAI GPT-4-series models remain the most thoroughly tested path.
 
@@ -823,14 +850,17 @@ conversion:
 ## Quality Gates
 
 Python source and tests are formatted with Black, linted with Ruff, and checked
-with a bounded mypy gate over provider and GraphRAG boundary code. CI runs those
-checks on Python 3.11 and 3.12 before the full pytest coverage suite:
+with mypy across `src/graphwiki_kb`. CI runs those checks on Python 3.11 and
+3.12 before the full pytest coverage suite, then builds the wheel, installs it
+with all extras in a clean environment, and smoke-tests the installed `kb`
+entrypoint:
 
 ```powershell
 poetry run black --check src tests
 poetry run ruff check src tests
-poetry run mypy src/graphwiki_kb/providers src/graphwiki_kb/services/graphrag_command_service.py src/graphwiki_kb/services/graphrag_runtime.py src/graphwiki_kb/services/graphrag_status_service.py src/graphwiki_kb/services/query_router_service.py
+poetry run mypy src/graphwiki_kb
 poetry run pytest tests -q
+poetry build
 ```
 
 The same Black, Ruff, and mypy checks are available through pre-commit hooks.

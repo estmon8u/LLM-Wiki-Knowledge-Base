@@ -7,8 +7,6 @@ surface that uses it.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import click
 from rich.markdown import Markdown as RichMarkdown
 
@@ -158,7 +156,7 @@ def create_command() -> click.Command:
         question_terms: tuple[str, ...],
         limit: int,
         save_answer: bool,
-        save_as_name: Optional[str],
+        save_as_name: str | None,
         show_evidence: bool,
     ) -> None:
         """Legacy ask.

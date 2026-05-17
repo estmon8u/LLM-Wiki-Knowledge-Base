@@ -104,7 +104,7 @@
 | `scripts/evaluate_graph_modes.py` | Full evaluation runner for legacy FTS, auto-router method fit, and GraphRAG mode comparison |
 | `scripts/evaluate_retrieval.py` | Retrieval-focused wrapper that writes Recall@5, multi-source coverage, method-fit, and latency metrics |
 | `scripts/evaluate_answers.py` | Answer-focused wrapper for claim support, insufficient-evidence behavior, comprehensiveness, diversity, and latency metrics |
-| `.github/workflows/tests.yml` | CI matrix for Python 3.11 and 3.12 on `main`, `GraphRAG`, and pull requests with Poetry install, Black, Ruff, bounded mypy, CLI smoke checks, pytest, and coverage artifact upload |
+| `.github/workflows/tests.yml` | CI matrix for Python 3.11 and 3.12 on `main`, `GraphRAG`, and pull requests with all-extra Poetry install, Black, Ruff, full-package mypy, CLI smoke checks, pytest coverage, wheel build, and installed CLI smoke checks |
 | `tests/` | Unit, CLI, regression, and golden-file coverage for the current command/service surface |
 
 ## Low-Level Guardrails

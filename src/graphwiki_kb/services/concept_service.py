@@ -658,7 +658,7 @@ def _collocation_topic_terms(page_tokens: list[list[str]]) -> list[str]:
         all_tokens.extend(tokens)
         seen_phrases: set[str] = set()
         for size in (2, 3):
-            for gram in zip(*(tokens[index:] for index in range(size))):
+            for gram in zip(*(tokens[index:] for index in range(size)), strict=False):
                 if len(set(gram)) != len(gram):
                     continue
                 phrase = " ".join(gram)

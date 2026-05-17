@@ -8,7 +8,7 @@ surface that uses it.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -27,10 +27,10 @@ class RawSourceRecord:
     raw_path: str
     content_hash: str
     ingested_at: str
-    compiled_at: Optional[str] = None
-    compiled_from_hash: Optional[str] = None
-    normalized_path: Optional[str] = None
-    origin_hash: Optional[str] = None
+    compiled_at: str | None = None
+    compiled_from_hash: str | None = None
+    normalized_path: str | None = None
+    origin_hash: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -42,7 +42,7 @@ class RawSourceRecord:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "RawSourceRecord":
+    def from_dict(cls, payload: dict[str, Any]) -> RawSourceRecord:
         """Builds an instance from a dictionary payload.
 
         Args:

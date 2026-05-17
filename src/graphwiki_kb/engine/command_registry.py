@@ -8,7 +8,6 @@ surface that uses it.
 from __future__ import annotations
 
 from importlib import import_module
-from typing import Optional
 
 import click
 
@@ -40,7 +39,7 @@ def list_command_names() -> list[str]:
     return sorted(FLAT_COMMAND_MODULES)
 
 
-def get_click_command(name: str) -> Optional[click.BaseCommand]:
+def get_click_command(name: str) -> click.BaseCommand | None:
     """Resolve a canonical command name to a Click command."""
     module_path = FLAT_COMMAND_MODULES.get(name)
     if module_path is not None:

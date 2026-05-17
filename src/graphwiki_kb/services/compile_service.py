@@ -10,8 +10,9 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field
@@ -193,8 +194,8 @@ class CompileService:
         config: dict[str, Any],
         manifest_service: ManifestService,
         *,
-        provider: Optional[TextProvider] = None,
-        compile_run_store: Optional[CompileRunStore] = None,
+        provider: TextProvider | None = None,
+        compile_run_store: CompileRunStore | None = None,
         schema_text: str = "",
     ) -> None:
         self.paths = paths
@@ -253,7 +254,7 @@ class CompileService:
         *,
         force: bool = False,
         resume: bool = False,
-        progress_callback: Optional[Callable[[RawSourceRecord], None]] = None,
+        progress_callback: Callable[[RawSourceRecord], None] | None = None,
     ) -> CompileResult:
         """Compile.
 

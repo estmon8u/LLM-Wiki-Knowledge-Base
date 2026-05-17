@@ -12,7 +12,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import yaml
 
@@ -44,7 +44,7 @@ ATX_HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 EXTERNAL_LINK_PATTERN = re.compile(r"^[a-z][a-z0-9+.-]*:", re.IGNORECASE)
 ISO_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?)?")
 
-_FIELD_TYPE_SPEC: Dict[str, str] = {
+_FIELD_TYPE_SPEC: dict[str, str] = {
     "title": "string",
     "summary": "string",
     "source_id": "string",
@@ -84,7 +84,7 @@ class _PageState:
 
     file_path: Path
     relative_path: str
-    frontmatter: Optional[Dict[str, Any]]
+    frontmatter: dict[str, Any] | None
     frontmatter_error: str | None
     content: str
     analysis_text: str
@@ -289,7 +289,7 @@ class LintService:
     def _source_type_issue(
         self,
         page_state: _PageState,
-        source_record: Optional[RawSourceRecord],
+        source_record: RawSourceRecord | None,
     ) -> LintIssue:
         contract_version = _source_page_contract_version(source_record)
         if source_record is None or contract_version >= SOURCE_PAGE_CONTRACT_VERSION:
@@ -752,14 +752,14 @@ class LintService:
         return issues
 
 
-def _split_frontmatter(text: str) -> Tuple[Optional[Dict[str, Any]], str]:
+def _split_frontmatter(text: str) -> tuple[dict[str, Any] | None, str]:
     frontmatter, content, _ = _split_frontmatter_with_error(text)
     return frontmatter, content
 
 
 def _split_frontmatter_with_error(
     text: str,
-) -> Tuple[Optional[Dict[str, Any]], str, str | None]:
+) -> tuple[dict[str, Any] | None, str, str | None]:
     if not text.startswith("---\n"):
         return None, text, None
     marker = text.find("\n---\n", 4)
@@ -808,7 +808,7 @@ def _normalize_heading_title(title: str) -> str:
 
 def _page_title(
     file_path: Path,
-    frontmatter: Optional[Dict[str, Any]],
+    frontmatter: dict[str, Any] | None,
     headings: list[tuple[int, str]],
 ) -> str:
     if frontmatter is not None:
@@ -863,7 +863,7 @@ def _strip_fenced_code_blocks(text: str) -> str:
     return without_fenced_code_blocks(text)
 
 
-def _source_page_contract_version(source: Optional[RawSourceRecord]) -> int:
+def _source_page_contract_version(source: RawSourceRecord | None) -> int:
     if source is None or not isinstance(source.metadata, dict):
         return 0
     version = source.metadata.get(SOURCE_PAGE_CONTRACT_VERSION_KEY, 0)

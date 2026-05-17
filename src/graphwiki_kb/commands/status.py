@@ -266,7 +266,14 @@ def _strict_status_failures(snapshot, graph_status: dict[str, object]) -> list[s
         return failures
     if graph_status.get("workspace_initialized") is not True:
         failures.append("GraphRAG workspace is missing")
-    if int(graph_status.get("input_document_count") or 0) == 0:
+    input_document_count = graph_status.get("input_document_count")
+    if isinstance(input_document_count, int):
+        graph_input_count = input_document_count
+    elif isinstance(input_document_count, str):
+        graph_input_count = int(input_document_count or 0)
+    else:
+        graph_input_count = 0
+    if graph_input_count == 0:
         failures.append("GraphRAG input has no documents")
     if graph_status.get("last_index_success") is False:
         failures.append("last GraphRAG index run failed")

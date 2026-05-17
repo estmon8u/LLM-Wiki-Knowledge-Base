@@ -10,8 +10,24 @@ DEFAULT_GRAPHRAG_PROVIDER = "openai"
 DEFAULT_GRAPHRAG_API_KEY_ENV = "OPENAI_API_KEY"
 LEGACY_GRAPHRAG_API_KEY_ENV = "GRAPHRAG_API_KEY"
 DEFAULT_GRAPHRAG_CHUNK_SIZE = 1200
-DEFAULT_GRAPHRAG_CHUNK_OVERLAP = 100
+DEFAULT_GRAPHRAG_CHUNK_OVERLAP = 150
 DEFAULT_GRAPHRAG_ENCODING_MODEL = "o200k_base"
+DEFAULT_GRAPHRAG_MAX_SOURCE_BYTES = 25 * 1024 * 1024
+DEFAULT_GRAPHRAG_EXTRACTION_MAX_GLEANINGS = 2
+DEFAULT_GRAPHRAG_ENTITY_TYPES = (
+    "concept",
+    "technology",
+    "method",
+    "algorithm",
+    "dataset",
+    "model",
+    "benchmark",
+    "framework",
+    "component",
+    "api",
+    "paper",
+    "claim",
+)
 
 
 def env_file_has_key(path: Path, key: str) -> bool:

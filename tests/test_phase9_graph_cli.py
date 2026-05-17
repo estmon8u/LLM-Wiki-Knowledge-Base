@@ -844,7 +844,7 @@ def test_update_service_reports_preflight_failure(test_project) -> None:
     result = service._run_graph_sync(UpdateOptions(allow_partial=True))
 
     assert result.skipped is True
-    assert "Graph preflight failed: preflight boom" == result.warning
+    assert result.warning == "Graph preflight failed: preflight boom"
 
 
 def test_update_service_reports_missing_graph_credentials(

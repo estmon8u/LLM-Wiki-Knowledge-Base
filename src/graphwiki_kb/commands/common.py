@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import json as _json
 import sys
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
-from typing import Any, Callable, Iterator, Optional, Sequence, Union
+from typing import Any
 
 import click
 from rich.console import Console
@@ -99,7 +100,7 @@ def echo_status_line(label: str, text: str) -> None:
     console.print(f"[bold]\\[{_esc(label)}][/bold] {_esc(text)}")
 
 
-def echo_kv(label: str, value: Optional[Union[str, int]]) -> None:
+def echo_kv(label: str, value: str | int | None) -> None:
     """Echo kv.
 
     Args:

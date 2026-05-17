@@ -27,6 +27,7 @@ from graphwiki_kb.services.graphrag_freshness_service import (
 from graphwiki_kb.services.graphrag_query_service import (
     GraphRAGQueryError,
     GraphRAGQueryService,
+    _graph_data_reference_details,
 )
 from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
 
@@ -125,6 +126,15 @@ def _build_query_service(test_project, runner):
         test_project.services["search"],
         refresh_index=test_project.services["compile"].refresh_index,
     )
+
+
+def test_graph_data_reference_details_dedupes_and_skips_unknown_refs() -> None:
+    assert _graph_data_reference_details(
+        "[Data: Sources (1); Widgets (2); Sources (1); Entities (alpha, beta)]"
+    ) == [
+        {"kind": "source", "ids": ["1"], "raw": "Sources (1)"},
+        {"kind": "entity", "ids": ["alpha", "beta"], "raw": "Entities (alpha, beta)"},
+    ]
 
 
 def test_graph_query_runs_explicit_method_and_options(test_project) -> None:
@@ -338,6 +348,8 @@ def test_graph_query_save_writes_analysis_page_and_refreshes_index(
     )
     answer.planner = "heuristic"
     answer.route_reason = "comparison question"
+    answer.route_confidence = "high"
+    answer.route_matched_terms = ["differ"]
     answer.claim_support = "cited-graph-answer"
 
     saved_path = service.save_answer(answer)
@@ -353,6 +365,9 @@ def test_graph_query_save_writes_analysis_page_and_refreshes_index(
     assert frontmatter["saved_at"] == answer.created_at
     assert frontmatter["citations"] == ["[Data: Sources (1)]"]
     assert frontmatter["citation_count"] == 1
+    assert frontmatter["graph_data_references"] == [
+        {"kind": "source", "ids": ["1"], "raw": "Sources (1)"}
+    ]
     assert frontmatter["claim_count"] == 0
     assert frontmatter["claims"] == []
     assert frontmatter["insufficient_evidence"] is False
@@ -360,10 +375,15 @@ def test_graph_query_save_writes_analysis_page_and_refreshes_index(
     assert frontmatter["graph_input_hash"] == answer.graph_input_hash
     assert frontmatter["input_manifest_hash"] == answer.input_manifest_hash
     assert frontmatter["planner"] == "heuristic"
+    assert frontmatter["route_reason"] == "comparison question"
+    assert frontmatter["route_confidence"] == "high"
+    assert frontmatter["route_matched_terms"] == ["differ"]
     assert frontmatter["claim_support"] == "cited-graph-answer"
     assert "## Retrieval Mode" in text
     assert "- Planner: heuristic" in text
     assert "- Route reason: comparison question" in text
+    assert "- Route confidence: high" in text
+    assert "- Route matched terms: differ" in text
     assert "- Support level: cited-graph-answer" in text
     assert "- Community level: 2" in text
     assert "- Dynamic community selection: True" in text
@@ -371,6 +391,7 @@ def test_graph_query_save_writes_analysis_page_and_refreshes_index(
     assert "- Graph input hash:" in text
     assert "- Input manifest hash:" in text
     assert "## Source Trace" in text
+    assert "- Parsed GraphRAG data references: 1" in text
     assert "## Raw GraphRAG Stdout" in text
     assert "## Raw GraphRAG Stderr" in text
     assert "graph ask --save" in test_project.paths.wiki_log_file.read_text(

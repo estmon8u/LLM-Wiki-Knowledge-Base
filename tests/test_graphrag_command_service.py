@@ -725,6 +725,48 @@ def test_run_query_entrypoint_preserves_zero_community_level(
 
     assert result == "answer"
     assert calls["community_level"] == 0
+    assert "dynamic_community_selection" not in calls
+
+
+def test_run_query_entrypoint_passes_dynamic_selection_when_explicit(
+    monkeypatch,
+    test_project,
+) -> None:
+    """Regression: None is omitted, but explicit true/false are preserved."""
+    calls = []
+    graph_module = types.ModuleType("graphrag")
+    cli_module = types.ModuleType("graphrag.cli")
+    query_module = types.ModuleType("graphrag.cli.query")
+
+    def fake_search(**kwargs):
+        calls.append(kwargs)
+        return "answer"
+
+    query_module.run_basic_search = fake_search
+    query_module.run_drift_search = fake_search
+    query_module.run_global_search = fake_search
+    query_module.run_local_search = fake_search
+    cli_module.query = query_module
+    graph_module.cli = cli_module
+    monkeypatch.setitem(sys.modules, "graphrag", graph_module)
+    monkeypatch.setitem(sys.modules, "graphrag.cli", cli_module)
+    monkeypatch.setitem(sys.modules, "graphrag.cli.query", query_module)
+
+    for value in (True, False):
+        command_module._run_query_entrypoint(
+            workspace_dir=test_project.paths.graph_dir / "graphrag",
+            data_dir=test_project.paths.graph_dir / "graphrag" / "output",
+            method="global",
+            community_level=None,
+            dynamic_community_selection=value,
+            response_type=None,
+            streaming=None,
+            question="What is RAG?",
+            verbose=False,
+        )
+
+    assert calls[0]["dynamic_community_selection"] is True
+    assert calls[1]["dynamic_community_selection"] is False
 
 
 def test_query_return_to_text_uses_first_tuple_item() -> None:

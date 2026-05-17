@@ -11,7 +11,7 @@ import json
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from graphwiki_kb.models.source_models import RawSourceRecord
 from graphwiki_kb.services.file_lock import file_lock
@@ -58,7 +58,7 @@ class CompileRunRecord:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "CompileRunRecord":
+    def from_dict(cls, payload: dict[str, Any]) -> CompileRunRecord:
         """Builds an instance from a dictionary payload.
 
         Args:
@@ -92,7 +92,7 @@ class CompileRunStore:
     def __init__(self, state_file: Path) -> None:
         self.state_file = state_file
 
-    def resume_candidate(self) -> Optional[CompileRunRecord]:
+    def resume_candidate(self) -> CompileRunRecord | None:
         """Resume candidate.
 
         Returns:
@@ -108,7 +108,7 @@ class CompileRunStore:
             return CompileRunRecord.from_dict(active_run)
         return None
 
-    def active_run(self) -> Optional[CompileRunRecord]:
+    def active_run(self) -> CompileRunRecord | None:
         """Active run.
 
         Returns:
@@ -193,7 +193,7 @@ class CompileRunStore:
         run_id: str,
         *,
         error: str,
-        failed_source: Optional[RawSourceRecord] = None,
+        failed_source: RawSourceRecord | None = None,
     ) -> CompileRunRecord:
         """Mark failed.
 

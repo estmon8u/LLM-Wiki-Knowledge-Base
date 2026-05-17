@@ -12,6 +12,16 @@ from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
+class ProviderCapabilities:
+    """Provider behavior that callers should not assume is uniform."""
+
+    strict_json_schema: bool
+    native_structured_output: bool
+    reasoning_effort_values: tuple[str, ...] = ()
+    supports_store_false: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class ProviderRequest:
     """Represents provider request behavior and data.
 
@@ -48,6 +58,10 @@ class TextProvider:
     """Base class for LLM text-generation providers."""
 
     name: str = "base"
+    capabilities = ProviderCapabilities(
+        strict_json_schema=False,
+        native_structured_output=False,
+    )
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
         """Return a normalized text completion."""

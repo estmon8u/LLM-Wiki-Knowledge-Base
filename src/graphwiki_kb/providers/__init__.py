@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Mapping, Optional
+from collections.abc import Callable, Mapping
+from typing import Any, cast
 
 from graphwiki_kb.providers.base import ProviderRequest, ProviderResponse, TextProvider
 
@@ -58,12 +59,12 @@ class LazyProvider(TextProvider):
 
     def __init__(
         self,
-        factory: Callable[[], Optional[TextProvider]],
+        factory: Callable[[], TextProvider | None],
         *,
         provider_name: str,
     ) -> None:
         self._factory = factory
-        self._provider: Optional[TextProvider] = None
+        self._provider: TextProvider | None = None
         self.name = provider_name
 
     def _resolve(self) -> TextProvider:
@@ -85,12 +86,13 @@ class LazyProvider(TextProvider):
         return self._resolve().generate(request)
 
 
-_FALLBACK_PROVIDER_CATALOG = {
+_FALLBACK_PROVIDER_CATALOG: ProviderCatalog = {
     "openai": {
         "model": "gpt-5.4-nano",
         "api_key_env": "OPENAI_API_KEY",
         "reasoning_effort": "high",
         "api": "responses",
+        "store_responses": False,
     },
     "anthropic": {
         "model": "claude-sonnet-4-6",
@@ -175,8 +177,16 @@ def resolve_provider_settings(
     if not normalized_name:
         return None
 
-    catalog = provider_catalog or config.get("providers") or _FALLBACK_PROVIDER_CATALOG
-    resolved = dict(catalog.get(normalized_name, {}))
+    catalog_source = (
+        provider_catalog if provider_catalog is not None else config.get("providers")
+    )
+    catalog: ProviderCatalog = (
+        cast(ProviderCatalog, catalog_source)
+        if isinstance(catalog_source, Mapping)
+        else _FALLBACK_PROVIDER_CATALOG
+    )
+    defaults = catalog.get(normalized_name)
+    resolved = dict(defaults) if defaults is not None else {}
     use_legacy_overrides = int(config.get("version", 0) or 0) < 3
     if use_legacy_overrides:
         for key, value in provider_cfg.items():
@@ -189,7 +199,7 @@ def resolve_provider_settings(
 def build_provider(
     config: dict[str, Any],
     provider_catalog: ProviderCatalog | None = None,
-) -> Optional[TextProvider]:
+) -> TextProvider | None:
     """Build a provider from the ``provider`` section of kb config.
 
     Returns ``None`` when no provider is configured, so deterministic
@@ -208,6 +218,7 @@ def build_provider(
     thinking_budget = provider_cfg.get("thinking_budget")
     thinking_effort = provider_cfg.get("thinking_effort", "medium")
     api = provider_cfg.get("api", "responses")
+    store_responses = bool(provider_cfg.get("store_responses", False))
 
     try:
         if name == "openai":
@@ -218,6 +229,7 @@ def build_provider(
                 api_key_env=api_key_env,
                 reasoning_effort=reasoning_effort,
                 api=api,
+                store_responses=store_responses,
             )
         if name == "anthropic":
             from graphwiki_kb.providers.anthropic_provider import AnthropicProvider
@@ -251,10 +263,9 @@ def build_lazy_provider(
     config: dict[str, Any],
     provider_catalog: ProviderCatalog | None = None,
     provider_builder: (
-        Callable[[dict[str, Any], ProviderCatalog | None], Optional[TextProvider]]
-        | None
+        Callable[[dict[str, Any], ProviderCatalog | None], TextProvider | None] | None
     ) = None,
-) -> Optional[TextProvider]:
+) -> TextProvider | None:
     """Return a provider proxy without importing SDKs or checking env eagerly."""
     resolved = resolve_provider_settings(config, provider_catalog=provider_catalog)
     if resolved is None:

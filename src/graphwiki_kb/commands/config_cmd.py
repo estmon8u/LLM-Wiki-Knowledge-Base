@@ -72,7 +72,6 @@ def create_command() -> click.BaseCommand:
     @config_group.group(name="provider", help="Manage the LLM provider setting.")
     def provider_group() -> None:
         """Provider group."""
-        pass
 
     @provider_group.command(name="set", help="Set the LLM provider.")
     @click.argument("name", type=str)

@@ -14,7 +14,13 @@ from pathlib import Path
 import yaml
 
 from graphwiki_kb.services.graphrag_command_service import GraphRAGCommandService
-from graphwiki_kb.services.graphrag_defaults import DEFAULT_GRAPHRAG_ENCODING_MODEL
+from graphwiki_kb.services.graphrag_defaults import (
+    DEFAULT_GRAPHRAG_CHUNK_OVERLAP,
+    DEFAULT_GRAPHRAG_CHUNK_SIZE,
+    DEFAULT_GRAPHRAG_ENCODING_MODEL,
+    DEFAULT_GRAPHRAG_ENTITY_TYPES,
+    DEFAULT_GRAPHRAG_EXTRACTION_MAX_GLEANINGS,
+)
 from graphwiki_kb.services.graphrag_workspace_service import (
     GraphRAGWorkspaceService,
     _bundled_prompt_dirs,
@@ -128,10 +134,10 @@ def test_workspace_service_syncs_graph_config_defaults(test_project) -> None:
     assert embedding["api_key"] == "${OPENAI_GRAPH_KEY}"
 
 
-def test_workspace_service_preserves_user_settings_when_syncing_managed_fields(
+def test_workspace_service_syncs_config_managed_graph_tuning_and_preserves_unowned_fields(
     test_project,
 ) -> None:
-    """Regression: defaults should not overwrite user-owned GraphRAG tuning."""
+    """Config-managed tuning should update GraphRAG while preserving unrelated fields."""
     settings_path = test_project.paths.graph_dir / "graphrag" / "settings.yaml"
     settings_path.parent.mkdir(parents=True, exist_ok=True)
     settings_path.write_text(
@@ -156,7 +162,15 @@ def test_workspace_service_preserves_user_settings_when_syncing_managed_fields(
     workspace_service.sync_settings()
 
     settings = yaml.safe_load(settings_path.read_text(encoding="utf-8"))
-    assert settings["chunking"]["size"] == 2222
+    assert settings["chunking"]["size"] == DEFAULT_GRAPHRAG_CHUNK_SIZE
+    assert settings["chunking"]["overlap"] == DEFAULT_GRAPHRAG_CHUNK_OVERLAP
+    assert settings["extract_graph"]["entity_types"] == list(
+        DEFAULT_GRAPHRAG_ENTITY_TYPES
+    )
+    assert (
+        settings["extract_graph"]["max_gleanings"]
+        == DEFAULT_GRAPHRAG_EXTRACTION_MAX_GLEANINGS
+    )
     assert settings["vector_store"]["db_uri"] == "custom/lancedb"
     assert (
         settings["completion_models"]["default_completion_model"]["model"]
@@ -166,6 +180,36 @@ def test_workspace_service_preserves_user_settings_when_syncing_managed_fields(
     assert (
         settings["drift_search"]["reduce_prompt"] == "prompts/drift_reduce_prompt.txt"
     )
+
+
+def test_workspace_service_uses_custom_graph_extraction_and_chunking_config(
+    test_project,
+) -> None:
+    """Verifies technical GraphRAG defaults can be tuned from kb.config.yaml."""
+    test_project.config["graph"] = {
+        **test_project.config["graph"],
+        "chunking": {"size": 900, "overlap": 90},
+        "extraction": {
+            "entity_types": ["concept", "api"],
+            "max_gleanings": 3,
+        },
+    }
+    settings_path = test_project.paths.graph_dir / "graphrag" / "settings.yaml"
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text("input:\n  type: json\n", encoding="utf-8")
+    workspace_service = GraphRAGWorkspaceService(
+        test_project.paths,
+        GraphRAGCommandService(test_project.paths),
+        config=test_project.config,
+    )
+
+    workspace_service.sync_settings()
+
+    settings = yaml.safe_load(settings_path.read_text(encoding="utf-8"))
+    assert settings["chunking"]["size"] == 900
+    assert settings["chunking"]["overlap"] == 90
+    assert settings["extract_graph"]["entity_types"] == ["concept", "api"]
+    assert settings["extract_graph"]["max_gleanings"] == 3
 
 
 def test_workspace_service_normalizes_stock_windows_vector_store_path(

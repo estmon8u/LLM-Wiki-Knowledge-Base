@@ -23,7 +23,12 @@ from pydantic import (
 from graphwiki_kb.services.file_lock import file_lock
 from graphwiki_kb.services.graphrag_defaults import (
     DEFAULT_GRAPHRAG_API_KEY_ENV,
+    DEFAULT_GRAPHRAG_CHUNK_OVERLAP,
+    DEFAULT_GRAPHRAG_CHUNK_SIZE,
     DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
+    DEFAULT_GRAPHRAG_ENTITY_TYPES,
+    DEFAULT_GRAPHRAG_EXTRACTION_MAX_GLEANINGS,
+    DEFAULT_GRAPHRAG_MAX_SOURCE_BYTES,
     DEFAULT_GRAPHRAG_MODEL,
     DEFAULT_GRAPHRAG_PROVIDER,
     LEGACY_GRAPHRAG_API_KEY_ENV,
@@ -50,6 +55,11 @@ class GraphRAGRuntimeConfig:
     embedding_model: str
     api_key_env: str
     embedding_api_key_env: str
+    chunk_size: int
+    chunk_overlap: int
+    entity_types: tuple[str, ...]
+    max_gleanings: int
+    max_source_bytes: int
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -90,6 +100,17 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "embedding_model": DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
         "api_key_env": None,
         "embedding_api_key_env": None,
+        "chunking": {
+            "size": DEFAULT_GRAPHRAG_CHUNK_SIZE,
+            "overlap": DEFAULT_GRAPHRAG_CHUNK_OVERLAP,
+        },
+        "extraction": {
+            "entity_types": list(DEFAULT_GRAPHRAG_ENTITY_TYPES),
+            "max_gleanings": DEFAULT_GRAPHRAG_EXTRACTION_MAX_GLEANINGS,
+        },
+        "input": {
+            "max_source_bytes": DEFAULT_GRAPHRAG_MAX_SOURCE_BYTES,
+        },
         "routing": {
             "aliases": {},
         },
@@ -100,6 +121,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "api_key_env": "OPENAI_API_KEY",
             "reasoning_effort": "high",
             "api": "responses",
+            "store_responses": False,
         },
         "anthropic": {
             "model": "claude-sonnet-4-6",
@@ -508,6 +530,7 @@ class _OpenAIProviderConfig(_StrictConfigModel):
     api_key_env: StrictStr
     reasoning_effort: StrictStr
     api: Literal["responses", "chat_completions"] = "responses"
+    store_responses: StrictBool = False
 
     @field_validator("model", "api_key_env", "reasoning_effort")
     @classmethod
@@ -608,6 +631,57 @@ class _GraphRoutingConfig(_StrictConfigModel):
         return normalized
 
 
+class _GraphChunkingConfig(_StrictConfigModel):
+    """Validated GraphRAG chunking settings managed from kb.config.yaml."""
+
+    size: StrictInt = Field(default=DEFAULT_GRAPHRAG_CHUNK_SIZE, ge=100)
+    overlap: StrictInt = Field(default=DEFAULT_GRAPHRAG_CHUNK_OVERLAP, ge=0)
+
+    @field_validator("overlap")
+    @classmethod
+    def _overlap_must_be_smaller_than_size(cls, value: int, info: Any) -> int:
+        size = info.data.get("size")
+        if isinstance(size, int) and value >= size:
+            raise ValueError("must be smaller than chunking.size")
+        return value
+
+
+class _GraphExtractionConfig(_StrictConfigModel):
+    """Validated GraphRAG entity extraction settings."""
+
+    entity_types: list[StrictStr] = Field(
+        default_factory=lambda: list(DEFAULT_GRAPHRAG_ENTITY_TYPES)
+    )
+    max_gleanings: StrictInt = Field(
+        default=DEFAULT_GRAPHRAG_EXTRACTION_MAX_GLEANINGS,
+        ge=0,
+    )
+
+    @field_validator("entity_types")
+    @classmethod
+    def _entity_types_must_be_unique_non_empty(cls, value: list[str]) -> list[str]:
+        normalized: list[str] = []
+        for item in value:
+            entity_type = str(item).strip().lower()
+            if not entity_type:
+                raise ValueError("entity types must be non-empty strings")
+            normalized.append(entity_type)
+        if not normalized:
+            raise ValueError("must include at least one entity type")
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("must not repeat entity types")
+        return normalized
+
+
+class _GraphInputConfig(_StrictConfigModel):
+    """Validated GraphRAG input sync limits."""
+
+    max_source_bytes: StrictInt = Field(
+        default=DEFAULT_GRAPHRAG_MAX_SOURCE_BYTES,
+        ge=1,
+    )
+
+
 class _GraphConfig(_StrictConfigModel):
     """Validated GraphRAG provider, embedding, and routing settings."""
 
@@ -617,6 +691,9 @@ class _GraphConfig(_StrictConfigModel):
     embedding_model: StrictStr
     api_key_env: StrictStr | None = None
     embedding_api_key_env: StrictStr | None = None
+    chunking: _GraphChunkingConfig = Field(default_factory=_GraphChunkingConfig)
+    extraction: _GraphExtractionConfig = Field(default_factory=_GraphExtractionConfig)
+    input: _GraphInputConfig = Field(default_factory=_GraphInputConfig)
     routing: _GraphRoutingConfig = Field(default_factory=_GraphRoutingConfig)
 
     @field_validator("provider", "model", "embedding_model")
@@ -775,6 +852,11 @@ def resolve_graph_config(config: dict[str, Any]) -> GraphRAGRuntimeConfig:
         embedding_model=validated["embedding_model"].strip(),
         api_key_env=api_key_env,
         embedding_api_key_env=embedding_api_key_env,
+        chunk_size=int(validated["chunking"]["size"]),
+        chunk_overlap=int(validated["chunking"]["overlap"]),
+        entity_types=tuple(validated["extraction"]["entity_types"]),
+        max_gleanings=int(validated["extraction"]["max_gleanings"]),
+        max_source_bytes=int(validated["input"]["max_source_bytes"]),
     )
 
 

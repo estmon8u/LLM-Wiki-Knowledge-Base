@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import yaml
 
 from graphwiki_kb.services.file_lock import workspace_lock
+from graphwiki_kb.services.graphrag_freshness_service import graph_input_manifest_hash
 from graphwiki_kb.services.graphrag_status_service import (
     GRAPH_OUTPUT_TABLES,
     GraphRAGStatus,
@@ -20,6 +22,7 @@ from graphwiki_kb.services.project_service import (
     ProjectPaths,
     atomic_write_text,
     slugify,
+    utc_now_iso,
 )
 from graphwiki_kb.services.search_service import SearchService
 
@@ -37,8 +40,6 @@ MAX_ENTITY_RELATIONSHIP_ROWS = 50
 
 class GraphRAGWikiExportError(RuntimeError):
     """Raised when GraphRAG artifacts cannot be exported to wiki pages."""
-
-    pass
 
 
 @dataclass(frozen=True)
@@ -99,10 +100,14 @@ class GraphRAGWikiExportService:
         relationships = tables.get("relationships", [])
         context = _ExportContext(
             index_run_id=index_run_id,
+            graph_output_dir=_relative_path(status.active_output_dir, self.paths.root),
+            graph_input_hash=status.current_input_digest,
+            input_manifest_hash=graph_input_manifest_hash(status.input_path),
             runtime_digest=status.last_index_config_digest,
             relationships=relationships,
             relationships_by_entity=_relationships_by_entity(relationships),
             community_reports=tables.get("community_reports", []),
+            generated_at=utc_now_iso(),
         )
 
         exported_paths.extend(
@@ -184,7 +189,7 @@ class GraphRAGWikiExportService:
                 continue
 
     def _write_documents(
-        self, records: list[dict[str, Any]], context: "_ExportContext"
+        self, records: list[dict[str, Any]], context: _ExportContext
     ) -> list[str]:
         exported: list[str] = []
         used: set[str] = set()
@@ -197,7 +202,8 @@ class GraphRAGWikiExportService:
                 "type": "graph_document",
                 "document_id": _first_text(record, "id"),
                 "title": title,
-                "index_run_id": context.index_run_id,
+                "source_document_ids": _source_document_ids(record),
+                **_base_frontmatter(context),
             }
             body = [
                 f"# {title}",
@@ -221,7 +227,7 @@ class GraphRAGWikiExportService:
         return exported
 
     def _write_text_units(
-        self, records: list[dict[str, Any]], context: "_ExportContext"
+        self, records: list[dict[str, Any]], context: _ExportContext
     ) -> list[str]:
         exported: list[str] = []
         used: set[str] = set()
@@ -233,7 +239,8 @@ class GraphRAGWikiExportService:
             frontmatter = {
                 "type": "graph_text_unit",
                 "text_unit_id": text_unit_id,
-                "index_run_id": context.index_run_id,
+                "source_document_ids": _source_document_ids(record),
+                **_base_frontmatter(context),
             }
             text = _first_text(record, "text", "content", "chunk", default="")
             body = [
@@ -253,7 +260,7 @@ class GraphRAGWikiExportService:
         return exported
 
     def _write_entities(
-        self, records: list[dict[str, Any]], context: "_ExportContext"
+        self, records: list[dict[str, Any]], context: _ExportContext
     ) -> list[str]:
         exported: list[str] = []
         used: set[str] = set()
@@ -266,7 +273,8 @@ class GraphRAGWikiExportService:
                 "entity_title": title,
                 "frequency": _sequence_count(record.get("text_unit_ids")),
                 "degree": _first_number(record, "degree", "rank", "combined_degree"),
-                "index_run_id": context.index_run_id,
+                "source_document_ids": _source_document_ids(record),
+                **_base_frontmatter(context),
             }
             relationships = _relationships_for_entity(
                 context.relationships_by_entity,
@@ -307,7 +315,7 @@ class GraphRAGWikiExportService:
         return exported
 
     def _write_relationships(
-        self, records: list[dict[str, Any]], context: "_ExportContext"
+        self, records: list[dict[str, Any]], context: _ExportContext
     ) -> list[str]:
         exported: list[str] = []
         used: set[str] = set()
@@ -325,7 +333,8 @@ class GraphRAGWikiExportService:
                 "source": source,
                 "target": target,
                 "weight": _first_number(record, "weight", "combined_degree", "rank"),
-                "index_run_id": context.index_run_id,
+                "source_document_ids": _source_document_ids(record),
+                **_base_frontmatter(context),
             }
             body = [
                 f"# {source} -> {target}",
@@ -351,7 +360,7 @@ class GraphRAGWikiExportService:
         self,
         communities: list[dict[str, Any]],
         reports: list[dict[str, Any]],
-        context: "_ExportContext",
+        context: _ExportContext,
     ) -> list[str]:
         exported: list[str] = []
         used: set[str] = set()
@@ -377,7 +386,8 @@ class GraphRAGWikiExportService:
                 "level": _first_number(merged, "level"),
                 "entity_count": _sequence_count(merged.get("entity_ids")),
                 "text_unit_count": _sequence_count(merged.get("text_unit_ids")),
-                "index_run_id": context.index_run_id,
+                "source_document_ids": _source_document_ids(merged),
+                **_base_frontmatter(context),
             }
             body = [
                 f"# Community {community_id} - {title}",
@@ -435,7 +445,16 @@ class GraphRAGWikiExportService:
         frontmatter = {
             "type": "graph_index",
             "index_run_id": index_run_id,
+            "graph_run_id": index_run_id,
+            "graph_output_dir": _relative_path(
+                self.status_service.active_output_dir(),
+                self.paths.root,
+            ),
             "graph_runtime_digest": runtime_digest,
+            "input_manifest_hash": graph_input_manifest_hash(
+                self.status_service.input_path
+            ),
+            "generated_at": utc_now_iso(),
         }
         lines = [
             "# GraphRAG Index",
@@ -493,10 +512,14 @@ class _ExportContext:
     """Shared metadata and lookup tables used while writing graph pages."""
 
     index_run_id: str | None
+    graph_output_dir: str | None
+    graph_input_hash: str | None
+    input_manifest_hash: str | None
     runtime_digest: str | None
     relationships: list[dict[str, Any]]
     relationships_by_entity: dict[str, list[dict[str, Any]]]
     community_reports: list[dict[str, Any]]
+    generated_at: str
 
 
 def _read_parquet_records(path: Path) -> list[dict[str, Any]]:
@@ -510,6 +533,37 @@ def _read_parquet_records(path: Path) -> list[dict[str, Any]]:
             for row in batch.to_pylist()
         )
     return records
+
+
+def _base_frontmatter(context: _ExportContext) -> dict[str, Any]:
+    return {
+        "index_run_id": context.index_run_id,
+        "graph_run_id": context.index_run_id,
+        "graph_output_dir": context.graph_output_dir,
+        "graph_input_hash": context.graph_input_hash,
+        "input_manifest_hash": context.input_manifest_hash,
+        "generated_at": context.generated_at,
+    }
+
+
+def _relative_path(path: Path | None, root: Path) -> str | None:
+    if path is None:
+        return None
+    try:
+        return path.resolve().relative_to(root).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _source_document_ids(record: dict[str, Any]) -> list[str]:
+    for key in ("source_document_ids", "document_ids", "doc_ids", "source_ids"):
+        value = record.get(key)
+        if isinstance(value, str) and value.strip():
+            return [value.strip()]
+        if isinstance(value, (list, tuple, set)):
+            return [str(item).strip() for item in value if str(item).strip()]
+    document_id = _first_text(record, "document_id")
+    return [document_id] if document_id else []
 
 
 def _clean_value(value: Any) -> Any:

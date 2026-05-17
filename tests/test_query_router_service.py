@@ -46,6 +46,7 @@ def test_router_uses_explicit_method_override() -> None:
 
     assert route.method == "local"
     assert route.reason == "explicit method override"
+    assert route.confidence == "explicit"
 
 
 def test_router_rejects_unknown_method() -> None:
@@ -86,6 +87,8 @@ def test_router_uses_configured_aliases_for_local_routing() -> None:
 
     assert route.method == "local"
     assert route.reason == "configured graph routing alias"
+    assert route.confidence == "high"
+    assert route.matched_terms == ("dpr",)
 
 
 def test_router_matches_benchmark_expected_methods_with_corpus_aliases() -> None:

@@ -16,11 +16,13 @@ from typing import Any
 import yaml
 
 from graphwiki_kb.models.source_models import RawSourceRecord
+from graphwiki_kb.services.config_service import resolve_graph_config
 from graphwiki_kb.services.graphrag_defaults import (
     DEFAULT_GRAPHRAG_CHUNK_OVERLAP,
     DEFAULT_GRAPHRAG_CHUNK_SIZE,
     DEFAULT_GRAPHRAG_EMBEDDING_MODEL,
     DEFAULT_GRAPHRAG_ENCODING_MODEL,
+    DEFAULT_GRAPHRAG_MAX_SOURCE_BYTES,
     DEFAULT_GRAPHRAG_MODEL,
 )
 from graphwiki_kb.services.manifest_service import ManifestError, ManifestService
@@ -41,6 +43,10 @@ GRAPH_INPUT_SIZE_WARNING_BYTES = 100 * 1024 * 1024
 
 class GraphRAGInputSyncError(ValueError):
     """Raised when normalized sources cannot be synced into GraphRAG input."""
+
+    def __init__(self, message: str, *, skippable: bool = False) -> None:
+        super().__init__(message)
+        self.skippable = skippable
 
 
 @dataclass(frozen=True)
@@ -74,9 +80,11 @@ class GraphRAGInputSyncService:
         self,
         paths: ProjectPaths,
         manifest_service: ManifestService,
+        config: dict[str, Any] | None = None,
     ) -> None:
         self.paths = paths
         self.manifest_service = manifest_service
+        self.config = config or {}
 
     @property
     def workspace_dir(self) -> Path:
@@ -253,7 +261,7 @@ class GraphRAGInputSyncService:
             try:
                 record = self._record_for_source(source)
             except GraphRAGInputSyncError as exc:
-                if not allow_missing_sources:
+                if not allow_missing_sources or not exc.skippable:
                     raise
                 skipped_sources.append(f"{source.source_id}: {exc}")
                 continue
@@ -263,15 +271,18 @@ class GraphRAGInputSyncService:
     def _record_for_source(self, source: RawSourceRecord) -> dict[str, Any]:
         if not source.normalized_path:
             raise GraphRAGInputSyncError(
-                f"Source {source.source_id} has no normalized artifact path."
+                f"Source {source.source_id} has no normalized artifact path.",
+                skippable=True,
             )
 
-        normalized_path = self._resolve_project_path(source.normalized_path)
+        normalized_path = self._resolve_normalized_path(source.normalized_path)
         if not normalized_path.exists():
             raise GraphRAGInputSyncError(
                 f"Normalized artifact missing for source {source.source_id}: "
-                f"{source.normalized_path}"
+                f"{source.normalized_path}",
+                skippable=True,
             )
+        self._require_source_size(normalized_path, source_id=source.source_id)
 
         metadata = source.metadata or {}
         converter = (
@@ -310,11 +321,59 @@ class GraphRAGInputSyncService:
                 )
             seen.add(source.source_id)
 
-    def _resolve_project_path(self, value: str) -> Path:
+    def _resolve_normalized_path(self, value: str) -> Path:
         path = Path(value)
-        if path.is_absolute():
-            return path
-        return self.paths.root / path
+        candidate = path if path.is_absolute() else self.paths.root / path
+        try:
+            resolved = candidate.resolve()
+        except OSError as exc:
+            raise GraphRAGInputSyncError(
+                f"Unable to resolve normalized source path: {value}"
+            ) from exc
+
+        allowed_roots = (
+            self.paths.raw_dir.resolve(),
+            self.paths.raw_normalized_dir.resolve(),
+        )
+        if not any(
+            resolved == root or root in resolved.parents for root in allowed_roots
+        ):
+            allowed = ", ".join(
+                root.relative_to(self.paths.root).as_posix()
+                for root in allowed_roots
+                if root == self.paths.root or self.paths.root in root.parents
+            )
+            raise GraphRAGInputSyncError(
+                "Refusing to read normalized source outside project raw "
+                f"directories ({allowed}): {resolved}"
+            )
+        return resolved
+
+    def _require_source_size(self, path: Path, *, source_id: str) -> None:
+        try:
+            size = path.stat().st_size
+        except OSError as exc:
+            raise GraphRAGInputSyncError(
+                f"Unable to inspect normalized source size for {source_id}: {path}"
+            ) from exc
+        max_source_bytes = self._max_source_bytes()
+        if size <= max_source_bytes:
+            return
+        size_mib = size / (1024 * 1024)
+        limit_mib = max_source_bytes / (1024 * 1024)
+        raise GraphRAGInputSyncError(
+            "Source is too large for GraphRAG sync: "
+            f"{source_id} ({size_mib:.1f} MiB > {limit_mib:.1f} MiB). "
+            "Increase graph.input.max_source_bytes or split the source."
+        )
+
+    def _max_source_bytes(self) -> int:
+        if not self.config:
+            return DEFAULT_GRAPHRAG_MAX_SOURCE_BYTES
+        try:
+            return resolve_graph_config(self.config).max_source_bytes
+        except ValueError as exc:
+            raise GraphRAGInputSyncError(str(exc)) from exc
 
     def _relative(self, path: Path) -> str:
         try:

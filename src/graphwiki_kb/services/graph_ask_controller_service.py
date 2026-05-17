@@ -17,10 +17,8 @@ from graphwiki_kb.services.graphrag_query_service import (
 from graphwiki_kb.services.graphrag_status_service import (
     GraphRAGStatus,
     GraphRAGStatusService,
-    _timestamp_iso,
     graph_not_ready_message,
     graph_ready_for_query,
-    iso_timestamp_after,
 )
 from graphwiki_kb.services.project_service import ProjectPaths
 from graphwiki_kb.services.query_router_service import QueryRouterService
@@ -28,8 +26,6 @@ from graphwiki_kb.services.query_router_service import QueryRouterService
 
 class GraphAskControllerError(RuntimeError):
     """Raised when GraphRAG ask routing or preflight validation fails."""
-
-    pass
 
 
 class GraphAskControllerService:
@@ -86,6 +82,8 @@ class GraphAskControllerService:
         answer.retriever = "graph"
         answer.planner = route.planner
         answer.route_reason = route.reason
+        answer.route_confidence = route.confidence
+        answer.route_matched_terms = list(route.matched_terms)
         answer.staleness_warnings = staleness
         answer.claim_support = _assess_claim_support(answer, staleness)
         if save or save_as:
@@ -116,23 +114,19 @@ class GraphAskControllerService:
         )
 
     def _check_staleness(self, status: GraphRAGStatus) -> list[str]:
-        """Return human-readable staleness warnings (empty = fresh)."""
-        warnings: list[str] = []
-        manifest_mtime = self._manifest_mtime()
-        if iso_timestamp_after(manifest_mtime, status.input_updated_at):
-            warnings.append("Manifest is newer than graph input. Run `kb update`.")
-        if iso_timestamp_after(status.input_updated_at, status.output_updated_at):
-            warnings.append("Graph input is newer than index output. Run `kb update`.")
-        return warnings
-
-    def _manifest_mtime(self) -> str | None:
-        path = self.paths.raw_manifest_file
-        if not path.exists():
-            return None
-        try:
-            return _timestamp_iso(path.stat().st_mtime)
-        except OSError:
-            return None
+        """Return digest-based staleness warnings (empty = fresh)."""
+        if status.graph_freshness_state == "fresh":
+            return []
+        if status.graph_stale_reasons:
+            return [
+                f"Graph index is {status.graph_freshness_state}: "
+                f"{reason.rstrip('.')}. "
+                "Run `kb update`."
+                for reason in status.graph_stale_reasons
+            ]
+        if status.graph_freshness_state in {"stale", "missing-metadata"}:
+            return [f"Graph index is {status.graph_freshness_state}. Run `kb update`."]
+        return []
 
 
 def _assess_claim_support(answer: GraphRAGQueryAnswer, staleness: list[str]) -> str:

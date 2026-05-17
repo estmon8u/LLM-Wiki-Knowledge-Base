@@ -8,9 +8,10 @@ surface that uses it.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Mapping
+from typing import Literal
 
 from graphwiki_kb.services.graphrag_query_service import GRAPH_QUERY_METHODS
 from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
@@ -75,8 +76,6 @@ class QueryRouterError(ValueError):
         See annotated class attributes for stored values.
     """
 
-    pass
-
 
 @dataclass(frozen=True)
 class QueryRoute:
@@ -88,7 +87,9 @@ class QueryRoute:
 
     method: str
     planner: str = "heuristic"
+    confidence: Literal["explicit", "high", "medium", "low"] = "low"
     reason: str = "fallback"
+    matched_terms: tuple[str, ...] = ()
 
 
 class QueryRouterService:
@@ -127,31 +128,64 @@ class QueryRouterService:
         if normalized_method != "auto":
             return QueryRoute(
                 method=normalized_method,
+                confidence="explicit",
                 reason="explicit method override",
             )
 
         text = f" {question.casefold()} "
-        if any(keyword in text for keyword in DRIFT_KEYWORDS):
-            return QueryRoute(method="drift", reason="comparison keyword")
-        if any(keyword in text for keyword in GLOBAL_KEYWORDS):
-            return QueryRoute(method="global", reason="global corpus keyword")
-        if any(keyword in text for keyword in DIRECT_LOOKUP_KEYWORDS):
+        drift_matches = _matched_keywords(DRIFT_KEYWORDS, text)
+        if drift_matches:
             return QueryRoute(
-                method="basic", reason="direct lookup or maintenance keyword"
+                method="drift",
+                confidence="high",
+                reason="comparison keyword",
+                matched_terms=drift_matches,
             )
-        if any(_term_in_question(term, text) for term in self.routing_aliases):
-            return QueryRoute(method="local", reason="configured graph routing alias")
-        if self._mentions_known_graph_term(text):
-            return QueryRoute(method="local", reason="known graph entity or document")
-        return QueryRoute(method="basic", reason="basic vector baseline fallback")
+        global_matches = _matched_keywords(GLOBAL_KEYWORDS, text)
+        if global_matches:
+            return QueryRoute(
+                method="global",
+                confidence="high",
+                reason="global corpus keyword",
+                matched_terms=global_matches,
+            )
+        direct_matches = _matched_keywords(DIRECT_LOOKUP_KEYWORDS, text)
+        if direct_matches:
+            return QueryRoute(
+                method="basic",
+                confidence="high",
+                reason="direct lookup or maintenance keyword",
+                matched_terms=direct_matches,
+            )
+        alias_matches = _matched_terms(self.routing_aliases, text)
+        if alias_matches:
+            return QueryRoute(
+                method="local",
+                confidence="high",
+                reason="configured graph routing alias",
+                matched_terms=alias_matches,
+            )
+        graph_term_matches = self._matched_known_graph_terms(text)
+        if graph_term_matches:
+            return QueryRoute(
+                method="local",
+                confidence="medium",
+                reason="known graph entity or document",
+                matched_terms=graph_term_matches,
+            )
+        return QueryRoute(
+            method="basic",
+            confidence="low",
+            reason="basic vector baseline fallback",
+        )
+
+    def _matched_known_graph_terms(self, normalized_question: str) -> tuple[str, ...]:
+        if self.status_service is None:
+            return ()
+        return _matched_terms(self._known_graph_terms(), normalized_question)
 
     def _mentions_known_graph_term(self, normalized_question: str) -> bool:
-        if self.status_service is None:
-            return False
-        for term in self._known_graph_terms():
-            if _term_in_question(term, normalized_question):
-                return True
-        return False
+        return bool(self._matched_known_graph_terms(normalized_question))
 
     def _known_graph_terms(self) -> Iterable[str]:
         status_service = self.status_service
@@ -232,6 +266,30 @@ def _flatten_alias_terms(aliases: Mapping[str, Iterable[str]]) -> tuple[str, ...
             if text:
                 terms.append(text)
     return tuple(dict.fromkeys(term for term in terms if _usable_term(term)))
+
+
+def _matched_keywords(
+    candidates: Iterable[str],
+    normalized_question: str,
+) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(
+            keyword.strip() for keyword in candidates if keyword in normalized_question
+        )
+    )
+
+
+def _matched_terms(
+    candidates: Iterable[str],
+    normalized_question: str,
+) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(
+            term.strip()
+            for term in candidates
+            if term.strip() and _term_in_question(term, normalized_question)
+        )
+    )
 
 
 def _usable_term(term: str) -> str:

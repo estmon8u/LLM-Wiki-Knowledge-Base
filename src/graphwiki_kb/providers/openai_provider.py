@@ -7,7 +7,12 @@ from typing import Any, Literal
 
 from openai import OpenAI
 
-from graphwiki_kb.providers.base import ProviderRequest, ProviderResponse, TextProvider
+from graphwiki_kb.providers.base import (
+    ProviderCapabilities,
+    ProviderRequest,
+    ProviderResponse,
+    TextProvider,
+)
 from graphwiki_kb.providers.retry import provider_retry
 
 
@@ -17,6 +22,12 @@ class OpenAIProvider(TextProvider):
     name = "openai"
     _SUPPORTED_APIS = {"responses", "chat_completions"}
     _SUPPORTED_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh"}
+    capabilities = ProviderCapabilities(
+        strict_json_schema=True,
+        native_structured_output=True,
+        reasoning_effort_values=tuple(sorted(_SUPPORTED_REASONING_EFFORTS)),
+        supports_store_false=True,
+    )
 
     def __init__(
         self,
@@ -24,6 +35,7 @@ class OpenAIProvider(TextProvider):
         api_key_env: str = "OPENAI_API_KEY",
         reasoning_effort: str = "high",
         api: Literal["responses", "chat_completions"] = "responses",
+        store_responses: bool = False,
     ) -> None:
         normalized_api = api.strip().lower()
         if normalized_api not in self._SUPPORTED_APIS:
@@ -32,6 +44,7 @@ class OpenAIProvider(TextProvider):
         self.model = model
         self._reasoning_effort = _normalize_reasoning_effort(reasoning_effort)
         self._api = normalized_api
+        self._store_responses = bool(store_responses)
         api_key = os.environ.get(api_key_env, "")
         if not api_key:
             raise ValueError(
@@ -52,6 +65,7 @@ class OpenAIProvider(TextProvider):
             "model": self.model,
             "input": [{"role": "user", "content": request.prompt}],
             "max_output_tokens": request.max_tokens,
+            "store": self._store_responses,
         }
         reasoning_effort = _request_reasoning_effort(
             request.reasoning_effort,
@@ -92,6 +106,7 @@ class OpenAIProvider(TextProvider):
             "model": self.model,
             "messages": messages,
             "max_completion_tokens": request.max_tokens,
+            "store": self._store_responses,
         }
         reasoning_effort = _request_reasoning_effort(
             request.reasoning_effort,

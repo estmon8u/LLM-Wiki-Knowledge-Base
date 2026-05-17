@@ -12,11 +12,15 @@ from dataclasses import dataclass, field
 from importlib.metadata import version as package_version
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any
 
-import pdfkit
-from markitdown import MarkItDown, MarkItDownException
-from markitdown import __version__ as markitdown_version
+if TYPE_CHECKING:
+    from markitdown import MarkItDown
+
+try:
+    import pdfkit
+except ImportError:  # pragma: no cover - optional dependency absent
+    pdfkit = None
 
 from graphwiki_kb.services.config_service import DEFAULT_CONFIG
 from graphwiki_kb.services.markdown_document import (
@@ -81,6 +85,24 @@ MISTRAL_IMAGE_MIME_TYPES = {
     ".jpeg": "image/jpeg",
     ".avif": "image/avif",
 }
+
+
+def _markitdown_exception_types() -> tuple[type[Exception], ...]:
+    try:
+        from markitdown import MarkItDownException
+    except ImportError:
+        return ()
+    return (MarkItDownException,)
+
+
+def _markitdown_version() -> str:
+    try:
+        from markitdown import __version__ as version
+    except ImportError:
+        return "unavailable"
+    return str(version)
+
+
 MAX_INLINE_OCR_PAYLOAD_BYTES = 100 * 1024 * 1024
 _GENERIC_TITLE_HEADINGS = {
     "abstract",
@@ -139,7 +161,7 @@ class _ConvertedText:
 class DoclingPdfConverter:
     """Adapter for Docling's local PDF conversion API."""
 
-    def __init__(self, converter: Optional[Any] = None) -> None:
+    def __init__(self, converter: Any | None = None) -> None:
         self._converter = converter
 
     def convert_local(self, source_path: Path) -> _ConvertedText:
@@ -172,7 +194,7 @@ class DoclingPdfConverter:
 
     def _prepare_conversion_path(
         self, source_path: Path
-    ) -> tuple[Path, Optional[TemporaryDirectory[str]]]:
+    ) -> tuple[Path, TemporaryDirectory[str] | None]:
         if str(source_path).isascii():
             return source_path, None
 
@@ -216,7 +238,7 @@ class MistralOcrConverter:
         model: str = "mistral-ocr-latest",
         api_key_env: str = "MISTRAL_API_KEY",
         table_format: str = "markdown",
-        client: Optional[Any] = None,
+        client: Any | None = None,
     ) -> None:
         self.model = model
         self.api_key_env = api_key_env
@@ -345,6 +367,11 @@ class WkhtmltopdfRenderer:
             bytes produced by the operation.
         """
         binary = self.resolve_binary()
+        if pdfkit is None:
+            raise ValueError(
+                "pdfkit is required to render HTML with wkhtmltopdf. "
+                "Install the html or all extra."
+            )
         try:
             configuration = pdfkit.configuration(wkhtmltopdf=binary)
             options = {
@@ -452,12 +479,12 @@ class NormalizationService:
 
     def __init__(
         self,
-        config: Optional[dict[str, Any]] = None,
+        config: dict[str, Any] | None = None,
         *,
-        converter: Optional[MarkItDown] = None,
-        pdf_converter: Optional[DoclingPdfConverter] = None,
-        mistral_ocr_converter: Optional[MistralOcrConverter] = None,
-        html_renderer: Optional[WkhtmltopdfRenderer] = None,
+        converter: MarkItDown | None = None,
+        pdf_converter: DoclingPdfConverter | None = None,
+        mistral_ocr_converter: MistralOcrConverter | None = None,
+        html_renderer: WkhtmltopdfRenderer | None = None,
     ) -> None:
         self._config = _merged_config(config)
         self._converter = converter
@@ -745,7 +772,7 @@ class NormalizationService:
     ) -> _ConvertedText:
         try:
             result = self._converter_instance().convert_local(source_path)
-        except MarkItDownException as error:
+        except _markitdown_exception_types() as error:
             raise ValueError(
                 f"MarkItDown could not convert {source_path.name}: {error}"
             ) from error
@@ -760,7 +787,7 @@ class NormalizationService:
             title=title,
             metadata={
                 "converter": "markitdown",
-                "converter_version": markitdown_version,
+                "converter_version": _markitdown_version(),
                 "ingest_mode": MARKITDOWN_CONVERSION_INGEST_MODE,
                 "canonical_text_format": ".md",
                 "normalization_route": route,
@@ -832,6 +859,8 @@ class NormalizationService:
 
     def _converter_instance(self) -> MarkItDown:
         if self._converter is None:
+            from markitdown import MarkItDown
+
             self._converter = MarkItDown(enable_plugins=False)
         return self._converter
 

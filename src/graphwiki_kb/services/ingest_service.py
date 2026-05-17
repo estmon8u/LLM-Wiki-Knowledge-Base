@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
 
 from graphwiki_kb.models.source_models import RawSourceRecord
 from graphwiki_kb.services.manifest_service import ManifestService
@@ -50,9 +50,9 @@ class IngestResult:
     """Outcome for a single source-file ingest attempt."""
 
     created: bool
-    source: Optional[RawSourceRecord]
+    source: RawSourceRecord | None
     message: str
-    duplicate_of: Optional[RawSourceRecord] = None
+    duplicate_of: RawSourceRecord | None = None
 
 
 @dataclass
@@ -91,8 +91,8 @@ class IngestService:
         self,
         paths: ProjectPaths,
         manifest_service: ManifestService,
-        normalization_service: Optional[NormalizationService] = None,
-        config: Optional[dict[str, object]] = None,
+        normalization_service: NormalizationService | None = None,
+        config: dict[str, object] | None = None,
     ) -> None:
         self.paths = paths
         self.manifest_service = manifest_service
@@ -183,7 +183,7 @@ class IngestService:
     def ingest_directory(
         self,
         raw_input_path: Path,
-        progress_callback: Optional[Callable[[Path], None]] = None,
+        progress_callback: Callable[[Path], None] | None = None,
     ) -> IngestDirectoryResult:
         """Ingest every supported source file under a directory."""
         directory_path = raw_input_path.resolve()

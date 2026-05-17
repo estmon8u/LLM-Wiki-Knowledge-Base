@@ -16,7 +16,12 @@ from typing import Any
 from google import genai
 from google.genai import types
 
-from graphwiki_kb.providers.base import ProviderRequest, ProviderResponse, TextProvider
+from graphwiki_kb.providers.base import (
+    ProviderCapabilities,
+    ProviderRequest,
+    ProviderResponse,
+    TextProvider,
+)
 from graphwiki_kb.providers.retry import provider_retry
 
 logger = logging.getLogger(__name__)
@@ -53,6 +58,11 @@ class GeminiProvider(TextProvider):
     """Google Gemini provider via the google-genai SDK."""
 
     name = "gemini"
+    capabilities = ProviderCapabilities(
+        strict_json_schema=False,
+        native_structured_output=True,
+        reasoning_effort_values=("none", "minimal", "low", "medium", "high"),
+    )
 
     def __init__(
         self,

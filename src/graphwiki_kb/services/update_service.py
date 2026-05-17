@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 from graphwiki_kb.models.source_models import RawSourceRecord
 from graphwiki_kb.services.compile_service import CompileResult, CompileService
@@ -57,13 +58,13 @@ class UpdateResult:
     """Combined result of a full or graph-only update run."""
 
     ingest_summaries: list[IngestSummary] = field(default_factory=list)
-    compile_result: Optional[CompileResult] = None
-    concept_result: Optional[ConceptGenerationResult] = None
+    compile_result: CompileResult | None = None
+    concept_result: ConceptGenerationResult | None = None
     concepts_skipped: bool = False
     concepts_skip_reason: str = ""
     search_refreshed: bool = False
     search_warning: str = ""
-    graph_result: Optional["GraphUpdateResult"] = None
+    graph_result: GraphUpdateResult | None = None
 
     @property
     def ok(self) -> bool:
@@ -78,9 +79,10 @@ class GraphUpdateResult:
     skipped: bool = False
     skip_reason: str = ""
     initialized: bool = False
-    preflight_result: Optional[GraphRAGSyncResult] = None
-    sync_result: Optional[GraphRAGSyncResult] = None
-    export_result: Optional[GraphRAGWikiExportResult] = None
+    preflight_result: GraphRAGSyncResult | None = None
+    sync_result: GraphRAGSyncResult | None = None
+    export_result: GraphRAGWikiExportResult | None = None
+    active_output_dir: str | None = None
     warning: str = ""
 
 
@@ -309,6 +311,7 @@ class UpdateService:
                     if status_callback is not None:
                         status_callback("exporting graph pages")
                     result.export_result = self._graphrag_wiki_export.export_wiki()
+                    result.active_output_dir = self._active_graph_output_dir()
                 except Exception as exc:
                     message = f"Graph export failed after skipped index: {exc}"
                     if options.allow_partial:
@@ -351,6 +354,7 @@ class UpdateService:
             if status_callback is not None:
                 status_callback("exporting graph pages")
             result.export_result = self._graphrag_wiki_export.export_wiki()
+            result.active_output_dir = self._active_graph_output_dir()
         except Exception as exc:
             message = f"Graph index/export failed: {exc}"
             if options.allow_partial:
@@ -358,6 +362,24 @@ class UpdateService:
                 return result
             raise ValueError(message) from exc
         return result
+
+    def _active_graph_output_dir(self) -> str | None:
+        if self._graphrag_sync is None:
+            return None
+        status_service = getattr(self._graphrag_sync, "status_service", None)
+        if status_service is None:
+            return None
+        active_output_dir = status_service.active_output_dir()
+        if active_output_dir is None:
+            return None
+        try:
+            return (
+                active_output_dir.resolve()
+                .relative_to(self._graphrag_sync.paths.root)
+                .as_posix()
+            )
+        except ValueError:
+            return active_output_dir.as_posix()
 
     def _missing_graph_credentials(self) -> list[str]:
         if self._graphrag_sync is None:
@@ -391,5 +413,3 @@ class UpdatePreflightError(Exception):
     Attributes:
         See annotated class attributes for stored values.
     """
-
-    pass

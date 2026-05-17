@@ -23,6 +23,8 @@ from graphwiki_kb.services.graphrag_defaults import (
     DEFAULT_GRAPHRAG_CHUNK_OVERLAP,
     DEFAULT_GRAPHRAG_CHUNK_SIZE,
     DEFAULT_GRAPHRAG_ENCODING_MODEL,
+    DEFAULT_GRAPHRAG_ENTITY_TYPES,
+    DEFAULT_GRAPHRAG_EXTRACTION_MAX_GLEANINGS,
 )
 from graphwiki_kb.services.project_service import ProjectPaths, atomic_write_text
 
@@ -158,6 +160,11 @@ class GraphRAGWorkspaceService:
                 embedding_model=embedding_model,
                 api_key_env=graph_config.api_key_env,
                 embedding_api_key_env=graph_config.embedding_api_key_env,
+                chunk_size=graph_config.chunk_size,
+                chunk_overlap=graph_config.chunk_overlap,
+                entity_types=graph_config.entity_types,
+                max_gleanings=graph_config.max_gleanings,
+                max_source_bytes=graph_config.max_source_bytes,
             )
         )
         return GraphRAGWorkspaceInitResult(
@@ -199,6 +206,18 @@ class GraphRAGWorkspaceService:
         embedding["model"] = graph_config.embedding_model
         embedding["auth_method"] = "api_key"
         embedding["api_key"] = f"${{{graph_config.embedding_api_key_env}}}"
+
+        chunking = settings.setdefault("chunking", {})
+        chunking["type"] = "tokens"
+        chunking["size"] = graph_config.chunk_size
+        chunking["overlap"] = graph_config.chunk_overlap
+        chunking["encoding_model"] = DEFAULT_GRAPHRAG_ENCODING_MODEL
+
+        extract_graph = settings.setdefault("extract_graph", {})
+        extract_graph["completion_model_id"] = "default_completion_model"
+        extract_graph.setdefault("prompt", "prompts/extract_graph.txt")
+        extract_graph["entity_types"] = list(graph_config.entity_types)
+        extract_graph["max_gleanings"] = graph_config.max_gleanings
 
         return yaml.safe_dump(settings, sort_keys=False)
 
@@ -280,8 +299,8 @@ def _default_settings() -> dict[str, Any]:
         "extract_graph": {
             "completion_model_id": "default_completion_model",
             "prompt": "prompts/extract_graph.txt",
-            "entity_types": ["organization", "person", "geo", "event"],
-            "max_gleanings": 1,
+            "entity_types": list(DEFAULT_GRAPHRAG_ENTITY_TYPES),
+            "max_gleanings": DEFAULT_GRAPHRAG_EXTRACTION_MAX_GLEANINGS,
         },
         "summarize_descriptions": {
             "completion_model_id": "default_completion_model",

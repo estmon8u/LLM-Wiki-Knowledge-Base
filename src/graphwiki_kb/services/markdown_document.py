@@ -470,9 +470,9 @@ def markdown_links(contents: str) -> list[MarkdownLink]:
                 link_text = []
                 inside_link = False
                 continue
-            if inside_link and child.type == "text":
-                link_text.append(child.content)
-            elif inside_link and child.type == "code_inline":
+            if (inside_link and child.type == "text") or (
+                inside_link and child.type == "code_inline"
+            ):
                 link_text.append(child.content)
 
     return links

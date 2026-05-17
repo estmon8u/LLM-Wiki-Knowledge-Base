@@ -2532,7 +2532,7 @@ def test_is_link_only_inline_detects_pure_links() -> None:
 
     parser = MarkdownIt()
     tokens = parser.parse("[Link](http://example.com)")
-    inline = [t for t in tokens if t.type == "inline"][0]
+    inline = next(t for t in tokens if t.type == "inline")
     assert _is_link_only_inline(inline)
 
 
@@ -2542,7 +2542,7 @@ def test_is_link_only_inline_rejects_mixed_content() -> None:
 
     parser = MarkdownIt()
     tokens = parser.parse("Some text and [Link](http://example.com).")
-    inline = [t for t in tokens if t.type == "inline"][0]
+    inline = next(t for t in tokens if t.type == "inline")
     assert not _is_link_only_inline(inline)
 
 

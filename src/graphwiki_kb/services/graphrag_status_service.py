@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -472,7 +472,7 @@ class GraphRAGStatusService:
 
     def _table_paths(self, output_dir: Path | None) -> dict[str, Path | None]:
         if output_dir is None or not output_dir.exists():
-            return {name: None for name in GRAPH_OUTPUT_TABLES}
+            return dict.fromkeys(GRAPH_OUTPUT_TABLES)
         parquet_paths = sorted(output_dir.glob("*.parquet"))
         paths: dict[str, Path | None] = {}
         for name, tokens in GRAPH_OUTPUT_TABLES.items():
@@ -749,11 +749,7 @@ def _tail(value: str, *, max_chars: int = 2000) -> str:
 def _timestamp_iso(timestamp: float | None) -> str | None:
     if timestamp is None:
         return None
-    return (
-        datetime.fromtimestamp(timestamp, tz=timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-    )
+    return datetime.fromtimestamp(timestamp, tz=UTC).replace(microsecond=0).isoformat()
 
 
 def _match_table_path(paths: list[Path], tokens: tuple[str, ...]) -> Path | None:
@@ -828,5 +824,5 @@ def _parse_iso_timestamp(value: str) -> datetime | None:
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
+        return parsed.replace(tzinfo=UTC)
     return parsed

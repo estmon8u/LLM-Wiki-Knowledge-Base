@@ -7,8 +7,6 @@ surface that uses it.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import click
 from rich.markdown import Markdown as RichMarkdown
 
@@ -108,7 +106,7 @@ def create_command() -> click.Command:
         response_type: str | None,
         limit: int | None,
         save_answer: bool,
-        save_as_name: Optional[str],
+        save_as_name: str | None,
         show_source_trace: bool,
         show_evidence: bool,
         verbose: bool,
@@ -175,13 +173,24 @@ def create_command() -> click.Command:
             f"index_run_id: {answer.index_run_id or 'unknown'}][/dim]"
         )
         if answer.route_reason:
-            console.print(f"[dim]Route: {answer.route_reason}[/dim]")
+            route_detail = answer.route_reason
+            if answer.route_confidence:
+                route_detail += f" ({answer.route_confidence})"
+            console.print(f"[dim]Route: {route_detail}[/dim]")
         if show_source_trace or show_evidence:
             console.print("")
             console.print("Source Trace")
             console.print(f"  GraphRAG input: {answer.source_trace.get('input_path')}")
             console.print(f"  GraphRAG output: {answer.source_trace.get('output_dir')}")
             console.print(f"  Route reason: {answer.route_reason or 'unknown'}")
+            console.print(f"  Route confidence: {answer.route_confidence or 'unknown'}")
+            if answer.route_matched_terms:
+                console.print(
+                    "  Route matched terms: " + ", ".join(answer.route_matched_terms)
+                )
+            console.print(
+                "  Parsed graph references: " f"{len(answer.graph_data_references)}"
+            )
             console.print(f"  Support level: {answer.claim_support or 'unverified'}")
         if answer.staleness_warnings:
             console.print("")

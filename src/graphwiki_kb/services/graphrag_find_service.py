@@ -7,8 +7,9 @@ import logging
 import math
 import re
 from collections import Counter
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from graphwiki_kb.models.wiki_models import SearchResult
 from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService

@@ -6,7 +6,8 @@ import importlib.metadata
 import inspect
 import re
 import sys
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 MANAGED_GRAPHRAG_SETTINGS_VERSION = 1
 GRAPH_INPUT_SCHEMA_VERSION = 1
@@ -68,7 +69,7 @@ def validate_graphrag_runtime() -> None:
             run_global_search,
             run_local_search,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise GraphRAGCompatibilityError(
             f"GraphRAG CLI entrypoints are unavailable: {exc}"
         ) from exc

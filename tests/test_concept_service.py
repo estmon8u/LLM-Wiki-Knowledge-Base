@@ -531,7 +531,7 @@ def test_resolve_destination_skips_manual_page(test_project) -> None:
     result = service.generate()
 
     for cpath in result.concept_paths:
-        assert "dense-retrieval.md" != cpath.split("/")[-1]
+        assert cpath.split("/")[-1] != "dense-retrieval.md"
     manual = (test_project.root / "wiki/concepts/dense-retrieval.md").read_text(
         encoding="utf-8"
     )

@@ -12,7 +12,6 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 import yaml
 from pydantic import BaseModel, Field
@@ -178,8 +177,8 @@ class QueryService:
         paths: ProjectPaths,
         search_service: SearchService,
         *,
-        provider: Optional[TextProvider] = None,
-        refresh_index: Optional[Callable[[], None]] = None,
+        provider: TextProvider | None = None,
+        refresh_index: Callable[[], None] | None = None,
         schema_text: str = "",
     ) -> None:
         self.paths = paths

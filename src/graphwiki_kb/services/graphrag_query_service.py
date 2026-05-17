@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Callable
 
 import yaml
 
@@ -37,6 +37,26 @@ from graphwiki_kb.services.search_service import SearchService
 
 GRAPH_QUERY_METHODS = ("local", "global", "drift", "basic")
 GRAPH_DATA_REFERENCE_PATTERN = re.compile(r"\[Data:\s*[^\]]+\]")
+GRAPH_DATA_REFERENCE_DETAIL_PATTERN = re.compile(r"\[Data:\s*(?P<body>[^\]]+)\]")
+GRAPH_DATA_REFERENCE_PART_PATTERN = re.compile(
+    r"(?P<label>[A-Za-z][A-Za-z_\s-]*?)\s*\((?P<ids>[^)]*)\)"
+)
+GRAPH_DATA_REFERENCE_KINDS = {
+    "source": "source",
+    "sources": "source",
+    "document": "document",
+    "documents": "document",
+    "text_unit": "text_unit",
+    "text_units": "text_unit",
+    "entity": "entity",
+    "entities": "entity",
+    "relationship": "relationship",
+    "relationships": "relationship",
+    "community": "community",
+    "communities": "community",
+    "community_report": "community_report",
+    "community_reports": "community_report",
+}
 _ANSI_PATTERN = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 _ANSWER_MARKERS = (
     "answer:",
@@ -69,8 +89,6 @@ class GraphRAGQueryError(RuntimeError):
         See annotated class attributes for stored values.
     """
 
-    pass
-
 
 @dataclass
 class GraphRAGQueryAnswer:
@@ -94,8 +112,11 @@ class GraphRAGQueryAnswer:
     retriever: str = "graphrag"
     planner: str | None = None
     route_reason: str | None = None
+    route_confidence: str | None = None
+    route_matched_terms: list[str] = field(default_factory=list)
     claim_support: str | None = None
     source_trace: dict[str, str | None] = field(default_factory=dict)
+    graph_data_references: list[dict[str, object]] = field(default_factory=list)
     staleness_warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
@@ -169,6 +190,7 @@ class GraphRAGQueryService:
             community_level=community_level,
             dynamic_community_selection=dynamic_community_selection,
             response_type=response_type,
+            graph_data_references=_graph_data_reference_details(answer),
             source_trace={
                 "input_path": _relative_path(status.input_path, self.paths.root),
                 "output_dir": _relative_path(
@@ -178,6 +200,7 @@ class GraphRAGQueryService:
                 "index_run_id": status.last_index_run_id,
                 "graph_input_hash": graph_input_hash,
                 "input_manifest_hash": input_manifest_hash,
+                "graph_run_id": status.last_index_run_id,
             },
         )
 
@@ -228,11 +251,19 @@ class GraphRAGQueryService:
             "citation_count": len(citations),
             "claims": [],
             "index_run_id": answer.index_run_id,
+            "graph_run_id": answer.index_run_id,
             "graph_input_hash": answer.graph_input_hash,
             "input_manifest_hash": answer.input_manifest_hash,
+            "graph_data_references": answer.graph_data_references,
         }
         if answer.planner:
             frontmatter["planner"] = answer.planner
+        if answer.route_reason:
+            frontmatter["route_reason"] = answer.route_reason
+        if answer.route_confidence:
+            frontmatter["route_confidence"] = answer.route_confidence
+        if answer.route_matched_terms:
+            frontmatter["route_matched_terms"] = answer.route_matched_terms
         if answer.claim_support:
             frontmatter["claim_support"] = answer.claim_support
         yaml_block = yaml.safe_dump(frontmatter, sort_keys=False).strip()
@@ -247,6 +278,12 @@ class GraphRAGQueryService:
             retrieval_lines.append(f"- Planner: {answer.planner}")
         if answer.route_reason:
             retrieval_lines.append(f"- Route reason: {answer.route_reason}")
+        if answer.route_confidence:
+            retrieval_lines.append(f"- Route confidence: {answer.route_confidence}")
+        if answer.route_matched_terms:
+            retrieval_lines.append(
+                "- Route matched terms: " + ", ".join(answer.route_matched_terms)
+            )
         if answer.claim_support:
             retrieval_lines.append(f"- Support level: {answer.claim_support}")
         if answer.community_level is not None:
@@ -263,8 +300,16 @@ class GraphRAGQueryService:
             f"- GraphRAG output: {answer.source_trace.get('output_dir')}",
             f"- Graph input hash: {answer.source_trace.get('graph_input_hash')}",
             f"- Input manifest hash: {answer.source_trace.get('input_manifest_hash')}",
-            "- Direct citation parsing: not available from this raw CLI wrapper yet",
+            "- Parsed GraphRAG data references: "
+            f"{len(answer.graph_data_references)}",
         ]
+        if answer.graph_data_references:
+            for item in answer.graph_data_references:
+                ids = item.get("ids", ())
+                id_list = [str(value) for value in ids] if isinstance(ids, list) else []
+                trace_lines.append(
+                    f"- `{item.get('kind', 'unknown')}` ids: {', '.join(id_list)}"
+                )
         raw_stdout = answer.raw_output or "No raw GraphRAG stdout captured."
         raw_stderr = answer.stderr or "No raw GraphRAG stderr captured."
         return (
@@ -369,6 +414,39 @@ def _graph_data_references(text: str) -> list[str]:
             match.group(0) for match in GRAPH_DATA_REFERENCE_PATTERN.finditer(text)
         )
     )
+
+
+def _graph_data_reference_details(text: str) -> list[dict[str, object]]:
+    references: list[dict[str, object]] = []
+    seen: set[tuple[str, tuple[str, ...]]] = set()
+    for match in GRAPH_DATA_REFERENCE_DETAIL_PATTERN.finditer(text):
+        body = match.group("body")
+        for part in GRAPH_DATA_REFERENCE_PART_PATTERN.finditer(body):
+            kind = _normalize_reference_kind(part.group("label"))
+            ids = tuple(_split_reference_ids(part.group("ids")))
+            if not kind or not ids:
+                continue
+            key = (kind, ids)
+            if key in seen:
+                continue
+            seen.add(key)
+            references.append(
+                {
+                    "kind": kind,
+                    "ids": list(ids),
+                    "raw": part.group(0),
+                }
+            )
+    return references
+
+
+def _normalize_reference_kind(value: str) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", "_", value.casefold()).strip("_")
+    return GRAPH_DATA_REFERENCE_KINDS.get(normalized, "")
+
+
+def _split_reference_ids(value: str) -> list[str]:
+    return [item.strip() for item in re.split(r"[,;]", value) if item.strip()]
 
 
 def _relative_path(path: Path, root: Path) -> str:
