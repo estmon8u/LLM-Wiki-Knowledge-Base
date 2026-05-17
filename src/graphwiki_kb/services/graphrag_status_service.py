@@ -465,9 +465,10 @@ class GraphRAGStatusService:
 
     def _output_dir_complete(self, output_dir: Path) -> bool:
         table_paths = self._table_paths(output_dir)
-        return all(table_paths.values()) and (
-            self._vector_store_state(self._vector_store_path(output_dir)) == "ready"
-        )
+        for path in table_paths.values():
+            if path is None or self._table_state(path) != "ready":
+                return False
+        return self._vector_store_state(self._vector_store_path(output_dir)) == "ready"
 
     def _table_paths(self, output_dir: Path | None) -> dict[str, Path | None]:
         if output_dir is None or not output_dir.exists():
@@ -684,7 +685,7 @@ def missing_artifacts_for_query(
     table_names = QUERY_REQUIRED_TABLES.get(normalized, tuple(GRAPH_OUTPUT_TABLES))
     missing: list[str] = []
     for table_name in table_names:
-        if not getattr(status, f"{table_name}_present"):
+        if not _table_ready_for_query(status, table_name):
             missing.append(table_name)
     if normalized in QUERY_REQUIRES_VECTOR_STORE and not status.vector_store_readable:
         missing.append("vector_store")
@@ -724,7 +725,7 @@ def graph_not_ready_message(
     if missing:
         method_detail = f" for `{method}` queries" if method else ""
         return (
-            f"GraphRAG index output is incomplete{method_detail}: "
+            f"GraphRAG index output is missing or unreadable{method_detail}: "
             f"{', '.join(missing)}. Run `kb update --graph-only` to rebuild it."
         )
     if status.graph_freshness_state in {"stale", "missing-metadata"}:
@@ -733,6 +734,12 @@ def graph_not_ready_message(
         )
         return f"GraphRAG index is stale.{reason} Run `kb update --graph-only`."
     return f"GraphRAG index is not ready. {status.next_action}"
+
+
+def _table_ready_for_query(status: GraphRAGStatus, table_name: str) -> bool:
+    if status.table_states:
+        return status.table_states.get(table_name) == "ready"
+    return bool(getattr(status, f"{table_name}_present"))
 
 
 def _tail(value: str, *, max_chars: int = 2000) -> str:

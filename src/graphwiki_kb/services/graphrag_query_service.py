@@ -16,13 +16,16 @@ from graphwiki_kb.services.graphrag_command_service import (
     GraphRAGCommandResult,
     GraphRAGCommandService,
 )
+from graphwiki_kb.services.graphrag_freshness_service import (
+    file_digest,
+    graph_input_manifest_hash,
+)
 from graphwiki_kb.services.graphrag_status_service import (
     GraphRAGStatus,
     GraphRAGStatusService,
     graph_not_ready_message,
     graph_ready_for_query,
 )
-from graphwiki_kb.services.graphrag_sync_service import file_digest
 from graphwiki_kb.services.project_service import (
     ProjectPaths,
     atomic_write_text,
@@ -79,10 +82,11 @@ class GraphRAGQueryAnswer:
     method: str
     created_at: str
     index_run_id: str | None
-    input_manifest_hash: str
     command: tuple[str, ...]
     stdout: str
     stderr: str
+    graph_input_hash: str
+    input_manifest_hash: str | None = None
     community_level: int | None = None
     dynamic_community_selection: bool | None = None
     response_type: str | None = None
@@ -133,7 +137,8 @@ class GraphRAGQueryService:
         """Run a GraphRAG query after checking method-specific readiness."""
         status = self.status_service.status()
         self._require_query_ready(status, method=method)
-        input_manifest_hash = self._input_manifest_hash(status.input_path)
+        graph_input_hash = file_digest(status.input_path)
+        input_manifest_hash = graph_input_manifest_hash(status.input_path)
         try:
             result = self.command_service.query(
                 question,
@@ -156,10 +161,11 @@ class GraphRAGQueryService:
             method=method,
             created_at=utc_now_iso(),
             index_run_id=status.last_index_run_id,
-            input_manifest_hash=input_manifest_hash,
             command=result.command,
             stdout=result.stdout,
             stderr=result.stderr,
+            graph_input_hash=graph_input_hash,
+            input_manifest_hash=input_manifest_hash,
             community_level=community_level,
             dynamic_community_selection=dynamic_community_selection,
             response_type=response_type,
@@ -170,6 +176,7 @@ class GraphRAGQueryService:
                     self.paths.root,
                 ),
                 "index_run_id": status.last_index_run_id,
+                "graph_input_hash": graph_input_hash,
                 "input_manifest_hash": input_manifest_hash,
             },
         )
@@ -221,6 +228,7 @@ class GraphRAGQueryService:
             "citation_count": len(citations),
             "claims": [],
             "index_run_id": answer.index_run_id,
+            "graph_input_hash": answer.graph_input_hash,
             "input_manifest_hash": answer.input_manifest_hash,
         }
         if answer.planner:
@@ -232,7 +240,8 @@ class GraphRAGQueryService:
             f"- Retriever: {answer.retriever}",
             f"- GraphRAG method: {answer.method}",
             f"- Index run: {answer.index_run_id or 'unknown'}",
-            f"- Input manifest hash: {answer.input_manifest_hash}",
+            f"- Graph input hash: {answer.graph_input_hash}",
+            f"- Input manifest hash: {answer.input_manifest_hash or 'unknown'}",
         ]
         if answer.planner:
             retrieval_lines.append(f"- Planner: {answer.planner}")
@@ -252,6 +261,8 @@ class GraphRAGQueryService:
         trace_lines = [
             f"- GraphRAG input: {answer.source_trace.get('input_path')}",
             f"- GraphRAG output: {answer.source_trace.get('output_dir')}",
+            f"- Graph input hash: {answer.source_trace.get('graph_input_hash')}",
+            f"- Input manifest hash: {answer.source_trace.get('input_manifest_hash')}",
             "- Direct citation parsing: not available from this raw CLI wrapper yet",
         ]
         raw_stdout = answer.raw_output or "No raw GraphRAG stdout captured."
@@ -296,10 +307,6 @@ class GraphRAGQueryService:
     def _require_query_ready(self, status: GraphRAGStatus, *, method: str) -> None:
         if not graph_ready_for_query(status, method=method):
             raise GraphRAGQueryError(graph_not_ready_message(status, method=method))
-
-    @staticmethod
-    def _input_manifest_hash(input_path: Path) -> str:
-        return file_digest(input_path)
 
 
 def _answer_from_result(result: GraphRAGCommandResult) -> str:

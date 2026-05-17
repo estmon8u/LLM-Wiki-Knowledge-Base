@@ -154,27 +154,26 @@ def graph_runtime_digest(
 
 
 def graph_input_source_hashes(input_path: Path) -> dict[str, str]:
-    try:
-        payload = json.loads(input_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    if isinstance(payload, list):
-        records = payload
-    elif isinstance(payload, dict):
-        sources = payload.get("sources") or payload.get("documents")
-        records = sources if isinstance(sources, list) else []
-    else:
-        records = []
-
+    records, _top_level = _graph_input_records(input_path)
     source_hashes: dict[str, str] = {}
     for record in records:
-        if not isinstance(record, dict):
-            continue
         source_id = _optional_str(record.get("source_id") or record.get("id"))
         source_hash = _optional_str(record.get("source_hash"))
         if source_id and source_hash:
             source_hashes[source_id] = source_hash
     return source_hashes
+
+
+def graph_input_manifest_hash(input_path: Path) -> str | None:
+    """Return the raw-manifest hash recorded in GraphRAG synced input."""
+    records, top_level = _graph_input_records(input_path)
+    if isinstance(top_level, str) and top_level:
+        return top_level
+    for record in records:
+        value = record.get("manifest_hash")
+        if isinstance(value, str) and value:
+            return value
+    return None
 
 
 def count_source_hash_changes(
@@ -196,6 +195,23 @@ def source_hashes_from_run(run: dict[str, Any]) -> dict[str, str] | None:
         if isinstance(key, str) and isinstance(value, str):
             source_hashes[key] = value
     return source_hashes
+
+
+def _graph_input_records(input_path: Path) -> tuple[list[dict[str, Any]], Any | None]:
+    try:
+        payload = json.loads(input_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return [], None
+    if isinstance(payload, list):
+        return [record for record in payload if isinstance(record, dict)], None
+    if isinstance(payload, dict):
+        sources = payload.get("sources") or payload.get("documents")
+        records = sources if isinstance(sources, list) else []
+        return (
+            [record for record in records if isinstance(record, dict)],
+            payload.get("manifest_hash"),
+        )
+    return [], None
 
 
 def _digest_file(digest: Any, path: Path, label: str) -> None:

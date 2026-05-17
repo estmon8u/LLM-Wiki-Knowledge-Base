@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from graphwiki_kb.services.file_lock import workspace_lock
 from graphwiki_kb.services.graphrag_command_service import (
     GraphRAGCommandError,
     GraphRAGCommandResult,
@@ -119,6 +120,34 @@ class GraphRAGSyncService:
         status_callback: Any | None = None,
     ) -> GraphRAGSyncResult:
         """Sync graph input files and run the planned index action when requested."""
+        with workspace_lock(self.workspace_dir):
+            return self._sync_locked(
+                method=method,
+                force=force,
+                dry_run=dry_run,
+                cache=cache,
+                skip_validation=skip_validation,
+                verbose=verbose,
+                run_index=run_index,
+                preview_only=preview_only,
+                allow_missing_sources=allow_missing_sources,
+                status_callback=status_callback,
+            )
+
+    def _sync_locked(
+        self,
+        *,
+        method: str,
+        force: bool,
+        dry_run: bool,
+        cache: bool,
+        skip_validation: bool,
+        verbose: bool,
+        run_index: bool,
+        preview_only: bool,
+        allow_missing_sources: bool,
+        status_callback: Any | None,
+    ) -> GraphRAGSyncResult:
         if self.workspace_service.is_initialized() and not preview_only:
             self.workspace_service.sync_settings()
 

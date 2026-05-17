@@ -140,9 +140,10 @@ poetry run kb --project-root $projectRoot update --force
 
 After `kb update`, GraphRAG state is determined from the planned or synced
 input, the latest successful index run, digest-based freshness metadata, and the
-active complete output directory. A complete output directory includes the
-required GraphRAG Parquet tables and the configured vector store, but status and
-ask still require the current input, source hashes, settings, prompts, and
+active complete output directory. A complete output directory includes readable
+required GraphRAG Parquet tables and the configured vector store in a ready
+state, but status and ask still require the current input, source hashes,
+settings, prompts, and
 GraphRAG runtime identity to match the last successful index run. The graph step
 first plans sync work without mutating workspace files. When graph work proceeds, it writes
 compact `graph/graphrag/input/sources.json`

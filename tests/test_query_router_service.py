@@ -7,8 +7,11 @@ surface that uses it.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
+import yaml
 
 from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
 from graphwiki_kb.services.query_router_service import (
@@ -83,6 +86,22 @@ def test_router_uses_configured_aliases_for_local_routing() -> None:
 
     assert route.method == "local"
     assert route.reason == "configured graph routing alias"
+
+
+def test_router_matches_benchmark_expected_methods_with_corpus_aliases() -> None:
+    """Keep auto-routing aligned with the Phase 8 graph-mode benchmark."""
+    benchmark_path = Path(__file__).resolve().parents[1] / "eval" / "benchmark.yaml"
+    benchmark = yaml.safe_load(benchmark_path.read_text(encoding="utf-8"))
+    aliases = {
+        "FiD": ["Fusion-in-Decoder"],
+        "Dense Passage Retrieval": ["DPR"],
+        "Self-RAG": ["reflection"],
+    }
+    router = QueryRouterService(routing_aliases=aliases)
+
+    for item in benchmark["questions"]:
+        route = router.route(item["question"])
+        assert route.method == item["expected_method"], item["id"]
 
 
 def test_router_helpers_handle_missing_invalid_and_empty_terms(tmp_path) -> None:

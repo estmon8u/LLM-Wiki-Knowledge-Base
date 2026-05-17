@@ -257,7 +257,8 @@ def create_command() -> click.Command:
             if graph_result.sync_result and graph_result.sync_result.index_run:
                 run = graph_result.sync_result.index_run
                 console.print(f"Graph index run: {run.run_id} ({run.method})")
-                console.print("Graph output: graph/graphrag/output")
+                output_path = run.active_output_dir or "graph/graphrag/output"
+                console.print(f"Graph output: {output_path}")
             if graph_result.export_result:
                 console.print(
                     "Graph wiki export: "

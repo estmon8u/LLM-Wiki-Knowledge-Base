@@ -21,6 +21,7 @@ from graphwiki_kb.services.graphrag_freshness_service import (
 from graphwiki_kb.services.graphrag_status_service import (
     GraphRAGStatus,
     GraphRAGStatusService,
+    graph_not_ready_message,
     graph_ready_for_query,
 )
 
@@ -329,6 +330,45 @@ def test_status_prefers_recorded_successful_output_dir(test_project) -> None:
     assert service.status().active_output_dir == recorded_dir
 
 
+def test_status_skips_corrupt_recorded_output_dir_for_complete_candidate(
+    test_project,
+) -> None:
+    """A recorded output directory must be readable before status prefers it."""
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "a"}]),
+    )
+    recorded_dir = test_project.paths.graph_dir / "graphrag" / "output" / "recorded"
+    later_dir = test_project.paths.graph_dir / "graphrag" / "output" / "later"
+    for table in (
+        "documents",
+        "text_units",
+        "entities",
+        "relationships",
+        "communities",
+        "community_reports",
+    ):
+        recorded_path = recorded_dir / f"{table}.parquet"
+        recorded_path.parent.mkdir(parents=True, exist_ok=True)
+        recorded_path.write_text("not parquet", encoding="utf-8")
+        _write_minimal_parquet(later_dir / f"{table}.parquet", table)
+    test_project.write_file(
+        "graph/graphrag/output/lancedb/vector-store.marker",
+        "ready",
+    )
+    service = GraphRAGStatusService(test_project.paths)
+    _record_fresh_successful_index_run(service)
+    runs = service._load_runs()
+    runs[-1]["active_output_dir"] = "graph/graphrag/output/recorded"
+    service.runs_file.write_text(json.dumps(runs), encoding="utf-8")
+
+    status = service.status()
+
+    assert status.active_output_dir == later_dir
+    assert status.output_complete is True
+
+
 def test_status_surfaces_corrupt_run_metadata(test_project) -> None:
     service = GraphRAGStatusService(test_project.paths)
     service.runs_file.parent.mkdir(parents=True, exist_ok=True)
@@ -371,6 +411,45 @@ def test_status_marks_unreadable_parquet_as_not_complete(test_project) -> None:
     assert status.state == "present_unreadable"
     assert status.table_states["entities"] == "present_unreadable"
     assert "entities" in status.missing_tables
+
+
+def test_method_readiness_rejects_present_but_unreadable_required_table(
+    test_project,
+) -> None:
+    """Regression: file presence alone is not enough for method readiness."""
+    test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
+    test_project.write_file(
+        "graph/graphrag/input/sources.json",
+        json.dumps([{"id": "a"}]),
+    )
+    for table in (
+        "documents",
+        "text_units",
+        "entities",
+        "relationships",
+        "communities",
+        "community_reports",
+    ):
+        path = test_project.paths.graph_dir / "graphrag" / "output" / f"{table}.parquet"
+        if table == "entities":
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("not parquet", encoding="utf-8")
+        else:
+            _write_minimal_parquet(path, table)
+    test_project.write_file(
+        "graph/graphrag/output/lancedb/vector-store.marker",
+        "ready",
+    )
+    service = GraphRAGStatusService(test_project.paths)
+    _record_fresh_successful_index_run(service)
+
+    status = service.status()
+
+    assert status.entities_present is True
+    assert status.table_states["entities"] == "present_unreadable"
+    assert graph_ready_for_query(status, method="local") is False
+    assert graph_ready_for_query(status, method="drift") is False
+    assert "entities" in graph_not_ready_message(status, method="local")
 
 
 def test_status_marks_complete_output_stale_when_index_metadata_is_missing(

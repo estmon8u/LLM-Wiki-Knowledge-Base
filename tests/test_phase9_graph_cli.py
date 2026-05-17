@@ -89,10 +89,11 @@ def _graph_answer(*, saved_path: str | None = None) -> GraphRAGQueryAnswer:
         method="drift",
         created_at="2026-05-12T00:00:00+00:00",
         index_run_id="run-1",
-        input_manifest_hash="hash-1",
         command=("python", "-m", "graphrag", "query"),
         stdout="GraphRAG answered from the graph.",
         stderr="",
+        graph_input_hash="graph-input-hash-1",
+        input_manifest_hash="manifest-hash-1",
         saved_path=saved_path,
         retriever="graph",
         planner="heuristic",
@@ -101,6 +102,8 @@ def _graph_answer(*, saved_path: str | None = None) -> GraphRAGQueryAnswer:
         source_trace={
             "input_path": "graph/graphrag/input/sources.json",
             "output_dir": "graph/graphrag/output",
+            "graph_input_hash": "graph-input-hash-1",
+            "input_manifest_hash": "manifest-hash-1",
         },
     )
 
@@ -186,6 +189,7 @@ def _index_run() -> GraphRAGIndexRun:
         stdout_tail="indexed",
         stderr_tail="",
         input_digest="input-digest",
+        active_output_dir="graph/graphrag/output/active",
     )
 
 
@@ -370,7 +374,7 @@ def test_update_output_renders_resume_removed_concepts_and_graph_details() -> No
         assert "initialized graph workspace" in result.output
         assert "GraphRAG cost warning." in result.output
         assert "Graph index run: run-1 (fast)" in result.output
-        assert "Graph output: graph/graphrag/output" in result.output
+        assert "Graph output: graph/graphrag/output/active" in result.output
         assert "Graph wiki export: 1 page(s)" in result.output
 
 

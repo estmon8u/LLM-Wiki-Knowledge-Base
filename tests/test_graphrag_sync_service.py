@@ -8,6 +8,7 @@ surface that uses it.
 from __future__ import annotations
 
 import subprocess
+from contextlib import contextmanager
 
 import pandas as pd
 import pytest
@@ -145,6 +146,62 @@ def _build_service(test_project, runner) -> GraphRAGSyncService:
         status_service,
         command_service,
     )
+
+
+def test_sync_holds_workspace_lock_while_applying_workspace_state(
+    test_project,
+    monkeypatch,
+) -> None:
+    """Settings, input, and status reads should share the workspace lock."""
+    _write_settings(test_project)
+    _write_source(test_project)
+    service = _build_service(test_project, runner=None)
+    held = {"value": False}
+    lock_events = []
+
+    @contextmanager
+    def fake_workspace_lock(path):
+        lock_events.append(("enter", path))
+        held["value"] = True
+        try:
+            yield
+        finally:
+            held["value"] = False
+            lock_events.append(("exit", path))
+
+    monkeypatch.setattr(
+        "graphwiki_kb.services.graphrag_sync_service.workspace_lock",
+        fake_workspace_lock,
+    )
+    original_sync_settings = service.workspace_service.sync_settings
+    original_input_sync = service.input_sync_service.sync
+    original_status = service.status_service.status
+
+    def sync_settings_under_lock(*args, **kwargs):
+        assert held["value"] is True
+        return original_sync_settings(*args, **kwargs)
+
+    def input_sync_under_lock(*args, **kwargs):
+        assert held["value"] is True
+        return original_input_sync(*args, **kwargs)
+
+    def status_under_lock(*args, **kwargs):
+        assert held["value"] is True
+        return original_status(*args, **kwargs)
+
+    monkeypatch.setattr(
+        service.workspace_service, "sync_settings", sync_settings_under_lock
+    )
+    monkeypatch.setattr(service.input_sync_service, "sync", input_sync_under_lock)
+    monkeypatch.setattr(service.status_service, "status", status_under_lock)
+
+    result = service.sync(run_index=False)
+
+    assert result.decision.action == "input-only"
+    assert lock_events == [
+        ("enter", test_project.paths.graph_dir / "graphrag"),
+        ("exit", test_project.paths.graph_dir / "graphrag"),
+    ]
 
 
 def _record_successful_run(

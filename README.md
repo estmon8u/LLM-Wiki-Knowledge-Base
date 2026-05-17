@@ -304,7 +304,7 @@ GraphRAG indexing uses the same decision table that powered the former graph syn
 | Complete output exists but successful-run digest metadata is missing | Full rebuild with `fast` |
 | Sources and runtime config match the last successful index | Skip indexing |
 
-Graph wiki export reads standard GraphRAG tables such as `documents`, `text_units`, `entities`, `relationships`, `communities`, and `community_reports` from the active complete output directory under `graph/graphrag/output/`. A complete output directory means those tables and the configured vector store are present. It writes:
+Graph wiki export reads standard GraphRAG tables such as `documents`, `text_units`, `entities`, `relationships`, `communities`, and `community_reports` from the active complete output directory under `graph/graphrag/output/`. A complete output directory means those tables are present and readable, and the configured vector store is ready. It writes:
 
 - `wiki/graph/index.md`
 - `wiki/graph/documents/*.md`
@@ -403,8 +403,11 @@ ready, run `kb init` and `kb update` as directed by the error.
 The deprecated top-level `--limit` compatibility flag is rejected for GraphRAG
 answers because result limiting belongs to the legacy source-page evidence path.
 Saved pages use `retriever: graph`, `method`, `planner`, `claim_support`,
-`index_run_id`, `input_manifest_hash`, and source-trace metadata. The current
-GraphRAG wrapper records command traces and parsed `[Data: ...]` references when
+`index_run_id`, `graph_input_hash`, `input_manifest_hash`, and source-trace
+metadata. `graph_input_hash` is the hash of the synced GraphRAG input file;
+`input_manifest_hash` is the raw manifest hash recorded in that input when
+available. The current GraphRAG wrapper records command traces and parsed
+`[Data: ...]` references when
 GraphRAG emits them; it does not claim full citation evidence until source spans
 are parsed. Raw stdout and stderr are preserved in separate sections for audit,
 answer prose is cleaned before the `## Answer` section, blank GraphRAG answers

@@ -8,7 +8,6 @@ surface that uses it.
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 from collections import Counter
 from dataclasses import dataclass
@@ -23,6 +22,7 @@ from graphwiki_kb.services.compile_service import (
     SOURCE_PAGE_CONTRACT_VERSION,
     SOURCE_PAGE_CONTRACT_VERSION_KEY,
 )
+from graphwiki_kb.services.graphrag_freshness_service import graph_input_manifest_hash
 from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
 from graphwiki_kb.services.manifest_service import ManifestService
 from graphwiki_kb.services.markdown_document import (
@@ -886,24 +886,4 @@ def _file_sha256(path: Path) -> str | None:
 
 
 def _input_manifest_hash(path: Path) -> str | None:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    records: list[Any]
-    if isinstance(payload, list):
-        records = payload
-    elif isinstance(payload, dict):
-        value = payload.get("sources") or payload.get("documents")
-        records = value if isinstance(value, list) else []
-        top_level = payload.get("manifest_hash")
-        if isinstance(top_level, str) and top_level:
-            return top_level
-    else:
-        return None
-    for record in records:
-        if isinstance(record, dict):
-            value = record.get("manifest_hash")
-            if isinstance(value, str) and value:
-                return value
-    return None
+    return graph_input_manifest_hash(path)

@@ -56,7 +56,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "version": CURRENT_CONFIG_VERSION,
     "project": {
         "name": "Capstone Knowledge Base",
-        "description": "Markdown-first research knowledge base maintained through a CLI workflow.",
+        "description": "CLI-first GraphRAG research-memory system with inspectable wiki artifacts.",
     },
     "storage": {
         "raw_dir": "raw/sources",

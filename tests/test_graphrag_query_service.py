@@ -40,8 +40,30 @@ def _write_ready_graph(test_project, *, index_success: bool = True) -> None:
     """
     test_project.write_file("graph/graphrag/settings.yaml", "input:\n  type: json\n")
     test_project.write_file(
+        "raw/_manifest.json",
+        json.dumps(
+            {
+                "version": 1,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "sources": [],
+            }
+        ),
+    )
+    manifest_hash = hashlib.sha256(
+        test_project.paths.raw_manifest_file.read_bytes()
+    ).hexdigest()
+    test_project.write_file(
         "graph/graphrag/input/sources.json",
-        json.dumps([{"id": "src-1", "text": "RAG text"}]),
+        json.dumps(
+            [
+                {
+                    "id": "src-1",
+                    "text": "RAG text",
+                    "manifest_hash": manifest_hash,
+                }
+            ]
+        ),
     )
     output_dir = test_project.paths.graph_dir / "graphrag" / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -161,7 +183,7 @@ def test_graph_query_runs_explicit_method_and_options(test_project) -> None:
     assert answer.raw_output == "GraphRAG answer\n"
     assert answer.index_run_id is not None
     assert (
-        answer.input_manifest_hash
+        answer.graph_input_hash
         == hashlib.sha256(
             test_project.paths.graph_dir.joinpath(
                 "graphrag",
@@ -169,6 +191,10 @@ def test_graph_query_runs_explicit_method_and_options(test_project) -> None:
                 "sources.json",
             ).read_bytes()
         ).hexdigest()
+    )
+    assert (
+        answer.input_manifest_hash
+        == hashlib.sha256(test_project.paths.raw_manifest_file.read_bytes()).hexdigest()
     )
 
 
@@ -331,6 +357,7 @@ def test_graph_query_save_writes_analysis_page_and_refreshes_index(
     assert frontmatter["claims"] == []
     assert frontmatter["insufficient_evidence"] is False
     assert frontmatter["index_run_id"] == answer.index_run_id
+    assert frontmatter["graph_input_hash"] == answer.graph_input_hash
     assert frontmatter["input_manifest_hash"] == answer.input_manifest_hash
     assert frontmatter["planner"] == "heuristic"
     assert frontmatter["claim_support"] == "cited-graph-answer"
@@ -341,6 +368,8 @@ def test_graph_query_save_writes_analysis_page_and_refreshes_index(
     assert "- Community level: 2" in text
     assert "- Dynamic community selection: True" in text
     assert "- Response type: Multiple Paragraphs" in text
+    assert "- Graph input hash:" in text
+    assert "- Input manifest hash:" in text
     assert "## Source Trace" in text
     assert "## Raw GraphRAG Stdout" in text
     assert "## Raw GraphRAG Stderr" in text
