@@ -344,7 +344,7 @@ def test_config_service_invalid_provider_settings_raise(test_project) -> None:
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="providers.openai.reasoning_effort"):
+    with pytest.raises(ValueError, match=r"providers.openai.reasoning_effort"):
         ConfigService(test_project.paths).load()
 
 
@@ -368,7 +368,7 @@ def test_config_service_rejects_unknown_reasoning_effort_names(test_project) -> 
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="providers.openai.reasoning_effort"):
+    with pytest.raises(ValueError, match=r"providers.openai.reasoning_effort"):
         ConfigService(test_project.paths).load()
 
     test_project.paths.config_file.write_text(
@@ -389,7 +389,7 @@ def test_config_service_rejects_unknown_reasoning_effort_names(test_project) -> 
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="providers.anthropic.thinking_effort"):
+    with pytest.raises(ValueError, match=r"providers.anthropic.thinking_effort"):
         ConfigService(test_project.paths).load()
 
     test_project.paths.config_file.write_text(
@@ -410,7 +410,7 @@ def test_config_service_rejects_unknown_reasoning_effort_names(test_project) -> 
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="providers.gemini.reasoning_effort"):
+    with pytest.raises(ValueError, match=r"providers.gemini.reasoning_effort"):
         ConfigService(test_project.paths).load()
 
 
@@ -539,7 +539,7 @@ def test_config_service_does_not_persist_failed_migration(test_project) -> None:
     )
     test_project.paths.config_file.write_text(original, encoding="utf-8")
 
-    with pytest.raises(ValueError, match="graph.provider"):
+    with pytest.raises(ValueError, match=r"graph.provider"):
         ConfigService(test_project.paths).load()
 
     assert test_project.paths.config_file.read_text(encoding="utf-8") == original
@@ -759,7 +759,7 @@ def test_graph_config_defaults_openai_api_key_when_catalog_missing() -> None:
 
 def test_graph_config_requires_api_key_for_unknown_provider() -> None:
     """Verifies that graph config requires api key for unknown provider."""
-    with pytest.raises(ValueError, match="graph.*api_key_env"):
+    with pytest.raises(ValueError, match=r"graph.*api_key_env"):
         resolve_graph_config(
             {
                 "graph": {
@@ -837,7 +837,7 @@ def test_config_service_rejects_invalid_graph_config(test_project) -> None:
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="graph.provider"):
+    with pytest.raises(ValueError, match=r"graph.provider"):
         ConfigService(test_project.paths).load()
 
 
@@ -852,7 +852,7 @@ def test_config_service_rejects_blank_optional_graph_config(test_project) -> Non
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="graph.embedding_provider"):
+    with pytest.raises(ValueError, match=r"graph.embedding_provider"):
         ConfigService(test_project.paths).load()
 
 
@@ -867,7 +867,7 @@ def test_config_service_rejects_unknown_graph_keys(test_project) -> None:
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="graph.*unknown keys"):
+    with pytest.raises(ValueError, match=r"graph.*unknown keys"):
         ConfigService(test_project.paths).load()
 
 
@@ -927,7 +927,7 @@ def test_config_service_rejects_invalid_html_renderer_settings(test_project) -> 
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="conversion.html.renderer"):
+    with pytest.raises(ValueError, match=r"conversion.html.renderer"):
         ConfigService(test_project.paths).load()
 
 
@@ -948,7 +948,7 @@ def test_config_service_rejects_invalid_conversion_fallbacks(test_project) -> No
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="conversion.fallbacks.pdf"):
+    with pytest.raises(ValueError, match=r"conversion.fallbacks.pdf"):
         ConfigService(test_project.paths).load()
 
 
@@ -1091,7 +1091,7 @@ def test_config_future_version_raises(test_project) -> None:
     """
     test_project.paths.config_file.write_text("version: 99\n", encoding="utf-8")
 
-    with pytest.raises(ValueError, match="Unsupported kb.config.yaml version"):
+    with pytest.raises(ValueError, match=r"Unsupported kb.config.yaml version"):
         ConfigService(test_project.paths).load()
 
 
@@ -1302,7 +1302,7 @@ def test_config_service_rejects_non_dict_conversion_block(test_project) -> None:
         "version: 4\nconversion: invalid\n",
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="conversion.*mapping"):
+    with pytest.raises(ValueError, match=r"conversion.*mapping"):
         ConfigService(test_project.paths).load()
 
 
@@ -1330,7 +1330,7 @@ def test_config_service_rejects_non_dict_mistral_ocr(test_project) -> None:
         "version: 4\nconversion:\n  mistral_ocr: invalid\n",
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="mistral_ocr.*mapping"):
+    with pytest.raises(ValueError, match=r"mistral_ocr.*mapping"):
         ConfigService(test_project.paths).load()
 
 
@@ -1362,7 +1362,7 @@ def test_config_service_rejects_empty_mistral_ocr_model(test_project) -> None:
         "    table_format: markdown\n",
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="mistral_ocr.model"):
+    with pytest.raises(ValueError, match=r"mistral_ocr.model"):
         ConfigService(test_project.paths).load()
 
 
@@ -1376,7 +1376,7 @@ def test_config_service_rejects_non_dict_html_block(test_project) -> None:
         "version: 4\nconversion:\n  html: invalid\n",
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="html.*mapping"):
+    with pytest.raises(ValueError, match=r"html.*mapping"):
         ConfigService(test_project.paths).load()
 
 
@@ -1391,7 +1391,7 @@ def test_config_service_rejects_unknown_html_keys(test_project) -> None:
         "    renderer: wkhtmltopdf\n    extra: true\n",
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="html.*unknown keys"):
+    with pytest.raises(ValueError, match=r"html.*unknown keys"):
         ConfigService(test_project.paths).load()
 
 
@@ -1420,7 +1420,7 @@ def test_config_service_rejects_non_dict_fallbacks(test_project) -> None:
         "version: 4\nconversion:\n  fallbacks: invalid\n",
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="fallbacks.*mapping"):
+    with pytest.raises(ValueError, match=r"fallbacks.*mapping"):
         ConfigService(test_project.paths).load()
 
 
@@ -1436,5 +1436,5 @@ def test_config_service_rejects_unknown_fallback_keys(test_project) -> None:
         "    pptx: markitdown\n    html: markitdown\n    extra: foo\n",
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="fallbacks.*unknown keys"):
+    with pytest.raises(ValueError, match=r"fallbacks.*unknown keys"):
         ConfigService(test_project.paths).load()
