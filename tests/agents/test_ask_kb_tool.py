@@ -98,9 +98,7 @@ def test_run_ask_kb_catches_unexpected_exceptions(runtime) -> None:
     assert isinstance(result, AskKbOutput)
     assert result.answer == ""
     assert result.claim_support == "no-answer"
-    assert any(
-        "FileNotFoundError" in warning for warning in result.staleness_warnings
-    )
+    assert any("FileNotFoundError" in warning for warning in result.staleness_warnings)
     last_trace = runtime.tool_results[-1]
     assert last_trace.tool_name == "ask_kb"
     assert last_trace.ok is False
