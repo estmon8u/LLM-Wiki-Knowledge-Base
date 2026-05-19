@@ -736,7 +736,7 @@ def test_pdf_document_converter_wraps_docling_errors(tmp_path: Path) -> None:
 
     with pytest.raises(
         ValueError,
-        match="Docling could not convert sample.pdf: broken pdf",
+        match=r"Docling could not convert sample.pdf: broken pdf",
     ):
         DoclingPdfConverter(BrokenDoclingConverter()).convert_local(source_path)
 
@@ -774,7 +774,7 @@ def test_pdf_document_converter_rejects_partial_success(tmp_path: Path) -> None:
 
     with pytest.raises(
         ValueError,
-        match="Docling could not convert sample.pdf cleanly: status=partial_success; errors=page 2 failed",
+        match=r"Docling could not convert sample.pdf cleanly: status=partial_success; errors=page 2 failed",
     ):
         DoclingPdfConverter(PartialDoclingConverter()).convert_local(source_path)
 
@@ -863,7 +863,7 @@ def test_normalization_service_wraps_markitdown_exception(tmp_path: Path) -> Non
 
     with pytest.raises(
         ValueError,
-        match="MarkItDown could not convert sample.csv: broken csv",
+        match=r"MarkItDown could not convert sample.csv: broken csv",
     ):
         NormalizationService(converter=BrokenMarkItDownConverter()).normalize_path(
             source_path
@@ -901,7 +901,7 @@ def test_normalization_service_wraps_unexpected_markitdown_exception(
 
     with pytest.raises(
         ValueError,
-        match="MarkItDown could not convert sample.csv: unexpected csv failure",
+        match=r"MarkItDown could not convert sample.csv: unexpected csv failure",
     ):
         NormalizationService(converter=BrokenMarkItDownConverter()).normalize_path(
             source_path
@@ -964,7 +964,7 @@ def test_normalization_service_html_without_markitdown_fallback_raises(
     source_path = tmp_path / "sample.html"
     source_path.write_text("<p>ignored</p>", encoding="utf-8")
 
-    with pytest.raises(ValueError, match="HTML conversion failed for sample.html"):
+    with pytest.raises(ValueError, match=r"HTML conversion failed for sample.html"):
         NormalizationService(
             config={"conversion": {"fallbacks": {"html": "none"}}},
             mistral_ocr_converter=FakeMistralConverter(
@@ -985,7 +985,7 @@ def test_normalization_service_pdf_without_supported_fallback_raises(
     source_path = tmp_path / "sample.pdf"
     source_path.write_bytes(b"%PDF-1.4\nfake\n")
 
-    with pytest.raises(ValueError, match="Mistral OCR could not convert sample.pdf"):
+    with pytest.raises(ValueError, match=r"Mistral OCR could not convert sample.pdf"):
         NormalizationService(
             config={"conversion": {"fallbacks": {"pdf": "none"}}},
             mistral_ocr_converter=FakeMistralConverter(
@@ -1007,7 +1007,7 @@ def test_normalization_service_fallback_failure_surfaces_both_errors(
     markitdown = FakeMarkItDownConverter("tiny", title="tiny")
 
     with pytest.raises(
-        ValueError, match="All conversion routes failed for sample.html"
+        ValueError, match=r"All conversion routes failed for sample.html"
     ):
         NormalizationService(
             mistral_ocr_converter=FakeMistralConverter(
@@ -1037,7 +1037,7 @@ def test_validate_conversion_output_rejects_truncated_multi_page_text() -> None:
     # The implausibly-short check fires first with the same gate, so match either.
     truncated = "This is a real sentence with enough words. " * 4
 
-    with pytest.raises(ValueError, match="implausibly short|appears truncated"):
+    with pytest.raises(ValueError, match=r"implausibly short|appears truncated"):
         _validate_conversion_output(
             truncated,
             page_count=10,
@@ -1313,7 +1313,7 @@ def test_wkhtmltopdf_renderer_wraps_render_failures(
         lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("render failed")),
     )
 
-    with pytest.raises(ValueError, match="wkhtmltopdf could not render sample.html"):
+    with pytest.raises(ValueError, match=r"wkhtmltopdf could not render sample.html"):
         renderer.render_file(source_path)
 
 
