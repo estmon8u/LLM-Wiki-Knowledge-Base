@@ -170,6 +170,15 @@ def build_agent_tools(
     ``.context`` is an :class:`AgentRuntimeContext`. The first parameter must
     be annotated as ``RunContextWrapper`` so the SDK strips it from the
     generated JSON schema.
+
+    The wrappers are intentionally **synchronous**: GraphRAG (via
+    ``graphrag_llm``) calls ``nest_asyncio2.apply()`` at import time, which
+    makes nested ``asyncio.run`` calls safe on the agent's main thread. The
+    indexing entrypoint also registers POSIX signal handlers, which require
+    the main thread; offloading to ``asyncio.to_thread`` would break
+    ``update_kb`` with ``signal only works in main thread of the main
+    interpreter``. The OpenAI Agents SDK happily invokes sync function tools
+    inside its async loop.
     """
     from agents import function_tool
 
