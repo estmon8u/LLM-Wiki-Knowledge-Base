@@ -83,6 +83,30 @@ def test_run_ask_kb_returns_failure_output_when_controller_raises(runtime) -> No
     assert runtime.tool_results[-1].error == "no credentials"
 
 
+def test_run_ask_kb_catches_unexpected_exceptions(runtime) -> None:
+    """Regression: unexpected errors (e.g. FileNotFoundError from a broken
+    subprocess fallback) must not propagate to the SDK as raw stack traces.
+
+    They must produce a structured AskKbOutput and a recorded tool trace.
+    """
+    runtime.services.graph_ask_controller = _FakeController(
+        error=FileNotFoundError(2, "No such file or directory", "graphrag"),
+    )
+
+    result = run_ask_kb(runtime, AskKbInput(question="x"))
+
+    assert isinstance(result, AskKbOutput)
+    assert result.answer == ""
+    assert result.claim_support == "no-answer"
+    assert any(
+        "FileNotFoundError" in warning for warning in result.staleness_warnings
+    )
+    last_trace = runtime.tool_results[-1]
+    assert last_trace.tool_name == "ask_kb"
+    assert last_trace.ok is False
+    assert "FileNotFoundError" in (last_trace.error or "")
+
+
 def test_run_ask_kb_propagates_save_flag(runtime) -> None:
     controller = _FakeController(answer=_build_answer(saved_path="wiki/analysis/x.md"))
     runtime.services.graph_ask_controller = controller  # type: ignore[assignment]

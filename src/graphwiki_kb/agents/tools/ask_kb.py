@@ -28,7 +28,14 @@ def run_ask_kb(
     runtime: AgentRuntimeContext,
     payload: AskKbInput,
 ) -> AskKbOutput:
-    """Execute ask_kb against the GraphAskControllerService."""
+    """Execute ask_kb against the GraphAskControllerService.
+
+    Returns an ``AskKbOutput`` even for unexpected failures so the agent
+    runtime always sees a structured result and records a trace entry. This
+    prevents low-level errors (subprocess fallback failures, missing
+    GraphRAG binary on PATH, etc.) from surfacing to the LLM as raw
+    ``Error: ...`` strings and from being omitted from the run trace.
+    """
     controller = runtime.services.graph_ask_controller
     try:
         answer = controller.ask(
@@ -50,6 +57,27 @@ def run_ask_kb(
             answer="",
             method=payload.method,
             staleness_warnings=[str(exc)],
+            claim_support="no-answer",
+        )
+    except Exception as exc:
+        message = f"{exc.__class__.__name__}: {exc}"
+        runtime.record_tool_result(
+            AgentToolResult(
+                tool_name=TOOL_NAME,
+                ok=False,
+                summary="ask_kb failed (unexpected error)",
+                data={"question": payload.question, "method": payload.method},
+                error=message,
+            )
+        )
+        return AskKbOutput(
+            answer="",
+            method=payload.method,
+            staleness_warnings=[
+                "ask_kb failed unexpectedly; "
+                "tell the user the KB answer service is unavailable.",
+                message,
+            ],
             claim_support="no-answer",
         )
 

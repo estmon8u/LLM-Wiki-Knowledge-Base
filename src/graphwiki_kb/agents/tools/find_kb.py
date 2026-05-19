@@ -42,20 +42,32 @@ def run_find_kb(
         return FindKbOutput(query="", results=[], graph_diagnostics=[])
 
     candidate_limit = max(payload.limit * 2, 10)
-    graph_results = services.graphrag_find.search(query, limit=candidate_limit)
-    wiki_results = services.search.search(
-        query,
-        limit=candidate_limit,
-        include_concepts=True,
-    )
+    diagnostics: list[str] = []
+    try:
+        graph_results = services.graphrag_find.search(query, limit=candidate_limit)
+    except Exception as exc:
+        diagnostics.append(f"graph search unavailable: {exc.__class__.__name__}")
+        graph_results = []
+    try:
+        wiki_results = services.search.search(
+            query,
+            limit=candidate_limit,
+            include_concepts=True,
+        )
+    except Exception as exc:
+        diagnostics.append(f"wiki search unavailable: {exc.__class__.__name__}")
+        wiki_results = []
     merged = _merge_results(graph_results, wiki_results, limit=payload.limit)
 
-    diagnostics: list[str] = []
-    graph_status = services.graphrag_status.status()
-    if not graph_status.entities_present:
-        diagnostics.append(
-            "GraphRAG entity artifacts are missing; run `kb update` for full search."
-        )
+    try:
+        graph_status = services.graphrag_status.status()
+        if not graph_status.entities_present:
+            diagnostics.append(
+                "GraphRAG entity artifacts are missing; "
+                "run `kb update` for full search."
+            )
+    except Exception:
+        pass
 
     runtime.record_tool_result(
         AgentToolResult(

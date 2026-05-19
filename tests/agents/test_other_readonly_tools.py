@@ -54,6 +54,26 @@ def test_run_find_kb_merges_graph_and_wiki(runtime) -> None:
     assert runtime.tool_results[-1].tool_name == "find_kb"
 
 
+def test_run_find_kb_survives_backend_exceptions(runtime) -> None:
+    """Regression: a crashing graph backend must not bubble up to the SDK."""
+
+    class _BadGraphFind:
+        def search(self, *args, **kwargs):
+            raise RuntimeError("parquet read failed")
+
+    class _OkSearch:
+        def search(self, query, *, limit, include_concepts):
+            return []
+
+    runtime.services.graphrag_find = _BadGraphFind()
+    runtime.services.search = _OkSearch()
+
+    out = run_find_kb(runtime, FindKbInput(query="x", limit=3))
+
+    assert out.results == []
+    assert any("graph search unavailable" in d for d in out.graph_diagnostics)
+
+
 def test_run_find_kb_rejects_empty_query(runtime) -> None:
     out = run_find_kb(runtime, FindKbInput(query="   "))
     assert out.results == []

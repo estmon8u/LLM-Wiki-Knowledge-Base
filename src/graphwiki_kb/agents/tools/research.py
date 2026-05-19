@@ -34,7 +34,19 @@ def run_research(
             "research tool invoked but research_service is not wired. "
             "Make sure the agent runtime was built with build_kb_agent_runtime()."
         )
-    result = service.research(payload)
+    try:
+        result = service.research(payload)
+    except Exception as exc:
+        runtime.record_tool_result(
+            AgentToolResult(
+                tool_name=TOOL_NAME,
+                ok=False,
+                summary="research failed (unexpected error)",
+                data={"question": payload.question, "use_web": payload.use_web},
+                error=f"{exc.__class__.__name__}: {exc}",
+            )
+        )
+        raise
     runtime.record_tool_result(
         AgentToolResult(
             tool_name=TOOL_NAME,
