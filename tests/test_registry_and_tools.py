@@ -253,6 +253,7 @@ def test_command_registry_resolves_aliases_and_lists_names() -> None:
     assert "review" in list_command_names()
     assert "export" in list_command_names()
     assert "lint" in list_command_names()
+    assert "agent" in list_command_names()
 
 
 def test_configure_output_streams_uses_replacement_errors(monkeypatch) -> None:
@@ -304,6 +305,7 @@ def test_command_registry_returns_click_commands_and_specs(test_project) -> None
     "command_name",
     [
         "add",
+        "agent",
         "ask",
         "config",
         "doctor",

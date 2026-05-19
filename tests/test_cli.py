@@ -185,6 +185,7 @@ def test_help_lists_core_commands() -> None:
     assert result.exit_code == 0
     for command_name in (
         "add",
+        "agent",
         "ask",
         "doctor",
         "export",

@@ -153,6 +153,25 @@ DEFAULT_CONFIG: dict[str, Any] = {
         },
     },
     "extensions": {},
+    "agent": {
+        "enabled": True,
+        "model": "gpt-5.4-nano",
+        "max_turns": 8,
+        "require_approval_for_writes": True,
+        "save_runs": True,
+        "trace": True,
+        "session_backend": "sqlite",
+    },
+    "research": {
+        "web_enabled": True,
+        "web_model": "gpt-5.4-nano",
+        "search_context_size": "medium",
+        "max_recommendations": 5,
+        "max_web_sources": 12,
+        "require_approval_for_ingest": True,
+        "default_domains_allowlist": [],
+        "default_domains_blocklist": ["reddit.com", "quora.com"],
+    },
 }
 
 
@@ -781,6 +800,31 @@ class _ConversionConfig(_StrictConfigModel):
     fallbacks: _FallbacksConfig
 
 
+class _AgentConfig(_StrictConfigModel):
+    """Natural-language kb agent settings."""
+
+    enabled: StrictBool = True
+    model: StrictStr
+    max_turns: StrictInt = Field(ge=1, le=50)
+    require_approval_for_writes: StrictBool = True
+    save_runs: StrictBool = True
+    trace: StrictBool = True
+    session_backend: Literal["sqlite", "none"] = "sqlite"
+
+
+class _ResearchConfig(_StrictConfigModel):
+    """Web-backed research settings for kb agent."""
+
+    web_enabled: StrictBool = True
+    web_model: StrictStr
+    search_context_size: Literal["low", "medium", "high"] = "medium"
+    max_recommendations: StrictInt = Field(ge=1, le=25)
+    max_web_sources: StrictInt = Field(ge=1, le=50)
+    require_approval_for_ingest: StrictBool = True
+    default_domains_allowlist: list[StrictStr] = Field(default_factory=list)
+    default_domains_blocklist: list[StrictStr] = Field(default_factory=list)
+
+
 class _KbConfigModel(BaseModel):
     """Top-level config schema with strict nested sections."""
 
@@ -796,6 +840,8 @@ class _KbConfigModel(BaseModel):
     graph: _GraphConfig
     providers: _ProvidersConfig
     conversion: _ConversionConfig
+    agent: _AgentConfig
+    research: _ResearchConfig
     extensions: dict[str, Any] = Field(default_factory=dict)
 
 
