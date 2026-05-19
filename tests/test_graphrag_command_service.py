@@ -362,7 +362,7 @@ def test_api_backend_failure_without_output_uses_generic_message(test_project) -
         api_backend=_FakeApiBackend(returncode=2, stderr=""),
     )
 
-    with pytest.raises(GraphRAGCommandError, match="^GraphRAG command failed$"):
+    with pytest.raises(GraphRAGCommandError, match=r"^GraphRAG command failed$"):
         service.index(
             method="fast",
             dry_run=False,
@@ -645,7 +645,7 @@ def test_runtime_validation_rejects_unsupported_versions(monkeypatch) -> None:
 def test_runtime_validation_rejects_python_313(monkeypatch) -> None:
     monkeypatch.setattr(runtime_module.sys, "version_info", (3, 13, 0))
 
-    with pytest.raises(GraphRAGCompatibilityError, match="Python 3.10-3.12"):
+    with pytest.raises(GraphRAGCompatibilityError, match=r"Python 3.10-3.12"):
         runtime_module.validate_graphrag_runtime()
 
 
