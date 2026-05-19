@@ -757,6 +757,54 @@ def test_run_query_entrypoint_preserves_zero_community_level(
     assert "dynamic_community_selection" not in calls
 
 
+def test_run_query_entrypoint_defaults_response_type_for_basic(
+    monkeypatch,
+    test_project,
+) -> None:
+    """Regression: basic search now also requires response_type by default.
+
+    The bug: ``_run_query_entrypoint`` only filled in
+    ``DEFAULT_QUERY_RESPONSE_TYPE`` for global/local/drift, so a
+    ``method="basic"`` call without an explicit response_type went into the
+    entrypoint contract check, raised ``GraphRAGCompatibilityError``, and
+    fell back to the ``graphrag`` subprocess (which fails when the binary
+    is not on PATH, e.g. in a Cloud Agent VM).
+    """
+    calls = {}
+    graph_module = types.ModuleType("graphrag")
+    cli_module = types.ModuleType("graphrag.cli")
+    query_module = types.ModuleType("graphrag.cli.query")
+
+    def fake_search(**kwargs):
+        calls.update(kwargs)
+        return "answer"
+
+    query_module.run_basic_search = fake_search
+    query_module.run_drift_search = fake_search
+    query_module.run_global_search = fake_search
+    query_module.run_local_search = fake_search
+    cli_module.query = query_module
+    graph_module.cli = cli_module
+    monkeypatch.setitem(sys.modules, "graphrag", graph_module)
+    monkeypatch.setitem(sys.modules, "graphrag.cli", cli_module)
+    monkeypatch.setitem(sys.modules, "graphrag.cli.query", query_module)
+
+    result = command_module._run_query_entrypoint(
+        workspace_dir=test_project.paths.graph_dir / "graphrag",
+        data_dir=test_project.paths.graph_dir / "graphrag" / "output",
+        method="basic",
+        community_level=None,
+        dynamic_community_selection=None,
+        response_type=None,
+        streaming=False,
+        question="What is RAG?",
+        verbose=False,
+    )
+
+    assert result == "answer"
+    assert calls["response_type"] == command_module.DEFAULT_QUERY_RESPONSE_TYPE
+
+
 def test_run_query_entrypoint_passes_dynamic_selection_when_explicit(
     monkeypatch,
     test_project,

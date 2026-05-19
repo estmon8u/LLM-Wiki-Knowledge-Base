@@ -638,7 +638,10 @@ def _run_query_entrypoint(
         kwargs["dynamic_community_selection"] = dynamic_community_selection
     if response_type is not None:
         kwargs["response_type"] = response_type
-    elif method in {"global", "local", "drift"}:
+    elif method in {"global", "local", "drift", "basic"}:
+        # Every installed GraphRAG query entrypoint, including `basic`, currently
+        # requires `response_type`. Provide our default whenever the caller did
+        # not supply one so the entrypoint contract check stays happy.
         kwargs["response_type"] = DEFAULT_QUERY_RESPONSE_TYPE
     if streaming is not None:
         kwargs["streaming"] = streaming
