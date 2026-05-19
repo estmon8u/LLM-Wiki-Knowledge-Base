@@ -19,6 +19,7 @@ from graphwiki_kb.models.command_models import CommandContext, CommandSpec
 # ---------------------------------------------------------------------------
 FLAT_COMMAND_MODULES = {
     "add": "graphwiki_kb.commands.add",
+    "agent": "graphwiki_kb.commands.agent",
     "ask": "graphwiki_kb.commands.ask",
     "config": "graphwiki_kb.commands.config_cmd",
     "doctor": "graphwiki_kb.commands.doctor",

@@ -294,6 +294,7 @@ The `kb graph` command group has been removed. GraphRAG setup, input sync, index
 | `kb update --no-graph` | Updates the wiki and legacy index without syncing or indexing GraphRAG. |
 | `kb status` / `kb status --json` / `kb status --strict` | Includes GraphRAG workspace, input, active output directory, output-table, vector-store, freshness, last-index-run, row-count, strict-readiness, and next-action fields. |
 | `kb ask --method auto|basic|local|global|drift` | Queries GraphRAG through the default controller after method-specific readiness checks. |
+| `kb agent "..."` | Natural-language KB control plane backed by the OpenAI Agents SDK. Routes requests to `ask_kb`, `find_kb`, `status`, `lint`, `review`, `research`, `ingest_recommendation`, and `update_kb` tools. Read-only by default; write tools require `--yes` or an interactive approval prompt. Web research uses the OpenAI Responses `web_search` tool and produces durable, numbered source recommendations under `graph/runs/agent/` without ingesting them. Install with `poetry install -E agent`. |
 | `kb export` | Exports the vault and refreshes `wiki/graph/` when GraphRAG output exists. |
 
 GraphRAG indexing uses the same decision table that powered the former graph sync wrapper:
