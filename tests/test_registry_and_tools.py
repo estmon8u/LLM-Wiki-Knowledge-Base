@@ -437,12 +437,21 @@ def test_echo_section_status_and_bullet_helpers(capsys) -> None:
     assert "item" in output
 
 
-def test_progress_report_hidden_mode_prints_preamble(capsys) -> None:
+def test_progress_report_hidden_mode_prints_preamble(capsys, monkeypatch) -> None:
     """Verifies that progress report hidden mode prints preamble.
 
     Args:
         capsys: Capsys value used by the operation.
+        monkeypatch: Monkeypatch value used by the operation.
     """
+    from graphwiki_kb.commands import common as _common_mod
+
+    monkeypatch.setattr(_common_mod.err_console, "_force_terminal", False)
+    monkeypatch.setattr(
+        type(_common_mod.err_console),
+        "is_terminal",
+        property(lambda self: False),
+    )
     with progress_report(
         label="Compiling",
         length=2,

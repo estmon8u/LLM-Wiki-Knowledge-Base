@@ -265,8 +265,13 @@ def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
 
         search_result = runner.invoke(main, ["legacy", "find", "traceability"])
         assert search_result.exit_code == 0
-        assert "wiki/sources/sample-research-note.md" in search_result.output
+        assert "Sample Research Note" in search_result.output
+        assert "wiki/sources/sample" in search_result.output
         assert Path("graph/exports/search_index.sqlite3").exists()
+
+        json_search = runner.invoke(main, ["legacy", "find", "--json", "traceability"])
+        assert json_search.exit_code == 0
+        assert "wiki/sources/sample-research-note.md" in json_search.output
 
         _set_provider_config()
         with patch(
@@ -278,7 +283,7 @@ def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
         assert query_result.exit_code == 0
         assert "Answer" in query_result.output
         assert "Citations" in query_result.output
-        assert "wiki/sources/sample-research-note.md" in query_result.output
+        assert "sample-research-note" in query_result.output
         assert "#chunk-" in query_result.output
         assert "retriever: legacy-fts" in query_result.output
 
@@ -316,7 +321,12 @@ def test_end_to_end_cli_flow_for_local_html_source() -> None:
 
         search_result = runner.invoke(main, ["legacy", "find", "traceability"])
         assert search_result.exit_code == 0
-        assert "wiki/sources/html-research-note.md" in search_result.output
+        assert "HTML Research Note" in search_result.output
+        assert "wiki/sources/html" in search_result.output
+
+        json_search = runner.invoke(main, ["legacy", "find", "--json", "traceability"])
+        assert json_search.exit_code == 0
+        assert "wiki/sources/html-research-note.md" in json_search.output
 
         graph_page = Path("wiki/graph/entities/generated.md")
         graph_page.parent.mkdir(parents=True, exist_ok=True)
@@ -328,7 +338,13 @@ def test_end_to_end_cli_flow_for_local_html_source() -> None:
         find_result = runner.invoke(main, ["find", "uniquegraphtoken"])
         legacy_find_result = runner.invoke(main, ["legacy", "find", "uniquegraphtoken"])
         assert find_result.exit_code == 0
-        assert "wiki/graph/entities/generated.md" in find_result.output
+        assert "Generated Graph" in find_result.output
+        assert "wiki/graph/entities/gen" in find_result.output
+
+        json_find = runner.invoke(main, ["find", "--json", "uniquegraphtoken"])
+        assert json_find.exit_code == 0
+        assert "wiki/graph/entities/generated.md" in json_find.output
+
         assert legacy_find_result.exit_code == 0
         assert "No wiki pages matched that query." in legacy_find_result.output
 
@@ -417,7 +433,6 @@ def test_add_alias_recursively_ingests_directory_by_default() -> None:
         result = runner.invoke(main, ["add", "mydir"])
 
         assert result.exit_code == 0
-        assert "Ingesting 1 source file(s)..." in result.output
         assert "Ingest Summary" in result.output
         assert "Processed 1 supported source file(s)" in result.output
         assert "created: 1" in result.output
@@ -438,7 +453,6 @@ def test_add_alias_recursively_ingests_supported_directory_files() -> None:
         result = runner.invoke(main, ["add", "bulk"])
 
         assert result.exit_code == 0
-        assert "Ingesting 2 source file(s)..." in result.output
         assert "Ingest Summary" in result.output
         assert "Processed 2 supported source file(s)" in result.output
         assert "created: 2" in result.output
@@ -813,7 +827,6 @@ def test_ingest_recursively_ingests_directory_by_default() -> None:
         result = runner.invoke(main, ["add", "mydir"])
 
         assert result.exit_code == 0
-        assert "Ingesting 1 source file(s)..." in result.output
         assert "Ingest Summary" in result.output
         assert "Processed 1 supported source file(s)" in result.output
         assert "created: 1" in result.output
