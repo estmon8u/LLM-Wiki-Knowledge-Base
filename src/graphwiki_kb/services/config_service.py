@@ -152,6 +152,28 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "html": ["markitdown"],
         },
     },
+    "agent": {
+        "enabled": True,
+        "model": "gpt-5.5",
+        "max_turns": 8,
+        "require_approval_for_writes": True,
+        "save_runs": True,
+        "trace": True,
+        "session_backend": "sqlite",
+    },
+    "research": {
+        "web_enabled": True,
+        "web_model": "gpt-5.5",
+        "search_context_size": "medium",
+        "max_recommendations": 5,
+        "max_web_sources": 12,
+        "require_approval_for_ingest": True,
+        "default_domains_allowlist": [],
+        "default_domains_blocklist": [
+            "reddit.com",
+            "quora.com",
+        ],
+    },
     "extensions": {},
 }
 
@@ -796,6 +818,8 @@ class _KbConfigModel(BaseModel):
     graph: _GraphConfig
     providers: _ProvidersConfig
     conversion: _ConversionConfig
+    agent: dict[str, Any] = Field(default_factory=dict)
+    research: dict[str, Any] = Field(default_factory=dict)
     extensions: dict[str, Any] = Field(default_factory=dict)
 
 
