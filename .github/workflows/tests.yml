@@ -67,7 +67,7 @@ jobs:
           python -m venv /tmp/kb-install-test
           /tmp/kb-install-test/bin/pip install --upgrade pip
           wheel=$(ls dist/graphwiki_kb-*.whl)
-          /tmp/kb-install-test/bin/pip install "${wheel}[all]"
+          /tmp/kb-install-test/bin/pip install "${wheel}[openai]"
           /tmp/kb-install-test/bin/kb --help
           /tmp/kb-install-test/bin/kb init --help
           /tmp/kb-install-test/bin/kb update --help
