@@ -91,7 +91,7 @@ def _acquire_lock(handle) -> None:
         handle.write(b"\0")
         handle.flush()
     handle.seek(0)
-    msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+    msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)  # type: ignore[attr-defined]
 
 
 def _release_lock(handle) -> None:
@@ -105,4 +105,4 @@ def _release_lock(handle) -> None:
         fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
         return
     handle.seek(0)
-    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)  # type: ignore[attr-defined]
