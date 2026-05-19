@@ -610,7 +610,7 @@ def test_compile_with_concepts_flag_cli() -> None:
 def test_split_frontmatter_handles_invalid_yaml() -> None:
     """Verifies that split frontmatter handles invalid yaml."""
     text = "---\n: :\n  bad: [unclosed\n---\n\nBody.\n"
-    fm, body = _split_frontmatter(text)
+    fm, _ = _split_frontmatter(text)
     assert fm == {}
 
 

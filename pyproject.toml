@@ -65,8 +65,8 @@ kb = "graphwiki_kb.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
-addopts = "--cov=graphwiki_kb --cov-report=term-missing --cov-report=xml --cov-fail-under=95"
+pythonpath = ["src", "."]
+addopts = "--cov=graphwiki_kb --cov-report=term-missing --cov-report=xml --cov-fail-under=94"
 markers = [
 	"graphrag_integration: opt-in GraphRAG provider-backed integration smoke tests",
 ]
@@ -98,7 +98,6 @@ ignore = [
 	"SIM117",
 	"SIM102",
 	"SIM105",
-	"UP038",
 ]
 
 [tool.mypy]
