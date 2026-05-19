@@ -192,7 +192,10 @@ class ResearchService:
             "## KB Gaps",
             "",
         ]
-        lines.extend(f"- {gap}" for gap in kb_gaps) or lines.append("- (none)")
+        if kb_gaps:
+            lines.extend(f"- {gap}" for gap in kb_gaps)
+        else:
+            lines.append("- (none)")
         lines.extend(["", "## Web Findings", ""])
         if web_findings:
             for finding in web_findings:

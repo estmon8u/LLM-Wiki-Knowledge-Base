@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -12,9 +11,7 @@ from graphwiki_kb.agents.models import UpdateKbInput
 from graphwiki_kb.agents.tools import update as update_tool
 
 
-def test_update_kb_uses_subprocess_off_main_thread(
-    test_project, monkeypatch
-) -> None:
+def test_update_kb_uses_subprocess_off_main_thread(test_project, monkeypatch) -> None:
     runtime = AgentRuntimeContext(
         command_context=test_project.command_context,
         services=test_project.services,

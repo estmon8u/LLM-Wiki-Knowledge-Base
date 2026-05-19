@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from graphwiki_kb.agents.config_helpers import config_section
 from graphwiki_kb.agents.context import AgentRuntimeContext
 from graphwiki_kb.agents.models import AgentRunResult, AgentToolResult
 from graphwiki_kb.agents.runtime import run_agent_turn
@@ -21,7 +22,7 @@ class AgentService:
 
     def ensure_available(self) -> None:
         """Raise when agent support is disabled or not installed."""
-        agent_cfg = dict(self.config.get("agent", {}) or {})
+        agent_cfg = config_section(self.config, "agent")
         if not agent_cfg.get("enabled", True):
             raise RuntimeError(
                 "kb agent is disabled in kb.config.yaml (agent.enabled)."

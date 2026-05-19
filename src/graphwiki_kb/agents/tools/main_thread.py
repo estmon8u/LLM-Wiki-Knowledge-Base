@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
-import sys
 import threading
 from collections.abc import Callable
 from typing import TypeVar

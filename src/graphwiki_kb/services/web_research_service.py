@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal, cast
 from urllib.parse import urlparse
 
 from graphwiki_kb.agents.models import SourceRecommendation, WebFinding
@@ -50,10 +50,13 @@ def _response_to_dict(response: Any) -> dict[str, object]:
 
 
 def _collect_output_text(payload: dict[str, object]) -> str:
-    if isinstance(payload.get("output_text"), str) and payload["output_text"].strip():
-        return payload["output_text"].strip()
+    output_text = payload.get("output_text")
+    if isinstance(output_text, str) and output_text.strip():
+        return output_text.strip()
     chunks: list[str] = []
-    for item in payload.get("output", []) or []:
+    raw_output = payload.get("output")
+    output_items = raw_output if isinstance(raw_output, list) else []
+    for item in output_items:
         if not isinstance(item, dict):
             continue
         if item.get("type") == "message":
@@ -78,7 +81,9 @@ def _collect_web_sources(payload: dict[str, object]) -> list[str]:
             seen.add(normalized)
             urls.append(normalized)
 
-    for item in payload.get("output", []) or []:
+    raw_output = payload.get("output")
+    output_items = raw_output if isinstance(raw_output, list) else []
+    for item in output_items:
         if not isinstance(item, dict):
             continue
         if item.get("type") != "web_search_call":
@@ -136,7 +141,11 @@ def build_recommendations_from_urls(
     gap_text = kb_gaps[0] if kb_gaps else question
     recommendations: list[SourceRecommendation] = []
     for index, url in enumerate(urls[:max_recommendations], start=1):
-        source_type = _guess_source_type(url)
+        guessed_type = _guess_source_type(url)
+        source_type = cast(
+            Literal["paper", "docs", "article", "github", "blog", "unknown"],
+            guessed_type,
+        )
         ingestable = source_type in {
             "paper",
             "docs",
@@ -148,7 +157,7 @@ def build_recommendations_from_urls(
                 id=index,
                 title=_title_from_url(url),
                 url=url,
-                source_type=source_type,  # type: ignore[arg-type]
+                source_type=source_type,
                 retrieved_at=utc_now_iso(),
                 why_add=f"Web search surfaced this source while researching: {question}",
                 knowledge_gap=gap_text,

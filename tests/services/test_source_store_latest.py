@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from graphwiki_kb.agents.models import ResearchRunRecord, SourceRecommendation
 from graphwiki_kb.services.source_recommendation_store import SourceRecommendationStore
 

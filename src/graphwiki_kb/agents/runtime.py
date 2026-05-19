@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from graphwiki_kb.agents.config_helpers import config_section
 from graphwiki_kb.agents.context import AgentRuntimeContext
 from graphwiki_kb.agents.models import AgentRunRecord, AgentToolResult
 from graphwiki_kb.agents.prompts import KB_AGENT_INSTRUCTIONS
@@ -33,7 +34,7 @@ def _configure_tracing(enabled: bool) -> None:
 
 
 def _session_for_runtime(runtime: AgentRuntimeContext) -> Any | None:
-    agent_cfg = dict(runtime.config.get("agent", {}) or {})
+    agent_cfg = config_section(runtime.config, "agent")
     backend = str(agent_cfg.get("session_backend", "sqlite"))
     if backend != "sqlite":
         return None
@@ -53,7 +54,7 @@ def _save_local_trace(
     final_output: str,
     pending_approvals: list[dict[str, object]],
 ) -> None:
-    agent_cfg = dict(runtime.config.get("agent", {}) or {})
+    agent_cfg = config_section(runtime.config, "agent")
     if not agent_cfg.get("save_runs", True):
         return
     runs_dir = agent_runs_dir(runtime.services.project.paths)
@@ -89,7 +90,7 @@ def run_agent_turn(
     """Execute one agent turn, handling approval interruptions."""
     from agents import Runner
 
-    agent_cfg = dict(runtime.config.get("agent", {}) or {})
+    agent_cfg = config_section(runtime.config, "agent")
     model = str(agent_cfg.get("model", "gpt-5.4-nano"))
     max_turns = int(agent_cfg.get("max_turns", 8))
     _configure_tracing(bool(agent_cfg.get("trace", True)))

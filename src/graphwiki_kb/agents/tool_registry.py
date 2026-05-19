@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from graphwiki_kb.agents.config_helpers import config_section
 from graphwiki_kb.agents.context import AgentRuntimeContext
 from graphwiki_kb.agents.models import (
     AskKbInput,
@@ -40,7 +41,7 @@ def _needs_write_approval(runtime: AgentRuntimeContext, tool_name: str) -> bool:
         return False
     if runtime.auto_approve:
         return False
-    agent_cfg = dict(runtime.config.get("agent", {}) or {})
+    agent_cfg = config_section(runtime.config, "agent")
     return bool(agent_cfg.get("require_approval_for_writes", True))
 
 
@@ -60,11 +61,13 @@ def build_tools(runtime: AgentRuntimeContext) -> list[Any]:
         show_source_trace: bool = False,
     ) -> str:
         """Answer a question from the local GraphRAG knowledge base."""
-        params = AskKbInput(
-            question=question,
-            method=method,  # type: ignore[arg-type]
-            save=save,
-            show_source_trace=show_source_trace,
+        params = AskKbInput.model_validate(
+            {
+                "question": question,
+                "method": method,
+                "save": save,
+                "show_source_trace": show_source_trace,
+            }
         )
         return run_ask_kb(runtime, params)
 
@@ -97,12 +100,14 @@ def build_tools(runtime: AgentRuntimeContext) -> list[Any]:
         max_recommendations: int = 5,
     ) -> str:
         """Run NEW research (local KB + optional web). Not for listing prior recommendations."""
-        params = ResearchInput(
-            question=question,
-            use_web=use_web,
-            recommend_sources=recommend_sources,
-            search_context_size=search_context_size,  # type: ignore[arg-type]
-            max_recommendations=max_recommendations,
+        params = ResearchInput.model_validate(
+            {
+                "question": question,
+                "use_web": use_web,
+                "recommend_sources": recommend_sources,
+                "search_context_size": search_context_size,
+                "max_recommendations": max_recommendations,
+            }
         )
         return run_research(runtime, params)
 
@@ -151,10 +156,12 @@ def build_tools(runtime: AgentRuntimeContext) -> list[Any]:
             graph_only: bool = False,
         ) -> str:
             """Update the wiki and GraphRAG index."""
-            params = UpdateKbInput(
-                graph_method=graph_method,  # type: ignore[arg-type]
-                no_graph=no_graph,
-                graph_only=graph_only,
+            params = UpdateKbInput.model_validate(
+                {
+                    "graph_method": graph_method,
+                    "no_graph": no_graph,
+                    "graph_only": graph_only,
+                }
             )
             return run_update_kb(runtime, params)
 
@@ -167,10 +174,12 @@ def build_tools(runtime: AgentRuntimeContext) -> list[Any]:
             graph_only: bool = False,
         ) -> str:
             """Update the wiki and GraphRAG index."""
-            params = UpdateKbInput(
-                graph_method=graph_method,  # type: ignore[arg-type]
-                no_graph=no_graph,
-                graph_only=graph_only,
+            params = UpdateKbInput.model_validate(
+                {
+                    "graph_method": graph_method,
+                    "no_graph": no_graph,
+                    "graph_only": graph_only,
+                }
             )
             return run_update_kb(runtime, params)
 

@@ -8,7 +8,7 @@ import sys
 from graphwiki_kb.agents.context import AgentRuntimeContext
 from graphwiki_kb.agents.models import UpdateKbInput, UpdateKbOutput
 from graphwiki_kb.agents.tools._helpers import record_tool, tool_json
-from graphwiki_kb.agents.tools.main_thread import is_main_thread, run_on_main_thread
+from graphwiki_kb.agents.tools.main_thread import run_on_main_thread
 from graphwiki_kb.services.update_service import UpdateOptions, UpdateService
 
 
@@ -94,7 +94,7 @@ def _run_update_subprocess(
     params: UpdateKbInput,
 ) -> str:
     """Run `kb update` in a subprocess (GraphRAG uses signals; agent tools run in threads)."""
-    command = _kb_cli_base(runtime) + ["update"]
+    command = [*_kb_cli_base(runtime), "update"]
     if params.graph_only:
         command.append("--graph-only")
     if params.no_graph:
