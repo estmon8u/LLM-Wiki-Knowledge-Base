@@ -17,6 +17,7 @@ def test_tool_names_includes_core_tools(test_project) -> None:
     assert "ask_kb" in names
     assert "research" in names
     assert "update_kb" in names
+    assert "list_recommendations" in names
 
 
 def test_build_tools_requires_agents_sdk(test_project) -> None:

@@ -20,7 +20,7 @@ def run_ingest_recommendation(
     params: IngestRecommendationInput,
 ) -> str:
     """Stage and ingest selected research recommendations."""
-    store = SourceRecommendationStore(runtime.services.ingest.paths)
+    store = SourceRecommendationStore(runtime.services.project.paths)
     acquisition = WebSourceAcquisitionService(runtime.services.ingest.paths)
     record, recommendations = store.resolve_recommendations(
         params.recommendation_ids,

@@ -46,10 +46,11 @@ class SourceRecommendationStore:
         self.ensure_dir()
         path = _run_path(self.runs_dir, record.run_id)
         atomic_write_text(path, record.model_dump_json(indent=2))
-        atomic_write_text(
-            _latest_pointer_path(self.runs_dir),
-            json.dumps({"run_id": record.run_id, "path": path.name}, indent=2),
-        )
+        if record.recommendations:
+            atomic_write_text(
+                _latest_pointer_path(self.runs_dir),
+                json.dumps({"run_id": record.run_id, "path": path.name}, indent=2),
+            )
         return path
 
     def load_run(self, run_id: str | None = None) -> ResearchRunRecord | None:
@@ -80,6 +81,13 @@ class SourceRecommendationStore:
         records = self.list_runs()
         return records[0].run_id if records else None
 
+    def latest_run_with_recommendations(self) -> ResearchRunRecord | None:
+        """Return the newest research run that has at least one recommendation."""
+        for record in self.list_runs():
+            if record.recommendations:
+                return record
+        return None
+
     def list_runs(self) -> list[ResearchRunRecord]:
         """Return research runs sorted newest first."""
         self.ensure_dir()
@@ -106,6 +114,10 @@ class SourceRecommendationStore:
     ) -> tuple[ResearchRunRecord, list[SourceRecommendation]]:
         """Resolve recommendation ids from a stored research run."""
         record = self.load_run(run_id)
+        if record is None:
+            raise ValueError("No research run found. Run research first with kb agent.")
+        if not record.recommendations and run_id is None:
+            record = self.latest_run_with_recommendations()
         if record is None:
             raise ValueError("No research run found. Run research first with kb agent.")
         by_id = {item.id: item for item in record.recommendations}

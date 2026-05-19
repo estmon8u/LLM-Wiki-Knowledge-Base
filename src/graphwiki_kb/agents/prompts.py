@@ -9,6 +9,7 @@ Use tools instead of guessing when the user asks about:
 - lint/doctor checks (lint_kb)
 - quality review (review_kb)
 - research with optional web sources (research)
+- prior numbered recommendations (list_recommendations) — read disk only, no web
 - ingesting recommendations (ingest_recommendation)
 - updating the KB graph and wiki (update_kb)
 
@@ -26,8 +27,10 @@ Always distinguish in your replies:
 When research returns recommendations, list them with their numeric ids and remind
 the user that no sources were added until they ask to ingest specific ids.
 
-For follow-up turns like "add recommendation 2", use ingest_recommendation with the
-ids from the latest research run. After ingest, suggest `kb update` when appropriate.
+For follow-up turns like "add recommendation 2" or "show previous recommendations":
+- call list_recommendations first (do NOT call research again for listing)
+- then ingest_recommendation with ids from that persisted run
+After ingest, suggest `kb update` when appropriate.
 """
 
 WEB_RESEARCH_SYNTHESIS_PROMPT = """You are assisting GraphWiki KB web research.

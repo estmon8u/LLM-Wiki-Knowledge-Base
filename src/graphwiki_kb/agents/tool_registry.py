@@ -16,6 +16,7 @@ from graphwiki_kb.agents.tools.ask_kb import run_ask_kb
 from graphwiki_kb.agents.tools.find_kb import run_find_kb
 from graphwiki_kb.agents.tools.ingest_recommendation import run_ingest_recommendation
 from graphwiki_kb.agents.tools.lint import run_lint_kb
+from graphwiki_kb.agents.tools.list_recommendations import run_list_recommendations
 from graphwiki_kb.agents.tools.research import run_research
 from graphwiki_kb.agents.tools.review import run_review_kb
 from graphwiki_kb.agents.tools.status import run_status_kb
@@ -95,7 +96,7 @@ def build_tools(runtime: AgentRuntimeContext) -> list[Any]:
         search_context_size: str = "medium",
         max_recommendations: int = 5,
     ) -> str:
-        """Research a topic using local KB plus optional web search."""
+        """Run NEW research (local KB + optional web). Not for listing prior recommendations."""
         params = ResearchInput(
             question=question,
             use_web=use_web,
@@ -104,6 +105,11 @@ def build_tools(runtime: AgentRuntimeContext) -> list[Any]:
             max_recommendations=max_recommendations,
         )
         return run_research(runtime, params)
+
+    @function_tool(name_override="list_recommendations")
+    def list_recommendations(run_id: str | None = None) -> str:
+        """List saved numbered recommendations from disk. Use for 'previous recommendations' or before ingest."""
+        return run_list_recommendations(runtime, run_id=run_id)
 
     ingest_needs = _needs_write_approval(runtime, "ingest_recommendation")
     update_needs = _needs_write_approval(runtime, "update_kb")
@@ -115,7 +121,7 @@ def build_tools(runtime: AgentRuntimeContext) -> list[Any]:
             recommendation_ids: list[int],
             run_id: str | None = None,
         ) -> str:
-            """Ingest numbered sources from a prior research run."""
+            """Ingest numbered sources from a saved research run. Use list_recommendations if ids are unclear."""
             params = IngestRecommendationInput(
                 recommendation_ids=recommendation_ids,
                 run_id=run_id,
@@ -129,7 +135,7 @@ def build_tools(runtime: AgentRuntimeContext) -> list[Any]:
             recommendation_ids: list[int],
             run_id: str | None = None,
         ) -> str:
-            """Ingest numbered sources from a prior research run."""
+            """Ingest numbered sources from a saved research run. Use list_recommendations if ids are unclear."""
             params = IngestRecommendationInput(
                 recommendation_ids=recommendation_ids,
                 run_id=run_id,
@@ -175,6 +181,7 @@ def build_tools(runtime: AgentRuntimeContext) -> list[Any]:
         lint_kb,
         review_kb,
         research,
+        list_recommendations,
         ingest_recommendation,
         update_kb,
     ]
@@ -189,6 +196,7 @@ def tool_names(runtime: AgentRuntimeContext) -> list[str]:
         "lint_kb",
         "review_kb",
         "research",
+        "list_recommendations",
         "ingest_recommendation",
         "update_kb",
     ]

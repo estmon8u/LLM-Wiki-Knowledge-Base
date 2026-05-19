@@ -178,6 +178,15 @@ class ResearchRunRecord(BaseModel):
     saved_report_path: str | None = None
 
 
+class ListRecommendationsOutput(BaseModel):
+    """Read-only listing of persisted source recommendations."""
+
+    run_id: str | None = None
+    question: str | None = None
+    recommendations: list[SourceRecommendation] = Field(default_factory=list)
+    message: str = ""
+
+
 class IngestRecommendationInput(BaseModel):
     """Input for ingesting numbered recommendations."""
 
