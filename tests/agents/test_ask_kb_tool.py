@@ -46,10 +46,11 @@ class _FakeController:
 
 
 def test_run_ask_kb_projects_graph_answer(runtime) -> None:
+    """Explicit ``engine='graphrag'`` projects the GraphRAG controller answer."""
     controller = _FakeController(answer=_build_answer())
     runtime.services.graph_ask_controller = controller  # type: ignore[assignment]
 
-    result = run_ask_kb(runtime, AskKbInput(question="What is RAG?"))
+    result = run_ask_kb(runtime, AskKbInput(question="What is RAG?", engine="graphrag"))
 
     assert isinstance(result, AskKbOutput)
     assert result.answer.startswith("hello world")
@@ -74,7 +75,7 @@ def test_run_ask_kb_returns_failure_output_when_controller_raises(runtime) -> No
         error=GraphAskControllerError("no credentials"),
     )
 
-    result = run_ask_kb(runtime, AskKbInput(question="x"))
+    result = run_ask_kb(runtime, AskKbInput(question="x", engine="graphrag"))
 
     assert result.answer == ""
     assert result.claim_support == "no-answer"
@@ -84,16 +85,12 @@ def test_run_ask_kb_returns_failure_output_when_controller_raises(runtime) -> No
 
 
 def test_run_ask_kb_catches_unexpected_exceptions(runtime) -> None:
-    """Regression: unexpected errors (e.g. FileNotFoundError from a broken
-    subprocess fallback) must not propagate to the SDK as raw stack traces.
-
-    They must produce a structured AskKbOutput and a recorded tool trace.
-    """
+    """Regression: unexpected errors must not propagate as raw stack traces."""
     runtime.services.graph_ask_controller = _FakeController(
         error=FileNotFoundError(2, "No such file or directory", "graphrag"),
     )
 
-    result = run_ask_kb(runtime, AskKbInput(question="x"))
+    result = run_ask_kb(runtime, AskKbInput(question="x", engine="graphrag"))
 
     assert isinstance(result, AskKbOutput)
     assert result.answer == ""
@@ -111,9 +108,17 @@ def test_run_ask_kb_propagates_save_flag(runtime) -> None:
 
     result = run_ask_kb(
         runtime,
-        AskKbInput(question="q", save=True, method="global"),
+        AskKbInput(question="q", engine="graphrag", save=True, method="global"),
     )
 
     assert controller.calls[0]["save"] is True
     assert controller.calls[0]["method"] == "global"
     assert result.saved_path == "wiki/analysis/x.md"
+
+
+def test_run_ask_kb_defaults_to_wikigraph(runtime) -> None:
+    """The agent now defaults to ``engine='wikigraph'``."""
+    from graphwiki_kb.agents.models import AskKbInput as _AskKbInput
+
+    payload = _AskKbInput(question="anything")
+    assert payload.engine == "wikigraph"

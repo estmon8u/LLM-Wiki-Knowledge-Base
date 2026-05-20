@@ -26,7 +26,6 @@ FLAT_COMMAND_MODULES = {
     "export": "graphwiki_kb.commands.export_cmd",
     "find": "graphwiki_kb.commands.find",
     "init": "graphwiki_kb.commands.init",
-    "legacy": "graphwiki_kb.commands.legacy",
     "lint": "graphwiki_kb.commands.lint",
     "review": "graphwiki_kb.commands.review",
     "sources": "graphwiki_kb.commands.sources",

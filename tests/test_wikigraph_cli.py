@@ -518,6 +518,169 @@ def test_kb_update_artifact_types_flag(runner: CliRunner, test_project) -> None:
     assert "chunks card(s)" not in result.output
 
 
+def test_kb_ask_default_engine_is_wikigraph(runner: CliRunner, test_project) -> None:
+    """``kb ask`` (no flag) now routes through WikiGraphRAG."""
+    _seed_project(test_project)
+    test_project.services.wikigraph_index.build()
+    test_project.services.wikigraph_query.provider = None
+
+    result = runner.invoke(
+        cli_main,
+        [
+            "--project-root",
+            str(test_project.paths.root),
+            "ask",
+            "How does REALM differ from RAG?",
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0, result.output + result.stderr
+    payload = json.loads(result.output)
+    assert payload["engine"] == "wikigraph"
+
+
+def test_kb_ask_engine_all_runs_each_backend(runner: CliRunner, test_project) -> None:
+    """``--engine all`` runs wikigraph + graphrag + legacy and merges output."""
+    _seed_project(test_project)
+    test_project.services.wikigraph_index.build()
+    test_project.services.wikigraph_query.provider = None
+
+    # Stub the GraphRAG controller so we do not need a real workspace.
+    class _StubAnswer:
+        retriever = "graph"
+        method = "auto"
+        planner = "auto"
+        route_reason = "stub"
+        route_confidence = "low"
+        route_matched_terms = ()
+        claim_support = "graph-index-answer"
+        source_trace = {"input_path": "stub", "output_dir": "stub"}
+        staleness_warnings: list[str] = []
+        answer = "Stub GraphRAG answer."
+        saved_path = None
+        index_run_id = "stub-run"
+        graph_data_references: list[dict] = []
+
+        def to_dict(self) -> dict:
+            return {
+                "retriever": self.retriever,
+                "method": self.method,
+                "answer": self.answer,
+            }
+
+    test_project.services.graph_ask_controller.ask = lambda *a, **kw: _StubAnswer()  # type: ignore[assignment]
+
+    result = runner.invoke(
+        cli_main,
+        [
+            "--project-root",
+            str(test_project.paths.root),
+            "ask",
+            "How does REALM differ from RAG?",
+            "--engine",
+            "all",
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0, result.output + result.stderr
+    payload = json.loads(result.output)
+    assert set(payload["engines"]) == {"wikigraph", "graphrag", "legacy"}
+    assert payload["results"]["wikigraph"]["engine"] == "wikigraph"
+    assert payload["results"]["graphrag"]["engine"] == "graphrag"
+    assert payload["results"]["legacy"]["engine"] == "legacy"
+
+
+def test_kb_ask_engine_csv_runs_only_selected(runner: CliRunner, test_project) -> None:
+    """``--engine wikigraph,legacy`` runs exactly those two backends."""
+    _seed_project(test_project)
+    test_project.services.wikigraph_index.build()
+    test_project.services.wikigraph_query.provider = None
+
+    result = runner.invoke(
+        cli_main,
+        [
+            "--project-root",
+            str(test_project.paths.root),
+            "ask",
+            "How does REALM differ from RAG?",
+            "--engine",
+            "wikigraph,legacy",
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0, result.output + result.stderr
+    payload = json.loads(result.output)
+    assert payload["engines"] == ["wikigraph", "legacy"]
+
+
+def test_kb_ask_engine_unknown_value_errors(runner: CliRunner, test_project) -> None:
+    result = runner.invoke(
+        cli_main,
+        [
+            "--project-root",
+            str(test_project.paths.root),
+            "ask",
+            "anything",
+            "--engine",
+            "mystery",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "Unknown --engine" in (result.output + result.stderr)
+
+
+def test_kb_find_engine_legacy_prints_deprecation_note(
+    runner: CliRunner, test_project
+) -> None:
+    _seed_project(test_project)
+    result = runner.invoke(
+        cli_main,
+        [
+            "--project-root",
+            str(test_project.paths.root),
+            "find",
+            "--engine",
+            "legacy",
+            "REALM",
+        ],
+    )
+    assert result.exit_code == 0, result.output + result.stderr
+    assert "Deprecated" in result.output
+
+
+def test_kb_find_engine_legacy_json_carries_deprecated_flag(
+    runner: CliRunner, test_project
+) -> None:
+    _seed_project(test_project)
+    result = runner.invoke(
+        cli_main,
+        [
+            "--project-root",
+            str(test_project.paths.root),
+            "find",
+            "--engine",
+            "legacy",
+            "REALM",
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0, result.output + result.stderr
+    payload = json.loads(result.output)
+    assert payload["engine"] == "legacy"
+    assert payload["deprecated"] is True
+    assert "Deprecated" in payload["warning"]
+
+
+def test_kb_legacy_group_is_removed() -> None:
+    from graphwiki_kb.engine.command_registry import (
+        get_click_command,
+        list_command_names,
+    )
+
+    assert "legacy" not in list_command_names()
+    assert get_click_command("legacy") is None
+
+
 def test_kb_ask_engine_wikigraph_without_index_errors(
     runner: CliRunner, test_project
 ) -> None:

@@ -18,11 +18,15 @@ from graphwiki_kb.services.wikigraph_query_service import WikiGraphQueryError
 from graphwiki_kb.wikigraph.models import WikiGraphRetrievedContext
 
 SUMMARY = (
-    "Search direct GraphRAG artifacts, the maintained wiki index, and the "
-    "WikiGraphRAG backend."
+    "Search direct GraphRAG artifacts, the maintained wiki index, the "
+    "WikiGraphRAG backend, or the deprecated legacy FTS path."
 )
 
-ENGINE_CHOICES = ("auto", "graphrag", "wiki", "wikigraph", "all")
+ENGINE_CHOICES = ("auto", "graphrag", "wiki", "wikigraph", "legacy", "all")
+LEGACY_DEPRECATION_NOTE = (
+    "Deprecated: SQLite FTS5 retrieval is legacy-only. "
+    "GraphRAG and WikiGraphRAG are the active retrieval paths."
+)
 
 
 def build_spec(_: CommandContext | None = None) -> CommandSpec:
@@ -96,11 +100,16 @@ def create_command() -> click.Command:
         run_graph = engine in {"auto", "all", "graphrag"}
         run_wiki = engine in {"auto", "all", "wiki"}
         run_wikigraph = engine in {"auto", "all", "wikigraph"}
+        run_legacy = engine == "legacy"
+
+        if run_legacy and not as_json:
+            console.print(f"[yellow]{LEGACY_DEPRECATION_NOTE}[/yellow]")
 
         graph_results: list[SearchResult] = []
         wiki_results: list[SearchResult] = []
         wikigraph_results: list[SearchResult] = []
         wikigraph_contexts: list[WikiGraphRetrievedContext] = []
+        legacy_results: list[SearchResult] = []
 
         if run_graph:
             graph_results = graph_find_service.search(query, limit=candidate_limit)
@@ -121,30 +130,52 @@ def create_command() -> click.Command:
                 if engine == "wikigraph":
                     raise click.ClickException(str(exc)) from exc
                 diagnostics.append(f"WikiGraphRAG unavailable: {exc}")
+        if run_legacy:
+            legacy_results = search_service.search(
+                query,
+                limit=candidate_limit,
+                include_concepts=False,
+                include_analysis=False,
+                page_types={"source"},
+            )
+            for result in legacy_results:
+                result.retriever = "legacy-fts"
 
-        results = _merge_results(
-            graph_results, wiki_results, wikigraph_results, limit=limit
-        )
+        if run_legacy:
+            results = legacy_results[:limit]
+        else:
+            results = _merge_results(
+                graph_results, wiki_results, wikigraph_results, limit=limit
+            )
 
         if as_json:
-            emit_json(
-                {
-                    "retriever": _retriever_label(engine),
-                    "engine": engine,
-                    "query": query,
-                    "diagnostics": diagnostics,
-                    "results": [_search_result_payload(result) for result in results],
-                    "wikigraph": {
-                        "contexts": [ctx.model_dump() for ctx in wikigraph_contexts],
-                    },
-                }
-            )
+            payload: dict[str, object] = {
+                "retriever": _retriever_label(engine),
+                "engine": engine,
+                "query": query,
+                "diagnostics": diagnostics,
+                "results": [_search_result_payload(result) for result in results],
+                "wikigraph": {
+                    "contexts": [ctx.model_dump() for ctx in wikigraph_contexts],
+                },
+            }
+            if run_legacy:
+                payload["deprecated"] = True
+                payload["warning"] = LEGACY_DEPRECATION_NOTE
+            emit_json(payload)
             return
 
         for diagnostic in diagnostics:
             console.print(f"[yellow]{diagnostic}[/yellow]")
         if not results:
-            console.print("No graph artifacts or wiki pages matched that query.")
+            if engine == "legacy":
+                console.print("No wiki pages matched that query.")
+            elif engine == "wikigraph":
+                console.print("No WikiGraphRAG contexts matched that query.")
+            elif engine == "graphrag":
+                console.print("No GraphRAG artifacts matched that query.")
+            else:
+                console.print("No graph artifacts or wiki pages matched that query.")
             return
 
         table = make_table(
@@ -189,6 +220,8 @@ def _retriever_label(engine: str) -> str:
         return "graphrag-artifacts"
     if engine == "wiki":
         return "wiki-index"
+    if engine == "legacy":
+        return "legacy-fts"
     # auto/all preserves the existing JSON contract.
     return "graph-and-wiki-index"
 

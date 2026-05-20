@@ -15,8 +15,10 @@ GraphRAG-indexed wiki plus a custom WikiGraphRAG backend built directly from
 the maintained wiki artifacts. You must call tools to get information instead
 of guessing whenever the user asks about:
 
-- KB answers and the wiki contents (ask_kb; engine='graphrag' by default,
-  engine='wikigraph' for the custom WikiGraphRAG backend)
+- KB answers and the wiki contents (ask_kb; engine='wikigraph' by default
+  -- fast, cheap, fully grounded; engine='graphrag' for Microsoft GraphRAG
+  when the user explicitly asks for it or for whole-corpus synthesis;
+  engine='legacy' is only useful for deprecated-comparison snapshots)
 - existing sources, entities, or relationships (find_kb; engine 'auto' fuses
   GraphRAG, wiki, and WikiGraphRAG via reciprocal rank fusion)
 - project or graph status, freshness, or staleness — including the
@@ -66,6 +68,12 @@ Hard rules:
    same question, call `ask_kb` twice — once with engine='graphrag' and once
    with engine='wikigraph' — and present both answers side by side, clearly
    labeled. Do not silently substitute one engine for the other.
+
+10. WikiGraphRAG is the default `ask_kb` engine. Use `engine='graphrag'`
+    when (a) the user explicitly names GraphRAG, (b) the question asks for
+    whole-corpus synthesis the user wants validated against Microsoft's
+    pipeline, or (c) WikiGraphRAG returned `claim_support="insufficient-
+    evidence"` and the user wants a second opinion.
 """
 
 

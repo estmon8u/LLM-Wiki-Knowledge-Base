@@ -75,7 +75,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--include-legacy-ask",
         action="store_true",
         help=(
-            "Include deprecated provider-backed kb legacy ask rows. Requires "
+            "Include deprecated provider-backed kb ask --engine legacy rows. Requires "
             "--allow-provider-calls to execute instead of skip."
         ),
     )

@@ -214,7 +214,15 @@ def test_ask_prints_graph_answer_metadata_and_source_trace() -> None:
         ):
             result = runner.invoke(
                 main,
-                ["ask", "--show-source-trace", "--save", "What", "changed?"],
+                [
+                    "ask",
+                    "--engine",
+                    "graphrag",
+                    "--show-source-trace",
+                    "--save",
+                    "What",
+                    "changed?",
+                ],
             )
 
         assert result.exit_code == 0
@@ -237,7 +245,10 @@ def test_ask_json_outputs_graph_answer_payload() -> None:
             "graphwiki_kb.services.graph_ask_controller_service.GraphAskControllerService.ask",
             return_value=_graph_answer(),
         ):
-            result = runner.invoke(main, ["ask", "--json", "What", "changed?"])
+            result = runner.invoke(
+                main,
+                ["ask", "--engine", "graphrag", "--json", "What", "changed?"],
+            )
 
         assert result.exit_code == 0
         payload = json.loads(result.output)

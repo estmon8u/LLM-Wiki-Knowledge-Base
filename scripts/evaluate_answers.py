@@ -64,7 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--include-legacy-ask",
         action="store_true",
-        help="Include deprecated kb legacy ask rows.",
+        help="Include deprecated kb ask --engine legacy rows.",
     )
     parser.add_argument(
         "--methods",

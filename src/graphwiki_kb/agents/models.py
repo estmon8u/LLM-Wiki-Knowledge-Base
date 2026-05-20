@@ -49,11 +49,14 @@ class AskKbInput(BaseModel):
 
     question: str = Field(..., description="Natural-language KB question.")
     engine: AskKbEngine = Field(
-        "graphrag",
+        "wikigraph",
         description=(
-            "Retrieval backend. `graphrag` is the Microsoft GraphRAG controller; "
-            "`wikigraph` is the custom WikiGraphRAG backend built from the "
-            "maintained wiki artifacts."
+            "Retrieval backend. `wikigraph` (default) runs the custom "
+            "WikiGraphRAG backend built from the maintained wiki -- fast, "
+            "cheap, fully grounded, and the recommended default. `graphrag` "
+            "runs the Microsoft GraphRAG controller; choose it when the "
+            "user explicitly asks for GraphRAG or for synthesis-heavy "
+            "whole-corpus answers."
         ),
     )
     method: AskKbMethod = Field(
