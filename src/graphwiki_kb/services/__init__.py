@@ -148,7 +148,9 @@ def build_services(
         ),
         review=ReviewService(paths, provider=provider),
         wikigraph_index=(
-            wikigraph_index_service := _build_wikigraph_index_service(paths, config)
+            wikigraph_index_service := _build_wikigraph_index_service(
+                paths, config, manifest_service
+            )
         ),
         wikigraph_query=_build_wikigraph_query_service(
             paths, wikigraph_index_service, provider, config
@@ -157,11 +159,17 @@ def build_services(
     )
 
 
-def _build_wikigraph_index_service(paths: ProjectPaths, config: dict[str, Any]) -> Any:
+def _build_wikigraph_index_service(
+    paths: ProjectPaths,
+    config: dict[str, Any],
+    manifest_service: ManifestService,
+) -> Any:
     """Construct the WikiGraphRAG index service via lazy import."""
     from graphwiki_kb.services.wikigraph_index_service import WikiGraphIndexService
 
-    return WikiGraphIndexService(paths=paths, config=config)
+    return WikiGraphIndexService(
+        paths=paths, config=config, manifest_service=manifest_service
+    )
 
 
 def _build_wikigraph_query_service(

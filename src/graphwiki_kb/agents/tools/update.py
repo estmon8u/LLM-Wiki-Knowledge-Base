@@ -147,6 +147,9 @@ def _run_inprocess(runtime: AgentRuntimeContext, payload: UpdateInput) -> Update
         wikigraph_include_graphrag_export_pages=(
             payload.wikigraph_include_graphrag_export_pages
         ),
+        wikigraph_include_normalized_text_units=(
+            payload.wikigraph_include_normalized_text_units
+        ),
         export_wikigraph_artifacts=payload.export_wikigraph_artifacts,
     )
     result = service.run(options)
@@ -189,6 +192,10 @@ def _run_subprocess(runtime: AgentRuntimeContext, payload: UpdateInput) -> Updat
         command.append("--no-wikigraph")
     if payload.wikigraph_include_graphrag_export_pages:
         command.append("--wikigraph-include-graphrag-export-pages")
+    if payload.wikigraph_include_normalized_text_units is True:
+        command.append("--wikigraph-normalized-text")
+    elif payload.wikigraph_include_normalized_text_units is False:
+        command.append("--no-wikigraph-normalized-text")
     if payload.export_wikigraph_artifacts is True:
         command.append("--export-wikigraph-artifacts")
     elif payload.export_wikigraph_artifacts is False:

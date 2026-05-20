@@ -65,6 +65,21 @@ class WikiGraphStorePaths:
         return self.root / "chunks.json"
 
     @property
+    def text_units_file(self) -> Path:
+        """JSON file holding source-derived TextUnit metadata.
+
+        TextUnits are also present in ``nodes.json``; this dedicated file
+        makes inspection / evaluator slicing easier without re-filtering
+        the full node list.
+        """
+        return self.root / "text_units.json"
+
+    @property
+    def documents_file(self) -> Path:
+        """JSON file holding ``source_document`` nodes."""
+        return self.root / "documents.json"
+
+    @property
     def index_file(self) -> Path:
         """JSON file holding top-level build metadata for the index."""
         return self.root / "index.json"
@@ -98,15 +113,24 @@ class WikiGraphStore:
         chunks_payload = [
             node.model_dump() for node in index.nodes if node.kind == "chunk"
         ]
+        text_units_payload = [
+            node.model_dump() for node in index.nodes if node.kind == "text_unit"
+        ]
+        documents_payload = [
+            node.model_dump() for node in index.nodes if node.kind == "source_document"
+        ]
         index_payload = {
             "built_at": index.built_at,
             "node_count": len(index.nodes),
             "edge_count": len(index.edges),
             "chunk_count": index.chunk_count,
+            "text_unit_count": index.text_unit_count,
+            "document_count": index.document_count,
             "entity_count": index.entity_count,
             "source_count": index.source_count,
             "community_count": len(index.communities),
             "include_graphrag_export_pages": index.include_graphrag_export_pages,
+            "include_normalized_text_units": index.include_normalized_text_units,
         }
 
         atomic_write_text(
@@ -123,6 +147,14 @@ class WikiGraphStore:
             self.paths.chunks_file, json.dumps(chunks_payload, indent=2, default=str)
         )
         atomic_write_text(
+            self.paths.text_units_file,
+            json.dumps(text_units_payload, indent=2, default=str),
+        )
+        atomic_write_text(
+            self.paths.documents_file,
+            json.dumps(documents_payload, indent=2, default=str),
+        )
+        atomic_write_text(
             self.paths.index_file, json.dumps(index_payload, indent=2, default=str)
         )
 
@@ -136,6 +168,8 @@ class WikiGraphStore:
             str(self.paths.edges_file),
             str(self.paths.communities_file),
             str(self.paths.chunks_file),
+            str(self.paths.text_units_file),
+            str(self.paths.documents_file),
             str(self.paths.index_file),
             str(run_file),
             str(latest_file),
@@ -174,8 +208,13 @@ class WikiGraphStore:
             include_graphrag_export_pages=bool(
                 index_raw.get("include_graphrag_export_pages", False)
             ),
+            include_normalized_text_units=bool(
+                index_raw.get("include_normalized_text_units", False)
+            ),
             source_count=int(index_raw.get("source_count", 0)),
+            document_count=int(index_raw.get("document_count", 0)),
             chunk_count=int(index_raw.get("chunk_count", 0)),
+            text_unit_count=int(index_raw.get("text_unit_count", 0)),
             entity_count=int(index_raw.get("entity_count", 0)),
         )
 

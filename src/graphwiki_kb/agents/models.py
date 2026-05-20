@@ -144,10 +144,13 @@ class WikiGraphStatusBlock(BaseModel):
     node_count: int = 0
     edge_count: int = 0
     chunk_count: int = 0
+    text_unit_count: int = 0
+    document_count: int = 0
     entity_count: int = 0
     community_count: int = 0
     source_count: int = 0
     include_graphrag_export_pages: bool = False
+    include_normalized_text_units: bool = False
     readable: bool = True
     message: str = ""
 
@@ -362,6 +365,16 @@ class UpdateInput(BaseModel):
         description=(
             "Include wiki/graph (GraphRAG-exported) pages in the WikiGraphRAG "
             "build for the optional ablation."
+        ),
+    )
+    wikigraph_include_normalized_text_units: bool | None = Field(
+        None,
+        description=(
+            "Whether to include source-derived TextUnits (raw/normalized/*) "
+            "in the WikiGraphRAG build. When unset, "
+            "`wikigraph.include_normalized_text_units` from project config "
+            "drives the behavior (defaults to true). Setting this to false "
+            "produces the wiki-only ablation variant."
         ),
     )
     export_wikigraph_artifacts: bool | None = Field(

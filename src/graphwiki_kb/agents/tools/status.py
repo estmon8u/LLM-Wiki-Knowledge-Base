@@ -54,11 +54,16 @@ def _wikigraph_block(runtime: AgentRuntimeContext) -> WikiGraphStatusBlock | Non
         node_count=int(snapshot.get("node_count", 0) or 0),
         edge_count=int(snapshot.get("edge_count", 0) or 0),
         chunk_count=int(snapshot.get("chunk_count", 0) or 0),
+        text_unit_count=int(snapshot.get("text_unit_count", 0) or 0),
+        document_count=int(snapshot.get("document_count", 0) or 0),
         entity_count=int(snapshot.get("entity_count", 0) or 0),
         community_count=int(snapshot.get("community_count", 0) or 0),
         source_count=int(snapshot.get("source_count", 0) or 0),
         include_graphrag_export_pages=bool(
             snapshot.get("include_graphrag_export_pages", False)
+        ),
+        include_normalized_text_units=bool(
+            snapshot.get("include_normalized_text_units", False)
         ),
     )
 

@@ -288,6 +288,13 @@ def _project_wikigraph_answer(answer: WikiGraphAnswer) -> AskKbOutput:
     citation_refs = ",".join(
         ctx.citation_ref for ctx in answer.contexts if ctx.citation_ref
     )
+    kind_counts: dict[str, int] = {}
+    for ctx in answer.contexts:
+        kind_counts[ctx.node_kind] = kind_counts.get(ctx.node_kind, 0) + 1
+    kind_counts_label = (
+        ",".join(f"{kind}={count}" for kind, count in sorted(kind_counts.items()))
+        or None
+    )
     source_trace: dict[str, str | None] = {
         "engine": "wikigraph",
         "method": answer.method,
@@ -295,6 +302,7 @@ def _project_wikigraph_answer(answer: WikiGraphAnswer) -> AskKbOutput:
         "provider": str(provider.get("provider", "")) or None,
         "model": str(provider.get("model", "")) or None,
         "citation_refs": citation_refs or None,
+        "context_kind_counts": kind_counts_label,
     }
     return AskKbOutput(
         answer=answer.answer or "",

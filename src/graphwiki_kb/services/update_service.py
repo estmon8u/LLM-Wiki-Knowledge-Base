@@ -50,6 +50,9 @@ class UpdateOptions:
     # from config".
     export_wikigraph_artifacts: bool | None = None
     wikigraph_artifact_types: tuple[str, ...] | None = None
+    # Tri-state: ``None`` means "use
+    # ``wikigraph.include_normalized_text_units`` from config".
+    wikigraph_include_normalized_text_units: bool | None = None
 
 
 @dataclass
@@ -433,6 +436,9 @@ class UpdateService:
             result.wikigraph_result = self._wikigraph_index.build(
                 include_graphrag_export_pages=(
                     options.wikigraph_include_graphrag_export_pages
+                ),
+                include_normalized_text_units=(
+                    options.wikigraph_include_normalized_text_units
                 ),
             )
         except Exception as exc:

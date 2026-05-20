@@ -152,6 +152,18 @@ def create_command() -> click.Command:
         ),
     )
     @click.option(
+        "--wikigraph-normalized-text/--no-wikigraph-normalized-text",
+        "wikigraph_normalized_text",
+        default=None,
+        show_default=False,
+        help=(
+            "Whether the WikiGraphRAG build should pull in source-derived "
+            "TextUnits from raw/normalized/*. When neither flag is passed, "
+            "`wikigraph.include_normalized_text_units` from config drives "
+            "the behavior (defaults to true)."
+        ),
+    )
+    @click.option(
         "--export-wikigraph-artifacts/--no-export-wikigraph-artifacts",
         default=None,
         show_default=False,
@@ -186,6 +198,7 @@ def create_command() -> click.Command:
         concepts: bool | None,
         wikigraph: bool | None,
         wikigraph_include_graphrag_export_pages: bool,
+        wikigraph_normalized_text: bool | None,
         export_wikigraph_artifacts: bool | None,
         artifact_types: str | None,
     ) -> None:
@@ -218,6 +231,7 @@ def create_command() -> click.Command:
             wikigraph_include_graphrag_export_pages=(
                 wikigraph_include_graphrag_export_pages
             ),
+            wikigraph_include_normalized_text_units=wikigraph_normalized_text,
             export_wikigraph_artifacts=export_wikigraph_artifacts,
             wikigraph_artifact_types=(
                 tuple(
@@ -355,6 +369,17 @@ def create_command() -> click.Command:
                 f"{report.community_count} community(ies) "
                 f"from {report.source_count} source page(s)"
             )
+            if report.include_normalized_text_units:
+                console.print(
+                    f"Included {report.text_unit_count} TextUnit(s) "
+                    f"from {report.document_count} source document(s) "
+                    "(normalized source layer)"
+                )
+            else:
+                console.print(
+                    "Normalized source TextUnits not included "
+                    "(--no-wikigraph-normalized-text or config-disabled)"
+                )
             for warning in report.warnings:
                 console.print(f"[yellow]{warning}[/yellow]")
             if result.wikigraph_artifact_paths:

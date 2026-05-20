@@ -88,6 +88,15 @@ class AnswerRun:
     insufficient_evidence: bool
     citation_count: int
     latency_seconds: float
+    # Per-kind context counts populated for the WikiGraphRAG backend so the
+    # evaluator can distinguish source-derived TextUnits, curated wiki
+    # chunks, claims, and community-summary contexts.
+    text_unit_context_count: int = 0
+    wiki_chunk_context_count: int = 0
+    claim_context_count: int = 0
+    community_context_count: int = 0
+    unique_source_id_count: int = 0
+    citation_ref_valid_rate: float = 0.0
     artifact_path: str | None = None
     error: str | None = None
 
@@ -168,6 +177,14 @@ class WikiGraphRunner:
                 question.question, method=self.method
             )
             elapsed = time.perf_counter() - start
+            kind_counts = _count_context_kinds(ans.contexts)
+            unique_sources = {sid for ctx in ans.contexts for sid in ctx.source_ids}
+            cited_refs = {citation.get("ref") for citation in ans.citations}
+            known_refs = {ctx.citation_ref for ctx in ans.contexts}
+            valid_cited = sum(1 for ref in cited_refs if ref in known_refs)
+            citation_ref_valid_rate = (
+                valid_cited / len(cited_refs) if cited_refs else 0.0
+            )
             return AnswerRun(
                 backend=self.name,
                 method=self.method,
@@ -177,6 +194,12 @@ class WikiGraphRunner:
                 insufficient_evidence=ans.insufficient_evidence,
                 citation_count=len(ans.citations),
                 latency_seconds=elapsed,
+                text_unit_context_count=kind_counts.get("text_unit", 0),
+                wiki_chunk_context_count=kind_counts.get("chunk", 0),
+                claim_context_count=kind_counts.get("claim", 0),
+                community_context_count=kind_counts.get("community", 0),
+                unique_source_id_count=len(unique_sources),
+                citation_ref_valid_rate=citation_ref_valid_rate,
             )
         except Exception as exc:
             return AnswerRun(
@@ -355,6 +378,24 @@ def _flatten_source_ids(result: WikiGraphFindResult) -> list[str]:
     return out
 
 
+def _count_context_kinds(contexts: list[Any]) -> dict[str, int]:
+    """Return ``{node_kind: count}`` for a list of retrieved contexts.
+
+    Works for both :class:`WikiGraphRetrievedContext` (has ``node_kind``)
+    and dict-shaped payloads, so the helper can be reused from the
+    evaluator JSON layer.
+    """
+    counts: dict[str, int] = {}
+    for ctx in contexts:
+        kind = getattr(ctx, "node_kind", None)
+        if kind is None and isinstance(ctx, dict):
+            kind = ctx.get("node_kind")
+        if not isinstance(kind, str):
+            continue
+        counts[kind] = counts.get(kind, 0) + 1
+    return counts
+
+
 def matched_source_ids(question: BenchmarkQuestion, run: RetrievalRun) -> list[str]:
     """Return the expected source ids that appear in ``run``."""
     if not question.expected_sources:
@@ -413,6 +454,12 @@ def answer_metrics(question: BenchmarkQuestion, run: AnswerRun) -> dict[str, Any
         "insufficient_evidence_expected": expected_insufficient,
         "insufficient_evidence_observed": run.insufficient_evidence,
         "insufficient_evidence_behavior": behavior,
+        "text_unit_context_count": run.text_unit_context_count,
+        "wiki_chunk_context_count": run.wiki_chunk_context_count,
+        "claim_context_count": run.claim_context_count,
+        "community_context_count": run.community_context_count,
+        "unique_source_id_count": run.unique_source_id_count,
+        "citation_ref_valid_rate": run.citation_ref_valid_rate,
         "latency_seconds": run.latency_seconds,
         "error": run.error,
     }
@@ -448,6 +495,12 @@ ANSWER_COLUMNS = (
     "insufficient_evidence_expected",
     "insufficient_evidence_observed",
     "insufficient_evidence_behavior",
+    "text_unit_context_count",
+    "wiki_chunk_context_count",
+    "claim_context_count",
+    "community_context_count",
+    "unique_source_id_count",
+    "citation_ref_valid_rate",
     "latency_seconds",
     "error",
 )

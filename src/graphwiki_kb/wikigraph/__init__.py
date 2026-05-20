@@ -31,6 +31,8 @@ The high-level CLI wiring lives in
 from __future__ import annotations
 
 from graphwiki_kb.wikigraph.models import (
+    EVIDENCE_NODE_KINDS,
+    STRUCTURAL_NODE_KINDS,
     WikiGraphAnswer,
     WikiGraphBuildReport,
     WikiGraphCommunity,
@@ -42,6 +44,8 @@ from graphwiki_kb.wikigraph.models import (
 )
 
 __all__ = [
+    "EVIDENCE_NODE_KINDS",
+    "STRUCTURAL_NODE_KINDS",
     "WikiGraphAnswer",
     "WikiGraphBuildReport",
     "WikiGraphCommunity",

@@ -13,15 +13,37 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 NodeKind = Literal[
+    "source_document",
     "source_page",
     "concept_page",
     "analysis_page",
     "graph_page",
     "chunk",
+    "text_unit",
     "entity",
     "claim",
     "community",
 ]
+
+# Node kinds that retrieval methods treat as evidence (chunks/units/claims
+# that can ground an answer). Kept here so query code does not scatter
+# string literals across modules.
+EVIDENCE_NODE_KINDS: frozenset[str] = frozenset({"chunk", "text_unit", "claim"})
+
+# Node kinds that describe the graph structure (pages, documents,
+# entities, communities). Useful to project the graph for community
+# detection without letting TextUnit/document bulk dominate.
+STRUCTURAL_NODE_KINDS: frozenset[str] = frozenset(
+    {
+        "source_document",
+        "source_page",
+        "concept_page",
+        "analysis_page",
+        "graph_page",
+        "entity",
+        "community",
+    }
+)
 
 EdgeKind = Literal[
     "links_to",
@@ -95,12 +117,32 @@ class WikiGraphRetrievedContext(BaseModel):
     section: str = ""
     chunk_index: int | None = None
     trace: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     @property
     def citation_ref(self) -> str:
-        """A printable citation reference, mirroring legacy ``SearchResult``."""
-        if self.chunk_index is None or self.chunk_index < 0 or not self.path:
-            return self.path or self.node_id
+        """A printable citation reference, mirroring legacy ``SearchResult``.
+
+        TextUnits sourced from ``raw/normalized/`` get a ``#text-unit-N``
+        anchor so traces clearly distinguish them from wiki section chunks
+        (``#chunk-N``).
+        """
+        if not self.path:
+            return self.node_id
+        if self.node_kind == "text_unit":
+            raw_unit_index = self.metadata.get("unit_index")
+            unit_index: int | None
+            if isinstance(raw_unit_index, int):
+                unit_index = raw_unit_index
+            elif self.chunk_index is not None:
+                unit_index = self.chunk_index
+            else:
+                unit_index = None
+            if unit_index is None or unit_index < 0:
+                return self.path
+            return f"{self.path}#text-unit-{unit_index}"
+        if self.chunk_index is None or self.chunk_index < 0:
+            return self.path
         return f"{self.path}#chunk-{self.chunk_index}"
 
 
@@ -146,13 +188,16 @@ class WikiGraphIndex(BaseModel):
     communities: list[WikiGraphCommunity] = Field(default_factory=list)
     built_at: str = ""
     include_graphrag_export_pages: bool = False
+    include_normalized_text_units: bool = False
     source_count: int = 0
+    document_count: int = 0
     chunk_count: int = 0
+    text_unit_count: int = 0
     entity_count: int = 0
 
 
 class WikiGraphBuildReport(BaseModel):
-    """Summary returned from ``kb wikigraph build``."""
+    """Summary returned from ``kb update`` / ``WikiGraphIndexService.build``."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -160,9 +205,12 @@ class WikiGraphBuildReport(BaseModel):
     node_count: int
     edge_count: int
     chunk_count: int
+    text_unit_count: int = 0
+    document_count: int = 0
     entity_count: int
     community_count: int
     source_count: int
     include_graphrag_export_pages: bool
+    include_normalized_text_units: bool = False
     artifacts: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)

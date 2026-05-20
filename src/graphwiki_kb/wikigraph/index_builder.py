@@ -17,6 +17,7 @@ from pathlib import Path
 
 from rapidfuzz import fuzz
 
+from graphwiki_kb.models.source_models import RawSourceRecord
 from graphwiki_kb.services.project_service import (
     ProjectPaths,
     slugify,
@@ -39,6 +40,10 @@ from graphwiki_kb.wikigraph.models import (
     WikiGraphIndex,
     WikiGraphNode,
 )
+from graphwiki_kb.wikigraph.source_text_units import (
+    SourceTextUnit,
+    build_source_text_units,
+)
 
 
 @dataclass(frozen=True)
@@ -49,6 +54,15 @@ class BuildOptions:
     include_graphrag_export_pages: bool = False
     fuzzy_entity_match_threshold: int = 88
     min_community_size: int = 1
+    # Source-derived TextUnit settings (off here so the public default
+    # build is conservative; ``WikiGraphIndexService`` flips these on via
+    # the resolved ``WikiGraphRuntimeConfig`` for normal use).
+    include_normalized_text_units: bool = False
+    text_unit_char_limit: int = 4800
+    text_unit_overlap_chars: int = 400
+    text_unit_min_chars: int = 120
+    text_unit_source: str = "normalized_only"
+    text_unit_entity_mode: str = "mentions_existing_entities"
 
 
 _DEFAULT_INCLUDE_DIRS: tuple[str, ...] = (
@@ -83,6 +97,16 @@ def claim_node_id(claim: ExtractedClaim, ordinal: int) -> str:
     """Stable node id for a claim."""
     base = slugify(claim.text[:64]) or "claim"
     return f"claim::{slugify(claim.page_path)}#{ordinal}-{base[:32]}"
+
+
+def source_document_node_id(source: RawSourceRecord) -> str:
+    """Stable node id for a manifest source document."""
+    return f"document::{source.source_id}"
+
+
+def text_unit_node_id(unit: SourceTextUnit) -> str:
+    """Stable node id for a source-derived TextUnit."""
+    return f"textunit::{unit.source_id}#{unit.unit_index:04d}"
 
 
 # --------------------------------------------------------------------------- #
@@ -330,6 +354,144 @@ def _build_claim_nodes_and_edges(
     return nodes, edges
 
 
+def _build_source_document_nodes(
+    sources: list[RawSourceRecord],
+) -> dict[str, WikiGraphNode]:
+    """Build one ``source_document`` node per manifest source record."""
+    documents: dict[str, WikiGraphNode] = {}
+    for source in sources:
+        documents[source.source_id] = WikiGraphNode(
+            id=source_document_node_id(source),
+            kind="source_document",
+            title=source.title,
+            path=source.normalized_path or source.raw_path,
+            text="",
+            source_ids=[source.source_id],
+            metadata={
+                "source_id": source.source_id,
+                "slug": source.slug,
+                "origin": source.origin,
+                "source_type": source.source_type,
+                "raw_path": source.raw_path,
+                "normalized_path": source.normalized_path,
+                "content_hash": source.content_hash,
+                "ingested_at": source.ingested_at,
+            },
+        )
+    return documents
+
+
+def _build_text_unit_nodes_and_edges(
+    units: list[SourceTextUnit],
+    document_nodes: dict[str, WikiGraphNode],
+) -> tuple[list[WikiGraphNode], list[WikiGraphEdge]]:
+    """Lift ``SourceTextUnit`` records into ``text_unit`` nodes + edges."""
+    nodes: list[WikiGraphNode] = []
+    edges: list[WikiGraphEdge] = []
+    for unit in units:
+        document = document_nodes.get(unit.source_id)
+        if document is None:
+            continue
+        node_id = text_unit_node_id(unit)
+        citation_path = unit.normalized_path or unit.raw_path
+        nodes.append(
+            WikiGraphNode(
+                id=node_id,
+                kind="text_unit",
+                title=f"{unit.title} [TextUnit {unit.unit_index}]",
+                path=citation_path,
+                text=unit.text,
+                source_ids=[unit.source_id],
+                metadata={
+                    "source_id": unit.source_id,
+                    "slug": unit.slug,
+                    "unit_index": unit.unit_index,
+                    "start_char": unit.start_char,
+                    "end_char": unit.end_char,
+                    "raw_path": unit.raw_path,
+                    "normalized_path": unit.normalized_path,
+                    "origin": unit.origin,
+                    "source_type": unit.source_type,
+                    "source_hash": unit.source_hash,
+                    "chunk_origin": "normalized_source",
+                },
+            )
+        )
+        # ``contains`` uses a low weight so document -> text_unit fan-out
+        # does not dominate the community-detection topology.
+        edges.append(
+            WikiGraphEdge(
+                source=document.id,
+                target=node_id,
+                kind="contains",
+                weight=0.15,
+                evidence=[citation_path],
+            )
+        )
+    return nodes, edges
+
+
+def _build_source_page_document_edges(
+    page_nodes: list[WikiGraphNode],
+    document_nodes: dict[str, WikiGraphNode],
+) -> list[WikiGraphEdge]:
+    """Connect curated source pages to their backing manifest documents."""
+    edges: list[WikiGraphEdge] = []
+    for page_node in page_nodes:
+        if page_node.kind != "source_page":
+            continue
+        for source_id in page_node.source_ids:
+            document = document_nodes.get(source_id)
+            if document is None:
+                continue
+            edges.append(
+                WikiGraphEdge(
+                    source=page_node.id,
+                    target=document.id,
+                    kind="derived_from",
+                    weight=1.0,
+                    evidence=[page_node.path or source_id],
+                )
+            )
+    return edges
+
+
+def _build_text_unit_mention_edges(
+    units: list[SourceTextUnit],
+    catalog: EntityCatalog,
+    entity_nodes: dict[str, WikiGraphNode],
+) -> list[WikiGraphEdge]:
+    """Add ``text_unit -> entity`` edges for curated entities the unit mentions."""
+    edges: list[WikiGraphEdge] = []
+    entities = list(catalog.iter_entities())
+    for unit in units:
+        unit_text = unit.text.lower()
+        unit_id = text_unit_node_id(unit)
+        for entity in entities:
+            normalized = entity.name.lower()
+            if len(normalized) < 4:
+                continue
+            count = unit_text.count(normalized)
+            if count <= 0:
+                continue
+            entity_id = entity_node_id(entity.name)
+            if entity_id not in entity_nodes:
+                continue
+            evidence_path = unit.normalized_path or unit.raw_path
+            edges.append(
+                WikiGraphEdge(
+                    source=unit_id,
+                    target=entity_id,
+                    kind="mentions",
+                    # Soft weight (capped, then scaled) so TextUnit
+                    # mentions cannot drown out curated wikilink edges.
+                    weight=float(min(count, 8)) * 0.1,
+                    evidence=[f"{evidence_path}#text-unit-{unit.unit_index}"],
+                )
+            )
+    return edges
+
+
 def _build_co_mention_edges(
     pages: list[WikiPage],
     catalog: EntityCatalog,
@@ -384,10 +546,18 @@ def _dedupe_undirected(edges: list[WikiGraphEdge]) -> list[WikiGraphEdge]:
 def build_wikigraph_index(
     paths: ProjectPaths,
     *,
+    sources: list[RawSourceRecord] | None = None,
     options: BuildOptions | None = None,
 ) -> WikiGraphIndex:
-    """Build a :class:`WikiGraphIndex` from the maintained wiki artifacts."""
+    """Build a :class:`WikiGraphIndex` from the maintained wiki artifacts.
+
+    When ``sources`` is provided and
+    ``options.include_normalized_text_units`` is true, the builder also
+    materializes ``source_document`` + ``text_unit`` nodes derived from
+    each record's normalized text (read once at build time).
+    """
     opts = options or BuildOptions()
+    sources = list(sources or [])
     pages = _iter_wiki_pages(
         paths,
         include_graphrag_export_pages=opts.include_graphrag_export_pages,
@@ -421,23 +591,58 @@ def build_wikigraph_index(
     claim_nodes, claim_edges = _build_claim_nodes_and_edges(pages)
     co_mention_edges = _build_co_mention_edges(pages, catalog, entity_nodes)
 
+    # ----- source-document + text-unit layer -----
+    document_nodes_by_source_id: dict[str, WikiGraphNode] = {}
+    text_unit_nodes: list[WikiGraphNode] = []
+    text_unit_edges: list[WikiGraphEdge] = []
+    text_unit_mention_edges: list[WikiGraphEdge] = []
+    source_page_document_edges: list[WikiGraphEdge] = []
+    if opts.include_normalized_text_units and sources:
+        document_nodes_by_source_id = _build_source_document_nodes(sources)
+        units = build_source_text_units(
+            root=paths.root,
+            sources=sources,
+            char_limit=opts.text_unit_char_limit,
+            overlap_chars=opts.text_unit_overlap_chars,
+            min_chars=opts.text_unit_min_chars,
+            source_mode=opts.text_unit_source,
+        )
+        text_unit_nodes, text_unit_edges = _build_text_unit_nodes_and_edges(
+            units, document_nodes_by_source_id
+        )
+        source_page_document_edges = _build_source_page_document_edges(
+            page_nodes, document_nodes_by_source_id
+        )
+        if units:
+            text_unit_mention_edges = _build_text_unit_mention_edges(
+                units, catalog, entity_nodes
+            )
+
     all_nodes: list[WikiGraphNode] = [
         *page_nodes,
         *chunk_nodes,
+        *document_nodes_by_source_id.values(),
+        *text_unit_nodes,
         *entity_nodes.values(),
         *claim_nodes,
     ]
     all_edges: list[WikiGraphEdge] = [
         *chunk_edges,
+        *source_page_document_edges,
+        *text_unit_edges,
         *mention_edges,
+        *text_unit_mention_edges,
         *wikilink_edges,
         *claim_edges,
         *co_mention_edges,
     ]
 
     nodes_by_id = {node.id: node for node in all_nodes}
+    # Phase 9: project the graph for community detection so the
+    # TextUnit/source_document bulk does not dominate Louvain. The full
+    # index (including TextUnits) is still used for retrieval.
     networkx_graph = WikiGraphStore.to_networkx(
-        WikiGraphIndex(nodes=all_nodes, edges=all_edges)
+        _community_projection(all_nodes, all_edges)
     )
     detection = detect_communities(networkx_graph)
     communities = build_community_records(
@@ -483,10 +688,36 @@ def build_wikigraph_index(
         communities=communities,
         built_at=utc_now_iso(),
         include_graphrag_export_pages=opts.include_graphrag_export_pages,
+        include_normalized_text_units=(
+            opts.include_normalized_text_units and bool(text_unit_nodes)
+        ),
         source_count=sum(1 for node in page_nodes if node.kind == "source_page"),
+        document_count=len(document_nodes_by_source_id),
         chunk_count=sum(1 for node in chunk_nodes if node.kind == "chunk"),
+        text_unit_count=len(text_unit_nodes),
         entity_count=len(entity_nodes),
     )
+
+
+def _community_projection(
+    nodes: list[WikiGraphNode],
+    edges: list[WikiGraphEdge],
+) -> WikiGraphIndex:
+    """Return a :class:`WikiGraphIndex` view with TextUnit/document layers removed.
+
+    Community detection runs on the projected graph (entities, pages,
+    claims, communities-in-progress) so the LLM-style abstraction the
+    user expects from Louvain is not overwhelmed by the dense
+    ``source_document -> text_unit`` fan-out introduced by normalized
+    source ingestion.
+    """
+    excluded = {"source_document", "text_unit"}
+    kept_nodes = [node for node in nodes if node.kind not in excluded]
+    kept_ids = {node.id for node in kept_nodes}
+    kept_edges = [
+        edge for edge in edges if edge.source in kept_ids and edge.target in kept_ids
+    ]
+    return WikiGraphIndex(nodes=kept_nodes, edges=kept_edges)
 
 
 def iter_wiki_pages(

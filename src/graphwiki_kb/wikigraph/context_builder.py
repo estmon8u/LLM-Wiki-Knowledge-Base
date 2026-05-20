@@ -26,6 +26,7 @@ from graphwiki_kb.wikigraph.lexical_index import (
     LexicalIndex,
 )
 from graphwiki_kb.wikigraph.models import (
+    EVIDENCE_NODE_KINDS,
     WikiGraphIndex,
     WikiGraphNode,
     WikiGraphRetrievedContext,
@@ -93,19 +94,20 @@ class WikiGraphContextBuilder:
                 entity_node.id,
                 max_hops=self.config.max_hops,
             )
-            for neighbor_id, distance, edge_kind in neighbors:
+            for neighbor_id, distance, _edge_kind in neighbors:
                 neighbor = self._nodes_by_id.get(neighbor_id)
                 if neighbor is None:
                     continue
                 base_weight = 1.0 / float(distance + 1)
                 pagerank_boost = float(self._pagerank.get(neighbor_id, 0.0)) * 5
                 score = base_weight + pagerank_boost
-                if neighbor.kind == "chunk":
+                if neighbor.kind in {"chunk", "text_unit"}:
+                    label = "chunk" if neighbor.kind == "chunk" else "text_unit"
                     _record_score(
                         expanded_chunks,
                         neighbor_id,
                         score,
-                        [f"local:{entity_node.title}->{edge_kind}({distance})"],
+                        [f"local:{entity_node.title}->{label}({distance})"],
                     )
                 elif neighbor.kind in {"source_page", "concept_page", "analysis_page"}:
                     for chunk_id in self._chunks_for_page(neighbor_id):
@@ -114,6 +116,14 @@ class WikiGraphContextBuilder:
                             chunk_id,
                             score * 0.75,
                             [f"local:{entity_node.title}->page:{neighbor.title}"],
+                        )
+                elif neighbor.kind == "source_document":
+                    for unit_id in self._text_units_for_document(neighbor_id):
+                        _record_score(
+                            expanded_chunks,
+                            unit_id,
+                            score * 0.85,
+                            [f"local:{entity_node.title}->document:{neighbor.title}"],
                         )
                 elif neighbor.kind == "claim":
                     _record_score(
@@ -135,7 +145,7 @@ class WikiGraphContextBuilder:
             node = self._nodes_by_id.get(node_id)
             if node is None:
                 continue
-            if node.kind not in {"chunk", "claim"}:
+            if node.kind not in EVIDENCE_NODE_KINDS:
                 continue
             contexts.append(self._node_to_context(node, score=score, trace=trace))
             if len(contexts) >= limit:
@@ -187,7 +197,7 @@ class WikiGraphContextBuilder:
                 self._nodes_by_id[m]
                 for m in selected_community.members
                 if m in self._nodes_by_id
-                and self._nodes_by_id[m].kind in {"chunk", "claim"}
+                and self._nodes_by_id[m].kind in EVIDENCE_NODE_KINDS
             ]
             for chunk_node in member_chunks[
                 : max(1, limit // max(1, len(selected_ids)))
@@ -280,7 +290,7 @@ class WikiGraphContextBuilder:
         prefer_simple = str(self.config.lexical_backend).strip().lower() == "simple"
         index = LexicalIndex(prefer_simple=prefer_simple)
         for node in self.index.nodes:
-            if node.kind not in {"chunk", "claim"}:
+            if node.kind not in EVIDENCE_NODE_KINDS:
                 continue
             text = node.text or node.title
             index.add(
@@ -337,6 +347,10 @@ class WikiGraphContextBuilder:
         section = ""
         if node.metadata and isinstance(node.metadata.get("section"), str):
             section = str(node.metadata["section"])
+        # Pass through the node metadata so ``WikiGraphRetrievedContext.
+        # citation_ref`` can produce ``#text-unit-N`` anchors for
+        # TextUnits without a second lookup.
+        metadata = dict(node.metadata or {})
         return WikiGraphRetrievedContext(
             node_id=node.id,
             node_kind=node.kind,
@@ -348,6 +362,7 @@ class WikiGraphContextBuilder:
             section=section,
             chunk_index=int(chunk_index) if isinstance(chunk_index, int) else None,
             trace=list(trace),
+            metadata=metadata,
         )
 
     def _chunks_for_page(self, page_id: str) -> list[str]:
@@ -358,6 +373,16 @@ class WikiGraphContextBuilder:
                 continue
             chunks.append(neighbor)
         return chunks
+
+    def _text_units_for_document(self, document_id: str) -> list[str]:
+        """Return ``text_unit`` neighbors of a ``source_document`` node."""
+        units: list[str] = []
+        for neighbor in self._graph.neighbors(document_id):
+            node = self._nodes_by_id.get(neighbor)
+            if node is None or node.kind != "text_unit":
+                continue
+            units.append(neighbor)
+        return units
 
     def _match_entities(self, question: str) -> list[WikiGraphNode]:
         matches: dict[str, tuple[float, WikiGraphNode]] = {}

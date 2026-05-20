@@ -524,7 +524,16 @@ def _render_wikigraph_answer(
             for question_text in dict.fromkeys(sub_questions):
                 echo_bullet(question_text)
         if answer.contexts:
-            console.print(f"  Retrieved contexts: {len(answer.contexts)}")
+            kind_counts: dict[str, int] = {}
+            for ctx in answer.contexts:
+                kind_counts[ctx.node_kind] = kind_counts.get(ctx.node_kind, 0) + 1
+            kind_summary = ", ".join(
+                f"{kind}={count}" for kind, count in sorted(kind_counts.items())
+            )
+            console.print(
+                f"  Retrieved contexts: {len(answer.contexts)} "
+                f"(by kind: {kind_summary})"
+            )
             for ctx in answer.contexts:
                 trace_label = ",".join(ctx.trace) if ctx.trace else "(none)"
                 echo_bullet(f"{ctx.title} [{ctx.citation_ref}] trace={trace_label}")

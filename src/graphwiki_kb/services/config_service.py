@@ -177,6 +177,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "wikigraph": {
         "enabled": True,
         "include_graphrag_export_pages": False,
+        "include_normalized_text_units": True,
+        "text_unit_char_limit": 4800,
+        "text_unit_overlap_chars": 400,
+        "text_unit_min_chars": 120,
+        "text_unit_source": "normalized_only",
+        "text_unit_entity_mode": "mentions_existing_entities",
         "lexical_backend": "bm25s",
         "community_algorithm": "louvain",
         "max_hops": 2,
@@ -185,6 +191,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "chunk_char_limit": 1200,
         "fuzzy_entity_match_threshold": 88,
         "export_generated_artifacts": False,
+        "export_text_unit_artifacts": False,
     },
     "extensions": {},
 }
@@ -852,6 +859,16 @@ class _WikiGraphConfig(BaseModel):
 
     enabled: StrictBool = True
     include_graphrag_export_pages: StrictBool = False
+    include_normalized_text_units: StrictBool = True
+    text_unit_char_limit: StrictInt = Field(default=4800, ge=500, le=20000)
+    text_unit_overlap_chars: StrictInt = Field(default=400, ge=0, le=5000)
+    text_unit_min_chars: StrictInt = Field(default=120, ge=1, le=2000)
+    text_unit_source: Literal[
+        "normalized_only", "normalized_with_text_raw_fallback"
+    ] = "normalized_only"
+    text_unit_entity_mode: Literal[
+        "mentions_existing_entities", "extract_new_entities"
+    ] = "mentions_existing_entities"
     lexical_backend: Literal["bm25s", "simple"] = "bm25s"
     community_algorithm: Literal["louvain"] = "louvain"
     max_hops: StrictInt = Field(default=2, ge=1, le=4)
@@ -860,6 +877,7 @@ class _WikiGraphConfig(BaseModel):
     chunk_char_limit: StrictInt = Field(default=1200, ge=200, le=5000)
     fuzzy_entity_match_threshold: StrictInt = Field(default=88, ge=50, le=100)
     export_generated_artifacts: StrictBool = False
+    export_text_unit_artifacts: StrictBool = False
 
 
 @dataclass(frozen=True)
@@ -868,6 +886,12 @@ class WikiGraphRuntimeConfig:
 
     enabled: bool
     include_graphrag_export_pages: bool
+    include_normalized_text_units: bool
+    text_unit_char_limit: int
+    text_unit_overlap_chars: int
+    text_unit_min_chars: int
+    text_unit_source: str
+    text_unit_entity_mode: str
     lexical_backend: str
     community_algorithm: str
     max_hops: int
@@ -876,6 +900,7 @@ class WikiGraphRuntimeConfig:
     chunk_char_limit: int
     fuzzy_entity_match_threshold: int
     export_generated_artifacts: bool
+    export_text_unit_artifacts: bool
 
 
 class _KbConfigModel(BaseModel):
@@ -989,6 +1014,12 @@ def resolve_wikigraph_config(config: dict[str, Any]) -> WikiGraphRuntimeConfig:
     return WikiGraphRuntimeConfig(
         enabled=bool(validated["enabled"]),
         include_graphrag_export_pages=bool(validated["include_graphrag_export_pages"]),
+        include_normalized_text_units=bool(validated["include_normalized_text_units"]),
+        text_unit_char_limit=int(validated["text_unit_char_limit"]),
+        text_unit_overlap_chars=int(validated["text_unit_overlap_chars"]),
+        text_unit_min_chars=int(validated["text_unit_min_chars"]),
+        text_unit_source=str(validated["text_unit_source"]),
+        text_unit_entity_mode=str(validated["text_unit_entity_mode"]),
         lexical_backend=str(validated["lexical_backend"]),
         community_algorithm=str(validated["community_algorithm"]),
         max_hops=int(validated["max_hops"]),
@@ -997,6 +1028,7 @@ def resolve_wikigraph_config(config: dict[str, Any]) -> WikiGraphRuntimeConfig:
         chunk_char_limit=int(validated["chunk_char_limit"]),
         fuzzy_entity_match_threshold=int(validated["fuzzy_entity_match_threshold"]),
         export_generated_artifacts=bool(validated["export_generated_artifacts"]),
+        export_text_unit_artifacts=bool(validated["export_text_unit_artifacts"]),
     )
 
 
