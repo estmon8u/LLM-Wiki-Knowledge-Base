@@ -75,9 +75,13 @@ def create_command() -> click.Command:
         "--session",
         "session_id",
         type=str,
-        default="default",
-        show_default=True,
-        help="SQLiteSession id to use for cross-call memory.",
+        default=None,
+        show_default=False,
+        help=(
+            "SQLiteSession id to use for cross-call memory. Defaults to "
+            "sessionless one-shot runs (no shared history) and 'repl' "
+            "in interactive mode."
+        ),
     )
     @click.pass_obj
     def command(
@@ -86,7 +90,7 @@ def create_command() -> click.Command:
         yes: bool,
         show_plan: bool,
         as_json: bool,
-        session_id: str,
+        session_id: str | None,
     ) -> None:
         """Command.
 
@@ -96,7 +100,7 @@ def create_command() -> click.Command:
             yes: Auto-approve safe write actions.
             show_plan: Print the planned tool calls before execution.
             as_json: Emit JSON instead of pretty output.
-            session_id: SQLiteSession id used for cross-call memory.
+            session_id: Optional SQLiteSession id used for cross-call memory.
         """
         require_initialized(command_context)
         prompt = " ".join(prompt_terms).strip()
@@ -121,7 +125,7 @@ def create_command() -> click.Command:
             command_context=command_context,
             yes=yes,
             show_plan=show_plan,
-            session_id=session_id,
+            session_id=session_id or "repl",
         )
 
     return command
@@ -140,7 +144,7 @@ def _run_one_shot(
     yes: bool,
     show_plan: bool,
     as_json: bool,
-    session_id: str,
+    session_id: str | None,
 ) -> None:
     if not is_agents_sdk_available():
         message = (
@@ -214,6 +218,67 @@ def _run_interactive(
             console.print(f"[red]Agent error: {exc}[/red]")
             continue
         _render_result(result, show_plan=show_plan)
+        if result.pending_approvals and not yes:
+            _maybe_approve_pending(
+                pending=result.pending_approvals,
+                agent_service=agent_service,
+                command_context=command_context,
+                show_plan=show_plan,
+                session_id=session_id,
+            )
+
+
+def _maybe_approve_pending(
+    *,
+    pending: list[Any],
+    agent_service: AgentService,
+    command_context: CommandContext,
+    show_plan: bool,
+    session_id: str,
+) -> None:
+    """Interactively approve pending writes and re-run with auto-approve.
+
+    The OpenAI Agents SDK 0.4.x exposes interruptions only through MCP tool
+    approvals, so writes that need approval are surfaced as
+    ``PendingApproval`` records on the run. We let the user accept them
+    inline by re-running the same intent with ``--yes`` semantics on the
+    existing session, which preserves history and avoids forcing the user
+    to retype the request.
+    """
+    try:
+        answer = (
+            click.prompt(
+                "Approve pending write action(s) and re-run? [y/N]",
+                prompt_suffix=" ",
+                default="n",
+                show_default=False,
+            )
+            .strip()
+            .lower()
+        )
+    except (click.Abort, EOFError):
+        console.print("")
+        return
+    if answer not in {"y", "yes"}:
+        console.print("[dim]No approval given. Pending action not executed.[/dim]")
+        return
+    tool_list = ", ".join(sorted({pa.tool_name for pa in pending}))
+    follow_up = (
+        f"User approved the pending write action(s): {tool_list}. "
+        "Proceed and complete the original request."
+    )
+    try:
+        approved_result = agent_service.run_once(
+            follow_up,
+            command_context=command_context,
+            auto_approve=True,
+            show_plan=show_plan,
+            session_id=session_id,
+        )
+    except AgentRuntimeError as exc:
+        console.print(f"[red]Agent error: {exc}[/red]")
+        return
+    _render_result(approved_result, show_plan=show_plan)
 
 
 # ---------------------------------------------------------------------------

@@ -151,3 +151,87 @@ def test_generate_run_id_is_deterministic_and_includes_slug() -> None:
     )
     assert run_id.startswith("research_20260519T123456")
     assert "recent-rag-benchmarks" in run_id
+
+
+def _empty_record(run_id: str) -> ResearchRunRecord:
+    return ResearchRunRecord(
+        run_id=run_id,
+        question="empty",
+        created_at="2026-05-19T12:34:56+00:00",
+        local_answer={"answer": "..."},
+        kb_gaps=[],
+        web_findings=[],
+        recommendations=[],
+    )
+
+
+def test_empty_run_does_not_overwrite_latest_pointer(test_project) -> None:
+    store = SourceRecommendationStore(test_project.paths)
+    store.ensure_directory()
+    first = _make_record(run_id="research_20260101T120000Z_q", recs=2)
+    store.save(first)
+    assert store.latest_pointer.exists()
+
+    # A later research call with no recommendations must not hide the
+    # previous run's pointer.
+    store.save(_empty_record("research_20260201T120000Z_empty"))
+
+    latest = store.latest()
+    assert latest is not None
+    assert latest.run_id == first.run_id
+
+
+def test_latest_with_recommendations_skips_empty_runs(test_project) -> None:
+    store = SourceRecommendationStore(test_project.paths)
+    store.ensure_directory()
+    older = _make_record(run_id="research_20260101T120000Z_q", recs=1)
+    store.save(older)
+    store.save(_empty_record("research_20260201T120000Z_empty"))
+
+    fallback = store.latest_with_recommendations()
+    assert fallback is not None
+    assert fallback.run_id == older.run_id
+
+
+def test_latest_with_recommendations_returns_none_when_only_empty(
+    test_project,
+) -> None:
+    store = SourceRecommendationStore(test_project.paths)
+    store.ensure_directory()
+    store.save(_empty_record("research_20260201T120000Z_empty"))
+    assert store.latest_with_recommendations() is None
+
+
+def test_resolve_recommendations_falls_back_when_latest_is_empty(
+    test_project,
+) -> None:
+    store = SourceRecommendationStore(test_project.paths)
+    store.ensure_directory()
+    older = _make_record(run_id="research_20260101T120000Z_q", recs=2)
+    store.save(older)
+    # Write an empty research file directly so the timestamp newer-first
+    # order matters (save() refuses to update latest.json for empty runs).
+    empty_path = store.directory / "research-20260201T120000Z-empty.json"
+    empty_path.write_text(
+        _empty_record("research_20260201T120000Z_empty").model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    record, resolved = store.resolve_recommendations([1, 2], run_id="latest")
+    assert record.run_id == older.run_id
+    assert [r.id for r in resolved] == [1, 2]
+
+
+def test_resolve_recommendations_explicit_run_id_does_not_fall_back(
+    test_project,
+) -> None:
+    store = SourceRecommendationStore(test_project.paths)
+    store.ensure_directory()
+    store.save(_make_record(run_id="research_20260101T120000Z_q", recs=2))
+    empty_id = "research_20260201T120000Z_empty"
+    store.save(_empty_record(empty_id))
+
+    with pytest.raises(SourceRecommendationStoreError):
+        # Requesting recommendations from the empty run by id must raise
+        # rather than silently jumping to the older run.
+        store.resolve_recommendations([1], run_id=empty_id)
