@@ -30,6 +30,8 @@ from graphwiki_kb.services.query_service import QueryService
 from graphwiki_kb.services.review_service import ReviewService
 from graphwiki_kb.services.search_service import SearchService
 from graphwiki_kb.services.status_service import StatusService
+from graphwiki_kb.services.wikigraph_index_service import WikiGraphIndexService
+from graphwiki_kb.services.wikigraph_query_service import WikiGraphQueryFacade
 from graphwiki_kb.storage.compile_run_store import CompileRunStore
 
 
@@ -147,5 +149,7 @@ def build_services(
             graphrag_command_service,
         ),
         review=ReviewService(paths, provider=provider),
+        wikigraph_index=WikiGraphIndexService(paths, config),
+        wikigraph_query=WikiGraphQueryFacade(paths, config, provider=provider),
         compile_run_store=compile_run_store,
     )

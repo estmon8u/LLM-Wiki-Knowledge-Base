@@ -39,7 +39,7 @@ from graphwiki_kb.services.project_service import (
     utc_now_iso,
 )
 
-CURRENT_CONFIG_VERSION = 8
+CURRENT_CONFIG_VERSION = 9
 PROVIDER_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh"}
 GEMINI_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high"}
 ANTHROPIC_THINKING_EFFORTS = {"low", "medium", "high", "xhigh", "max"}
@@ -173,6 +173,16 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "reddit.com",
             "quora.com",
         ],
+    },
+    "wikigraph": {
+        "enabled": True,
+        "include_graphrag_export_pages": False,
+        "lexical_backend": "bm25s",
+        "community_algorithm": "louvain",
+        "max_hops": 2,
+        "max_context_chunks": 12,
+        "max_context_tokens": 8000,
+        "export_generated_artifacts": False,
     },
     "extensions": {},
 }
@@ -404,6 +414,11 @@ def _apply_config_migrations(config: dict[str, Any]) -> tuple[dict[str, Any], bo
             changed = True
             version = _config_version(migrated)
             continue
+        if version == 8:
+            migrated = _migrate_v8_to_v9(migrated)
+            changed = True
+            version = _config_version(migrated)
+            continue
         raise ValueError(f"Unsupported kb.config.yaml version: {version}")
 
     return migrated, changed
@@ -560,6 +575,17 @@ def _migrate_v7_to_v8(config: dict[str, Any]) -> dict[str, Any]:
     migrated["research"] = research_config
 
     migrated["version"] = 8
+    return migrated
+
+
+def _migrate_v8_to_v9(config: dict[str, Any]) -> dict[str, Any]:
+    migrated = deepcopy(config)
+    existing = migrated.get("wikigraph", {})
+    wikigraph_config = deepcopy(DEFAULT_CONFIG["wikigraph"])
+    if isinstance(existing, dict):
+        wikigraph_config = _deep_merge(wikigraph_config, existing)
+    migrated["wikigraph"] = wikigraph_config
+    migrated["version"] = 9
     return migrated
 
 
@@ -833,6 +859,33 @@ class _ConversionConfig(_StrictConfigModel):
     fallbacks: _FallbacksConfig
 
 
+class _WikiGraphConfig(_StrictConfigModel):
+    """Validated WikiGraphRAG settings."""
+
+    enabled: StrictBool = True
+    include_graphrag_export_pages: StrictBool = False
+    lexical_backend: Literal["bm25s", "simple"] = "bm25s"
+    community_algorithm: Literal["louvain"] = "louvain"
+    max_hops: StrictInt = Field(default=2, ge=1, le=4)
+    max_context_chunks: StrictInt = Field(default=12, ge=1, le=50)
+    max_context_tokens: StrictInt = Field(default=8000, ge=500, le=32000)
+    export_generated_artifacts: StrictBool = False
+
+
+@dataclass(frozen=True)
+class WikiGraphRuntimeConfig:
+    """Resolved WikiGraphRAG runtime settings."""
+
+    enabled: bool
+    include_graphrag_export_pages: bool
+    lexical_backend: str
+    community_algorithm: str
+    max_hops: int
+    max_context_chunks: int
+    max_context_tokens: int
+    export_generated_artifacts: bool
+
+
 class _KbConfigModel(BaseModel):
     """Top-level config schema with strict nested sections."""
 
@@ -850,6 +903,7 @@ class _KbConfigModel(BaseModel):
     conversion: _ConversionConfig
     agent: dict[str, Any] = Field(default_factory=dict)
     research: dict[str, Any] = Field(default_factory=dict)
+    wikigraph: _WikiGraphConfig = Field(default_factory=_WikiGraphConfig)
     extensions: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -911,6 +965,27 @@ def resolve_graph_config(config: dict[str, Any]) -> GraphRAGRuntimeConfig:
         entity_types=tuple(validated["extraction"]["entity_types"]),
         max_gleanings=int(validated["extraction"]["max_gleanings"]),
         max_source_bytes=int(validated["input"]["max_source_bytes"]),
+    )
+
+
+def resolve_wikigraph_config(config: dict[str, Any]) -> WikiGraphRuntimeConfig:
+    """Resolve WikiGraphRAG settings from project config."""
+    section = config.get("wikigraph", DEFAULT_CONFIG["wikigraph"])
+    if not isinstance(section, dict):
+        raise ValueError("kb.config.yaml 'wikigraph' must contain a YAML mapping.")
+    try:
+        validated = _WikiGraphConfig.model_validate(section).model_dump(mode="python")
+    except ValidationError as exc:
+        raise ValueError(_format_config_validation_error(exc)) from exc
+    return WikiGraphRuntimeConfig(
+        enabled=bool(validated["enabled"]),
+        include_graphrag_export_pages=bool(validated["include_graphrag_export_pages"]),
+        lexical_backend=str(validated["lexical_backend"]),
+        community_algorithm=str(validated["community_algorithm"]),
+        max_hops=int(validated["max_hops"]),
+        max_context_chunks=int(validated["max_context_chunks"]),
+        max_context_tokens=int(validated["max_context_tokens"]),
+        export_generated_artifacts=bool(validated["export_generated_artifacts"]),
     )
 
 

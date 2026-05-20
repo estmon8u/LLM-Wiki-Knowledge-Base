@@ -16,14 +16,18 @@ from graphwiki_kb.commands.common import (
     live_status,
     require_initialized,
 )
+from graphwiki_kb.commands.retrieval_engines import (
+    ASK_ENGINES,
+    graphrag_ask_errors,
+    normalize_ask_engine,
+    run_wikigraph_ask,
+    validate_ask_method_for_engine,
+)
 from graphwiki_kb.models.command_models import CommandContext, CommandSpec
-from graphwiki_kb.services.graph_ask_controller_service import GraphAskControllerError
-from graphwiki_kb.services.graphrag_query_service import GraphRAGQueryError
 from graphwiki_kb.services.query_router_service import GRAPH_ASK_METHODS
 
 SUMMARY = (
-    "Ask with the GraphRAG-aware answer controller. Legacy FTS-backed ask lives "
-    "under kb legacy ask."
+    "Ask with GraphRAG (default), custom WikiGraphRAG, or legacy FTS via kb legacy ask."
 )
 
 
@@ -46,14 +50,23 @@ def create_command() -> click.Command:
         click.Command produced by the operation.
     """
 
-    @click.command(name="ask", help=SUMMARY, short_help="Ask with GraphRAG.")
+    @click.command(
+        name="ask", help=SUMMARY, short_help="Ask with GraphRAG or WikiGraphRAG."
+    )
     @click.argument("question_terms", nargs=-1)
     @click.option(
+        "--engine",
+        type=click.Choice(ASK_ENGINES),
+        default="graphrag",
+        show_default=True,
+        help="Retrieval backend: Microsoft GraphRAG or custom WikiGraphRAG.",
+    )
+    @click.option(
         "--method",
-        type=click.Choice(GRAPH_ASK_METHODS),
+        type=click.Choice((*GRAPH_ASK_METHODS, "drift-lite")),
         default="auto",
         show_default=True,
-        help="GraphRAG method or deterministic auto-routing.",
+        help="Query method. Use drift-lite with --engine wikigraph; drift with GraphRAG.",
     )
     @click.option(
         "--community-level",
@@ -100,6 +113,7 @@ def create_command() -> click.Command:
     def command(
         command_context: CommandContext,
         question_terms: tuple[str, ...],
+        engine: str,
         method: str,
         community_level: int | None,
         dynamic_community_selection: bool | None,
@@ -117,6 +131,7 @@ def create_command() -> click.Command:
         Args:
             command_context: Command context value used by the operation.
             question_terms: Question terms value used by the operation.
+            engine: Retrieval engine value used by the operation.
             method: Method value used by the operation.
             community_level: Community level value used by the operation.
             dynamic_community_selection: Dynamic community selection value used by the operation.
@@ -136,17 +151,56 @@ def create_command() -> click.Command:
             )
         if limit is not None:
             raise click.ClickException(
-                "--limit is not supported by kb ask because GraphRAG controls "
-                "retrieval internally."
+                "--limit is not supported by kb ask; retrieval depth is controlled "
+                "by the selected engine."
             )
+        ask_engine = normalize_ask_engine(engine)
+        validate_ask_method_for_engine(ask_engine, method)
         if show_evidence and not as_json:
             console.print(
                 "[yellow]--show-evidence is deprecated; use "
                 "--show-source-trace.[/yellow]"
             )
         question = " ".join(question_terms).strip()
-        controller = command_context.services.graph_ask_controller
+        if ask_engine == "wikigraph":
+            if any(
+                option is not None
+                for option in (
+                    community_level,
+                    dynamic_community_selection,
+                    response_type,
+                )
+            ):
+                raise click.ClickException(
+                    "GraphRAG-only flags (--community-level, "
+                    "--dynamic-community-selection, --response-type) require "
+                    "--engine graphrag."
+                )
+            if verbose and not as_json:
+                console.print(
+                    "[yellow]--verbose is ignored for WikiGraphRAG ask.[/yellow]"
+                )
+            with live_status("Querying WikiGraphRAG"):
+                answer = run_wikigraph_ask(
+                    command_context,
+                    question,
+                    method=method,
+                    save_answer=save_answer,
+                )
+            if as_json:
+                emit_json(answer.model_dump())
+                return
+            console.print(f"[dim][engine: wikigraph, method: {answer.method}][/dim]")
+            console.print("")
+            console.print(RichMarkdown(answer.answer or "No answer text returned."))
+            if save_answer:
+                console.print(
+                    "\nSaved analysis page under wiki/analysis/ "
+                    "(wikigraph-answer-*.md)."
+                )
+            return
 
+        controller = command_context.services.graph_ask_controller
         try:
             with live_status("Querying GraphRAG"):
                 answer = controller.ask(
@@ -160,7 +214,7 @@ def create_command() -> click.Command:
                     save=save_answer,
                     save_as=save_as_name,
                 )
-        except (GraphAskControllerError, GraphRAGQueryError) as exc:
+        except graphrag_ask_errors() as exc:
             raise click.ClickException(str(exc)) from exc
 
         if as_json:

@@ -12,10 +12,17 @@ from graphwiki_kb.commands.common import (
     make_table,
     require_initialized,
 )
+from graphwiki_kb.commands.retrieval_engines import (
+    FIND_ENGINES,
+    normalize_find_engine,
+    run_wikigraph_find,
+)
 from graphwiki_kb.models.command_models import CommandContext, CommandSpec
 from graphwiki_kb.models.wiki_models import SearchResult
 
-SUMMARY = "Search direct GraphRAG artifacts plus the maintained wiki index."
+SUMMARY = (
+    "Search GraphRAG artifacts plus the wiki index (default), or WikiGraphRAG contexts."
+)
 
 
 def build_spec(_: CommandContext | None = None) -> CommandSpec:
@@ -37,8 +44,24 @@ def create_command() -> click.Command:
         click.Command produced by the operation.
     """
 
-    @click.command(name="find", help=SUMMARY, short_help="Search graph and wiki.")
+    @click.command(
+        name="find", help=SUMMARY, short_help="Search graph, wiki, or wikigraph."
+    )
     @click.argument("query_terms", nargs=-1)
+    @click.option(
+        "--engine",
+        type=click.Choice(FIND_ENGINES),
+        default="graph",
+        show_default=True,
+        help="graph: GraphRAG artifacts plus wiki index; wikigraph: custom graph index.",
+    )
+    @click.option(
+        "--method",
+        type=click.Choice(["auto", "basic", "local", "global", "drift-lite"]),
+        default="auto",
+        show_default=True,
+        help="WikiGraphRAG retrieval method (used when --engine wikigraph).",
+    )
     @click.option(
         "--limit",
         default=5,
@@ -50,6 +73,8 @@ def create_command() -> click.Command:
     def command(
         command_context: CommandContext,
         query_terms: tuple[str, ...],
+        engine: str,
+        method: str,
         limit: int,
         as_json: bool,
     ) -> None:
@@ -58,19 +83,35 @@ def create_command() -> click.Command:
         Args:
             command_context: Command context value used by the operation.
             query_terms: Query terms value used by the operation.
+            engine: Retrieval engine value used by the operation.
+            method: WikiGraphRAG method when engine=wikigraph.
             limit: Maximum number of results to return or process.
             as_json: As json value used by the operation.
         """
         require_initialized(command_context)
         if not query_terms:
             raise click.ClickException("Provide at least one search term.")
+        find_engine = normalize_find_engine(engine)
+        query = " ".join(query_terms).strip()
+        if find_engine == "wikigraph":
+            run_wikigraph_find(
+                command_context,
+                query,
+                method=method,
+                limit=limit,
+                as_json=as_json,
+            )
+            return
+        if method != "auto":
+            raise click.ClickException(
+                "--method is only supported with --engine wikigraph."
+            )
         search_service = command_context.services.search
         graph_find_service = command_context.services.graphrag_find
         graph_status = command_context.services.graphrag_status.status().to_dict(
             command_context.project_root
         )
         graph_diagnostics = _graph_find_diagnostics(graph_status)
-        query = " ".join(query_terms).strip()
         candidate_limit = max(limit * 4, 20)
         graph_results = graph_find_service.search(query, limit=candidate_limit)
         wiki_results = search_service.search(

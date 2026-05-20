@@ -48,16 +48,39 @@ def create_command() -> click.Command:
         is_flag=True,
         help="Remove stale vault files that no longer exist in the wiki.",
     )
+    @click.option(
+        "--wikigraph-artifacts",
+        is_flag=True,
+        help="Export generated wiki/wikigraph artifact pages (requires a built index).",
+    )
     @click.pass_obj
-    def command(command_context: CommandContext, clean: bool) -> None:
+    def command(
+        command_context: CommandContext,
+        clean: bool,
+        wikigraph_artifacts: bool,
+    ) -> None:
         """Command.
 
         Args:
             command_context: Command context value used by the operation.
             clean: Clean value used by the operation.
+            wikigraph_artifacts: Export WikiGraphRAG artifact pages when set.
         """
         require_initialized(command_context)
         export_service = command_context.services.export
+
+        if wikigraph_artifacts:
+            try:
+                created = command_context.services.wikigraph_index.export_artifacts()
+            except FileNotFoundError as exc:
+                raise click.ClickException(
+                    f"{exc} Run `kb update` to build the WikiGraphRAG index."
+                ) from exc
+            echo_section("WikiGraphRAG Artifacts")
+            for path in created[:20]:
+                echo_bullet(path)
+            if len(created) > 20:
+                console.print(f"... and {len(created) - 20} more")
 
         graph_result = None
         graph_status = command_context.services.graphrag_status.status()

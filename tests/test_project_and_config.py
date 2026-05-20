@@ -1060,11 +1060,26 @@ def test_build_services_returns_expected_keys(test_project) -> None:
         "graphrag_wiki_export",
         "query_router",
         "graph_ask_controller",
+        "wikigraph_index",
+        "wikigraph_query",
         "compile_run_store",
     }
 
 
 # --- P1 boundary/negative tests ---
+
+
+def test_config_wikigraph_unknown_key_rejected(test_project) -> None:
+    import yaml
+
+    config = yaml.safe_load(test_project.paths.config_file.read_text(encoding="utf-8"))
+    config["wikigraph"] = {"enabled": True, "unexpected": True}
+    test_project.paths.config_file.write_text(
+        yaml.safe_dump(config, sort_keys=False),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="wikigraph"):
+        ConfigService(test_project.paths).load()
 
 
 def test_config_unknown_key_rejected_through_merge(test_project) -> None:

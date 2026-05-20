@@ -40,6 +40,8 @@ if TYPE_CHECKING:
     from graphwiki_kb.services.review_service import ReviewService
     from graphwiki_kb.services.search_service import SearchService
     from graphwiki_kb.services.status_service import StatusService
+    from graphwiki_kb.services.wikigraph_index_service import WikiGraphIndexService
+    from graphwiki_kb.services.wikigraph_query_service import WikiGraphQueryFacade
     from graphwiki_kb.storage.compile_run_store import CompileRunStore
 
 
@@ -71,6 +73,8 @@ class ServiceContainer(Mapping[str, Any]):
     graphrag_input_sync: GraphRAGInputSyncService
     graphrag_sync: GraphRAGSyncService
     review: ReviewService
+    wikigraph_index: WikiGraphIndexService
+    wikigraph_query: WikiGraphQueryFacade
     compile_run_store: CompileRunStore
 
     _NAMES: ClassVar[tuple[str, ...]] = ()

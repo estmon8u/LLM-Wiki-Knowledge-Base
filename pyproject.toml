@@ -32,6 +32,10 @@ python-slugify = "^8.0"
 graphrag = ">=3.0.9,<3.1"
 xhtml2pdf = { version = "^0.2.17", optional = true }
 pyarrow = ">=16,<23"
+networkx = { version = "^3.6", optional = true }
+bm25s = { version = "^0.3", optional = true }
+scikit-learn = { version = "^1.8", optional = true }
+pyvis = { version = "^0.3", optional = true }
 
 [tool.poetry.extras]
 openai = ["openai"]
@@ -43,15 +47,21 @@ markitdown = ["markitdown"]
 mistral = ["mistralai"]
 html = ["pdfkit", "xhtml2pdf"]
 pdf = ["docling", "markitdown", "mistralai", "pdfkit", "xhtml2pdf"]
+wikigraph = ["networkx", "bm25s"]
+wikigraph-eval = ["networkx", "bm25s", "scikit-learn"]
+wikigraph-viz = ["networkx", "pyvis"]
 all = [
 	"anthropic",
+	"bm25s",
 	"docling",
 	"google-genai",
 	"markitdown",
 	"mistralai",
+	"networkx",
 	"openai",
 	"openai-agents",
 	"pdfkit",
+	"scikit-learn",
 	"xhtml2pdf",
 ]
 

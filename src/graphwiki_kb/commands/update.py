@@ -59,6 +59,7 @@ def _get_update_service(command_context: CommandContext) -> UpdateService:
         graphrag_workspace_service=command_context.services.graphrag_workspace,
         graphrag_sync_service=command_context.services.graphrag_sync,
         graphrag_wiki_export_service=command_context.services.graphrag_wiki_export,
+        wikigraph_index_service=command_context.services.wikigraph_index,
     )
 
 
@@ -132,6 +133,24 @@ def create_command() -> click.Command:
         default=None,
         help="Opt in or out of legacy concept page generation for this update.",
     )
+    @click.option(
+        "--no-wikigraph",
+        is_flag=True,
+        help="Skip building the custom WikiGraphRAG index under graph/wikigraph/.",
+    )
+    @click.option(
+        "--wikigraph-include-graphrag-export-pages",
+        is_flag=True,
+        help=(
+            "Include wiki/graph GraphRAG export pages in the WikiGraphRAG index "
+            "(ablation mode)."
+        ),
+    )
+    @click.option(
+        "--export-wikigraph-artifacts",
+        is_flag=True,
+        help="Export generated wiki/wikigraph artifact pages after indexing.",
+    )
     @click.pass_obj
     def command(
         command_context: CommandContext,
@@ -143,6 +162,9 @@ def create_command() -> click.Command:
         graph_method: str,
         allow_partial: bool,
         concepts: bool | None,
+        no_wikigraph: bool,
+        wikigraph_include_graphrag_export_pages: bool,
+        export_wikigraph_artifacts: bool,
     ) -> None:
         """Command.
 
@@ -156,6 +178,9 @@ def create_command() -> click.Command:
             graph_method: GraphRAG indexing method to request.
             allow_partial: Allow partial value used by the operation.
             concepts: Concepts value used by the operation.
+            no_wikigraph: Skip WikiGraphRAG index build when set.
+            wikigraph_include_graphrag_export_pages: Include GraphRAG wiki exports.
+            export_wikigraph_artifacts: Export generated WikiGraphRAG wiki pages.
         """
         require_initialized(command_context)
         service = _get_update_service(command_context)
@@ -169,6 +194,11 @@ def create_command() -> click.Command:
             graph_method=graph_method,
             allow_partial=allow_partial,
             concepts=concepts,
+            no_wikigraph=no_wikigraph,
+            wikigraph_include_graphrag_export_pages=(
+                wikigraph_include_graphrag_export_pages
+            ),
+            export_wikigraph_artifacts=export_wikigraph_artifacts,
         )
 
         console.print(f"Mode: {_mode_label(options)}")
@@ -283,5 +313,34 @@ def create_command() -> click.Command:
                 console.print(f"[yellow]{graph_result.warning}[/yellow]")
             elif graph_result.skipped and graph_result.skip_reason:
                 console.print(f"Graph skipped: {graph_result.skip_reason}")
+
+        wikigraph_result = result.wikigraph_result
+        if wikigraph_result is not None:
+            console.print("")
+            echo_section("WikiGraphRAG Summary")
+            if wikigraph_result.build is not None:
+                snapshot = wikigraph_result.build.snapshot
+                console.print(
+                    "WikiGraphRAG index: "
+                    f"{snapshot.node_count} nodes, "
+                    f"{snapshot.edge_count} edges, "
+                    f"{snapshot.chunk_count} chunks"
+                )
+                console.print("Output: graph/wikigraph/")
+            if wikigraph_result.exported_artifacts:
+                console.print(
+                    f"Exported {len(wikigraph_result.exported_artifacts)} "
+                    "WikiGraphRAG artifact page(s)"
+                )
+                for path in wikigraph_result.exported_artifacts[:5]:
+                    echo_bullet(path)
+                if len(wikigraph_result.exported_artifacts) > 5:
+                    console.print(
+                        f"... and {len(wikigraph_result.exported_artifacts) - 5} more"
+                    )
+            if wikigraph_result.warning:
+                console.print(f"[yellow]{wikigraph_result.warning}[/yellow]")
+            elif wikigraph_result.skipped and wikigraph_result.skip_reason:
+                console.print(f"WikiGraphRAG skipped: {wikigraph_result.skip_reason}")
 
     return command

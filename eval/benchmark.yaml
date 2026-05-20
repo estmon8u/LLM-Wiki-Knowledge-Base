@@ -3,6 +3,9 @@ name: graphrag-pivot-evaluation
 description: Benchmark questions for comparing deprecated SQLite FTS5 retrieval with GraphRAG query modes.
 source_project: kb-cli-realworld-pdf-20260415/project-codex-20260424-userchanges-realrun
 retrievers:
+  wikigraph:
+    command: kb ask --engine wikigraph
+    purpose: Custom wiki-artifact graph retriever built from sources, concepts, and analysis pages.
   legacy_fts:
     command_group: kb legacy
     deprecated: true
@@ -37,6 +40,13 @@ questions:
     category: comparison
     intent: Compare related retrieval-augmented methods across source papers.
     expected_method: drift
+    expected_methods:
+      graphrag: drift
+      wikigraph: drift-lite
+      legacy: ask
+    expected_entities:
+      - REALM
+      - RAG
     expected_sources:
       - REALM
       - RAG
@@ -74,6 +84,9 @@ questions:
     category: global
     intent: Evaluate whole-corpus synthesis from community summaries.
     expected_method: global
+    expected_methods:
+      graphrag: global
+      wikigraph: global
     expected_sources:
       - retrieval
       - generation
@@ -128,6 +141,7 @@ questions:
     category: insufficient_evidence
     intent: Confirm weak-evidence questions produce cautious or insufficient-evidence behavior.
     expected_method: basic
+    insufficient_evidence_expected: true
     expected_sources: []
     expected_behaviors:
       - insufficient_evidence

@@ -19,12 +19,14 @@ from graphwiki_kb.services.config_service import (
     concept_generation_enabled,
     concept_provider_backed_enabled,
     resolve_graph_config,
+    resolve_wikigraph_config,
 )
 from graphwiki_kb.services.graphrag_defaults import env_file_has_key
 from graphwiki_kb.services.graphrag_sync_service import GraphRAGSyncResult
 from graphwiki_kb.services.graphrag_wiki_export_service import GraphRAGWikiExportResult
 from graphwiki_kb.services.ingest_service import IngestService
 from graphwiki_kb.services.search_service import SearchService
+from graphwiki_kb.wikigraph.index_builder import WikiGraphBuildResult
 
 GRAPH_INDEX_METHODS = ("auto", "standard", "fast", "standard-update", "fast-update")
 
@@ -41,6 +43,9 @@ class UpdateOptions:
     allow_partial: bool = False
     concepts: bool | None = None
     graph_method: str = "auto"
+    no_wikigraph: bool = False
+    wikigraph_include_graphrag_export_pages: bool = False
+    export_wikigraph_artifacts: bool = False
 
 
 @dataclass
@@ -65,11 +70,27 @@ class UpdateResult:
     search_refreshed: bool = False
     search_warning: str = ""
     graph_result: GraphUpdateResult | None = None
+    wikigraph_result: WikiGraphUpdateResult | None = None
 
     @property
     def ok(self) -> bool:
         """Return true when update produced legacy or GraphRAG work."""
-        return self.compile_result is not None or self.graph_result is not None
+        return (
+            self.compile_result is not None
+            or self.graph_result is not None
+            or self.wikigraph_result is not None
+        )
+
+
+@dataclass
+class WikiGraphUpdateResult:
+    """WikiGraphRAG index build result for update runs."""
+
+    skipped: bool = False
+    skip_reason: str = ""
+    build: WikiGraphBuildResult | None = None
+    exported_artifacts: tuple[str, ...] = ()
+    warning: str = ""
 
 
 @dataclass
@@ -106,6 +127,7 @@ class UpdateService:
         graphrag_workspace_service: Any | None = None,
         graphrag_sync_service: Any | None = None,
         graphrag_wiki_export_service: Any | None = None,
+        wikigraph_index_service: Any | None = None,
     ) -> None:
         self._ingest = ingest_service
         self._compile = compile_service
@@ -115,6 +137,7 @@ class UpdateService:
         self._graphrag_workspace = graphrag_workspace_service
         self._graphrag_sync = graphrag_sync_service
         self._graphrag_wiki_export = graphrag_wiki_export_service
+        self._wikigraph_index = wikigraph_index_service
 
     def preflight(self) -> None:
         """Raise if provider is missing or broken."""
@@ -157,6 +180,9 @@ class UpdateService:
         result = UpdateResult()
         if options.graph_only:
             result.graph_result = self._run_graph_sync(
+                options, status_callback=graph_status_callback
+            )
+            result.wikigraph_result = self._run_wikigraph_update(
                 options, status_callback=graph_status_callback
             )
             return result
@@ -218,8 +244,67 @@ class UpdateService:
         result.graph_result = self._run_graph_sync(
             options, status_callback=graph_status_callback
         )
+        result.wikigraph_result = self._run_wikigraph_update(
+            options, status_callback=graph_status_callback
+        )
 
         return result
+
+    def _run_wikigraph_update(
+        self,
+        options: UpdateOptions,
+        *,
+        status_callback: Callable[[str], None] | None = None,
+    ) -> WikiGraphUpdateResult:
+        runtime = resolve_wikigraph_config(self._config)
+        if options.no_wikigraph:
+            return WikiGraphUpdateResult(
+                skipped=True, skip_reason="--no-wikigraph requested."
+            )
+        if not runtime.enabled:
+            return WikiGraphUpdateResult(
+                skipped=True,
+                skip_reason="wikigraph.enabled is false in kb.config.yaml.",
+            )
+        if self._wikigraph_index is None:
+            return WikiGraphUpdateResult(
+                skipped=True, skip_reason="WikiGraphRAG services unavailable."
+            )
+        try:
+            if status_callback is not None:
+                status_callback("building WikiGraphRAG index")
+            build = self._wikigraph_index.build(
+                include_graphrag_export_pages=(
+                    options.wikigraph_include_graphrag_export_pages
+                    or runtime.include_graphrag_export_pages
+                )
+            )
+            exported: tuple[str, ...] = ()
+            if options.export_wikigraph_artifacts:
+                if status_callback is not None:
+                    status_callback("exporting WikiGraphRAG artifacts")
+                exported = tuple(self._wikigraph_index.export_artifacts())
+            return WikiGraphUpdateResult(build=build, exported_artifacts=exported)
+        except ImportError as exc:
+            message = (
+                f"WikiGraphRAG index skipped: {exc}. "
+                "Install extras with: poetry install -E wikigraph"
+            )
+            if options.allow_partial:
+                return WikiGraphUpdateResult(skipped=True, warning=message)
+            raise ValueError(message) from exc
+        except ValueError as exc:
+            message = str(exc)
+            if "No wiki pages found" in message:
+                return WikiGraphUpdateResult(skipped=True, skip_reason=message)
+            if options.allow_partial:
+                return WikiGraphUpdateResult(skipped=True, warning=message)
+            raise ValueError(message) from exc
+        except Exception as exc:
+            message = f"WikiGraphRAG index build failed: {exc}"
+            if options.allow_partial:
+                return WikiGraphUpdateResult(skipped=True, warning=message)
+            raise ValueError(message) from exc
 
     # ------------------------------------------------------------------
 

@@ -87,6 +87,13 @@ def create_command(
         graph_status = (
             snapshot.graph_status if isinstance(snapshot.graph_status, dict) else {}
         )
+        from graphwiki_kb.wikigraph.status_service import wikigraph_status
+
+        wikigraph = (
+            wikigraph_status(command_context.services.project.paths).to_dict()
+            if snapshot.initialized
+            else {}
+        )
         strict_failures = _strict_status_failures(snapshot, graph_status)
 
         if changed:
@@ -147,6 +154,7 @@ def create_command(
                     "index_status": snapshot.index_status,
                     "export_status": snapshot.export_status,
                     "graph_status": graph_status,
+                    "wikigraph_status": wikigraph,
                     "strict_ok": not strict_failures,
                     "strict_failures": strict_failures,
                 }
@@ -230,6 +238,21 @@ def create_command(
                     )
                     console.print(f"  [yellow]Artifact health: {details}[/yellow]")
             console.print(f"  Next action: {graph.get('next_action')}")
+            console.print("")
+
+        if wikigraph:
+            echo_section("WikiGraphRAG")
+            if wikigraph.get("built"):
+                console.print(f"  Index: built at {wikigraph.get('built_at')}")
+                console.print(
+                    "  Nodes/edges/chunks: "
+                    f"{wikigraph.get('node_count')}/"
+                    f"{wikigraph.get('edge_count')}/"
+                    f"{wikigraph.get('chunk_count')}"
+                )
+                console.print(f"  Lexical backend: {wikigraph.get('lexical_backend')}")
+            else:
+                console.print("  Index: not built (run `kb update`)")
             console.print("")
 
         # Suggest what to do next
