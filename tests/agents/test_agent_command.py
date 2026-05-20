@@ -159,6 +159,47 @@ def test_agent_prints_pending_approval(test_project, monkeypatch) -> None:
     assert "ingest_recommendation" in result.output
 
 
+def test_agent_one_shot_defaults_to_sessionless(test_project, monkeypatch) -> None:
+    """One-shot calls must default to ``session_id=None`` to prevent stale
+    conversation history from polluting unrelated commands.
+    """
+    record = AgentRunRecord(
+        run_id="r-iso",
+        prompt="hi",
+        created_at="2026-05-19T00:00:00+00:00",
+        tool_results=[],
+        final_output="ok",
+    )
+    captured = _stub_run(monkeypatch, record=record)
+    runner = CliRunner()
+    command = get_click_command("agent")
+    result = runner.invoke(command, ["hello"], obj=test_project.command_context)
+    assert result.exit_code == 0, result.output
+    assert captured["kwargs"]["session_id"] is None
+
+
+def test_agent_one_shot_session_flag_threads_id_through(
+    test_project, monkeypatch
+) -> None:
+    record = AgentRunRecord(
+        run_id="r-named",
+        prompt="hi",
+        created_at="2026-05-19T00:00:00+00:00",
+        tool_results=[],
+        final_output="ok",
+    )
+    captured = _stub_run(monkeypatch, record=record)
+    runner = CliRunner()
+    command = get_click_command("agent")
+    result = runner.invoke(
+        command,
+        ["--session", "named-session", "hello"],
+        obj=test_project.command_context,
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["kwargs"]["session_id"] == "named-session"
+
+
 def test_agent_one_shot_errors_when_sdk_missing(test_project, monkeypatch) -> None:
     monkeypatch.setattr(
         "graphwiki_kb.commands.agent.is_agents_sdk_available",
