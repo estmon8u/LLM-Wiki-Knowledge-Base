@@ -27,6 +27,7 @@ from graphwiki_kb.services.graphrag_query_service import (
     GraphRAGQueryAnswer,
     GraphRAGQueryError,
 )
+from graphwiki_kb.wikigraph.models import WikiGraphAnswer
 from graphwiki_kb.services.project_service import (
     ProjectPaths,
     atomic_write_text,
@@ -165,6 +166,31 @@ def project_ask_kb_output(answer: GraphRAGQueryAnswer) -> AskKbOutput:
         source_trace=_stringify_source_trace(answer.source_trace),
         saved_path=answer.saved_path,
         index_run_id=answer.index_run_id,
+    )
+
+
+def project_wikigraph_ask_kb_output(answer: WikiGraphAnswer) -> AskKbOutput:
+    """Project a WikiGraphAnswer onto AskKbOutput for agent tools."""
+    claim_support: str | None
+    if not (answer.answer or "").strip():
+        claim_support = "no-answer"
+    elif answer.citations:
+        claim_support = "cited-graph-answer"
+    else:
+        claim_support = "graph-index-answer"
+    source_trace: dict[str, str | None] = {}
+    for item in answer.trace:
+        step = item.get("step")
+        if step is None:
+            continue
+        value = item.get("value")
+        source_trace[str(step)] = None if value is None else str(value)
+    return AskKbOutput(
+        answer=answer.answer or "",
+        method=answer.method,
+        claim_support=claim_support,  # type: ignore[arg-type]
+        staleness_warnings=list(answer.warnings or []),
+        source_trace=source_trace,
     )
 
 

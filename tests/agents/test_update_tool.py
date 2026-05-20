@@ -45,6 +45,8 @@ def test_update_requires_approval_by_default(runtime: Any) -> None:
     assert pending.payload["graph_method"] == "auto"
     assert pending.payload["no_graph"] is False
     assert pending.payload["graph_only"] is False
+    assert pending.payload["no_wikigraph"] is False
+    assert pending.payload["export_wikigraph_artifacts"] is False
 
 
 def test_update_with_auto_approve_runs_update_service(
@@ -179,6 +181,19 @@ class _DummyGraphResult:
         self.preflight_result = _DummySync(method) if with_preflight else None
 
 
+class _DummyWikiGraphResult:
+    def __init__(
+        self,
+        *,
+        skipped: bool = False,
+        skip_reason: str = "",
+        with_build: bool = True,
+    ) -> None:
+        self.skipped = skipped
+        self.skip_reason = skip_reason
+        self.build = object() if with_build else None
+
+
 class _DummyUpdateResult:
     def __init__(
         self,
@@ -186,14 +201,20 @@ class _DummyUpdateResult:
         compile_result: Any = None,
         search_refreshed: bool = False,
         graph_result: Any = None,
+        wikigraph_result: Any = None,
     ) -> None:
         self.compile_result = compile_result
         self.search_refreshed = search_refreshed
         self.graph_result = graph_result
+        self.wikigraph_result = wikigraph_result
 
     @property
     def ok(self) -> bool:
-        return self.compile_result is not None or self.graph_result is not None
+        return (
+            self.compile_result is not None
+            or self.graph_result is not None
+            or self.wikigraph_result is not None
+        )
 
 
 def test_summarize_result_reports_empty_when_no_changes() -> None:
@@ -217,6 +238,32 @@ def test_summarize_result_reports_combined_phases() -> None:
     assert "graph(fast)" in summary
     assert method == "fast"
     assert details["graph_skipped"] is False
+
+
+def test_summarize_result_reports_wikigraph() -> None:
+    summary, _, details = update_tool._summarize_result(
+        _DummyUpdateResult(
+            compile_result=object(),
+            wikigraph_result=_DummyWikiGraphResult(),
+        )
+    )
+    assert "wikigraph" in summary
+    assert details["wikigraph"] is True
+    assert details["wikigraph_skipped"] is False
+
+
+def test_summarize_result_reports_skipped_wikigraph() -> None:
+    summary, _, details = update_tool._summarize_result(
+        _DummyUpdateResult(
+            wikigraph_result=_DummyWikiGraphResult(
+                skipped=True,
+                skip_reason="disabled",
+                with_build=False,
+            ),
+        )
+    )
+    assert "wikigraph(skipped:disabled)" in summary
+    assert details["wikigraph_skipped"] is True
 
 
 def test_summarize_result_reports_skipped_graph() -> None:

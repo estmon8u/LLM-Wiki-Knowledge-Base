@@ -38,9 +38,9 @@ from graphwiki_kb.services.update_service import (
 TOOL_NAME = "update_kb"
 TOOL_DESCRIPTION = (
     "Run the full kb update pipeline: ingest pending sources, compile wiki "
-    "pages, refresh search, and synchronize the GraphRAG index. Mutates the "
-    "KB; requires user approval unless the agent runtime was launched with "
-    "auto-approve."
+    "pages, refresh search, synchronize the GraphRAG index, and rebuild "
+    "WikiGraphRAG. Mutates the KB; requires user approval unless the agent "
+    "runtime was launched with auto-approve."
 )
 
 
@@ -55,6 +55,7 @@ def _build_update_service(runtime: AgentRuntimeContext) -> UpdateService:
         graphrag_workspace_service=services.graphrag_workspace,
         graphrag_sync_service=services.graphrag_sync,
         graphrag_wiki_export_service=services.graphrag_wiki_export,
+        wikigraph_index_service=services.wikigraph_index,
     )
 
 
@@ -91,6 +92,14 @@ def _summarize_result(result: UpdateResult) -> tuple[str, str, dict[str, Any]]:
             parts.append(f"graph(skipped:{result.graph_result.skip_reason})")
         else:
             parts.append(f"graph({method or 'sync'})")
+    if result.wikigraph_result is not None:
+        wg = result.wikigraph_result
+        if wg.skipped:
+            parts.append(f"wikigraph(skipped:{wg.skip_reason})")
+        elif wg.build is not None:
+            parts.append("wikigraph")
+        else:
+            parts.append("wikigraph(no-build)")
     if not parts:
         summary = "Update produced no changes."
     else:
@@ -101,6 +110,12 @@ def _summarize_result(result: UpdateResult) -> tuple[str, str, dict[str, Any]]:
         "graph": result.graph_result is not None,
         "graph_skipped": (
             result.graph_result.skipped if result.graph_result is not None else None
+        ),
+        "wikigraph": result.wikigraph_result is not None,
+        "wikigraph_skipped": (
+            result.wikigraph_result.skipped
+            if result.wikigraph_result is not None
+            else None
         ),
     }
     return summary, method or "", details
@@ -113,6 +128,11 @@ def _run_inprocess(runtime: AgentRuntimeContext, payload: UpdateInput) -> Update
         graph_method=payload.graph_method,
         no_graph=payload.no_graph,
         graph_only=payload.graph_only,
+        no_wikigraph=payload.no_wikigraph,
+        wikigraph_include_graphrag_export_pages=(
+            payload.wikigraph_include_graphrag_export_pages
+        ),
+        export_wikigraph_artifacts=payload.export_wikigraph_artifacts,
     )
     result = service.run(options)
     summary, method, details = _summarize_result(result)
@@ -148,6 +168,12 @@ def _run_subprocess(runtime: AgentRuntimeContext, payload: UpdateInput) -> Updat
         command.append("--force")
     if payload.graph_method != "auto":
         command.extend(["--graph-method", payload.graph_method])
+    if payload.no_wikigraph:
+        command.append("--no-wikigraph")
+    if payload.wikigraph_include_graphrag_export_pages:
+        command.append("--wikigraph-include-graphrag-export-pages")
+    if payload.export_wikigraph_artifacts:
+        command.append("--export-wikigraph-artifacts")
     completed = subprocess.run(
         command,
         cwd=str(runtime.command_context.project_root),
@@ -186,13 +212,18 @@ def run_update_kb(
             tool_name=TOOL_NAME,
             summary=(
                 "Run `kb update` to ingest pending sources, compile wiki pages, "
-                "refresh search, and synchronize the GraphRAG index."
+                "refresh search, synchronize GraphRAG, and rebuild WikiGraphRAG."
             ),
             payload={
                 "force": payload.force,
                 "graph_method": payload.graph_method,
                 "no_graph": payload.no_graph,
                 "graph_only": payload.graph_only,
+                "no_wikigraph": payload.no_wikigraph,
+                "wikigraph_include_graphrag_export_pages": (
+                    payload.wikigraph_include_graphrag_export_pages
+                ),
+                "export_wikigraph_artifacts": payload.export_wikigraph_artifacts,
             },
         )
         runtime.add_pending_approval(approval)

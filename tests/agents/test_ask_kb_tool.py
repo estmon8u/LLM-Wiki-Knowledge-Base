@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from graphwiki_kb.agents.models import AskKbInput, AskKbOutput
+from graphwiki_kb.agents.tools import ask_kb as ask_kb_tool
 from graphwiki_kb.agents.tools.ask_kb import run_ask_kb
 from graphwiki_kb.services.graph_ask_controller_service import GraphAskControllerError
 from graphwiki_kb.services.graphrag_query_service import GraphRAGQueryAnswer
+from graphwiki_kb.wikigraph.models import WikiGraphAnswer
 
 
 def _build_answer(**overrides) -> GraphRAGQueryAnswer:
@@ -63,6 +65,7 @@ def test_run_ask_kb_projects_graph_answer(runtime) -> None:
     assert controller.calls == [
         {"question": "What is RAG?", "method": "auto", "save": False}
     ]
+    assert runtime.tool_results[-1].data.get("engine") == "graphrag"
     assert runtime.tool_results
     trace = runtime.tool_results[-1]
     assert trace.tool_name == "ask_kb"
@@ -117,3 +120,43 @@ def test_run_ask_kb_propagates_save_flag(runtime) -> None:
     assert controller.calls[0]["save"] is True
     assert controller.calls[0]["method"] == "global"
     assert result.saved_path == "wiki/analysis/x.md"
+
+
+def test_run_ask_kb_wikigraph_engine(monkeypatch, runtime) -> None:
+    answer = WikiGraphAnswer(
+        method="local",
+        question="q",
+        answer="wikigraph answer",
+        contexts=[],
+        citations=[{"title": "A"}],
+        trace=[{"step": "method", "value": "local"}],
+        warnings=[],
+    )
+
+    def _fake_wikigraph_ask(ctx, question, *, method, save_answer):
+        assert question == "What is WikiGraph?"
+        assert method == "local"
+        assert save_answer is False
+        return answer
+
+    monkeypatch.setattr(ask_kb_tool, "run_wikigraph_ask", _fake_wikigraph_ask)
+
+    result = run_ask_kb(
+        runtime,
+        AskKbInput(question="What is WikiGraph?", engine="wikigraph", method="local"),
+    )
+
+    assert result.answer == "wikigraph answer"
+    assert result.method == "local"
+    assert result.claim_support == "cited-graph-answer"
+    assert runtime.tool_results[-1].data.get("engine") == "wikigraph"
+
+
+def test_run_ask_kb_rejects_drift_lite_on_graphrag(runtime) -> None:
+    result = run_ask_kb(
+        runtime,
+        AskKbInput(question="q", method="drift-lite"),
+    )
+    assert result.answer == ""
+    assert result.claim_support == "no-answer"
+    assert any("drift-lite" in warning for warning in result.staleness_warnings)

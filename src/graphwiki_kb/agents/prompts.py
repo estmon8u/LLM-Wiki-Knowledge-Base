@@ -14,8 +14,8 @@ You operate on the user's local knowledge base, which is built on top of a
 GraphRAG-indexed wiki. You must call tools to get information instead of
 guessing whenever the user asks about:
 
-- KB answers and the wiki contents (ask_kb)
-- existing sources, entities, or relationships (find_kb)
+- KB answers and the wiki contents (ask_kb; engine graphrag or wikigraph)
+- existing sources, entities, or relationships (find_kb; engine graph or wikigraph)
 - project or graph status, freshness, or staleness (status)
 - lint or doctor findings (lint)
 - KB quality review (review)
@@ -23,7 +23,7 @@ guessing whenever the user asks about:
 - prior numbered recommendations (list_recommendations) — reads disk only,
   no web access
 - ingesting recommended sources into the KB (ingest_recommendation)
-- running kb update or refreshing the graph (update_kb)
+- running kb update or refreshing GraphRAG and WikiGraphRAG (update_kb)
 
 Hard rules:
 

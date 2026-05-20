@@ -43,7 +43,11 @@ class AskKbInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     question: str = Field(..., description="Natural-language KB question.")
-    method: Literal["auto", "basic", "local", "global", "drift"] = "auto"
+    engine: Literal["graphrag", "wikigraph"] = Field(
+        "graphrag",
+        description="graphrag: GraphRAG answer controller; wikigraph: WikiGraphRAG.",
+    )
+    method: Literal["auto", "basic", "local", "global", "drift", "drift-lite"] = "auto"
     save: bool = Field(
         False,
         description="Save the answer as an analysis page in wiki/analysis/.",
@@ -77,6 +81,14 @@ class FindKbInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     query: str
+    engine: Literal["graph", "wikigraph"] = Field(
+        "graph",
+        description=(
+            "graph: GraphRAG entity/relationship artifacts plus wiki index; "
+            "wikigraph: WikiGraphRAG contexts only."
+        ),
+    )
+    method: Literal["auto", "basic", "local", "global", "drift-lite"] = "auto"
     limit: int = Field(5, ge=1, le=50)
 
 
@@ -89,7 +101,7 @@ class FindKbResult(BaseModel):
     path: str
     score: float
     snippet: str
-    retriever: Literal["graph", "wiki"]
+    retriever: Literal["graph", "wiki", "wikigraph"]
 
 
 class FindKbOutput(BaseModel):
@@ -116,6 +128,9 @@ class StatusOutput(BaseModel):
     graph_freshness: str
     next_action: str
     staleness_reasons: list[str] = Field(default_factory=list)
+    wikigraph_built: bool = False
+    wikigraph_node_count: int = 0
+    wikigraph_chunk_count: int = 0
 
 
 class LintOutput(BaseModel):
@@ -298,6 +313,9 @@ class UpdateInput(BaseModel):
     graph_method: GraphMethod = "auto"
     no_graph: bool = False
     graph_only: bool = False
+    no_wikigraph: bool = False
+    wikigraph_include_graphrag_export_pages: bool = False
+    export_wikigraph_artifacts: bool = False
 
 
 class UpdateOutput(BaseModel):

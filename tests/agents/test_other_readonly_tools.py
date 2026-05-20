@@ -15,9 +15,12 @@ def test_run_status_returns_pydantic_projection(runtime) -> None:
     assert output.project_initialized is True
     assert output.source_count >= 0
     assert output.graph_freshness  # non-empty string
+    assert output.wikigraph_built is False or isinstance(output.wikigraph_built, bool)
+    assert output.wikigraph_node_count >= 0
     trace = runtime.tool_results[-1]
     assert trace.tool_name == "status"
     assert trace.ok is True
+    assert "wikigraph_built" in trace.data
 
 
 def test_run_find_kb_merges_graph_and_wiki(runtime) -> None:
@@ -78,6 +81,44 @@ def test_run_find_kb_rejects_empty_query(runtime) -> None:
     out = run_find_kb(runtime, FindKbInput(query="   "))
     assert out.results == []
     assert runtime.tool_results[-1].ok is False
+
+
+def test_run_find_kb_wikigraph_engine(runtime, monkeypatch) -> None:
+    class _FakeFacade:
+        def __init__(self, paths, config):
+            pass
+
+        def find(self, query, *, method, limit):
+            return {
+                "engine": "wikigraph",
+                "method": method,
+                "status": {"built": False},
+                "contexts": [
+                    {
+                        "title": "Chunk A",
+                        "path": "wiki/sources/a.md",
+                        "text": "snippet text",
+                        "score": 0.88,
+                        "node_id": "chunk-1",
+                    }
+                ],
+                "warnings": [],
+            }
+
+    monkeypatch.setattr(
+        "graphwiki_kb.services.wikigraph_query_service.WikiGraphQueryFacade",
+        _FakeFacade,
+    )
+
+    out = run_find_kb(
+        runtime,
+        FindKbInput(query="topic", engine="wikigraph", method="local", limit=3),
+    )
+
+    assert len(out.results) == 1
+    assert out.results[0].retriever == "wikigraph"
+    assert out.results[0].title == "Chunk A"
+    assert runtime.tool_results[-1].data.get("engine") == "wikigraph"
 
 
 def test_run_lint_projects_lint_report(runtime) -> None:
