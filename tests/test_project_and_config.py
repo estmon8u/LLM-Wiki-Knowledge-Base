@@ -467,6 +467,35 @@ def test_apply_config_migrations_upgrades_version_one_payload() -> None:
     assert migrated["storage"]["raw_normalized_dir"] == "raw/normalized"
     assert migrated["provider"] == {}
     assert migrated["providers"]["openai"]["model"] == "gpt-5.4-nano"
+    # The v7 -> v8 migration adds `agent` and `research` sections so the
+    # optional kb agent control plane works on pre-existing configs.
+    assert migrated["agent"]["enabled"] is True
+    assert migrated["agent"]["require_approval_for_writes"] is True
+    assert migrated["research"]["web_enabled"] is True
+    assert "reddit.com" in migrated["research"]["default_domains_blocklist"]
+
+
+def test_apply_config_migrations_preserves_user_agent_overrides() -> None:
+    """v7 -> v8 must keep any user-supplied agent/research overrides."""
+    migrated, changed = _apply_config_migrations(
+        {
+            "version": 7,
+            "project": {"name": "P"},
+            "storage": {},
+            "compile": {},
+            "agent": {"model": "custom-model", "max_turns": 99},
+            "research": {"max_recommendations": 11},
+        }
+    )
+
+    assert changed is True
+    assert migrated["version"] == CURRENT_CONFIG_VERSION
+    assert migrated["agent"]["model"] == "custom-model"
+    assert migrated["agent"]["max_turns"] == 99
+    # Untouched defaults still arrive from DEFAULT_CONFIG.
+    assert migrated["agent"]["session_backend"] == "sqlite"
+    assert migrated["research"]["max_recommendations"] == 11
+    assert migrated["research"]["web_enabled"] is True
 
 
 def test_config_service_merges_custom_config(test_project) -> None:

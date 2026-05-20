@@ -39,7 +39,7 @@ from graphwiki_kb.services.project_service import (
     utc_now_iso,
 )
 
-CURRENT_CONFIG_VERSION = 7
+CURRENT_CONFIG_VERSION = 8
 PROVIDER_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh"}
 GEMINI_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high"}
 ANTHROPIC_THINKING_EFFORTS = {"low", "medium", "high", "xhigh", "max"}
@@ -399,6 +399,11 @@ def _apply_config_migrations(config: dict[str, Any]) -> tuple[dict[str, Any], bo
             changed = True
             version = _config_version(migrated)
             continue
+        if version == 7:
+            migrated = _migrate_v7_to_v8(migrated)
+            changed = True
+            version = _config_version(migrated)
+            continue
         raise ValueError(f"Unsupported kb.config.yaml version: {version}")
 
     return migrated, changed
@@ -530,6 +535,31 @@ def _migrate_v6_to_v7(config: dict[str, Any]) -> dict[str, Any]:
         migrated["conversion"] = conversion
 
     migrated["version"] = 7
+    return migrated
+
+
+def _migrate_v7_to_v8(config: dict[str, Any]) -> dict[str, Any]:
+    """Persist the ``agent`` and ``research`` sections introduced by kb agent.
+
+    The actual default values live in :data:`DEFAULT_CONFIG`; this migration
+    only makes sure pre-existing user configs gain the new sections (deep
+    merged so user overrides win) and that the version field advances.
+    """
+    migrated = deepcopy(config)
+
+    existing_agent = migrated.get("agent", {})
+    agent_config = deepcopy(DEFAULT_CONFIG["agent"])
+    if isinstance(existing_agent, dict):
+        agent_config = _deep_merge(agent_config, existing_agent)
+    migrated["agent"] = agent_config
+
+    existing_research = migrated.get("research", {})
+    research_config = deepcopy(DEFAULT_CONFIG["research"])
+    if isinstance(existing_research, dict):
+        research_config = _deep_merge(research_config, existing_research)
+    migrated["research"] = research_config
+
+    migrated["version"] = 8
     return migrated
 
 

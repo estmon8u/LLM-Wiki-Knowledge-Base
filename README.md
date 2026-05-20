@@ -18,13 +18,13 @@ cd LLM-Wiki-Knowledge-Base
 poetry install --with dev --all-extras
 ```
 
-This creates a local `.venv` with the development tools and optional provider/converter/export dependencies used by the full test and real-document workflows. Minimal package installs can choose extras such as `graphwiki-kb[openai]`, `graphwiki-kb[pdf]`, or `graphwiki-kb[all]`. The CLI entrypoint is registered as `kb`.
+This creates a local `.venv` with the development tools and optional provider/converter/export dependencies used by the full test and real-document workflows. Minimal package installs can choose extras such as `graphwiki-kb[openai]`, `graphwiki-kb[agent]`, `graphwiki-kb[pdf]`, or `graphwiki-kb[all]`. The CLI entrypoint is registered as `kb`.
 
 ## GraphRAG Workspace
 
 Microsoft GraphRAG is installed as a library/CLI dependency, not a separate paid hosted service. Running real GraphRAG indexing or query jobs can still create model and embedding costs through the configured provider.
 
-The repository contains an initialized GraphRAG workspace under `graph/graphrag/`. The committed scaffold includes `settings.yaml`, default prompts, and `input/`; local runtime files such as `.env`, generated `input/sources.json`, `output/`, `cache/`, `logs/`, and run metadata under `graph/runs/*.json` stay ignored.
+The repository contains an initialized GraphRAG workspace under `graph/graphrag/`. The committed scaffold includes `settings.yaml`, default prompts, and `input/`; local runtime files such as `.env`, generated `input/sources.json`, `output/`, `cache/`, `logs/`, run metadata under `graph/runs/*.json`, and `kb agent` session/run artifacts under `graph/runs/agent/` stay ignored.
 
 ```bash
 poetry run graphrag --help
@@ -214,7 +214,7 @@ Creates:
 - `vault/obsidian/` — directory for vault export
 
 Running `init` again is safe — it skips files that already exist. If an existing config file is malformed, `init` writes a timestamped `kb.config.yaml.bak.*` copy before regenerating the default file.
-The scaffold writes `kb.config.yaml` at config version 7. Older configs are migrated in place on load so deprecated fields are removed and newer sections such as `providers`, `conversion`, `graph.routing`, `conversion.html.allow_local_file_access`, and `storage.raw_normalized_dir` are persisted automatically.
+The scaffold writes `kb.config.yaml` at config version 8. Older configs are migrated in place on load so deprecated fields are removed and newer sections such as `providers`, `conversion`, `graph.routing`, `agent`, `research`, `conversion.html.allow_local_file_access`, and `storage.raw_normalized_dir` are persisted automatically.
 
 ### `kb doctor`
 
@@ -294,7 +294,7 @@ The `kb graph` command group has been removed. GraphRAG setup, input sync, index
 | `kb update --no-graph` | Updates the wiki and legacy index without syncing or indexing GraphRAG. |
 | `kb status` / `kb status --json` / `kb status --strict` | Includes GraphRAG workspace, input, active output directory, output-table, vector-store, freshness, last-index-run, row-count, strict-readiness, and next-action fields. |
 | `kb ask --method auto|basic|local|global|drift` | Queries GraphRAG through the default controller after method-specific readiness checks. |
-| `kb agent "..."` | Natural-language KB control plane backed by the OpenAI Agents SDK. Routes requests to `ask_kb`, `find_kb`, `status`, `lint`, `review`, `research`, `ingest_recommendation`, and `update_kb` tools. Read-only by default; write tools require `--yes` or an interactive approval prompt. Web research uses the OpenAI Responses `web_search` tool and produces durable, numbered source recommendations under `graph/runs/agent/` without ingesting them. Install with `poetry install -E agent`. |
+| `kb agent "..."` | Natural-language KB control plane backed by the OpenAI Agents SDK. Routes requests to `ask_kb`, `find_kb`, `status`, `lint`, `review`, `research`, `list_recommendations`, `ingest_recommendation`, and `update_kb` tools. Read-only by default; write tools require `--yes` or an interactive approval prompt. Web research uses the OpenAI Responses `web_search` tool and produces durable, numbered source recommendations under `graph/runs/agent/` without ingesting them. One-shot calls are sessionless; pass `--session ID` to share conversation state across runs. Install with `poetry install -E agent`. |
 | `kb export` | Exports the vault and refreshes `wiki/graph/` when GraphRAG output exists. |
 
 GraphRAG indexing uses the same decision table that powered the former graph sync wrapper:
@@ -399,6 +399,60 @@ poetry run kb ask --show-source-trace "How does the graph index support source t
 | `--save-as` | | Save with a custom analysis slug. Implies `--save`. |
 | `--show-source-trace` | off | Print source trace, route reason, and current support level before the answer. |
 | `--json` | off | Include GraphRAG answer metadata as JSON. |
+
+### `kb agent [natural language request]`
+
+Run a natural-language control plane over the local KB through the optional
+OpenAI Agents SDK. The agent decides which tool to call and routes the request
+through existing services. The current toolset covers:
+
+- read tools: `ask_kb`, `find_kb`, `status`, `lint`, `review`
+- research: `research` (local KB plus optional OpenAI Responses `web_search`
+  with structured source recommendations and persistent run records)
+- recommendation follow-ups: `list_recommendations` (reads the saved research
+  run record without re-running web search)
+- write tools (require explicit user approval or `--yes`):
+  `ingest_recommendation`, `update_kb`
+
+```bash
+poetry install --extras agent
+poetry run kb agent "What does my KB say about GraphRAG evaluation?"
+poetry run kb agent --show-plan "Is my graph stale?"
+poetry run kb agent --json "Find notes about agent memory"
+poetry run kb agent "Research current GraphRAG evaluation work and recommend sources"
+poetry run kb agent "show previous recommendations"
+poetry run kb agent --yes "add recommendation 2 and update the KB"
+poetry run kb agent
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--show-plan` | off | Print the planned tool inventory before the answer. |
+| `--json` | off | Return the serialized agent run record. Requires a one-shot prompt. |
+| `--yes` | off | Auto-approve safe writes (`ingest_recommendation`, `update_kb`). Destructive future tools still require explicit approval. |
+| `--session ID` | sessionless (one-shot) / `repl` (interactive) | SQLite session id for cross-call memory. One-shot calls default to no shared session so unrelated commands cannot inherit stale context. |
+
+The command keeps the CLI/service boundary intact: `commands/agent.py` owns
+Click and REPL behavior, `AgentService` owns one-turn execution, the OpenAI SDK
+runtime owns tool selection and session history, and every tool calls an
+existing typed service instead of shelling out to another `kb` command. The
+`update_kb` tool drives the full `UpdateService` pipeline (ingest, compile,
+search refresh, GraphRAG sync, wiki export) and falls back to a `kb update`
+subprocess when invoked from a worker thread where POSIX signal handlers used
+by GraphRAG indexing would otherwise fail.
+
+Research runs are persisted under ignored `graph/runs/agent/`:
+
+- `research-*.json` — full run record (question, KB gaps, web findings,
+  numbered `SourceRecommendation` objects).
+- `wiki/analysis/agent-research-*.md` — Markdown research report.
+- `latest.json` — pointer to the most recent run with at least one
+  recommendation, so "add recommendation 2" remains resolvable after a
+  follow-up research call that produced no recommendations.
+- `agent-run-*.json` — durable trace of each agent turn (tool calls,
+  approvals, final output).
+- `sessions.sqlite` — Agents SDK conversation memory for sessions you
+  explicitly opt into via `--session` or the interactive REPL.
 
 The controller checks workspace, input, freshness, and the artifacts required by
 the selected query method before querying. For example, `global` queries require
@@ -615,7 +669,7 @@ Provider configuration lives entirely in `kb.config.yaml`. The top-level
 the built-in settings for `openai`, `anthropic`, and `gemini`:
 
 ```yaml
-version: 7
+version: 8
 provider:
   name: openai
 providers:
@@ -681,6 +735,25 @@ graph:
     max_source_bytes: 26214400
   routing:
     aliases: {}
+agent:
+  enabled: true
+  model: gpt-5.5
+  max_turns: 8
+  require_approval_for_writes: true
+  save_runs: true
+  trace: true
+  session_backend: sqlite
+research:
+  web_enabled: true
+  web_model: gpt-5.5
+  search_context_size: medium
+  max_recommendations: 5
+  max_web_sources: 12
+  require_approval_for_ingest: true
+  default_domains_allowlist: []
+  default_domains_blocklist:
+    - reddit.com
+    - quora.com
 ```
 
 To customize a provider, edit its entry under `providers`:
@@ -718,7 +791,7 @@ The `graph` section controls GraphRAG runtime setup independently from the text-
 
 OpenAI and Google Gemini both expose embedding models that can be configured for GraphRAG. Anthropic does not currently provide its own embedding model; Anthropic's embedding guidance points users to Voyage AI instead. GraphRAG uses LiteLLM underneath and supports non-OpenAI providers, but its own docs say OpenAI GPT-4-series models remain the most thoroughly tested path.
 
-`kb.config.yaml` is versioned. The current schema version is 7, and the CLI automatically migrates older files when it loads project configuration.
+`kb.config.yaml` is versioned. The current schema version is 8, and the CLI automatically migrates older files when it loads project configuration. The `agent` and `research` sections control the optional OpenAI Agents SDK control plane used by `kb agent` and the web-backed research pipeline.
 
 You can also override the provider per-invocation without editing the config file:
 
@@ -900,6 +973,7 @@ project-root/
 │   │   ├── compile_runs.json      # Resume/failure state for update runs
 │   │   └── search_index.sqlite3   # Temporary legacy SQLite FTS5 index
 │   ├── runs/
+│   │   ├── agent/                 # kb agent SQLite sessions, research runs, traces, ignored
 │   │   └── graph_index_runs.json  # Local GraphRAG index run metadata, ignored
 │   └── graphrag/
 │       ├── settings.yaml          # GraphRAG JSON input configuration
