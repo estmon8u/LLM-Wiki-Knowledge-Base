@@ -304,6 +304,7 @@ def test_command_registry_returns_click_commands_and_specs(test_project) -> None
     "command_name",
     [
         "add",
+        "agent",
         "ask",
         "config",
         "doctor",

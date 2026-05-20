@@ -747,6 +747,85 @@ def test_lint_service_allows_duplicate_analysis_titles(test_project) -> None:
     assert not any(issue.code == "duplicate-title" for issue in report.issues)
 
 
+def test_lint_service_accepts_agent_research_pages(test_project) -> None:
+    """Agent research reports under wiki/analysis/ must lint clean.
+
+    The page kind is ``type: agent_research`` and carries a different
+    frontmatter schema from saved KB answers (``type: analysis``). Lint
+    must accept the agent_research schema without demanding
+    ``saved_at`` / ``citations`` / ``claim_count`` / ``citation_count``
+    or warning about an empty ``summary`` field.
+    """
+    agent_research_page = (
+        "---\n"
+        "type: agent_research\n"
+        "agent: graphwiki-agent\n"
+        "run_id: research_20260519T123456_topic\n"
+        "question: What about GraphRAG eval?\n"
+        "created_at: '2026-05-19T12:34:56+00:00'\n"
+        "local_method: local\n"
+        "local_claim_support: cited-graph-answer\n"
+        "recommendation_count: 3\n"
+        "web_used: true\n"
+        "---\n\n"
+        "# Research Report\n\n"
+        "## Local KB Answer\n\nSome answer.\n\n"
+        "## Recommended Sources to Add\n\n- Item A\n- Item B\n"
+    )
+    test_project.write_file(
+        "wiki/analysis/agent-research-graphrag-eval.md", agent_research_page
+    )
+
+    report = test_project.services["lint"].lint()
+    issues_for_page = [
+        issue
+        for issue in report.issues
+        if issue.path.endswith("agent-research-graphrag-eval.md")
+    ]
+    # The page must lint clean: no missing-field errors and no empty-summary
+    # warning even though no ``summary`` field exists on the schema.
+    assert not any(
+        issue.severity == "error" for issue in issues_for_page
+    ), issues_for_page
+    assert not any(
+        issue.code in {"empty-summary", "analysis-without-citations"}
+        for issue in issues_for_page
+    ), issues_for_page
+
+
+def test_lint_service_still_enforces_analysis_page_schema(test_project) -> None:
+    """A canonical saved-answer page (type: analysis) without required
+    fields must still trigger missing-field errors. This guards against
+    accidentally loosening the analysis-page rule while teaching lint
+    about agent_research pages.
+    """
+    incomplete_analysis_page = (
+        "---\n"
+        "type: analysis\n"
+        "title: Some Answer\n"
+        "summary: Saved.\n"
+        "question: What?\n"
+        "---\n\n"
+        "# Some Answer\n\nBody.\n"
+    )
+    test_project.write_file(
+        "wiki/analysis/incomplete-saved-answer.md", incomplete_analysis_page
+    )
+
+    report = test_project.services["lint"].lint()
+    missing_for_page = {
+        issue.message
+        for issue in report.issues
+        if issue.path.endswith("incomplete-saved-answer.md")
+        and issue.code == "missing-field"
+    }
+    # All four saved-answer-specific fields are still required.
+    assert any("saved_at" in msg for msg in missing_for_page)
+    assert any("citations" in msg for msg in missing_for_page)
+    assert any("claim_count" in msg for msg in missing_for_page)
+    assert any("citation_count" in msg for msg in missing_for_page)
+
+
 def test_lint_service_reports_invalid_frontmatter_types(test_project) -> None:
     """Verifies that lint service reports invalid frontmatter types.
 

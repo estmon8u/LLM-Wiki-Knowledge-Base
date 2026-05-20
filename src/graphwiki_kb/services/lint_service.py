@@ -71,6 +71,13 @@ _FIELD_TYPE_SPEC: dict[str, str] = {
     "key_points": "list",
     "open_questions": "list",
     "title_suggestion": "string",
+    "agent": "string",
+    "run_id": "string",
+    "created_at": "date",
+    "local_method": "string",
+    "local_claim_support": "string",
+    "recommendation_count": "int",
+    "web_used": "bool",
 }
 
 
@@ -166,6 +173,17 @@ class LintService:
                     )
                 else:
                     page_type = state.frontmatter.get("type")
+                    is_agent_research_page = (
+                        state.file_path.parent == self.paths.wiki_analysis_dir
+                        and page_type == "agent_research"
+                    )
+                    # An "analysis page" in the canonical sense is a saved KB
+                    # answer with citations and claim counts. Agent research
+                    # reports live alongside them under wiki/analysis/ but
+                    # carry a different schema (run_id, recommendation_count,
+                    # web_used) and are linted separately below.
+                    if is_agent_research_page:
+                        is_analysis_page = False
                     is_analysis_page = is_analysis_page or (
                         state.file_path.parent == self.paths.wiki_concepts_dir
                         and page_type == "analysis"
@@ -177,7 +195,16 @@ class LintService:
                     is_source_page = (
                         state.file_path.parent == self.paths.wiki_sources_dir
                     )
-                    if is_analysis_page:
+                    if is_agent_research_page:
+                        required_fields = [
+                            "type",
+                            "question",
+                            "run_id",
+                            "created_at",
+                            "recommendation_count",
+                            "web_used",
+                        ]
+                    elif is_analysis_page:
                         required_fields = [
                             "title",
                             "summary",
@@ -218,7 +245,10 @@ class LintService:
                                 source_records_by_slug.get(state.file_path.stem),
                             )
                         )
-                    if not str(state.frontmatter.get("summary", "")).strip():
+                    if (
+                        not is_agent_research_page
+                        and not str(state.frontmatter.get("summary", "")).strip()
+                    ):
                         issues.append(
                             LintIssue(
                                 severity="warning",
@@ -228,7 +258,8 @@ class LintService:
                             )
                         )
                     issues.extend(self._lint_frontmatter_types(state))
-                    issues.extend(self._lint_analysis_page(state))
+                    if not is_agent_research_page:
+                        issues.extend(self._lint_analysis_page(state))
 
                 if not is_analysis_page:
                     normalized_title = state.page_title.casefold().strip()
