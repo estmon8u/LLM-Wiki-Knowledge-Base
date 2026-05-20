@@ -230,15 +230,17 @@ def main(argv: list[str] | None = None) -> int:
         [
             "--project-root",
             str(project_root),
-            "legacy",
             "find",
+            "--engine",
+            "legacy",
             *args.search_query.split(),
         ],
         [
             "--project-root",
             str(project_root),
-            "legacy",
             "ask",
+            "--engine",
+            "legacy",
             *args.question.split(),
         ],
     ):

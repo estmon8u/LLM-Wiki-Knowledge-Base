@@ -59,6 +59,7 @@ def _get_update_service(command_context: CommandContext) -> UpdateService:
         graphrag_workspace_service=command_context.services.graphrag_workspace,
         graphrag_sync_service=command_context.services.graphrag_sync,
         graphrag_wiki_export_service=command_context.services.graphrag_wiki_export,
+        wikigraph_index_service=command_context.services.wikigraph_index,
     )
 
 
@@ -132,6 +133,46 @@ def create_command() -> click.Command:
         default=None,
         help="Opt in or out of legacy concept page generation for this update.",
     )
+    @click.option(
+        "--wikigraph/--no-wikigraph",
+        default=None,
+        show_default=False,
+        help=(
+            "Build the WikiGraphRAG index after wiki compile. When neither "
+            "flag is passed, the `wikigraph.enabled` config value drives the "
+            "behavior (defaults to true)."
+        ),
+    )
+    @click.option(
+        "--wikigraph-include-graphrag-export-pages",
+        is_flag=True,
+        help=(
+            "Ablation: also feed wiki/graph (GraphRAG export) pages to the "
+            "WikiGraphRAG build."
+        ),
+    )
+    @click.option(
+        "--export-wikigraph-artifacts/--no-export-wikigraph-artifacts",
+        default=None,
+        show_default=False,
+        help=(
+            "After building the WikiGraphRAG index, write generated entity, "
+            "community, and chunk cards under wiki/wikigraph/. When neither "
+            "flag is passed, the `wikigraph.export_generated_artifacts` "
+            "config value drives the behavior (defaults to false)."
+        ),
+    )
+    @click.option(
+        "--artifact-types",
+        "artifact_types",
+        type=str,
+        default=None,
+        help=(
+            "Comma-separated subset of wikigraph artifact types to export "
+            "(entities,communities,chunks). Defaults to all three when "
+            "--export-wikigraph-artifacts is on."
+        ),
+    )
     @click.pass_obj
     def command(
         command_context: CommandContext,
@@ -143,6 +184,10 @@ def create_command() -> click.Command:
         graph_method: str,
         allow_partial: bool,
         concepts: bool | None,
+        wikigraph: bool | None,
+        wikigraph_include_graphrag_export_pages: bool,
+        export_wikigraph_artifacts: bool | None,
+        artifact_types: str | None,
     ) -> None:
         """Command.
 
@@ -169,6 +214,18 @@ def create_command() -> click.Command:
             graph_method=graph_method,
             allow_partial=allow_partial,
             concepts=concepts,
+            wikigraph=wikigraph,
+            wikigraph_include_graphrag_export_pages=(
+                wikigraph_include_graphrag_export_pages
+            ),
+            export_wikigraph_artifacts=export_wikigraph_artifacts,
+            wikigraph_artifact_types=(
+                tuple(
+                    item.strip() for item in artifact_types.split(",") if item.strip()
+                )
+                if artifact_types
+                else None
+            ),
         )
 
         console.print(f"Mode: {_mode_label(options)}")
@@ -283,5 +340,36 @@ def create_command() -> click.Command:
                 console.print(f"[yellow]{graph_result.warning}[/yellow]")
             elif graph_result.skipped and graph_result.skip_reason:
                 console.print(f"Graph skipped: {graph_result.skip_reason}")
+
+        # Render WikiGraphRAG phase
+        console.print("")
+        echo_section("WikiGraphRAG Summary")
+        if result.wikigraph_skipped:
+            console.print(
+                f"WikiGraphRAG skipped: {result.wikigraph_skip_reason or 'unknown'}"
+            )
+        elif result.wikigraph_result is not None:
+            report = result.wikigraph_result
+            console.print(
+                f"Built {report.node_count} node(s), {report.edge_count} edge(s), "
+                f"{report.community_count} community(ies) "
+                f"from {report.source_count} source page(s)"
+            )
+            for warning in report.warnings:
+                console.print(f"[yellow]{warning}[/yellow]")
+            if result.wikigraph_artifact_paths:
+                per_type: dict[str, int] = {}
+                for rel_path in result.wikigraph_artifact_paths:
+                    parts = rel_path.split("/")
+                    bucket = parts[2] if len(parts) > 2 else "(other)"
+                    per_type[bucket] = per_type.get(bucket, 0) + 1
+                console.print(
+                    f"Exported {len(result.wikigraph_artifact_paths)} generated "
+                    "card(s) under wiki/wikigraph/:"
+                )
+                for bucket in sorted(per_type):
+                    echo_bullet(f"{per_type[bucket]} {bucket} card(s)")
+        else:
+            console.print("WikiGraphRAG build did not run.")
 
     return command

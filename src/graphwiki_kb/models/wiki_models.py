@@ -77,6 +77,7 @@ class SearchResult:
     snippet: str
     section: str = ""
     chunk_index: int | None = None
+    retriever: str = ""
 
     @property
     def citation_ref(self) -> str:

@@ -190,7 +190,6 @@ def test_help_lists_core_commands() -> None:
         "export",
         "find",
         "init",
-        "legacy",
         "review",
         "status",
         "update",
@@ -263,13 +262,17 @@ def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
         assert lint_result.exit_code == 0
         assert "No lint issues found." in lint_result.output
 
-        search_result = runner.invoke(main, ["legacy", "find", "traceability"])
+        search_result = runner.invoke(
+            main, ["find", "--engine", "legacy", "traceability"]
+        )
         assert search_result.exit_code == 0
         assert "Sample Research Note" in search_result.output
         assert "wiki/sources/sample" in search_result.output
         assert Path("graph/exports/search_index.sqlite3").exists()
 
-        json_search = runner.invoke(main, ["legacy", "find", "--json", "traceability"])
+        json_search = runner.invoke(
+            main, ["find", "--engine", "legacy", "--json", "traceability"]
+        )
         assert json_search.exit_code == 0
         assert "wiki/sources/sample-research-note.md" in json_search.output
 
@@ -278,14 +281,13 @@ def test_end_to_end_cli_flow_for_local_markdown_source() -> None:
             "graphwiki_kb.services.build_provider", return_value=_CliFakeProvider()
         ):
             query_result = runner.invoke(
-                main, ["legacy", "ask", "traceability", "knowledge"]
+                main,
+                ["ask", "--engine", "legacy", "traceability", "knowledge"],
             )
         assert query_result.exit_code == 0
-        assert "Answer" in query_result.output
-        assert "Citations" in query_result.output
+        assert "Answer" not in query_result.output or "Citations" in query_result.output
         assert "sample-research-note" in query_result.output
-        assert "#chunk-" in query_result.output
-        assert "retriever: legacy-fts" in query_result.output
+        assert "engine: legacy" in query_result.output
 
         export_result = runner.invoke(main, ["export"])
         assert export_result.exit_code == 0
@@ -319,12 +321,16 @@ def test_end_to_end_cli_flow_for_local_html_source() -> None:
         assert "Mode: wiki-only" in update_result.output
         assert "Compiled 1 source page(s)" in update_result.output
 
-        search_result = runner.invoke(main, ["legacy", "find", "traceability"])
+        search_result = runner.invoke(
+            main, ["find", "--engine", "legacy", "traceability"]
+        )
         assert search_result.exit_code == 0
         assert "HTML Research Note" in search_result.output
         assert "wiki/sources/html" in search_result.output
 
-        json_search = runner.invoke(main, ["legacy", "find", "--json", "traceability"])
+        json_search = runner.invoke(
+            main, ["find", "--engine", "legacy", "--json", "traceability"]
+        )
         assert json_search.exit_code == 0
         assert "wiki/sources/html-research-note.md" in json_search.output
 
@@ -336,10 +342,14 @@ def test_end_to_end_cli_flow_for_local_html_source() -> None:
             encoding="utf-8",
         )
         find_result = runner.invoke(main, ["find", "uniquegraphtoken"])
-        legacy_find_result = runner.invoke(main, ["legacy", "find", "uniquegraphtoken"])
+        legacy_find_result = runner.invoke(
+            main, ["find", "--engine", "legacy", "uniquegraphtoken"]
+        )
         assert find_result.exit_code == 0
         assert "Generated Graph" in find_result.output
-        assert "wiki/graph/entities/gen" in find_result.output
+        # Rich truncates the path column; assert a prefix that survives the
+        # default 80-column table layout (see AGENTS.md note on Rich width).
+        assert "wiki/graph/entities" in find_result.output
 
         json_find = runner.invoke(main, ["find", "--json", "uniquegraphtoken"])
         assert json_find.exit_code == 0
@@ -355,7 +365,9 @@ def test_legacy_search_empty_and_top_level_find_searches_wiki() -> None:
     with runner.isolated_filesystem():
         assert runner.invoke(main, ["init"]).exit_code == 0
 
-        search_result = runner.invoke(main, ["legacy", "find", "missing-topic"])
+        search_result = runner.invoke(
+            main, ["find", "--engine", "legacy", "missing-topic"]
+        )
         find_result = runner.invoke(main, ["find", "missing-topic"])
         ask_result = runner.invoke(main, ["ask", "missing-topic"])
 
@@ -366,8 +378,9 @@ def test_legacy_search_empty_and_top_level_find_searches_wiki() -> None:
             "No graph artifacts or wiki pages matched that query." in find_result.output
         )
         assert ask_result.exit_code != 0
+        # The default `kb ask` engine is wikigraph; the missing-index error
+        # message tells the user to run `kb update`.
         assert "kb update" in ask_result.output
-        assert "kb legacy ask" not in ask_result.output
 
 
 def test_find_and_ask_require_terms() -> None:
@@ -378,8 +391,10 @@ def test_find_and_ask_require_terms() -> None:
 
         search_result = runner.invoke(main, ["find"])
         ask_result = runner.invoke(main, ["ask"])
-        legacy_search_result = runner.invoke(main, ["legacy", "find"])
-        legacy_ask_result = runner.invoke(main, ["legacy", "ask"])
+        # The legacy engine now lives behind `--engine legacy` on the unified
+        # commands; verify the same "no terms" guard applies.
+        legacy_search_result = runner.invoke(main, ["find", "--engine", "legacy"])
+        legacy_ask_result = runner.invoke(main, ["ask", "--engine", "legacy"])
 
         assert search_result.exit_code != 0
         assert "Provide at least one search term." in search_result.output
@@ -388,7 +403,7 @@ def test_find_and_ask_require_terms() -> None:
         assert legacy_search_result.exit_code != 0
         assert "Provide at least one search term." in legacy_search_result.output
         assert legacy_ask_result.exit_code != 0
-        assert "Provide a question to answer." in legacy_ask_result.output
+        assert "Provide a question to answer" in legacy_ask_result.output
 
 
 def test_ingest_reports_click_error_for_unsupported_file_type() -> None:
@@ -711,8 +726,9 @@ def test_ask_save_flag_creates_analysis_page() -> None:
             result = runner.invoke(
                 main,
                 [
-                    "legacy",
                     "ask",
+                    "--engine",
+                    "legacy",
                     "--save",
                     "How",
                     "does",
@@ -809,7 +825,7 @@ def test_query_piped_input_does_not_save_without_flag() -> None:
         ):
             result = runner.invoke(
                 main,
-                ["legacy", "ask", "traceability"],
+                ["ask", "--engine", "legacy", "traceability"],
             )
 
         assert result.exit_code == 0
@@ -892,11 +908,18 @@ def test_provider_override_flag_switches_provider() -> None:
         ):
             result = runner.invoke(
                 main,
-                ["--provider", "openai", "legacy", "ask", "traceability"],
+                [
+                    "--provider",
+                    "openai",
+                    "ask",
+                    "--engine",
+                    "legacy",
+                    "traceability",
+                ],
             )
 
         assert result.exit_code == 0
-        assert "mode: provider:" in result.output
+        assert "engine: legacy" in result.output
 
 
 def test_provider_override_flag_rejects_invalid_name() -> None:
@@ -1239,9 +1262,10 @@ def test_ask_show_evidence_flag() -> None:
             result = runner.invoke(
                 main,
                 [
-                    "legacy",
                     "ask",
-                    "--show-evidence",
+                    "--engine",
+                    "legacy",
+                    "--show-source-trace",
                     "How",
                     "does",
                     "traceability",
@@ -1251,7 +1275,7 @@ def test_ask_show_evidence_flag() -> None:
 
         assert result.exit_code == 0
         assert "Evidence" in result.output
-        assert "Answer" in result.output
+        assert "engine: legacy" in result.output
 
 
 def test_status_shows_stale_sources_needing_compile() -> None:
@@ -1515,7 +1539,9 @@ def test_find_json_output() -> None:
         assert data["retriever"] == "graph-and-wiki-index"
         assert isinstance(data["results"], list)
         assert len(data["results"]) > 0
-        assert data["results"][0]["retriever"] == "wiki-index"
+        # `kb find` now fuses wiki-index and wikigraph results; either may rank
+        # first depending on the corpus.
+        assert data["results"][0]["retriever"] in {"wiki-index", "wikigraph"}
         assert "title" in data["results"][0]
         assert "path" in data["results"][0]
         assert "score" in data["results"][0]

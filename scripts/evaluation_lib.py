@@ -509,7 +509,7 @@ def evaluate_legacy_ask(
             method="ask",
             status="skipped_no_project_root",
         )
-    command = _kb_command(project_root, "legacy", "ask", question.question)
+    command = _kb_command(project_root, "ask", "--engine", "legacy", question.question)
     run = run_command(command, cwd=command_cwd, timeout_seconds=timeout_seconds)
     artifact_path = write_artifact(
         results_dir,

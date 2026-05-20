@@ -18,6 +18,7 @@ from graphwiki_kb.agents.models import (
 
 def test_ask_kb_input_defaults_to_auto() -> None:
     payload = AskKbInput(question="What is RAG?")
+    assert payload.engine == "wikigraph"
     assert payload.method == "auto"
     assert payload.save is False
     assert payload.show_source_trace is False

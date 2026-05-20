@@ -174,6 +174,18 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "quora.com",
         ],
     },
+    "wikigraph": {
+        "enabled": True,
+        "include_graphrag_export_pages": False,
+        "lexical_backend": "bm25s",
+        "community_algorithm": "louvain",
+        "max_hops": 2,
+        "max_context_chunks": 12,
+        "max_context_tokens": 8000,
+        "chunk_char_limit": 1200,
+        "fuzzy_entity_match_threshold": 88,
+        "export_generated_artifacts": False,
+    },
     "extensions": {},
 }
 
@@ -833,6 +845,39 @@ class _ConversionConfig(_StrictConfigModel):
     fallbacks: _FallbacksConfig
 
 
+class _WikiGraphConfig(BaseModel):
+    """Validated WikiGraphRAG runtime settings."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: StrictBool = True
+    include_graphrag_export_pages: StrictBool = False
+    lexical_backend: Literal["bm25s", "simple"] = "bm25s"
+    community_algorithm: Literal["louvain"] = "louvain"
+    max_hops: StrictInt = Field(default=2, ge=1, le=4)
+    max_context_chunks: StrictInt = Field(default=12, ge=1, le=50)
+    max_context_tokens: StrictInt = Field(default=8000, ge=500, le=32000)
+    chunk_char_limit: StrictInt = Field(default=1200, ge=200, le=5000)
+    fuzzy_entity_match_threshold: StrictInt = Field(default=88, ge=50, le=100)
+    export_generated_artifacts: StrictBool = False
+
+
+@dataclass(frozen=True)
+class WikiGraphRuntimeConfig:
+    """Resolved WikiGraphRAG runtime settings."""
+
+    enabled: bool
+    include_graphrag_export_pages: bool
+    lexical_backend: str
+    community_algorithm: str
+    max_hops: int
+    max_context_chunks: int
+    max_context_tokens: int
+    chunk_char_limit: int
+    fuzzy_entity_match_threshold: int
+    export_generated_artifacts: bool
+
+
 class _KbConfigModel(BaseModel):
     """Top-level config schema with strict nested sections."""
 
@@ -850,6 +895,7 @@ class _KbConfigModel(BaseModel):
     conversion: _ConversionConfig
     agent: dict[str, Any] = Field(default_factory=dict)
     research: dict[str, Any] = Field(default_factory=dict)
+    wikigraph: _WikiGraphConfig = Field(default_factory=_WikiGraphConfig)
     extensions: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -911,6 +957,46 @@ def resolve_graph_config(config: dict[str, Any]) -> GraphRAGRuntimeConfig:
         entity_types=tuple(validated["extraction"]["entity_types"]),
         max_gleanings=int(validated["extraction"]["max_gleanings"]),
         max_source_bytes=int(validated["input"]["max_source_bytes"]),
+    )
+
+
+def resolve_wikigraph_config(config: dict[str, Any]) -> WikiGraphRuntimeConfig:
+    """Resolve WikiGraphRAG settings from project config.
+
+    Args:
+        config: Loaded knowledge-base configuration mapping.
+
+    Returns:
+        WikiGraphRuntimeConfig produced by the operation.
+
+    Raises:
+        ValueError: When ``wikigraph`` is malformed or fields are out of range.
+    """
+    section = config.get("wikigraph", DEFAULT_CONFIG["wikigraph"])
+    if not isinstance(section, dict):
+        raise ValueError("kb.config.yaml 'wikigraph' must contain a YAML mapping.")
+    try:
+        validated = _WikiGraphConfig.model_validate(section).model_dump(mode="python")
+    except ValidationError as exc:
+        error = exc.errors()[0]
+        if str(error.get("type", "")) == "extra_forbidden":
+            loc_parts = tuple(str(part) for part in error.get("loc", ()))
+            key = loc_parts[-1] if loc_parts else "unknown"
+            raise ValueError(
+                f"kb.config.yaml 'wikigraph' contains unknown keys: {key}."
+            ) from exc
+        raise ValueError(_format_config_validation_error(exc)) from exc
+    return WikiGraphRuntimeConfig(
+        enabled=bool(validated["enabled"]),
+        include_graphrag_export_pages=bool(validated["include_graphrag_export_pages"]),
+        lexical_backend=str(validated["lexical_backend"]),
+        community_algorithm=str(validated["community_algorithm"]),
+        max_hops=int(validated["max_hops"]),
+        max_context_chunks=int(validated["max_context_chunks"]),
+        max_context_tokens=int(validated["max_context_tokens"]),
+        chunk_char_limit=int(validated["chunk_char_limit"]),
+        fuzzy_entity_match_threshold=int(validated["fuzzy_entity_match_threshold"]),
+        export_generated_artifacts=bool(validated["export_generated_artifacts"]),
     )
 
 

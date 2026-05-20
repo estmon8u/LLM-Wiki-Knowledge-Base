@@ -147,5 +147,35 @@ def build_services(
             graphrag_command_service,
         ),
         review=ReviewService(paths, provider=provider),
+        wikigraph_index=(
+            wikigraph_index_service := _build_wikigraph_index_service(paths, config)
+        ),
+        wikigraph_query=_build_wikigraph_query_service(
+            paths, wikigraph_index_service, provider, config
+        ),
         compile_run_store=compile_run_store,
+    )
+
+
+def _build_wikigraph_index_service(paths: ProjectPaths, config: dict[str, Any]) -> Any:
+    """Construct the WikiGraphRAG index service via lazy import."""
+    from graphwiki_kb.services.wikigraph_index_service import WikiGraphIndexService
+
+    return WikiGraphIndexService(paths=paths, config=config)
+
+
+def _build_wikigraph_query_service(
+    paths: ProjectPaths,
+    index_service: Any,
+    provider: Any,
+    config: dict[str, Any],
+) -> Any:
+    """Construct the WikiGraphRAG query service via lazy import."""
+    from graphwiki_kb.services.wikigraph_query_service import WikiGraphQueryService
+
+    return WikiGraphQueryService(
+        paths=paths,
+        index_service=index_service,
+        provider=provider,
+        config=config,
     )
