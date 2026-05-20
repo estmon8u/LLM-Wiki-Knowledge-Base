@@ -174,6 +174,7 @@ def _coerce_claim_support(value: str | None) -> str | None:
     allowed = {
         "cited-graph-answer",
         "graph-index-answer",
+        "insufficient-evidence",
         "stale-index",
         "no-answer",
         "unverified",

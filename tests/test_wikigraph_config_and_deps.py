@@ -264,6 +264,159 @@ def test_require_networkx_raises_clear_error(monkeypatch: pytest.MonkeyPatch) ->
         wikigraph_deps.require_networkx()
 
 
+def test_update_options_wikigraph_enabled_config_drives_default(test_project) -> None:
+    """``wikigraph.enabled: false`` should skip the build when CLI is unset."""
+    (test_project.paths.wiki_sources_dir / "realm.md").write_text(REALM_PAGE)
+    config = copy.deepcopy(test_project.config)
+    config.setdefault("wikigraph", {})["enabled"] = False
+    service = WikiGraphIndexService(paths=test_project.paths, config=config)
+    update_service = UpdateService(
+        ingest_service=test_project.services.ingest,
+        compile_service=test_project.services.compile,
+        concept_service=test_project.services.concepts,
+        search_service=test_project.services.search,
+        config=config,
+        wikigraph_index_service=service,
+    )
+
+    class _R:
+        wikigraph_skipped = False
+        wikigraph_skip_reason = ""
+        wikigraph_result = None
+        wikigraph_artifact_paths: list[str] = []
+
+    # Unset CLI flag -> config drives -> skip.
+    r1 = _R()
+    update_service._maybe_build_wikigraph(UpdateOptions(wikigraph=None), r1)
+    assert r1.wikigraph_skipped is True
+    assert "config" in r1.wikigraph_skip_reason
+
+    # CLI override -> build despite config disable.
+    r2 = _R()
+    update_service._maybe_build_wikigraph(UpdateOptions(wikigraph=True), r2)
+    assert r2.wikigraph_skipped is False
+    assert r2.wikigraph_result is not None
+
+
+def test_update_options_export_generated_artifacts_config_drives_default(
+    test_project,
+) -> None:
+    (test_project.paths.wiki_sources_dir / "realm.md").write_text(REALM_PAGE)
+    config = copy.deepcopy(test_project.config)
+    config.setdefault("wikigraph", {})["export_generated_artifacts"] = True
+    service = WikiGraphIndexService(paths=test_project.paths, config=config)
+    update_service = UpdateService(
+        ingest_service=test_project.services.ingest,
+        compile_service=test_project.services.compile,
+        concept_service=test_project.services.concepts,
+        search_service=test_project.services.search,
+        config=config,
+        wikigraph_index_service=service,
+    )
+
+    class _R:
+        wikigraph_skipped = False
+        wikigraph_skip_reason = ""
+        wikigraph_result = None
+        wikigraph_artifact_paths: list[str] = []
+
+    # CLI unset, config says export -> artifacts produced.
+    r1 = _R()
+    update_service._maybe_build_wikigraph(UpdateOptions(wikigraph=None), r1)
+    assert r1.wikigraph_artifact_paths
+
+    # CLI explicit false should win over config.
+    r2 = _R()
+    update_service._maybe_build_wikigraph(
+        UpdateOptions(wikigraph=None, export_wikigraph_artifacts=False), r2
+    )
+    assert r2.wikigraph_artifact_paths == []
+
+
+def test_export_artifacts_respects_types_filter(test_project) -> None:
+    (test_project.paths.wiki_sources_dir / "realm.md").write_text(REALM_PAGE)
+    service = WikiGraphIndexService(
+        paths=test_project.paths, config=test_project.config
+    )
+    service.build()
+    only_entities = service.export_artifacts(types=("entities",))
+    assert only_entities
+    assert all("/entities/" in path for path in only_entities)
+    assert not any("/communities/" in path for path in only_entities)
+
+
+def test_export_artifacts_rejects_unknown_type(test_project) -> None:
+    (test_project.paths.wiki_sources_dir / "realm.md").write_text(REALM_PAGE)
+    service = WikiGraphIndexService(
+        paths=test_project.paths, config=test_project.config
+    )
+    service.build()
+    with pytest.raises(ValueError, match="Unknown wikigraph artifact type"):
+        service.export_artifacts(types=("entities", "mystery"))
+
+
+def test_context_builder_enforces_max_context_tokens(test_project) -> None:
+    """``max_context_tokens`` should trim contexts and record the cut."""
+    from graphwiki_kb.wikigraph.context_builder import (
+        ContextBuilderConfig,
+        WikiGraphContextBuilder,
+    )
+
+    (test_project.paths.wiki_sources_dir / "realm.md").write_text(REALM_PAGE)
+    service = WikiGraphIndexService(
+        paths=test_project.paths, config=test_project.config
+    )
+    service.build()
+    index = service.load()
+    assert index is not None
+    builder = WikiGraphContextBuilder(
+        index,
+        config=ContextBuilderConfig(
+            max_context_chunks=8,
+            max_context_tokens=20,  # tiny budget -> aggressive trim
+        ),
+    )
+    contexts = builder.basic_search("REALM retrieval")
+    assert contexts  # at least one chunk fits the budget
+    # Either we kept only 1 context, or the last kept context carries a
+    # budget trace.
+    if len(contexts) == 1:
+        return
+    assert any("budget:" in entry for entry in contexts[-1].trace)
+
+
+def test_lexical_index_prefer_simple_forces_pure_python() -> None:
+    from graphwiki_kb.wikigraph.lexical_index import LexicalDocument, LexicalIndex
+
+    index = LexicalIndex(prefer_simple=True)
+    index.add(LexicalDocument(doc_id="a", text="REALM retrieves Wikipedia documents."))
+    index.add(LexicalDocument(doc_id="b", text="RAG fuses retrieved passages."))
+    index.fit()
+    assert index.backend == "simple"
+    hits = index.search("retrieved", limit=2)
+    assert hits
+
+
+def test_context_builder_lexical_backend_simple(test_project) -> None:
+    from graphwiki_kb.wikigraph.context_builder import (
+        ContextBuilderConfig,
+        WikiGraphContextBuilder,
+    )
+
+    (test_project.paths.wiki_sources_dir / "realm.md").write_text(REALM_PAGE)
+    service = WikiGraphIndexService(
+        paths=test_project.paths, config=test_project.config
+    )
+    service.build()
+    index = service.load()
+    assert index is not None
+    builder = WikiGraphContextBuilder(
+        index,
+        config=ContextBuilderConfig(lexical_backend="simple"),
+    )
+    assert builder._lexical.backend == "simple"
+
+
 def test_services_import_when_networkx_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

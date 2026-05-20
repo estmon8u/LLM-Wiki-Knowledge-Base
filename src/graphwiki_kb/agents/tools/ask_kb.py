@@ -276,7 +276,11 @@ def _project_wikigraph_answer(answer: WikiGraphAnswer) -> AskKbOutput:
     if not has_answer:
         claim_support = "no-answer"
     elif answer.insufficient_evidence:
-        claim_support = "stale-index" if not answer.citations else "unverified"
+        # WikiGraphRAG's "insufficient_evidence" does not mean the index is
+        # stale -- it means there were not enough contexts (empty index, bad
+        # query, or missing topic). Use the dedicated label instead of
+        # overloading ``stale-index``.
+        claim_support = "insufficient-evidence"
     elif answer.citations:
         claim_support = "cited-graph-answer"
 

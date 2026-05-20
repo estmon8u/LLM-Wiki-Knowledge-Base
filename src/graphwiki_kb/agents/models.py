@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 ClaimSupportLevel = Literal[
     "cited-graph-answer",
     "graph-index-answer",
+    "insufficient-evidence",
     "stale-index",
     "no-answer",
     "unverified",
@@ -345,12 +346,12 @@ class UpdateInput(BaseModel):
     graph_method: GraphMethod = "auto"
     no_graph: bool = False
     graph_only: bool = False
-    wikigraph: bool = Field(
-        True,
+    wikigraph: bool | None = Field(
+        None,
         description=(
-            "Refresh the WikiGraphRAG index after compile (default on). "
-            "Set to false to skip the wikigraph build (equivalent to "
-            "`kb update --no-wikigraph`)."
+            "Refresh the WikiGraphRAG index after compile. When unset, "
+            "`wikigraph.enabled` from project config drives the behavior "
+            "(defaults to true)."
         ),
     )
     wikigraph_include_graphrag_export_pages: bool = Field(
@@ -360,11 +361,13 @@ class UpdateInput(BaseModel):
             "build for the optional ablation."
         ),
     )
-    export_wikigraph_artifacts: bool = Field(
-        False,
+    export_wikigraph_artifacts: bool | None = Field(
+        None,
         description=(
-            "After the WikiGraphRAG build, also write generated entity, "
-            "community, and chunk cards under wiki/wikigraph/."
+            "After the WikiGraphRAG build, write generated entity, community, "
+            "and chunk cards under wiki/wikigraph/. When unset, "
+            "`wikigraph.export_generated_artifacts` from project config "
+            "drives the behavior (defaults to false)."
         ),
     )
 

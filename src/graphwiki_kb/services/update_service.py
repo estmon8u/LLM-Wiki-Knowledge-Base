@@ -19,6 +19,7 @@ from graphwiki_kb.services.config_service import (
     concept_generation_enabled,
     concept_provider_backed_enabled,
     resolve_graph_config,
+    resolve_wikigraph_config,
 )
 from graphwiki_kb.services.graphrag_defaults import env_file_has_key
 from graphwiki_kb.services.graphrag_sync_service import GraphRAGSyncResult
@@ -42,9 +43,13 @@ class UpdateOptions:
     allow_partial: bool = False
     concepts: bool | None = None
     graph_method: str = "auto"
-    wikigraph: bool = True
+    # Tri-state: ``None`` means "use ``wikigraph.enabled`` from config".
+    wikigraph: bool | None = None
     wikigraph_include_graphrag_export_pages: bool = False
-    export_wikigraph_artifacts: bool = False
+    # Tri-state: ``None`` means "use ``wikigraph.export_generated_artifacts``
+    # from config".
+    export_wikigraph_artifacts: bool | None = None
+    wikigraph_artifact_types: tuple[str, ...] | None = None
 
 
 @dataclass
@@ -390,10 +395,35 @@ class UpdateService:
         options: UpdateOptions,
         result: UpdateResult,
     ) -> None:
-        """Refresh the WikiGraphRAG index when enabled and viable."""
-        if not options.wikigraph:
+        """Refresh the WikiGraphRAG index when enabled and viable.
+
+        Resolution precedence (clig.dev: CLI overrides config):
+
+        * If ``--wikigraph`` / ``--no-wikigraph`` (or the equivalent
+          ``UpdateOptions.wikigraph`` value) is explicitly set, honor it.
+        * Otherwise, fall back to ``wikigraph.enabled`` from project
+          config (default ``True``).
+
+        Likewise for artifact export, ``--export-wikigraph-artifacts`` /
+        ``UpdateOptions.export_wikigraph_artifacts`` overrides config's
+        ``wikigraph.export_generated_artifacts`` when set; otherwise the
+        config value drives the behavior.
+        """
+        try:
+            wg_config = resolve_wikigraph_config(self._config)
+        except ValueError:
+            wg_config = resolve_wikigraph_config({})
+
+        effective_enabled = (
+            options.wikigraph if options.wikigraph is not None else wg_config.enabled
+        )
+        if not effective_enabled:
             result.wikigraph_skipped = True
-            result.wikigraph_skip_reason = "--no-wikigraph requested."
+            result.wikigraph_skip_reason = (
+                "--no-wikigraph requested."
+                if options.wikigraph is False
+                else "Disabled by `wikigraph.enabled: false` in config."
+            )
             return
         if self._wikigraph_index is None:
             result.wikigraph_skipped = True
@@ -412,10 +442,17 @@ class UpdateService:
                 return
             raise
 
-        if options.export_wikigraph_artifacts:
+        effective_export = (
+            options.export_wikigraph_artifacts
+            if options.export_wikigraph_artifacts is not None
+            else wg_config.export_generated_artifacts
+        )
+        if effective_export:
             try:
                 result.wikigraph_artifact_paths = list(
-                    self._wikigraph_index.export_artifacts()
+                    self._wikigraph_index.export_artifacts(
+                        types=options.wikigraph_artifact_types,
+                    )
                 )
             except FileNotFoundError:
                 # The build either skipped or produced no nodes; no artifacts.

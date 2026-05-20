@@ -51,6 +51,7 @@ class WikiGraphQueryService:
             max_context_tokens=runtime.max_context_tokens,
             max_hops=runtime.max_hops,
             fuzzy_entity_match_threshold=runtime.fuzzy_entity_match_threshold,
+            lexical_backend=runtime.lexical_backend,
         )
 
     def _ensure_engine(self) -> WikiGraphQueryEngine:

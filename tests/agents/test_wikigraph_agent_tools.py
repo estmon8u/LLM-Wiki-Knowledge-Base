@@ -184,8 +184,8 @@ def test_ask_kb_wikigraph_projection_insufficient_evidence(seeded_runtime) -> No
         seeded_runtime,
         AskKbInput(question="missing", engine="wikigraph", method="auto"),
     )
-    # No citations and insufficient_evidence -> stale-index in projection.
-    assert result.claim_support == "stale-index"
+    # No citations and insufficient_evidence -> dedicated label.
+    assert result.claim_support == "insufficient-evidence"
 
 
 def test_ask_kb_wikigraph_projection_unverified_when_no_citations(

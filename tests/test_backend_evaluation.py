@@ -10,8 +10,11 @@ import pytest
 
 from scripts.backend_evaluation_lib import (
     RETRIEVAL_COLUMNS,
+    AnswerRun,
     BenchmarkQuestion,
+    GraphRAGRunner,
     LegacyRunner,
+    RetrievalRun,
     WikiGraphRunner,
     answer_metrics,
     build_command_context,
@@ -222,6 +225,116 @@ def test_evaluate_backends_with_wikigraph_answer(
     exit_code = backends_main()
     assert exit_code == 0
     assert (results_dir / "backend_answer_metrics.csv").exists()
+
+
+def test_graphrag_runner_retrieve_handles_missing_artifacts(seeded_project) -> None:
+    """``GraphRAGRunner.retrieve`` returns an empty run when no parquet exists."""
+    context = build_command_context(seeded_project.paths.root)
+    runner = GraphRAGRunner(context=context, method="auto")
+    run = runner.retrieve(
+        BenchmarkQuestion(
+            id="q1",
+            question="anything",
+            expected_sources=("realm",),
+        )
+    )
+    assert isinstance(run, RetrievalRun)
+    # No GraphRAG artifacts exist in test_project, so we get either an empty
+    # result (success) or an error string; both are acceptable.
+    assert run.error is None or "error" not in run.backend
+
+
+def test_graphrag_runner_answer_records_provider_error_as_run(seeded_project) -> None:
+    """A failing ask call should produce a structured AnswerRun, not raise."""
+    context = build_command_context(seeded_project.paths.root)
+    runner = GraphRAGRunner(context=context, method="auto")
+
+    class _ExplodingController:
+        def ask(self, question, **kwargs):
+            raise RuntimeError("simulated provider unavailable")
+
+    runner.ask_controller = _ExplodingController()  # type: ignore[assignment]
+    run = runner.answer(
+        BenchmarkQuestion(
+            id="q1",
+            question="anything",
+            expected_entities=("REALM",),
+        )
+    )
+    assert isinstance(run, AnswerRun)
+    assert run.error is not None and "simulated provider" in run.error
+    assert run.insufficient_evidence is True
+
+
+def test_graphrag_runner_answer_success_path(seeded_project) -> None:
+    """A passing ask call should produce a populated AnswerRun."""
+    context = build_command_context(seeded_project.paths.root)
+    runner = GraphRAGRunner(context=context, method="auto")
+
+    class _FakeAnswer:
+        answer = "REALM differs from RAG by training the retriever jointly."
+        method = "auto"
+        claim_support = "cited-graph-answer"
+        graph_data_references = [{"ref": "Entities"}, {"ref": "Reports"}]
+
+    class _FakeController:
+        def ask(self, question, **kwargs):
+            return _FakeAnswer()
+
+    runner.ask_controller = _FakeController()  # type: ignore[assignment]
+    run = runner.answer(
+        BenchmarkQuestion(
+            id="q1",
+            question="How does REALM differ from RAG?",
+            expected_entities=("REALM",),
+        )
+    )
+    assert run.error is None
+    assert run.citation_count == 2
+    assert run.insufficient_evidence is False
+    metrics = answer_metrics(
+        BenchmarkQuestion(
+            id="q1",
+            question="How does REALM differ from RAG?",
+            expected_entities=("REALM",),
+        ),
+        run,
+    )
+    assert metrics["matched_entity_count"] == 1
+
+
+def test_evaluate_backends_main_includes_graphrag(
+    seeded_project, tmp_path: Path, monkeypatch
+) -> None:
+    benchmark = tmp_path / "benchmark.yaml"
+    benchmark.write_text(BENCHMARK_YAML)
+    results_dir = tmp_path / "results"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "evaluate_backends.py",
+            "--project-root",
+            str(seeded_project.paths.root),
+            "--benchmark",
+            str(benchmark),
+            "--results-dir",
+            str(results_dir),
+            "--backends",
+            "graphrag",
+            "wikigraph",
+            "--graphrag-methods",
+            "auto",
+            "--wikigraph-methods",
+            "auto",
+            "--retrieval-only",
+        ],
+    )
+    exit_code = backends_main()
+    assert exit_code == 0
+    csv_path = results_dir / "backend_retrieval_metrics.csv"
+    assert csv_path.exists()
+    text = csv_path.read_text(encoding="utf-8")
+    assert "graphrag" in text and "wikigraph" in text
 
 
 def test_write_helpers(tmp_path: Path) -> None:

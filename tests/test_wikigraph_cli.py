@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import textwrap
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+import yaml
 from click.testing import CliRunner
 
 from graphwiki_kb.cli import main as cli_main
@@ -86,6 +88,25 @@ def _seed_project(test_project) -> Path:
         RAG_PAGE, encoding="utf-8"
     )
     return test_project.paths.root
+
+
+def _enable_stub_provider(project_root: Path) -> None:
+    """Write a stub provider into ``kb.config.yaml`` for update preflight."""
+    config_path = project_root / "kb.config.yaml"
+    cfg = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    cfg["provider"] = {"name": "stub"}
+    config_path.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+
+
+class _StubProvider(TextProvider):
+    """Minimal stub used to satisfy update preflight."""
+
+    name = "stub"
+
+    def generate(self, request: ProviderRequest) -> ProviderResponse:
+        if request.response_schema_name == "kb_review_report":
+            return ProviderResponse(text='{"issues": []}', model_name="stub-1")
+        return ProviderResponse(text="Stub summary", model_name="stub-1")
 
 
 def test_wikigraph_command_group_removed() -> None:
@@ -427,6 +448,74 @@ def test_kb_ask_engine_graphrag_rejects_drift_lite(
         ],
     )
     assert result.exit_code != 0
+
+
+def test_kb_ask_engine_wikigraph_show_source_trace(
+    runner: CliRunner, test_project
+) -> None:
+    """``--show-source-trace`` renders the WikiGraphRAG trace section."""
+    project_root = _seed_project(test_project)
+    test_project.services.wikigraph_index.build()  # bypass update preflight
+    test_project.services.wikigraph_query.provider = None  # provider-free
+
+    result = runner.invoke(
+        cli_main,
+        [
+            "--project-root",
+            str(project_root),
+            "ask",
+            "How does REALM differ from RAG?",
+            "--engine",
+            "wikigraph",
+            "--method",
+            "local",
+            "--show-source-trace",
+        ],
+    )
+    assert result.exit_code == 0, result.output + result.stderr
+    assert "WikiGraphRAG Source Trace" in result.output
+    assert "Retrieved contexts:" in result.output
+
+
+def test_kb_update_no_wikigraph_flag_via_cli(runner: CliRunner, test_project) -> None:
+    """`--no-wikigraph` should win even when config says enabled=true."""
+    _seed_project(test_project)
+    _enable_stub_provider(test_project.paths.root)
+    with patch("graphwiki_kb.services.build_provider", return_value=_StubProvider()):
+        result = runner.invoke(
+            cli_main,
+            [
+                "--project-root",
+                str(test_project.paths.root),
+                "update",
+                "--no-graph",
+                "--no-wikigraph",
+            ],
+        )
+    assert result.exit_code == 0, result.output + result.stderr
+    assert "--no-wikigraph requested" in result.output
+
+
+def test_kb_update_artifact_types_flag(runner: CliRunner, test_project) -> None:
+    _seed_project(test_project)
+    _enable_stub_provider(test_project.paths.root)
+    with patch("graphwiki_kb.services.build_provider", return_value=_StubProvider()):
+        result = runner.invoke(
+            cli_main,
+            [
+                "--project-root",
+                str(test_project.paths.root),
+                "update",
+                "--no-graph",
+                "--export-wikigraph-artifacts",
+                "--artifact-types",
+                "entities,communities",
+            ],
+        )
+    assert result.exit_code == 0, result.output + result.stderr
+    assert "entities card(s)" in result.output
+    assert "communities card(s)" in result.output
+    assert "chunks card(s)" not in result.output
 
 
 def test_kb_ask_engine_wikigraph_without_index_errors(

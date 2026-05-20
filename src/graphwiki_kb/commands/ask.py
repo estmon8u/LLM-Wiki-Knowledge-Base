@@ -177,6 +177,7 @@ def create_command() -> click.Command:
                 save_answer=save_answer,
                 save_as_name=save_as_name,
                 as_json=as_json,
+                show_source_trace=show_source_trace,
             )
             return
 
@@ -264,6 +265,7 @@ def _run_wikigraph_ask(
     save_answer: bool,
     save_as_name: str | None,
     as_json: bool,
+    show_source_trace: bool = False,
 ) -> None:
     """Route ``kb ask --engine wikigraph`` through WikiGraphQueryService."""
     query_service = command_context.services.wikigraph_query
@@ -292,9 +294,43 @@ def _run_wikigraph_ask(
     )
     if answer.warnings:
         console.print("[yellow]Warnings: " + ", ".join(answer.warnings) + "[/yellow]")
+    if show_source_trace:
+        console.print("")
+        echo_section("WikiGraphRAG Source Trace")
+        seed_entities: list[str] = []
+        communities: list[str] = []
+        sub_questions: list[str] = []
+        for step in answer.trace:
+            if not isinstance(step, dict):
+                continue
+            seed_entities.extend(step.get("seed_entities") or [])
+            communities.extend(step.get("communities") or [])
+            sub_questions.extend(step.get("sub_questions") or [])
+        if seed_entities:
+            console.print("  Seed entities: " + ", ".join(dict.fromkeys(seed_entities)))
+        if communities:
+            console.print("  Communities: " + ", ".join(dict.fromkeys(communities)))
+        if sub_questions:
+            console.print("  Sub-questions:")
+            for question_text in dict.fromkeys(sub_questions):
+                echo_bullet(question_text)
+        if answer.contexts:
+            console.print(f"  Retrieved contexts: {len(answer.contexts)}")
+            for ctx in answer.contexts:
+                trace_label = ",".join(ctx.trace) if ctx.trace else "(none)"
+                echo_bullet(f"{ctx.title} [{ctx.citation_ref}] trace={trace_label}")
+        if answer.provider_status:
+            console.print(
+                "  Provider: "
+                + ", ".join(
+                    f"{key}={value}"
+                    for key, value in answer.provider_status.items()
+                    if value not in (None, "")
+                )
+            )
     console.print("")
     console.print(RichMarkdown(answer.answer or "No answer text returned."))
-    if answer.contexts:
+    if answer.contexts and not show_source_trace:
         console.print("")
         echo_section("Contexts")
         for ctx in answer.contexts:

@@ -183,12 +183,16 @@ def _run_subprocess(runtime: AgentRuntimeContext, payload: UpdateInput) -> Updat
         command.append("--force")
     if payload.graph_method != "auto":
         command.extend(["--graph-method", payload.graph_method])
-    if not payload.wikigraph:
+    if payload.wikigraph is True:
+        command.append("--wikigraph")
+    elif payload.wikigraph is False:
         command.append("--no-wikigraph")
     if payload.wikigraph_include_graphrag_export_pages:
         command.append("--wikigraph-include-graphrag-export-pages")
-    if payload.export_wikigraph_artifacts:
+    if payload.export_wikigraph_artifacts is True:
         command.append("--export-wikigraph-artifacts")
+    elif payload.export_wikigraph_artifacts is False:
+        command.append("--no-export-wikigraph-artifacts")
     completed = subprocess.run(
         command,
         cwd=str(runtime.command_context.project_root),

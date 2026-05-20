@@ -192,6 +192,81 @@ class WikiGraphRunner:
             )
 
 
+class GraphRAGRunner:
+    """Backend runner for Microsoft GraphRAG (kb ask / kb find paths)."""
+
+    name = "graphrag"
+
+    def __init__(self, context: CommandContext, *, method: str = "auto") -> None:
+        self.context = context
+        self.method = method
+        self.find_service = context.services.graphrag_find
+        self.ask_controller = context.services.graph_ask_controller
+
+    def retrieve(self, question: BenchmarkQuestion) -> RetrievalRun:
+        """Execute provider-free retrieval via the GraphRAG find service."""
+        start = time.perf_counter()
+        try:
+            results = self.find_service.search(question.question, limit=8)
+            elapsed = time.perf_counter() - start
+            return RetrievalRun(
+                backend=self.name,
+                method="find",
+                question_id=question.id,
+                question=question.question,
+                retrieved_titles=[r.title for r in results],
+                retrieved_paths=[str(r.path) for r in results],
+                retrieved_source_ids=[],
+                latency_seconds=elapsed,
+            )
+        except Exception as exc:
+            return RetrievalRun(
+                backend=self.name,
+                method="find",
+                question_id=question.id,
+                question=question.question,
+                retrieved_titles=[],
+                retrieved_paths=[],
+                retrieved_source_ids=[],
+                latency_seconds=time.perf_counter() - start,
+                error=str(exc),
+            )
+
+    def answer(self, question: BenchmarkQuestion) -> AnswerRun:
+        """Run the GraphRAG-aware ask controller for a benchmark question."""
+        start = time.perf_counter()
+        try:
+            answer = self.ask_controller.ask(question.question, method=self.method)
+            elapsed = time.perf_counter() - start
+            insufficient = (answer.claim_support or "").lower() in {
+                "no-answer",
+                "insufficient-evidence",
+                "stale-index",
+            }
+            return AnswerRun(
+                backend=self.name,
+                method=answer.method or self.method,
+                question_id=question.id,
+                question=question.question,
+                answer=answer.answer or "",
+                insufficient_evidence=insufficient,
+                citation_count=len(answer.graph_data_references or []),
+                latency_seconds=elapsed,
+            )
+        except Exception as exc:
+            return AnswerRun(
+                backend=self.name,
+                method=self.method,
+                question_id=question.id,
+                question=question.question,
+                answer="",
+                insufficient_evidence=True,
+                citation_count=0,
+                latency_seconds=time.perf_counter() - start,
+                error=str(exc),
+            )
+
+
 class LegacyRunner:
     """Backend runner for the deprecated SQLite FTS5 wiki retrieval path."""
 

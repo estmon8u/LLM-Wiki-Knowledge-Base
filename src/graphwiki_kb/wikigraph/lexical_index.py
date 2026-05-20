@@ -59,9 +59,14 @@ class LexicalIndex:
     """A small BM25-style retriever with optional :mod:`bm25s` backend.
 
     The class behaves identically regardless of which backend is in use.
+
+    Args:
+        prefer_simple: When ``True``, the pure-python BM25 implementation is
+            used even if :mod:`bm25s` is installed. This is what the
+            ``wikigraph.lexical_backend: simple`` config setting selects.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, prefer_simple: bool = False) -> None:
         self._documents: list[LexicalDocument] = []
         self._tokenized: list[list[str]] = []
         self._bm25s_retriever: Any | None = None
@@ -71,6 +76,7 @@ class LexicalIndex:
         self._avg_doc_length: float = 0.0
         self._k1: float = 1.5
         self._b: float = 0.75
+        self._prefer_simple: bool = prefer_simple
 
     # ------------------------------------------------------------------ #
     # Construction                                                       #
@@ -100,7 +106,7 @@ class LexicalIndex:
             return
         total_length = sum(self._doc_lengths)
         self._avg_doc_length = total_length / len(self._documents)
-        if _BM25S_AVAILABLE:
+        if _BM25S_AVAILABLE and not self._prefer_simple:
             retriever = bm25s.BM25()
             retriever.index(self._tokenized, show_progress=False)
             self._bm25s_retriever = retriever
@@ -175,10 +181,15 @@ class LexicalIndex:
 
     @property
     def backend(self) -> str:
-        """Return ``"bm25s"`` when the optional dependency is loaded."""
+        """Return ``"bm25s"`` when the optional dependency is loaded.
+
+        When :mod:`bm25s` is available but ``prefer_simple=True``, the
+        pure-python fallback is used and this property returns
+        ``"simple"`` so the choice is observable.
+        """
         if self._bm25s_retriever is not None:
             return "bm25s"
-        return "pure-python-bm25"
+        return "simple" if self._prefer_simple else "pure-python-bm25"
 
     @property
     def doc_count(self) -> int:

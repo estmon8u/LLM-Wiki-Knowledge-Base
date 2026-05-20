@@ -109,16 +109,22 @@ class WikiGraphIndexService:
         """Load the persisted index from disk."""
         return self._store.load()
 
-    def export_artifacts(self) -> list[str]:
+    SUPPORTED_ARTIFACT_TYPES: tuple[str, ...] = ("entities", "communities", "chunks")
+
+    def export_artifacts(self, *, types: tuple[str, ...] | None = None) -> list[str]:
         """Write generated wiki artifact pages under ``wiki/wikigraph/``.
 
         Produces one markdown card per ``entity``, ``community``, and
-        ``chunk`` node in the persisted index. Every card carries
-        ``generated: true`` and ``retrieval_backend: wikigraph`` in its
-        frontmatter so it is easy to filter from other tooling, and the
-        directory ``wiki/wikigraph/`` is explicitly excluded from the
+        ``chunk`` node in the persisted index by default. Every card
+        carries ``generated: true`` and ``retrieval_backend: wikigraph`` in
+        its frontmatter so it is easy to filter from other tooling, and
+        the directory ``wiki/wikigraph/`` is explicitly excluded from the
         default index build (see ``BuildOptions``) so generated cards
         cannot feed back into the next graph build.
+
+        Args:
+            types: Optional subset of ``{"entities", "communities",
+                "chunks"}`` to write. Unknown types raise ``ValueError``.
 
         Returns:
             The list of relative paths written, in deterministic order.
@@ -126,7 +132,17 @@ class WikiGraphIndexService:
         Raises:
             FileNotFoundError: When the WikiGraphRAG index has not been
                 built yet.
+            ValueError: When ``types`` contains an unknown value.
         """
+        if types is not None:
+            unknown = [t for t in types if t not in self.SUPPORTED_ARTIFACT_TYPES]
+            if unknown:
+                raise ValueError(
+                    "Unknown wikigraph artifact type(s): "
+                    + ", ".join(sorted(set(unknown)))
+                )
+        selected = tuple(types) if types else self.SUPPORTED_ARTIFACT_TYPES
+
         index = self.load()
         if index is None:
             raise FileNotFoundError(
@@ -139,18 +155,18 @@ class WikiGraphIndexService:
         )
 
         base = self.paths.wiki_dir / "wikigraph"
-        for subdir in ("entities", "communities", "chunks"):
+        for subdir in selected:
             (base / subdir).mkdir(parents=True, exist_ok=True)
         timestamp = utc_now_iso()
         written: list[str] = []
         for node in index.nodes:
-            if node.kind == "entity":
+            if node.kind == "entity" and "entities" in selected:
                 rel = self._write_entity_card(base, node, timestamp, slugify)
                 written.append(rel)
-            elif node.kind == "community":
+            elif node.kind == "community" and "communities" in selected:
                 rel = self._write_community_card(base, node, timestamp, slugify)
                 written.append(rel)
-            elif node.kind == "chunk":
+            elif node.kind == "chunk" and "chunks" in selected:
                 rel = self._write_chunk_card(base, node, timestamp, slugify)
                 written.append(rel)
         written.sort()

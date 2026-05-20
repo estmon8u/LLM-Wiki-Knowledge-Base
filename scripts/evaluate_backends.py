@@ -32,6 +32,7 @@ from scripts.backend_evaluation_lib import (  # noqa: E402
     ARTIFACTS_SUBDIR,
     DEFAULT_RESULTS_DIR,
     RETRIEVAL_COLUMNS,
+    GraphRAGRunner,
     LegacyRunner,
     WikiGraphRunner,
     answer_metrics,
@@ -44,6 +45,7 @@ from scripts.backend_evaluation_lib import (  # noqa: E402
 )
 
 _DEFAULT_WIKIGRAPH_METHODS = ["auto"]
+_DEFAULT_GRAPHRAG_METHODS = ["auto"]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -75,7 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--backends",
         nargs="+",
-        choices=["legacy", "wikigraph"],
+        choices=["legacy", "graphrag", "wikigraph"],
         default=["wikigraph"],
         help="Subset of backends to evaluate.",
     )
@@ -84,6 +86,12 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="+",
         default=_DEFAULT_WIKIGRAPH_METHODS,
         help="Methods to evaluate against the wikigraph backend.",
+    )
+    parser.add_argument(
+        "--graphrag-methods",
+        nargs="+",
+        default=_DEFAULT_GRAPHRAG_METHODS,
+        help="Methods to evaluate against the Microsoft GraphRAG backend.",
     )
     parser.add_argument(
         "--retrieval-only",
@@ -145,6 +153,9 @@ def main() -> int:
     if "wikigraph" in args.backends:
         for method in args.wikigraph_methods:
             backends.append(WikiGraphRunner(context=context, method=method))
+    if "graphrag" in args.backends:
+        for method in args.graphrag_methods:
+            backends.append(GraphRAGRunner(context=context, method=method))
     if "legacy" in args.backends:
         backends.append(LegacyRunner(context=context))
 
@@ -170,10 +181,13 @@ def main() -> int:
 
             if args.retrieval_only:
                 continue
-            if runner.name == "legacy" and not args.allow_provider_calls:
+            if runner.name in {"legacy", "graphrag"} and not args.allow_provider_calls:
+                # Both require a real provider to produce an answer; skip
+                # unless the user opts in to provider-backed evaluation.
                 continue
             if runner.name == "wikigraph" and not args.allow_provider_calls:
-                # Wikigraph can run provider-free, so always allow it.
+                # WikiGraphRAG falls back to provider-free synthesis, so it
+                # is safe to evaluate the answer path without a provider.
                 pass
             answer_run = runner.answer(question)
             ametrics = answer_metrics(question, answer_run)

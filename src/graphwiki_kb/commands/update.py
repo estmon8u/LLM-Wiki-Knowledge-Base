@@ -135,9 +135,13 @@ def create_command() -> click.Command:
     )
     @click.option(
         "--wikigraph/--no-wikigraph",
-        default=True,
-        show_default=True,
-        help="Build the WikiGraphRAG index after wiki compile (default on).",
+        default=None,
+        show_default=False,
+        help=(
+            "Build the WikiGraphRAG index after wiki compile. When neither "
+            "flag is passed, the `wikigraph.enabled` config value drives the "
+            "behavior (defaults to true)."
+        ),
     )
     @click.option(
         "--wikigraph-include-graphrag-export-pages",
@@ -148,11 +152,25 @@ def create_command() -> click.Command:
         ),
     )
     @click.option(
-        "--export-wikigraph-artifacts",
-        is_flag=True,
+        "--export-wikigraph-artifacts/--no-export-wikigraph-artifacts",
+        default=None,
+        show_default=False,
         help=(
             "After building the WikiGraphRAG index, write generated entity, "
-            "community, and chunk cards under wiki/wikigraph/."
+            "community, and chunk cards under wiki/wikigraph/. When neither "
+            "flag is passed, the `wikigraph.export_generated_artifacts` "
+            "config value drives the behavior (defaults to false)."
+        ),
+    )
+    @click.option(
+        "--artifact-types",
+        "artifact_types",
+        type=str,
+        default=None,
+        help=(
+            "Comma-separated subset of wikigraph artifact types to export "
+            "(entities,communities,chunks). Defaults to all three when "
+            "--export-wikigraph-artifacts is on."
         ),
     )
     @click.pass_obj
@@ -166,9 +184,10 @@ def create_command() -> click.Command:
         graph_method: str,
         allow_partial: bool,
         concepts: bool | None,
-        wikigraph: bool,
+        wikigraph: bool | None,
         wikigraph_include_graphrag_export_pages: bool,
-        export_wikigraph_artifacts: bool,
+        export_wikigraph_artifacts: bool | None,
+        artifact_types: str | None,
     ) -> None:
         """Command.
 
@@ -200,6 +219,13 @@ def create_command() -> click.Command:
                 wikigraph_include_graphrag_export_pages
             ),
             export_wikigraph_artifacts=export_wikigraph_artifacts,
+            wikigraph_artifact_types=(
+                tuple(
+                    item.strip() for item in artifact_types.split(",") if item.strip()
+                )
+                if artifact_types
+                else None
+            ),
         )
 
         console.print(f"Mode: {_mode_label(options)}")
@@ -332,10 +358,17 @@ def create_command() -> click.Command:
             for warning in report.warnings:
                 console.print(f"[yellow]{warning}[/yellow]")
             if result.wikigraph_artifact_paths:
+                per_type: dict[str, int] = {}
+                for rel_path in result.wikigraph_artifact_paths:
+                    parts = rel_path.split("/")
+                    bucket = parts[2] if len(parts) > 2 else "(other)"
+                    per_type[bucket] = per_type.get(bucket, 0) + 1
                 console.print(
                     f"Exported {len(result.wikigraph_artifact_paths)} generated "
-                    "card(s) under wiki/wikigraph/"
+                    "card(s) under wiki/wikigraph/:"
                 )
+                for bucket in sorted(per_type):
+                    echo_bullet(f"{per_type[bucket]} {bucket} card(s)")
         else:
             console.print("WikiGraphRAG build did not run.")
 

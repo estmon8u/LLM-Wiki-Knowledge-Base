@@ -40,6 +40,7 @@ class ContextBuilderConfig:
     max_context_tokens: int = 6000
     max_hops: int = 2
     fuzzy_entity_match_threshold: int = 82
+    lexical_backend: str = "bm25s"
 
 
 class WikiGraphContextBuilder:
@@ -72,7 +73,7 @@ class WikiGraphContextBuilder:
             limit = self.config.max_context_chunks
         hits = self._lexical.search(question, limit=limit * 2)
         contexts = self._hits_to_contexts(hits, base_trace=["basic"])
-        return contexts[:limit]
+        return self._enforce_token_budget(contexts[:limit])
 
     def local_search(
         self, question: str, *, limit: int | None = None
@@ -139,7 +140,7 @@ class WikiGraphContextBuilder:
             contexts.append(self._node_to_context(node, score=score, trace=trace))
             if len(contexts) >= limit:
                 break
-        return contexts, seed_titles
+        return self._enforce_token_budget(contexts), seed_titles
 
     def global_search(
         self, question: str, *, limit: int | None = None
@@ -200,7 +201,10 @@ class WikiGraphContextBuilder:
                 )
             if len(global_contexts) >= limit:
                 break
-        return global_contexts[:limit], selected_ids
+        return (
+            self._enforce_token_budget(global_contexts[:limit]),
+            selected_ids,
+        )
 
     def drift_lite(
         self, question: str, *, limit: int | None = None
@@ -227,14 +231,54 @@ class WikiGraphContextBuilder:
                     break
             if len(combined) >= limit:
                 break
-        return list(combined.values())[:limit], seed_entities, sub_questions
+        return (
+            self._enforce_token_budget(list(combined.values())[:limit]),
+            seed_entities,
+            sub_questions,
+        )
 
     # ------------------------------------------------------------------ #
     # Helpers                                                            #
     # ------------------------------------------------------------------ #
 
+    def _enforce_token_budget(
+        self,
+        contexts: list[WikiGraphRetrievedContext],
+    ) -> list[WikiGraphRetrievedContext]:
+        """Trim ``contexts`` to ``self.config.max_context_tokens``.
+
+        Token count is approximated as ``max(1, len(text) // 4)`` which
+        tracks GPT-style BPE tokenization closely enough for prompt-safety
+        budgeting. Order is preserved so the highest-ranked contexts are
+        kept first; one trace entry is appended to the last retained
+        context to make the budget cut observable in run records.
+        """
+        budget = max(0, int(self.config.max_context_tokens))
+        if budget <= 0 or not contexts:
+            return contexts
+        kept: list[WikiGraphRetrievedContext] = []
+        total = 0
+        for ctx in contexts:
+            estimate = max(1, len(ctx.text) // 4)
+            if kept and total + estimate > budget:
+                break
+            kept.append(ctx)
+            total += estimate
+        if len(kept) < len(contexts) and kept:
+            last = kept[-1]
+            kept[-1] = last.model_copy(
+                update={
+                    "trace": [
+                        *last.trace,
+                        f"budget:{total}/{budget}-tokens",
+                    ]
+                }
+            )
+        return kept
+
     def _build_lexical_index(self) -> LexicalIndex:
-        index = LexicalIndex()
+        prefer_simple = str(self.config.lexical_backend).strip().lower() == "simple"
+        index = LexicalIndex(prefer_simple=prefer_simple)
         for node in self.index.nodes:
             if node.kind not in {"chunk", "claim"}:
                 continue
