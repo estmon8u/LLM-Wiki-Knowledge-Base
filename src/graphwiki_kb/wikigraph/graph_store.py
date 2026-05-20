@@ -4,6 +4,12 @@ The store uses NetworkX as the in-memory graph workhorse but always writes
 plain JSON artifacts (``nodes.json``, ``edges.json``, ``communities.json``,
 ``index.json``) so the WikiGraphRAG state remains fully inspectable without
 any extra tooling.
+
+NetworkX is imported lazily via
+:func:`graphwiki_kb.wikigraph.deps.require_networkx` so a base install
+without the ``wikigraph`` extra can still import this module's pure-Python
+helpers (``WikiGraphStore.save`` / ``WikiGraphStore.load``) without
+triggering an ``ImportError`` at import time.
 """
 
 from __future__ import annotations
@@ -12,17 +18,19 @@ import json
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
-
-import networkx as nx
+from typing import TYPE_CHECKING, Any
 
 from graphwiki_kb.services.project_service import atomic_write_text
+from graphwiki_kb.wikigraph.deps import require_networkx
 from graphwiki_kb.wikigraph.models import (
     WikiGraphCommunity,
     WikiGraphEdge,
     WikiGraphIndex,
     WikiGraphNode,
 )
+
+if TYPE_CHECKING:
+    import networkx as nx
 
 
 @dataclass
@@ -183,7 +191,8 @@ class WikiGraphStore:
         preserved so that centrality, PageRank, and community detection see
         a consistent topology.
         """
-        graph: nx.MultiGraph = nx.MultiGraph()
+        nx = require_networkx()
+        graph = nx.MultiGraph()
         for node in index.nodes:
             graph.add_node(
                 node.id,
@@ -253,7 +262,8 @@ def node_pagerank(graph: nx.MultiGraph, *, max_iter: int = 50) -> dict[str, floa
     """
     if graph.number_of_nodes() == 0:
         return {}
-    simple: nx.Graph = nx.Graph()
+    nx = require_networkx()
+    simple = nx.Graph()
     for u, v, data in graph.edges(data=True):
         weight = float(data.get("weight", 1.0))
         if simple.has_edge(u, v):
@@ -271,8 +281,9 @@ def node_pagerank(graph: nx.MultiGraph, *, max_iter: int = 50) -> dict[str, floa
 
 def to_node_link_json(index: WikiGraphIndex) -> dict[str, Any]:
     """Return a NetworkX node-link representation, useful for visualization."""
+    nx = require_networkx()
     graph = WikiGraphStore.to_networkx(index)
-    simple: nx.Graph = nx.Graph()
+    simple = nx.Graph()
     simple.add_nodes_from(graph.nodes(data=True))
     for u, v, data in graph.edges(data=True):
         if simple.has_edge(u, v):

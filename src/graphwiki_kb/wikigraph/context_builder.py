@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-import networkx as nx
 from rapidfuzz import fuzz
 
 from graphwiki_kb.wikigraph.graph_store import (
@@ -18,6 +18,9 @@ from graphwiki_kb.wikigraph.graph_store import (
     collect_neighbors,
     node_pagerank,
 )
+
+if TYPE_CHECKING:
+    import networkx as nx
 from graphwiki_kb.wikigraph.lexical_index import (
     LexicalDocument,
     LexicalIndex,

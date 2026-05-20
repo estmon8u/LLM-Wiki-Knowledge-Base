@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from graphwiki_kb.providers.base import TextProvider
+from graphwiki_kb.services.config_service import resolve_wikigraph_config
 from graphwiki_kb.services.project_service import (
     ProjectPaths,
     atomic_write_text,
@@ -17,6 +19,7 @@ from graphwiki_kb.services.wikigraph_index_service import (
     WikiGraphIndexService,
 )
 from graphwiki_kb.wikigraph.answer_service import WikiGraphAnswerService
+from graphwiki_kb.wikigraph.context_builder import ContextBuilderConfig
 from graphwiki_kb.wikigraph.models import (
     QueryMethod,
     WikiGraphAnswer,
@@ -36,6 +39,19 @@ class WikiGraphQueryService:
     paths: ProjectPaths
     index_service: WikiGraphIndexService
     provider: TextProvider | None = None
+    config: dict[str, Any] = field(default_factory=dict)
+
+    def _context_builder_config(self) -> ContextBuilderConfig:
+        try:
+            runtime = resolve_wikigraph_config(self.config or {})
+        except ValueError:
+            runtime = resolve_wikigraph_config({})
+        return ContextBuilderConfig(
+            max_context_chunks=runtime.max_context_chunks,
+            max_context_tokens=runtime.max_context_tokens,
+            max_hops=runtime.max_hops,
+            fuzzy_entity_match_threshold=runtime.fuzzy_entity_match_threshold,
+        )
 
     def _ensure_engine(self) -> WikiGraphQueryEngine:
         index = self.index_service.load()
@@ -44,7 +60,10 @@ class WikiGraphQueryService:
                 "WikiGraphRAG index is missing. Run `kb update` to build it "
                 "(it is enabled by default; pass `--no-wikigraph` to skip)."
             )
-        return WikiGraphQueryEngine(index=index)
+        return WikiGraphQueryEngine(
+            index=index,
+            config=self._context_builder_config(),
+        )
 
     def find(
         self, question: str, *, method: QueryMethod = "auto"

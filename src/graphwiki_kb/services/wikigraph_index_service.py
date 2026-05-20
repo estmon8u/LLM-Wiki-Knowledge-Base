@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
+from graphwiki_kb.services.config_service import (
+    WikiGraphRuntimeConfig,
+    resolve_wikigraph_config,
+)
 from graphwiki_kb.services.project_service import ProjectPaths
 from graphwiki_kb.wikigraph.graph_store import (
     WikiGraphStore,
@@ -17,6 +22,7 @@ from graphwiki_kb.wikigraph.index_builder import (
 from graphwiki_kb.wikigraph.models import (
     WikiGraphBuildReport,
     WikiGraphIndex,
+    WikiGraphNode,
 )
 
 
@@ -25,11 +31,17 @@ class WikiGraphIndexService:
     """Builds and persists the wiki graph index for a project."""
 
     paths: ProjectPaths
+    config: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self._store = WikiGraphStore(
             WikiGraphStorePaths(self.paths.graph_dir / "wikigraph")
         )
+
+    @property
+    def runtime_config(self) -> WikiGraphRuntimeConfig:
+        """Resolve the WikiGraphRAG runtime config from project config."""
+        return resolve_wikigraph_config(self.config)
 
     @property
     def store(self) -> WikiGraphStore:
@@ -44,15 +56,36 @@ class WikiGraphIndexService:
     def build(
         self,
         *,
-        include_graphrag_export_pages: bool = False,
-        chunk_char_limit: int = 1200,
+        include_graphrag_export_pages: bool | None = None,
+        chunk_char_limit: int | None = None,
     ) -> WikiGraphBuildReport:
-        """Build the index from the maintained wiki and persist it."""
+        """Build the index from the maintained wiki and persist it.
+
+        When ``include_graphrag_export_pages`` or ``chunk_char_limit`` is
+        ``None``, the value is read from the resolved
+        :class:`WikiGraphRuntimeConfig` (or the package default when no
+        config was supplied).
+        """
+        try:
+            runtime = self.runtime_config
+        except ValueError:
+            runtime = resolve_wikigraph_config({})
+        effective_include = (
+            include_graphrag_export_pages
+            if include_graphrag_export_pages is not None
+            else runtime.include_graphrag_export_pages
+        )
+        effective_chunk = (
+            chunk_char_limit
+            if chunk_char_limit is not None
+            else runtime.chunk_char_limit
+        )
         index = build_wikigraph_index(
             self.paths,
             options=BuildOptions(
-                chunk_char_limit=chunk_char_limit,
-                include_graphrag_export_pages=include_graphrag_export_pages,
+                chunk_char_limit=effective_chunk,
+                include_graphrag_export_pages=effective_include,
+                fuzzy_entity_match_threshold=runtime.fuzzy_entity_match_threshold,
             ),
         )
         written = self._store.save(index)
@@ -75,6 +108,145 @@ class WikiGraphIndexService:
     def load(self) -> WikiGraphIndex | None:
         """Load the persisted index from disk."""
         return self._store.load()
+
+    def export_artifacts(self) -> list[str]:
+        """Write generated wiki artifact pages under ``wiki/wikigraph/``.
+
+        Produces one markdown card per ``entity``, ``community``, and
+        ``chunk`` node in the persisted index. Every card carries
+        ``generated: true`` and ``retrieval_backend: wikigraph`` in its
+        frontmatter so it is easy to filter from other tooling, and the
+        directory ``wiki/wikigraph/`` is explicitly excluded from the
+        default index build (see ``BuildOptions``) so generated cards
+        cannot feed back into the next graph build.
+
+        Returns:
+            The list of relative paths written, in deterministic order.
+
+        Raises:
+            FileNotFoundError: When the WikiGraphRAG index has not been
+                built yet.
+        """
+        index = self.load()
+        if index is None:
+            raise FileNotFoundError(
+                "WikiGraphRAG index is not built. Run `kb update` first."
+            )
+
+        from graphwiki_kb.services.project_service import (
+            slugify,
+            utc_now_iso,
+        )
+
+        base = self.paths.wiki_dir / "wikigraph"
+        for subdir in ("entities", "communities", "chunks"):
+            (base / subdir).mkdir(parents=True, exist_ok=True)
+        timestamp = utc_now_iso()
+        written: list[str] = []
+        for node in index.nodes:
+            if node.kind == "entity":
+                rel = self._write_entity_card(base, node, timestamp, slugify)
+                written.append(rel)
+            elif node.kind == "community":
+                rel = self._write_community_card(base, node, timestamp, slugify)
+                written.append(rel)
+            elif node.kind == "chunk":
+                rel = self._write_chunk_card(base, node, timestamp, slugify)
+                written.append(rel)
+        written.sort()
+        return written
+
+    def _write_entity_card(
+        self,
+        base: Path,
+        node: WikiGraphNode,
+        timestamp: str,
+        slug: Any,
+    ) -> str:
+        from graphwiki_kb.services.project_service import atomic_write_text
+
+        slugify_fn = slug
+        filename = f"{slugify_fn(node.title)}.md"
+        rel = f"wiki/wikigraph/entities/{filename}"
+        path = self.paths.root / rel
+        sources_block = "\n".join(f"  - {sid}" for sid in node.source_ids[:8])
+        aliases_block = "\n".join(f"  - {alias}" for alias in node.aliases[:8])
+        body = (
+            "---\n"
+            f'title: "{node.title}"\n'
+            "type: wikigraph_entity\n"
+            "generated: true\n"
+            "retrieval_backend: wikigraph\n"
+            f'generated_at: "{timestamp}"\n'
+            "confidence: medium\n"
+            + (f"aliases:\n{aliases_block}\n" if aliases_block else "")
+            + (f"source_ids:\n{sources_block}\n" if sources_block else "")
+            + "---\n\n"
+            f"# {node.title}\n\n"
+            f"{node.text or 'Entity surface form generated by WikiGraphRAG.'}\n"
+        )
+        atomic_write_text(path, body)
+        return rel
+
+    def _write_community_card(
+        self,
+        base: Path,
+        node: WikiGraphNode,
+        timestamp: str,
+        slug: Any,
+    ) -> str:
+        from graphwiki_kb.services.project_service import atomic_write_text
+
+        slugify_fn = slug
+        filename = f"{slugify_fn(node.id)}.md"
+        rel = f"wiki/wikigraph/communities/{filename}"
+        path = self.paths.root / rel
+        top_entities = node.metadata.get("top_entities") or []
+        top_block = "\n".join(f"- {item}" for item in top_entities[:10])
+        body = (
+            "---\n"
+            f'title: "{node.title}"\n'
+            "type: wikigraph_community\n"
+            "generated: true\n"
+            "retrieval_backend: wikigraph\n"
+            f'generated_at: "{timestamp}"\n'
+            f"community_id: {node.id}\n"
+            "---\n\n"
+            f"# {node.title}\n\n"
+            f"{node.text or 'Community summary generated by WikiGraphRAG.'}\n\n"
+            f"## Top Entities\n\n{top_block or '_no annotated entities_'}\n"
+        )
+        atomic_write_text(path, body)
+        return rel
+
+    def _write_chunk_card(
+        self,
+        base: Path,
+        node: WikiGraphNode,
+        timestamp: str,
+        slug: Any,
+    ) -> str:
+        from graphwiki_kb.services.project_service import atomic_write_text
+
+        slugify_fn = slug
+        filename = f"{slugify_fn(node.id)}.md"
+        rel = f"wiki/wikigraph/chunks/{filename}"
+        path = self.paths.root / rel
+        body = (
+            "---\n"
+            f'title: "{node.title}"\n'
+            "type: wikigraph_chunk\n"
+            "generated: true\n"
+            "retrieval_backend: wikigraph\n"
+            f'generated_at: "{timestamp}"\n'
+            f"source_path: {node.path or ''}\n"
+            f"chunk_index: {node.metadata.get('chunk_index', '')}\n"
+            "---\n\n"
+            f"# {node.title}\n\n"
+            f"{node.text}\n"
+        )
+        atomic_write_text(path, body)
+        return rel
 
     def status(self) -> dict[str, object]:
         """Return a quick-look status payload for ``kb wikigraph status``."""

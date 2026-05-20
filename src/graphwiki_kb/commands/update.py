@@ -147,6 +147,14 @@ def create_command() -> click.Command:
             "WikiGraphRAG build."
         ),
     )
+    @click.option(
+        "--export-wikigraph-artifacts",
+        is_flag=True,
+        help=(
+            "After building the WikiGraphRAG index, write generated entity, "
+            "community, and chunk cards under wiki/wikigraph/."
+        ),
+    )
     @click.pass_obj
     def command(
         command_context: CommandContext,
@@ -160,6 +168,7 @@ def create_command() -> click.Command:
         concepts: bool | None,
         wikigraph: bool,
         wikigraph_include_graphrag_export_pages: bool,
+        export_wikigraph_artifacts: bool,
     ) -> None:
         """Command.
 
@@ -190,6 +199,7 @@ def create_command() -> click.Command:
             wikigraph_include_graphrag_export_pages=(
                 wikigraph_include_graphrag_export_pages
             ),
+            export_wikigraph_artifacts=export_wikigraph_artifacts,
         )
 
         console.print(f"Mode: {_mode_label(options)}")
@@ -321,6 +331,11 @@ def create_command() -> click.Command:
             )
             for warning in report.warnings:
                 console.print(f"[yellow]{warning}[/yellow]")
+            if result.wikigraph_artifact_paths:
+                console.print(
+                    f"Exported {len(result.wikigraph_artifact_paths)} generated "
+                    "card(s) under wiki/wikigraph/"
+                )
         else:
             console.print("WikiGraphRAG build did not run.")
 

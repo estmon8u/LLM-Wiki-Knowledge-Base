@@ -360,6 +360,13 @@ class UpdateInput(BaseModel):
             "build for the optional ablation."
         ),
     )
+    export_wikigraph_artifacts: bool = Field(
+        False,
+        description=(
+            "After the WikiGraphRAG build, also write generated entity, "
+            "community, and chunk cards under wiki/wikigraph/."
+        ),
+    )
 
 
 class UpdateOutput(BaseModel):

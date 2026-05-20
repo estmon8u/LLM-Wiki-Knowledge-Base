@@ -44,6 +44,7 @@ class UpdateOptions:
     graph_method: str = "auto"
     wikigraph: bool = True
     wikigraph_include_graphrag_export_pages: bool = False
+    export_wikigraph_artifacts: bool = False
 
 
 @dataclass
@@ -71,6 +72,7 @@ class UpdateResult:
     wikigraph_result: WikiGraphBuildReport | None = None
     wikigraph_skipped: bool = False
     wikigraph_skip_reason: str = ""
+    wikigraph_artifact_paths: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -409,6 +411,22 @@ class UpdateService:
                 result.wikigraph_skip_reason = f"WikiGraphRAG build failed: {exc}"
                 return
             raise
+
+        if options.export_wikigraph_artifacts:
+            try:
+                result.wikigraph_artifact_paths = list(
+                    self._wikigraph_index.export_artifacts()
+                )
+            except FileNotFoundError:
+                # The build either skipped or produced no nodes; no artifacts.
+                result.wikigraph_artifact_paths = []
+            except Exception as exc:
+                if not options.allow_partial:
+                    raise
+                result.wikigraph_skip_reason = (
+                    f"{result.wikigraph_skip_reason} "
+                    f"(artifact export failed: {exc})"
+                ).strip()
 
     def _active_graph_output_dir(self) -> str | None:
         if self._graphrag_sync is None:

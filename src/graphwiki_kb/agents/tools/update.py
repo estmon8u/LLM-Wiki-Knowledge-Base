@@ -105,6 +105,9 @@ def _summarize_result(result: UpdateResult) -> tuple[str, str, dict[str, Any]]:
                 result.wikigraph_result.include_graphrag_export_pages
             ),
             "warnings": list(result.wikigraph_result.warnings),
+            "exported_artifact_count": len(
+                getattr(result, "wikigraph_artifact_paths", []) or []
+            ),
         }
         parts.append(
             f"wikigraph({result.wikigraph_result.node_count}n/"
@@ -144,6 +147,7 @@ def _run_inprocess(runtime: AgentRuntimeContext, payload: UpdateInput) -> Update
         wikigraph_include_graphrag_export_pages=(
             payload.wikigraph_include_graphrag_export_pages
         ),
+        export_wikigraph_artifacts=payload.export_wikigraph_artifacts,
     )
     result = service.run(options)
     summary, method, details = _summarize_result(result)
@@ -183,6 +187,8 @@ def _run_subprocess(runtime: AgentRuntimeContext, payload: UpdateInput) -> Updat
         command.append("--no-wikigraph")
     if payload.wikigraph_include_graphrag_export_pages:
         command.append("--wikigraph-include-graphrag-export-pages")
+    if payload.export_wikigraph_artifacts:
+        command.append("--export-wikigraph-artifacts")
     completed = subprocess.run(
         command,
         cwd=str(runtime.command_context.project_root),
@@ -232,6 +238,7 @@ def run_update_kb(
                 "wikigraph_include_graphrag_export_pages": (
                     payload.wikigraph_include_graphrag_export_pages
                 ),
+                "export_wikigraph_artifacts": payload.export_wikigraph_artifacts,
             },
         )
         runtime.add_pending_approval(approval)

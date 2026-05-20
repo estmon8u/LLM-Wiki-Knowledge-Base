@@ -10,10 +10,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-import networkx as nx
-
+from graphwiki_kb.wikigraph.deps import require_networkx
 from graphwiki_kb.wikigraph.models import WikiGraphCommunity, WikiGraphNode
+
+if TYPE_CHECKING:
+    import networkx as nx
 
 
 @dataclass
@@ -36,7 +39,8 @@ def detect_communities(
     """
     if graph.number_of_nodes() == 0:
         return CommunityDetectionResult(algorithm="empty", member_lists=[])
-    simple: nx.Graph = nx.Graph()
+    nx = require_networkx()
+    simple = nx.Graph()
     for u, v, data in graph.edges(data=True):
         weight = float(data.get("weight", 1.0))
         if simple.has_edge(u, v):
