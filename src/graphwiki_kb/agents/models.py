@@ -221,6 +221,32 @@ class WebResearchResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class ListRecommendationsInput(BaseModel):
+    """Inputs accepted by the list_recommendations tool."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str = Field(
+        "latest",
+        description=(
+            "Research run identifier or 'latest'. With 'latest' the tool "
+            "returns the newest run that has at least one recommendation."
+        ),
+    )
+
+
+class ListRecommendationsOutput(BaseModel):
+    """Output of the list_recommendations tool."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str | None
+    question: str | None
+    created_at: str | None = None
+    recommendations: list[SourceRecommendation] = Field(default_factory=list)
+    message: str = ""
+
+
 class IngestRecommendationInput(BaseModel):
     """Inputs accepted by the ingest_recommendation tool."""
 
@@ -259,6 +285,9 @@ class IngestRecommendationOutput(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+GraphMethod = Literal["auto", "standard", "fast", "standard-update", "fast-update"]
+
+
 class UpdateInput(BaseModel):
     """Inputs accepted by the update agent tool."""
 
@@ -266,6 +295,9 @@ class UpdateInput(BaseModel):
 
     force: bool = False
     dry_run: bool = False
+    graph_method: GraphMethod = "auto"
+    no_graph: bool = False
+    graph_only: bool = False
 
 
 class UpdateOutput(BaseModel):
@@ -278,6 +310,9 @@ class UpdateOutput(BaseModel):
     next_action: str = ""
     method: str | None = None
     diagnostics: list[str] = Field(default_factory=list)
+    graph_freshness: str | None = None
+    staleness_warnings: list[str] = Field(default_factory=list)
+    details: dict[str, Any] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -346,10 +381,13 @@ __all__ = [
     "FindKbInput",
     "FindKbOutput",
     "FindKbResult",
+    "GraphMethod",
     "IngestRecommendationInput",
     "IngestRecommendationItemResult",
     "IngestRecommendationOutput",
     "LintOutput",
+    "ListRecommendationsInput",
+    "ListRecommendationsOutput",
     "NoveltyLevel",
     "PendingApproval",
     "RelevanceLevel",

@@ -31,6 +31,8 @@ from graphwiki_kb.agents.models import (
     IngestRecommendationInput,
     IngestRecommendationOutput,
     LintOutput,
+    ListRecommendationsInput,
+    ListRecommendationsOutput,
     ResearchInput,
     ResearchOutput,
     ReviewOutput,
@@ -50,6 +52,12 @@ from graphwiki_kb.agents.tools.ingest_recommendation import (
 )
 from graphwiki_kb.agents.tools.lint import TOOL_DESCRIPTION as LINT_DESC
 from graphwiki_kb.agents.tools.lint import run_lint
+from graphwiki_kb.agents.tools.list_recommendations import (
+    TOOL_DESCRIPTION as LIST_RECS_DESC,
+)
+from graphwiki_kb.agents.tools.list_recommendations import (
+    run_list_recommendations,
+)
 from graphwiki_kb.agents.tools.research import TOOL_DESCRIPTION as RESEARCH_DESC
 from graphwiki_kb.agents.tools.research import run_research
 from graphwiki_kb.agents.tools.review import TOOL_DESCRIPTION as REVIEW_DESC
@@ -73,6 +81,7 @@ READ_ONLY_TOOL_NAMES: tuple[str, ...] = (
     "lint",
     "review",
     "research",
+    "list_recommendations",
 )
 WRITE_TOOL_NAMES: tuple[str, ...] = (
     "ingest_recommendation",
@@ -125,6 +134,16 @@ def research_callable(
     return run_research(runtime, _coerce(payload, ResearchInput))
 
 
+def list_recommendations_callable(
+    runtime: AgentRuntimeContext,
+    payload: ListRecommendationsInput | dict[str, Any] | None = None,
+) -> ListRecommendationsOutput:
+    """Direct callable wrapper for list_recommendations."""
+    coerced = _coerce(payload, ListRecommendationsInput)
+    assert isinstance(coerced, ListRecommendationsInput)
+    return run_list_recommendations(runtime, coerced)
+
+
 def ingest_recommendation_callable(
     runtime: AgentRuntimeContext,
     payload: IngestRecommendationInput | dict[str, Any],
@@ -150,6 +169,7 @@ CALLABLE_REGISTRY: dict[str, Any] = {
     "lint": lint_callable,
     "review": review_callable,
     "research": research_callable,
+    "list_recommendations": list_recommendations_callable,
     "ingest_recommendation": ingest_recommendation_callable,
     "update_kb": update_kb_callable,
 }
@@ -233,6 +253,16 @@ def build_agent_tools(
     ) -> ResearchOutput:
         return run_research(_runtime(ctx), payload)
 
+    @function_tool(
+        name_override="list_recommendations",
+        description_override=LIST_RECS_DESC,
+    )
+    def list_recommendations_tool(
+        ctx: RunContextWrapper,
+        payload: ListRecommendationsInput,
+    ) -> ListRecommendationsOutput:
+        return run_list_recommendations(_runtime(ctx), payload)
+
     tools = [
         ask_kb_tool,
         find_kb_tool,
@@ -240,6 +270,7 @@ def build_agent_tools(
         lint_tool,
         review_tool,
         research_tool,
+        list_recommendations_tool,
     ]
     if allow_writes:
 

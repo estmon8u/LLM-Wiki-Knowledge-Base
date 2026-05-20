@@ -23,7 +23,7 @@ def test_callable_registry_covers_all_known_tools() -> None:
     assert set(CALLABLE_REGISTRY.keys()) == set(ALL_TOOL_NAMES)
 
 
-def test_build_agent_tools_returns_eight_tools() -> None:
+def test_build_agent_tools_returns_full_toolset() -> None:
     tools = build_agent_tools(allow_writes=True)
     names = [t.name for t in tools]
     assert names == [
@@ -33,6 +33,7 @@ def test_build_agent_tools_returns_eight_tools() -> None:
         "lint",
         "review",
         "research",
+        "list_recommendations",
         "ingest_recommendation",
         "update_kb",
     ]
@@ -55,3 +56,39 @@ def test_runtime_helper_requires_agent_runtime_context() -> None:
 
     with pytest.raises(RuntimeError):
         _runtime(FakeCtx())
+
+
+def test_callable_registry_includes_list_recommendations() -> None:
+    """``list_recommendations`` must be wired up in both registries."""
+    assert "list_recommendations" in CALLABLE_REGISTRY
+    assert "list_recommendations" in READ_ONLY_TOOL_NAMES
+    assert "list_recommendations" in ALL_TOOL_NAMES
+
+
+def test_list_recommendations_callable_returns_empty_when_no_runs(runtime) -> None:
+    from graphwiki_kb.agents.tool_registry import list_recommendations_callable
+
+    output = list_recommendations_callable(runtime, None)
+    assert output.recommendations == []
+    assert output.run_id is None
+
+
+def test_build_agent_tools_without_writes_excludes_writes_only() -> None:
+    tools = build_agent_tools(allow_writes=False)
+    names = {t.name for t in tools}
+    assert names == {
+        "ask_kb",
+        "find_kb",
+        "status",
+        "lint",
+        "review",
+        "research",
+        "list_recommendations",
+    }
+
+
+def test_each_function_tool_carries_description() -> None:
+    """Every SDK function tool must expose a non-empty description."""
+    tools = build_agent_tools(allow_writes=True)
+    for tool in tools:
+        assert getattr(tool, "description", "")
