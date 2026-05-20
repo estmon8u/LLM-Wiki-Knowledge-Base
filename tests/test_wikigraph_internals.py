@@ -349,6 +349,38 @@ def test_answer_service_provider_backed_success(test_project) -> None:
     assert answer.provider_status.get("mode") == "provider"
 
 
+def test_answer_service_provider_accepts_same_path_unit(test_project) -> None:
+    """Citation pointing to a different TextUnit of a *retrieved* doc.
+
+    The LLM sometimes cites neighbor TextUnits of the document we
+    actually retrieved (e.g. ``...md#text-unit-3`` when we returned
+    ``...md#text-unit-7``). Because the retrieved context already
+    contains the body text the model is grounding on, the answer
+    service should accept the cite by normalizing to the canonical
+    retrieved ref instead of marking the whole answer insufficient.
+    """
+    engine = _build_engine(test_project)
+    find = engine.find("REALM and RAG", method="basic")
+    assert find.contexts, "fixture should retrieve at least one context"
+    canonical = find.contexts[0].citation_ref
+    path_only = canonical.split("#", 1)[0]
+    neighbor = f"{path_only}#text-unit-9999"
+
+    payload = (
+        '{"answer_markdown": "REALM uses retrieval.",'
+        ' "claims": [{"text": "REALM uses retrieval.",'
+        f' "citation_refs": ["{neighbor}"]}}],'
+        f' "citations": [{{"ref": "{neighbor}", "title": "Summary"}}],'
+        ' "insufficient_evidence": false}'
+    )
+    service = WikiGraphAnswerService(engine=engine, provider=_StaticProvider(payload))
+    answer = service.ask("REALM and RAG", method="basic")
+
+    assert not answer.insufficient_evidence
+    assert answer.citations, "neighbor-cite should be normalized, not dropped"
+    assert answer.citations[0]["ref"] == canonical
+
+
 def test_answer_service_provider_invalid_payload(test_project) -> None:
     engine = _build_engine(test_project)
     service = WikiGraphAnswerService(

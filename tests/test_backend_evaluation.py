@@ -303,6 +303,58 @@ def test_graphrag_runner_answer_success_path(seeded_project) -> None:
     assert metrics["matched_entity_count"] == 1
 
 
+def test_matched_entities_recognizes_well_known_expansions() -> None:
+    """Spelled-out forms should credit their canonical abbreviations."""
+    from scripts.backend_evaluation_lib import AnswerRun, matched_entities
+
+    run = AnswerRun(
+        backend="wikigraph",
+        method="local",
+        question_id="fid_method",
+        question="How does Fusion-in-Decoder combine retrieved passages?",
+        answer=(
+            "Fusion-in-Decoder encodes each passage independently and "
+            "fuses them in the decoder."
+        ),
+        citation_count=1,
+        insufficient_evidence=False,
+        latency_seconds=0.01,
+    )
+    question = BenchmarkQuestion(
+        id="fid_method",
+        question="How does Fusion-in-Decoder combine retrieved passages?",
+        expected_entities=("FiD",),
+    )
+    assert matched_entities(question, run) == ["FiD"]
+
+
+def test_answer_quality_score_penalizes_refusal_when_grounding_expected() -> None:
+    from scripts.backend_evaluation_lib import AnswerRun, answer_metrics
+
+    refusal = AnswerRun(
+        backend="legacy",
+        method="ask",
+        question_id="dpr_role",
+        question="What role does Dense Passage Retrieval play in RAG?",
+        answer="Provided evidence does not mention DPR.",
+        citation_count=0,
+        insufficient_evidence=True,
+        latency_seconds=0.01,
+        citation_ref_valid_rate=1.0,
+    )
+    question = BenchmarkQuestion(
+        id="dpr_role",
+        question="What role does Dense Passage Retrieval play in RAG?",
+        expected_entities=("DPR",),
+        insufficient_evidence_expected=False,
+    )
+    metrics = answer_metrics(question, refusal)
+
+    assert metrics["grounded_entity_hits"] == 0
+    assert metrics["insufficient_evidence_behavior"] == "mismatch"
+    assert metrics["answer_quality_score"] < 0.3
+
+
 def test_evaluate_backends_main_includes_graphrag(
     seeded_project, tmp_path: Path, monkeypatch
 ) -> None:

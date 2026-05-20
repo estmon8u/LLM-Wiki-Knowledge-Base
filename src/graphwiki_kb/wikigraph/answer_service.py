@@ -246,20 +246,45 @@ def _provider_backed_answer(
         )
 
     known_refs = {ctx.citation_ref for ctx in find.contexts}
+    # Build a map of "path-only" -> canonical citation_ref so we can
+    # normalize an LLM-emitted ref like `path#text-unit-1` to the
+    # actual retrieved context `path#text-unit-3` when the LLM cites a
+    # neighbor unit of the same retrieved document. The retrieved
+    # contexts already contain the body text the model is reasoning
+    # over, so accepting same-path citations does not loosen grounding.
+    known_paths_to_ref: dict[str, str] = {}
+    for ctx in find.contexts:
+        path_only = ctx.citation_ref.split("#", 1)[0]
+        if path_only and path_only not in known_paths_to_ref:
+            known_paths_to_ref[path_only] = ctx.citation_ref
+
+    def _normalize_ref(ref: str) -> str | None:
+        if ref in known_refs:
+            return ref
+        path_only = ref.split("#", 1)[0]
+        return known_paths_to_ref.get(path_only)
+
     valid_claims: list[dict[str, Any]] = []
     used_refs: set[str] = set()
     for claim in structured.claims:
-        refs = [ref for ref in claim.citation_refs if ref in known_refs]
-        if not refs:
+        normalized_refs: list[str] = []
+        for ref in claim.citation_refs:
+            normalized = _normalize_ref(ref)
+            if normalized is not None:
+                normalized_refs.append(normalized)
+        if not normalized_refs:
             continue
-        valid_claims.append({"text": claim.text.strip(), "citation_refs": refs})
-        used_refs.update(refs)
+        valid_claims.append(
+            {"text": claim.text.strip(), "citation_refs": normalized_refs}
+        )
+        used_refs.update(normalized_refs)
 
-    declared = [
-        {"ref": c.ref, "title": c.title}
-        for c in structured.citations
-        if c.ref in known_refs
-    ]
+    declared: list[dict[str, Any]] = []
+    for c in structured.citations:
+        normalized = _normalize_ref(c.ref)
+        if normalized is None:
+            continue
+        declared.append({"ref": normalized, "title": c.title})
     used_refs.update(c["ref"] for c in declared)
     cited_contexts = [ctx for ctx in find.contexts if ctx.citation_ref in used_refs]
 

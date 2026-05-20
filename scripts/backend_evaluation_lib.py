@@ -432,12 +432,45 @@ def matched_source_ids(question: BenchmarkQuestion, run: RetrievalRun) -> list[s
     ]
 
 
+# Small alias table so an expected entity like ``FiD`` is credited
+# when the answer uses the spelled-out form ``Fusion-in-Decoder``, and
+# vice versa. Keep this conservative: only well-known one-to-one
+# expansions, and only over the entities that appear in our benchmarks.
+_ENTITY_ALIAS_EXPANSIONS: dict[str, tuple[str, ...]] = {
+    "fid": ("fusion-in-decoder", "fusion in decoder"),
+    "dpr": ("dense passage retrieval", "dense-passage-retrieval"),
+    "rag": ("retrieval-augmented generation", "retrieval augmented generation"),
+    "realm": ("retrieval-augmented language model",),
+    "ralm": ("retrieval augmented language model", "in-context retrieval-augmented"),
+    "atlas": ("few-shot learning with retrieval-augmented",),
+    "self-rag": ("self rag", "self-reflective retrieval-augmented"),
+    "replug": ("retrieval-augmented black-box",),
+    "orqa": ("open retrieval question answering",),
+    "mips": ("maximum inner product search",),
+    "bert": ("bidirectional encoder representations from transformers",),
+}
+
+
 def matched_entities(question: BenchmarkQuestion, run: AnswerRun) -> list[str]:
-    """Return the expected entities that appear in ``run.answer``."""
+    """Return the expected entities that appear in ``run.answer``.
+
+    Also accepts well-known spelled-out forms (e.g. an expected entity
+    ``FiD`` is credited when the answer uses ``Fusion-in-Decoder``).
+    """
     if not question.expected_entities:
         return []
     text = run.answer.lower()
-    return [entity for entity in question.expected_entities if entity.lower() in text]
+    hits: list[str] = []
+    for entity in question.expected_entities:
+        lowered = entity.lower()
+        if lowered in text:
+            hits.append(entity)
+            continue
+        for alias in _ENTITY_ALIAS_EXPANSIONS.get(lowered, ()):  # noqa: PERF401
+            if alias in text:
+                hits.append(entity)
+                break
+    return hits
 
 
 def retrieval_metrics(question: BenchmarkQuestion, run: RetrievalRun) -> dict[str, Any]:
