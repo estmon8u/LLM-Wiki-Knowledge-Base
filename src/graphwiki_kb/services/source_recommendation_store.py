@@ -71,19 +71,26 @@ class SourceRecommendationStore:
     # Write
     # ------------------------------------------------------------------
     def save(self, record: ResearchRunRecord) -> Path:
-        """Persist a research run as JSON and update the latest pointer."""
+        """Persist a research run as JSON and update the latest pointer.
+
+        The ``latest.json`` pointer is only refreshed when the run contains
+        at least one recommendation. Otherwise a no-recommendation research
+        run could shadow a previous run whose recommendations the user
+        still needs to ingest.
+        """
         self.ensure_directory()
         path = self._run_path(record.run_id, question=record.question)
         payload = json.loads(record.model_dump_json())
         atomic_write_text(path, json.dumps(payload, indent=2, sort_keys=False))
-        atomic_write_text(
-            self.latest_pointer,
-            json.dumps(
-                {"run_id": record.run_id, "path": path.name},
-                indent=2,
-                sort_keys=False,
-            ),
-        )
+        if record.recommendations:
+            atomic_write_text(
+                self.latest_pointer,
+                json.dumps(
+                    {"run_id": record.run_id, "path": path.name},
+                    indent=2,
+                    sort_keys=False,
+                ),
+            )
         return path
 
     # ------------------------------------------------------------------
@@ -119,14 +126,38 @@ class SourceRecommendationStore:
         except SourceRecommendationStoreError:
             return None
 
+    def latest_with_recommendations(self) -> ResearchRunRecord | None:
+        """Return the most recent persisted run that has recommendations.
+
+        Useful when the latest pointer points at a research run that
+        produced no recommendations: callers that want to ingest still
+        need a run with concrete numbered recommendations to choose from.
+        Runs are scanned newest-first by ``run_id`` timestamp prefix.
+        """
+        records = self.list_runs()
+        for record in reversed(records):
+            if record.recommendations:
+                return record
+        return None
+
     def resolve_recommendations(
         self,
         ids: list[int],
         *,
         run_id: str = "latest",
     ) -> tuple[ResearchRunRecord, list[SourceRecommendation]]:
-        """Return (run, recommendations) for the requested IDs."""
+        """Return ``(run, recommendations)`` for the requested IDs.
+
+        When ``run_id`` is ``"latest"`` and the most recent run has no
+        recommendations, we fall back to the most recent run that does. This
+        prevents an unrelated no-recommendation research call from masking
+        the recommendations the user is currently trying to ingest.
+        """
         record = self.load(run_id)
+        if run_id == "latest" and not record.recommendations:
+            fallback = self.latest_with_recommendations()
+            if fallback is not None:
+                record = fallback
         by_id = {rec.id: rec for rec in record.recommendations}
         if not ids:
             return record, list(record.recommendations)
