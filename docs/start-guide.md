@@ -25,7 +25,8 @@ poetry run kb --help
 ```
 
 For package installs outside the repo, choose the extras you need, such as
-`graphwiki-kb[openai]`, `graphwiki-kb[pdf]`, or `graphwiki-kb[all]`.
+`graphwiki-kb[openai]`, `graphwiki-kb[agent]`, `graphwiki-kb[pdf]`, or
+`graphwiki-kb[all]`.
 
 ## 2. Create a project
 
@@ -284,6 +285,25 @@ Saved analysis pages are searchable with top-level `kb find`, but `kb legacy
 find` and later legacy ask runs stay source-only so saved answers, generated
 concept pages, and direct graph artifacts are not treated as primary evidence.
 
+Optional natural-language control is available through `kb agent` when the
+agent extra and `OPENAI_API_KEY` are installed. It routes through the same typed
+services as the direct commands, so local KB answers still come from the
+GraphRAG ask controller and research recommendations are stored separately from
+ingestion:
+
+```powershell
+poetry run kb --project-root $projectRoot agent "What does my KB say about GraphRAG evaluation?"
+poetry run kb --project-root $projectRoot agent "Research current GraphRAG evaluation work and recommend sources"
+poetry run kb --project-root $projectRoot agent "show previous recommendations"
+poetry run kb --project-root $projectRoot agent --yes "add recommendation 1 and update the KB"
+poetry run kb --project-root $projectRoot agent
+```
+
+One-shot `kb agent "..."` calls are sessionless unless you pass `--session ID`.
+Interactive mode uses a persistent `repl` session. Write tools such as
+recommendation ingestion and `update_kb` require an approval prompt or `--yes`;
+research never ingests a web source automatically.
+
 ## 8. Check and export
 
 Run structural checks:
@@ -328,6 +348,7 @@ cleanup uses the exact destination paths exported by that run.
 | GraphRAG output or vector store is missing, empty, unreadable, or incompatible | Set graph provider credentials, then run `kb update`; a normal update without them only refreshes the wiki and warns. |
 | Update warns about missing normalized graph input | Run `kb lint` to identify the stale manifest entry, then re-add or remove the affected source. |
 | Generated pages look stale | Run `kb status --changed`, then `kb update --force` if needed. |
+| `kb agent` says `openai-agents` is not installed | Install the optional agent extra with `poetry install -E agent` or use the repository development install with all extras. |
 
 ## Next Steps
 

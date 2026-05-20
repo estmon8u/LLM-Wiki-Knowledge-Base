@@ -1,7 +1,7 @@
 # Capstone Project Status Overview
 
 Date: 2026-04-24
-Updated: 2026-05-19 for main-line GraphRAG hardening, read-only agent MVP, real-data validation, and lint/type/test cleanup
+Updated: 2026-05-19 for main-line GraphRAG hardening, the full `kb agent` control plane, real-data validation, and lint/type/test cleanup
 
 ## Current Position
 
@@ -18,7 +18,7 @@ The project has moved from scaffold+implementation through the GraphRAG pivot in
 9. `kb update` and `kb export` export GraphRAG output tables into generated markdown pages under `wiki/graph/`.
 10. `kb status`, `kb doctor`, and `kb lint` include GraphRAG readiness, vector-store health, freshness, stale input/index/export checks, and strict readiness modes.
 11. Phase 8 evaluation scripts compare deprecated FTS against GraphRAG Basic, Local, Global, and DRIFT with local-safe defaults and opt-in provider-backed answer runs.
-12. The first `kb agent` milestone is implemented as a read-only natural-language control plane over existing services.
+12. `kb agent` is implemented as a natural-language control plane over existing services, including local KB ask/find/status/lint/review, web-backed research, durable source recommendations, approved recommendation ingestion, and approved `kb update`.
 13. State hardening now protects config migrations, manifest writes, compile-run state, graph index-run state, wiki logs, and GraphRAG workspace operations.
 14. Wiki artifacts remain the inspectable provenance, maintenance, and export layer.
 
@@ -70,10 +70,10 @@ GraphRAG is the retrieval and synthesis engine.
 - Source-grounded ask behavior: `kb legacy ask` uses source-page chunks as primary evidence, excludes generated concept pages and saved analysis pages from evidence, validates structured claims/citations, and strips raw citation-ref markers from answer prose before display or save.
 - Obsidian vault export via `kb export`.
 - Library-backed simplification pass: shared Markdown/frontmatter parsing, Pydantic config validation, NLTK collocation-based concept topic extraction, RapidFuzz terminology variants, and Unicode-aware slugging.
-- Read-only `kb agent` MVP using the optional `graphwiki-kb[agent]` extra, OpenAI Agents SDK runtime boundary, service-backed tools for ask/find/status/lint/review, sessionless one-shot runs, and ignored local SQLite session state under `graph/runs/agent/`.
-- Config schema version 8 with `agent` and planned `research` sections; web research, source recommendation ingestion, and update/export write tools remain inactive future work behind approval gates.
+- `kb agent` control plane using the optional `graphwiki-kb[agent]` extra, OpenAI Agents SDK runtime boundary, service-backed tools for ask/find/status/lint/review/research/list-recommendations, sessionless one-shot runs, optional SQLite sessions, durable run traces, and ignored local state under `graph/runs/agent/`.
+- Config schema version 8 with active `agent` and `research` sections. Research calls the OpenAI Responses `web_search` tool directly, persists numbered source recommendations, and keeps ingestion separate until an approved `ingest_recommendation` tool call. `update_kb` drives the same `UpdateService` path as `kb update` and requires approval or `--yes`.
 - Lock-protected state writes for config migration, manifest updates, compile-run state, graph index-run state, wiki log appends, and GraphRAG workspace operations.
-- Real-data validation of the read-only agent MVP on a fresh two-PDF project using local PDF conversion plus OpenAI-backed fast GraphRAG indexing; final status was current, lint and review were clean, and one-shot session bleed was fixed.
+- Real-data validation of the agent path on a fresh two-PDF project using local PDF conversion plus OpenAI-backed fast GraphRAG indexing; final status was current, lint and review were clean, and one-shot session bleed was fixed.
 - Latest main-line cleanup resolved pre-existing lint, type-check, and test failures and tightened CI/workflow metadata.
 - CI and dependency baseline with the current enforced coverage floor from `pyproject.toml`.
 
@@ -81,7 +81,7 @@ GraphRAG is the retrieval and synthesis engine.
 
 - Preparing final comparison evidence from the Phase 8 benchmark, GraphRAG mode behavior, and real-corpus runs.
 - Deciding when to allow provider-backed GraphRAG/legacy answer captures for the known weak comparison and synthesis questions.
-- Keeping the read-only agent MVP bounded while evaluating whether it belongs in the final demo narrative.
+- Keeping the agent demo bounded around service-backed KB operations, research recommendations, and explicit write approvals.
 
 ## Next Regular Work
 
@@ -95,11 +95,11 @@ GraphRAG is the retrieval and synthesis engine.
 - Additional structured lint checks (for stale summaries and duplicate concepts).
 - Optional provider-backed cleanup/reconstruction path for OCR edge cases.
 - Concept synthesis improvements and quality gates.
-- Extend `kb agent` beyond the read-only MVP only after approval gates are designed for web research, source recommendations, ingestion, update, and export tools.
+- Consider whether export or future fix tools belong behind the same agent approval pattern; destructive actions remain out of scope.
 - Optional visualization/reporting and non-obligatory UI layer after core outcomes are complete.
 - Post-capstone productization: multi-subject workspace mode, installable or executable distribution with a default local workspace folder, and a GUI or app-style wrapper for easier source import, subject switching, search, ask, status, and export.
 
 ## Overall Assessment
 
 The current implementation is a strong baseline for the final capstone push:
-ingest/update/status/default ask/graph-aware find/read-only agent/graph wiki export/legacy search/legacy ask/review/lint/doctor/export/evaluation are operational and covered by tests. The remaining effort is now producing defensible comparison results and final reporting without losing provenance, maintainability, or the ability to compare against the original FTS path as deprecated legacy behavior.
+ingest/update/status/default ask/graph-aware find/agent control plane/graph wiki export/legacy search/legacy ask/review/lint/doctor/export/evaluation are operational and covered by tests. The remaining effort is now producing defensible comparison results and final reporting without losing provenance, maintainability, or the ability to compare against the original FTS path as deprecated legacy behavior.

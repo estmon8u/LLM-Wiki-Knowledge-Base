@@ -8,7 +8,7 @@ The wiki is not the retrieval engine. The wiki is the human-readable artifact la
 
 The architecture accepts heterogeneous source documents through a normalization step into canonical markdown or plain text. The current implementation routes canonical markdown and plain text directly, uses Mistral OCR as the paid, high-accuracy primary converter for explicitly supported native formats (`.pdf`, `.docx`, `.pptx`, `.png`, `.jpg`, `.jpeg`, `.avif`), and renders `.html` / `.htm` through `wkhtmltopdf` or the pure-Python `xhtml2pdf` fallback before sending the PDF bytes to the same OCR path. HTML normalization extracts the source `<title>` before rendering and applies it to OCR output when available so generic navigation text does not become the durable page title. This is deliberate because conversion quality feeds every downstream compiled page, GraphRAG entity, relationship, retrieval result, citation, and answer. MarkItDown remains the default for the remaining bounded born-digital subset, while Docling and MarkItDown are lower-confidence fallbacks used only after the primary OCR route fails quality checks.
 
-The product goal is not to act like a general-purpose coding agent. The goal is to ingest source material, compile inspectable wiki artifacts, answer questions through a graph-first retrieval and synthesis path, keep any old FTS5 path explicit and deprecated, and export an Obsidian-friendly vault.
+The product goal is not to act like a general-purpose coding agent. The goal is to ingest source material, compile inspectable wiki artifacts, answer questions through a graph-first retrieval and synthesis path, optionally expose those same service-backed operations through a bounded natural-language `kb agent` control plane, keep any old FTS5 path explicit and deprecated, and export an Obsidian-friendly vault.
 
 ## Core User Flow
 
@@ -17,22 +17,24 @@ The product goal is not to act like a general-purpose coding agent. The goal is 
 3. Compile source pages, refresh the deprecated legacy FTS index used only by `kb legacy ...` commands, sync normalized artifacts into the GraphRAG workspace, and automatically refresh, retry, or skip the graph index based on source/runtime changes and latest index-run state.
 4. Build graph outputs for graph-first retrieval modes when update selects a full or incremental GraphRAG index job, and refresh graph wiki pages from complete output even when indexing is skipped as current.
 5. Search direct graph artifacts plus the maintained wiki index through top-level `kb find`, and ask GraphRAG-backed questions by default; access the old FTS path only through explicit `kb legacy ...` commands.
-6. Optionally save useful answers back into the wiki as persistent analysis pages.
-7. Evaluate deprecated FTS versus GraphRAG Basic, Local, Global, and DRIFT modes against the benchmark.
-8. Lint the maintained knowledge base for broken structure or stale content (deterministic), including manifest artifact drift and GraphRAG input/index/export staleness.
-9. Review the maintained knowledge base for contradictions, terminology drift, and topic overlap (semantic; requires a configured provider and combines deterministic overlap checks with provider-backed review).
-10. Export the wiki into an Obsidian-friendly vault and refresh graph inspection pages when graph output exists.
+6. Optionally ask `kb agent` to route natural-language requests to ask/find/status/lint/review/research/recommendation-ingest/update tools while preserving approval gates for mutations.
+7. Optionally save useful answers back into the wiki as persistent analysis pages.
+8. Evaluate deprecated FTS versus GraphRAG Basic, Local, Global, and DRIFT modes against the benchmark.
+9. Lint the maintained knowledge base for broken structure or stale content (deterministic), including manifest artifact drift and GraphRAG input/index/export staleness.
+10. Review the maintained knowledge base for contradictions, terminology drift, and topic overlap (semantic; requires a configured provider and combines deterministic overlap checks with provider-backed review).
+11. Export the wiki into an Obsidian-friendly vault and refresh graph inspection pages when graph output exists.
 
 ## Data Domains
 
 - `raw/` stores source-of-truth input files, normalized canonical artifacts, and manifest metadata.
 - `wiki/` stores generated source pages, legacy concept pages, GraphRAG-derived graph pages, saved analysis pages, index data, and compile logs.
 - `vault/` stores export-ready Obsidian-friendly markdown.
-- `graph/` stores the SQLite FTS5 search index and compile-run state under `graph/exports/`, plus the initialized Microsoft GraphRAG workspace under `graph/graphrag/` and generated GraphRAG input under `graph/graphrag/input/sources.json`.
+- `graph/` stores the SQLite FTS5 search index and compile-run state under `graph/exports/`, the initialized Microsoft GraphRAG workspace under `graph/graphrag/`, generated GraphRAG input under `graph/graphrag/input/sources.json`, and ignored `kb agent` sessions, research runs, recommendation pointers, and run traces under `graph/runs/agent/`.
 
 ## System Boundaries
 
 - Commands expose user-facing CLI behavior.
+- Agents expose the optional natural-language control plane. The OpenAI Agents SDK owns model turns, tool selection, and optional SQLite session history, while local tool wrappers call typed services and record durable run traces.
 - Services own deterministic business logic.
 - Models hold shared dataclasses and typed results.
 - Engine modules register commands.
@@ -49,6 +51,7 @@ The product goal is not to act like a general-purpose coding agent. The goal is 
 - Concept clustering is provider-first during `kb update`: the provider returns structured concept clusters over source-page titles/summaries, results are cached by source-page digest, and the deterministic NLTK/collocation pipeline remains a fallback.
 - `kb legacy ask --save` persists structured answer metadata (`insufficient_evidence`, claim count, citation count, structured claims, and provider status) so saved analysis pages can be linted without text heuristics, and refuses to write blank analysis pages. Saved analysis pages remain searchable through top-level `kb find`, but legacy find and legacy ask stay source-only to avoid recursively citing prior generated answers; legacy ask also excludes generated concept pages so provider answers stay grounded in primary compiled source pages. Repeated saves get unique log headings so `wiki/log.md` remains lint-clean.
 - Conversion is config-driven rather than hard-coded by suffix alone. Mistral OCR is the default high-accuracy path for the explicitly supported native document and image formats, PDF fallbacks are ordered after Mistral as Docling then MarkItDown, HTML uses a rendered-PDF OCR route, inline OCR payloads are size-checked before bytes are read or sent to the SDK, and converter quality gates prevent partial or obviously truncated artifacts from becoming canonical markdown.
+- `kb agent` is intentionally a control plane over the existing services rather than a second implementation of KB operations. Read tools call the GraphRAG ask controller, graph/wiki find, status, lint, and review services directly. Research combines the local KB answer with the Responses `web_search` tool, persists numbered recommendations, and writes a Markdown research report. `ingest_recommendation` stages selected web sources and then calls `IngestService`; `update_kb` calls the canonical update pipeline and requires approval unless launched with `--yes`.
 - Any post-OCR LLM cleanup or reconstruction should remain explicit fallback behavior rather than becoming part of the default ingest path.
 
 ## Reference-Project Roles
@@ -61,6 +64,7 @@ The product goal is not to act like a general-purpose coding agent. The goal is 
 - A general-purpose coding-agent shell.
 - A plugin or MCP platform.
 - Uncontrolled autonomous expansion of the corpus.
+- Automatic web-source ingestion from research results.
 - Replacing raw sources with opaque generated summaries.
 - Reimplementing Microsoft GraphRAG from scratch.
 - A general debate engine, persistent agent personas, or multi-round agent chat.

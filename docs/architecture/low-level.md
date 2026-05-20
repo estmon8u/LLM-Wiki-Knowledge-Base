@@ -21,6 +21,7 @@
 | `src/graphwiki_kb/commands/common.py` | Shared Rich-based command helpers: initialization checks, `echo_section`, `echo_bullet`, `echo_kv`, `echo_status_line`, `make_table`, `progress_report`, `live_status`, `lazy_live_status`, `emit_json`; module-level `console` and `err_console` with automatic TTY, `NO_COLOR` detection, and replacement-mode output encoding |
 | `src/graphwiki_kb/commands/init.py` | Project initialization behavior |
 | `src/graphwiki_kb/commands/add.py` | Primary source-add command, delegates to `src/graphwiki_kb/commands/ingest.py` for shared implementation |
+| `src/graphwiki_kb/commands/agent.py` | Natural-language KB assistant command; supports one-shot prompts, `--json`, `--show-plan`, `--yes`, optional `--session`, and a simple REPL; delegates execution to `AgentService` |
 | `src/graphwiki_kb/commands/ingest.py` | Shared ingest implementation for single files and directory ingest that recurses by default |
 | `src/graphwiki_kb/commands/update.py` | Full update workflow: add → build wiki pages → concepts → search refresh → GraphRAG sync/index/export, with compile progress, lazy GraphRAG status rendering, graph-output path reporting, explicit `--graph-method`, legacy search fallback warnings, `--graph-only`, and `--allow-partial`; normal missing GraphRAG credentials warn and skip graph indexing, while graph-only missing credentials fail; delegates to `UpdateService` |
 | `src/graphwiki_kb/commands/find.py` | Non-generative graph-aware search entry point over direct GraphRAG entity/relationship artifacts plus source, concept, analysis, and generated graph pages; reports unreadable graph artifact diagnostics, avoids provider calls, and does not route to legacy ask |
@@ -39,6 +40,7 @@
 | File | Responsibility |
 | --- | --- |
 | `src/graphwiki_kb/services/project_service.py` | Project layout, initialization, Unicode-aware slug generation, and shared atomic write/copy helpers |
+| `src/graphwiki_kb/services/agent_service.py` | Wires the OpenAI Agents SDK runtime to the existing service container, research pipeline, recommendation store, source acquisition service, optional SQLite sessions, and durable agent run traces |
 | `src/graphwiki_kb/services/container.py` | Typed `ServiceContainer` for command contexts, with mapping compatibility for existing tests and legacy call sites |
 | `src/graphwiki_kb/services/markdown_document.py` | Shared `markdown-it-py` / `python-frontmatter` helpers for frontmatter, plain text, headings, paragraphs, sections, links, and fenced-code-aware lint behavior |
 | `src/graphwiki_kb/services/file_lock.py` | Cross-process, thread-owner-aware reentrant lock helper used around JSON/config/log state files and multi-file GraphRAG workspace operations so concurrent command runs remain serialized on Windows and POSIX |
@@ -69,6 +71,21 @@
 | `src/graphwiki_kb/services/export_service.py` | Vault export generation with atomic copies into the Obsidian view and `--clean` deletion based on the current run's exact exported vault-path set |
 | `src/graphwiki_kb/services/status_service.py` | Project, corpus, and GraphRAG status reporting |
 | `src/graphwiki_kb/services/update_service.py` | Orchestrates the full update workflow: preflight → ingest → compile → concepts → search refresh → GraphRAG sync/index/export, plus explicit graph method validation, graph-only maintenance, normal-update missing credential warnings, tolerant missing-normalized graph input warnings, search fallback warnings, export-on-skip for complete graph output, and explicit allow-partial graph failure handling |
+| `src/graphwiki_kb/services/research_service.py` | Combines a local GraphRAG KB answer with optional web research, derives KB gaps, saves durable research JSON, and writes Markdown research reports without ingesting sources automatically |
+| `src/graphwiki_kb/services/web_research_service.py` | Calls the OpenAI Responses API directly with the `web_search` tool, `tool_choice="required"`, optional domain filters, and source inclusion; parses findings and recommendations into typed models |
+| `src/graphwiki_kb/services/source_recommendation_store.py` | File-backed store under `graph/runs/agent/` for research runs, `latest.json`, numbered source recommendations, and lookup of the latest run with recommendations |
+| `src/graphwiki_kb/services/web_source_acquisition_service.py` | Fetches approved recommendation URLs, stages supported PDF/HTML/Markdown/text artifacts under `raw/web_staging/<run>/`, and leaves final duplicate handling to `IngestService` |
+
+## Agent Files
+
+| File | Responsibility |
+| --- | --- |
+| `src/graphwiki_kb/agents/context.py` | Runtime context passed into SDK tool calls, carrying `CommandContext`, services, approval/session flags, recommendation store, metadata, tool traces, and pending approvals |
+| `src/graphwiki_kb/agents/models.py` | Pydantic input/output models for agent tools, research findings, source recommendations, update results, run traces, and pending approvals |
+| `src/graphwiki_kb/agents/prompts.py` | Control-plane instructions that separate local KB evidence, web findings, recommendations, performed actions, and pending approvals |
+| `src/graphwiki_kb/agents/runtime.py` | Optional SDK boundary: builds the manager agent, creates SQLite sessions only when a session id is supplied, and runs the SDK with max-turn limits |
+| `src/graphwiki_kb/agents/tool_registry.py` | Builds SDK function tools and direct callable wrappers for read tools plus approval-gated `ingest_recommendation` and `update_kb` write tools |
+| `src/graphwiki_kb/agents/tools/*.py` | Service-backed tool implementations for ask/find/status/lint/review/research/list recommendations/ingest recommendation/update |
 
 ## Current Model Files
 
@@ -97,6 +114,7 @@
 | `graph/graphrag/input/sources.json` | Generated by `kb update`; ignored because it can contain local corpus text |
 | `graph/graphrag/output/` | Generated by GraphRAG indexing; ignored because it is rebuildable local runtime output |
 | `graph/runs/graph_index_runs.json` | Local index-run record written by `kb update`; ignored because it can contain local paths and command output. Records include method, dry-run status, success, input digest/hash, source hashes, runtime config digest, output state, and command tails. |
+| `graph/runs/agent/` | Ignored local agent state: `sessions.sqlite`, `agent-run-*.json`, `research-*.json`, `latest.json`, and research report state that can include prompts, local corpus context, URLs, and model output. |
 | `wiki/graph/` | Generated by `kb update` and `kb export`; tracked/user-visible graph artifact layer for GraphRAG documents, entities, relationships, communities, and text units |
 | `eval/benchmark.yaml` | Phase 8 benchmark questions and expected methods/sources for deprecated FTS versus GraphRAG Basic, Local, Global, and DRIFT comparison |
 | `eval/results/` | Evaluation report directory for summary and CSV metrics; per-question artifacts under `eval/results/artifacts/` are ignored because they can contain local corpus text or model output |
@@ -117,6 +135,7 @@
 - Treat CI and formatter config as part of the architecture because they enforce the supported workflow.
 - Keep converter-backed normalization in a dedicated service instead of mixing converter logic directly into command handlers or compile.
 - Preserve the canonical-artifact contract: only write `raw/normalized/` outputs after the selected converter passes the normalization quality gate or an explicit fallback succeeds.
+- Preserve the agent guardrails: do not blend local KB claims with web findings, do not auto-ingest recommendations from research, and route mutations through existing ingest/update services behind approval.
 
 ## Structured Provider Response Usage
 

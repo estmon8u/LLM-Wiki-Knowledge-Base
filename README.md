@@ -427,7 +427,7 @@ poetry run kb agent
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--show-plan` | off | Print the planned tool inventory before the answer. |
+| `--show-plan` | off | Print the tool calls used before the answer. |
 | `--json` | off | Return the serialized agent run record. Requires a one-shot prompt. |
 | `--yes` | off | Auto-approve safe writes (`ingest_recommendation`, `update_kb`). Destructive future tools still require explicit approval. |
 | `--session ID` | sessionless (one-shot) / `repl` (interactive) | SQLite session id for cross-call memory. One-shot calls default to no shared session so unrelated commands cannot inherit stale context. |
@@ -438,8 +438,10 @@ runtime owns tool selection and session history, and every tool calls an
 existing typed service instead of shelling out to another `kb` command. The
 `update_kb` tool drives the full `UpdateService` pipeline (ingest, compile,
 search refresh, GraphRAG sync, wiki export) and falls back to a `kb update`
-subprocess when invoked from a worker thread where POSIX signal handlers used
-by GraphRAG indexing would otherwise fail.
+subprocess when invoked from a worker thread where signal handlers used by
+GraphRAG indexing would otherwise fail. Approval is enforced by local
+`PendingApproval` records because the current SDK approval interruption support
+does not cover these local function tools.
 
 Research runs are persisted under ignored `graph/runs/agent/`:
 

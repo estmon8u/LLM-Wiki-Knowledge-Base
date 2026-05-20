@@ -13,6 +13,7 @@ This directory holds the versioned architecture docs for the Python CLI knowledg
 Update the relevant layer when any of the following changes:
 
 - command or service boundaries
+- agent tool boundaries, approval policy, or session/persistence behavior
 - raw/wiki/vault/graph data layout
 - provider or tool orchestration boundaries
 - CI or packaging behavior that changes the engineering workflow
