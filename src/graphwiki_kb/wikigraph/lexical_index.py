@@ -82,7 +82,7 @@ class LexicalIndex:
         if self.backend == "bm25s":
             bm25s = try_import_bm25s()
             if bm25s is not None:
-                tokenized = bm25s.tokenize(corpus)
+                tokenized = bm25s.tokenize(corpus, show_progress=False)
                 retriever = bm25s.BM25()
                 retriever.index(tokenized, show_progress=False)
                 self._bm25 = retriever
@@ -101,9 +101,11 @@ class LexicalIndex:
             return []
         bm25s = try_import_bm25s()
         assert bm25s is not None
-        query_tokens = bm25s.tokenize([query])
+        query_tokens = bm25s.tokenize([query], show_progress=False)
         indices, scores = self._bm25.retrieve(
-            query_tokens, k=min(limit, len(self.chunks))
+            query_tokens,
+            k=min(limit, len(self.chunks)),
+            show_progress=False,
         )
         hits: list[LexicalHit] = []
         for row_index, row_scores in zip(indices, scores, strict=False):

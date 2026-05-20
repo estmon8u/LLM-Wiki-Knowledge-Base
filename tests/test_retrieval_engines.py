@@ -33,7 +33,10 @@ def test_validate_ask_method_for_engine() -> None:
 
 
 def test_run_wikigraph_find_and_ask_human_output(test_project) -> None:
-    from graphwiki_kb.commands.retrieval_engines import run_wikigraph_ask, run_wikigraph_find
+    from graphwiki_kb.commands.retrieval_engines import (
+        run_wikigraph_ask,
+        run_wikigraph_find,
+    )
     from graphwiki_kb.services.wikigraph_index_service import WikiGraphIndexService
     from graphwiki_kb.wikigraph.deps import require_networkx
 

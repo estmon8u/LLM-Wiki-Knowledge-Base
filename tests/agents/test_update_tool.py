@@ -252,6 +252,15 @@ def test_summarize_result_reports_wikigraph() -> None:
     assert details["wikigraph_skipped"] is False
 
 
+def test_summarize_result_reports_wikigraph_no_build() -> None:
+    summary, _, _ = update_tool._summarize_result(
+        _DummyUpdateResult(
+            wikigraph_result=_DummyWikiGraphResult(with_build=False),
+        )
+    )
+    assert "wikigraph(no-build)" in summary
+
+
 def test_summarize_result_reports_skipped_wikigraph() -> None:
     summary, _, details = update_tool._summarize_result(
         _DummyUpdateResult(
@@ -348,6 +357,36 @@ def test_run_subprocess_success_branch(
     assert "--force" in captured["command"]
     assert "--graph-method" in captured["command"]
     assert captured["cwd"] == str(runtime.command_context.project_root)
+
+
+def test_run_subprocess_passes_wikigraph_flags(
+    runtime: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_status(runtime)
+    captured: dict[str, Any] = {}
+
+    class _CompletedOk:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def _fake_run(command: list[str], **kwargs: Any) -> _CompletedOk:
+        captured["command"] = command
+        return _CompletedOk()
+
+    monkeypatch.setattr(update_tool.subprocess, "run", _fake_run)
+
+    update_tool._run_subprocess(
+        runtime,
+        UpdateInput(
+            no_wikigraph=True,
+            wikigraph_include_graphrag_export_pages=True,
+            export_wikigraph_artifacts=True,
+        ),
+    )
+    assert "--no-wikigraph" in captured["command"]
+    assert "--wikigraph-include-graphrag-export-pages" in captured["command"]
+    assert "--export-wikigraph-artifacts" in captured["command"]
 
 
 def test_run_subprocess_failure_branch(
