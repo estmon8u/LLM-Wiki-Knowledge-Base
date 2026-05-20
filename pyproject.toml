@@ -82,6 +82,7 @@ pythonpath = ["src", "."]
 addopts = "--cov=graphwiki_kb --cov-report=term-missing --cov-report=xml --cov-fail-under=94"
 markers = [
 	"graphrag_integration: opt-in GraphRAG provider-backed integration smoke tests",
+	"agent_pdf_e2e: opt-in agent E2E with a real PDF downloaded from the web",
 ]
 
 [tool.black]
