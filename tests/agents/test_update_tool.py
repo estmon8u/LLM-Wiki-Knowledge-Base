@@ -186,10 +186,16 @@ class _DummyUpdateResult:
         compile_result: Any = None,
         search_refreshed: bool = False,
         graph_result: Any = None,
+        wikigraph_result: Any = None,
+        wikigraph_skipped: bool = False,
+        wikigraph_skip_reason: str = "",
     ) -> None:
         self.compile_result = compile_result
         self.search_refreshed = search_refreshed
         self.graph_result = graph_result
+        self.wikigraph_result = wikigraph_result
+        self.wikigraph_skipped = wikigraph_skipped
+        self.wikigraph_skip_reason = wikigraph_skip_reason
 
     @property
     def ok(self) -> bool:

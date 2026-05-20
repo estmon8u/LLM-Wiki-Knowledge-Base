@@ -82,7 +82,10 @@ class WikiGraphIndexService:
             return {
                 "initialized": False,
                 "index_path": str(self.store_root),
-                "message": "Run `kb wikigraph build` to materialize the index.",
+                "message": (
+                    "Run `kb update` to materialize the WikiGraphRAG index "
+                    "(enabled by default; pass `--no-wikigraph` to skip)."
+                ),
             }
         index = self.load()
         if index is None:

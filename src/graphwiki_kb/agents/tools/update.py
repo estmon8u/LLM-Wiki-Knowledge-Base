@@ -55,6 +55,7 @@ def _build_update_service(runtime: AgentRuntimeContext) -> UpdateService:
         graphrag_workspace_service=services.graphrag_workspace,
         graphrag_sync_service=services.graphrag_sync,
         graphrag_wiki_export_service=services.graphrag_wiki_export,
+        wikigraph_index_service=services.wikigraph_index,
     )
 
 
@@ -91,6 +92,31 @@ def _summarize_result(result: UpdateResult) -> tuple[str, str, dict[str, Any]]:
             parts.append(f"graph(skipped:{result.graph_result.skip_reason})")
         else:
             parts.append(f"graph({method or 'sync'})")
+    wikigraph_block: dict[str, Any] = {"ran": False, "skipped": False}
+    if result.wikigraph_result is not None:
+        wikigraph_block = {
+            "ran": True,
+            "skipped": False,
+            "node_count": result.wikigraph_result.node_count,
+            "edge_count": result.wikigraph_result.edge_count,
+            "community_count": result.wikigraph_result.community_count,
+            "source_count": result.wikigraph_result.source_count,
+            "include_graphrag_export_pages": (
+                result.wikigraph_result.include_graphrag_export_pages
+            ),
+            "warnings": list(result.wikigraph_result.warnings),
+        }
+        parts.append(
+            f"wikigraph({result.wikigraph_result.node_count}n/"
+            f"{result.wikigraph_result.edge_count}e)"
+        )
+    elif result.wikigraph_skipped:
+        wikigraph_block = {
+            "ran": False,
+            "skipped": True,
+            "skip_reason": result.wikigraph_skip_reason,
+        }
+        parts.append(f"wikigraph(skipped:{result.wikigraph_skip_reason})")
     if not parts:
         summary = "Update produced no changes."
     else:
@@ -102,6 +128,7 @@ def _summarize_result(result: UpdateResult) -> tuple[str, str, dict[str, Any]]:
         "graph_skipped": (
             result.graph_result.skipped if result.graph_result is not None else None
         ),
+        "wikigraph": wikigraph_block,
     }
     return summary, method or "", details
 
@@ -113,6 +140,10 @@ def _run_inprocess(runtime: AgentRuntimeContext, payload: UpdateInput) -> Update
         graph_method=payload.graph_method,
         no_graph=payload.no_graph,
         graph_only=payload.graph_only,
+        wikigraph=payload.wikigraph,
+        wikigraph_include_graphrag_export_pages=(
+            payload.wikigraph_include_graphrag_export_pages
+        ),
     )
     result = service.run(options)
     summary, method, details = _summarize_result(result)
@@ -148,6 +179,10 @@ def _run_subprocess(runtime: AgentRuntimeContext, payload: UpdateInput) -> Updat
         command.append("--force")
     if payload.graph_method != "auto":
         command.extend(["--graph-method", payload.graph_method])
+    if not payload.wikigraph:
+        command.append("--no-wikigraph")
+    if payload.wikigraph_include_graphrag_export_pages:
+        command.append("--wikigraph-include-graphrag-export-pages")
     completed = subprocess.run(
         command,
         cwd=str(runtime.command_context.project_root),
@@ -193,6 +228,10 @@ def run_update_kb(
                 "graph_method": payload.graph_method,
                 "no_graph": payload.no_graph,
                 "graph_only": payload.graph_only,
+                "wikigraph": payload.wikigraph,
+                "wikigraph_include_graphrag_export_pages": (
+                    payload.wikigraph_include_graphrag_export_pages
+                ),
             },
         )
         runtime.add_pending_approval(approval)

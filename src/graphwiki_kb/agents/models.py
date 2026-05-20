@@ -37,13 +37,31 @@ SourceType = Literal[
 ]
 
 
+AskKbEngine = Literal["graphrag", "wikigraph"]
+AskKbMethod = Literal["auto", "basic", "local", "global", "drift", "drift-lite"]
+
+
 class AskKbInput(BaseModel):
     """Inputs accepted by the ask_kb agent tool."""
 
     model_config = ConfigDict(extra="forbid")
 
     question: str = Field(..., description="Natural-language KB question.")
-    method: Literal["auto", "basic", "local", "global", "drift"] = "auto"
+    engine: AskKbEngine = Field(
+        "graphrag",
+        description=(
+            "Retrieval backend. `graphrag` is the Microsoft GraphRAG controller; "
+            "`wikigraph` is the custom WikiGraphRAG backend built from the "
+            "maintained wiki artifacts."
+        ),
+    )
+    method: AskKbMethod = Field(
+        "auto",
+        description=(
+            "Retrieval method. GraphRAG supports auto/basic/local/global/drift; "
+            "WikiGraphRAG supports auto/basic/local/global/drift-lite."
+        ),
+    )
     save: bool = Field(
         False,
         description="Save the answer as an analysis page in wiki/analysis/.",
@@ -71,6 +89,9 @@ class AskKbOutput(BaseModel):
     index_run_id: str | None = None
 
 
+FindKbEngine = Literal["auto", "graphrag", "wiki", "wikigraph", "all"]
+
+
 class FindKbInput(BaseModel):
     """Inputs accepted by the find_kb agent tool."""
 
@@ -78,6 +99,13 @@ class FindKbInput(BaseModel):
 
     query: str
     limit: int = Field(5, ge=1, le=50)
+    engine: FindKbEngine = Field(
+        "auto",
+        description=(
+            "Retrieval backend. `auto`/`all` fuse GraphRAG, wiki, and "
+            "WikiGraphRAG via reciprocal rank fusion."
+        ),
+    )
 
 
 class FindKbResult(BaseModel):
@@ -89,7 +117,7 @@ class FindKbResult(BaseModel):
     path: str
     score: float
     snippet: str
-    retriever: Literal["graph", "wiki"]
+    retriever: Literal["graph", "wiki", "wikigraph"]
 
 
 class FindKbOutput(BaseModel):
@@ -100,6 +128,24 @@ class FindKbOutput(BaseModel):
     query: str
     results: list[FindKbResult] = Field(default_factory=list)
     graph_diagnostics: list[str] = Field(default_factory=list)
+
+
+class WikiGraphStatusBlock(BaseModel):
+    """Compact snapshot of the WikiGraphRAG index for the agent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    initialized: bool
+    built_at: str | None = None
+    node_count: int = 0
+    edge_count: int = 0
+    chunk_count: int = 0
+    entity_count: int = 0
+    community_count: int = 0
+    source_count: int = 0
+    include_graphrag_export_pages: bool = False
+    readable: bool = True
+    message: str = ""
 
 
 class StatusOutput(BaseModel):
@@ -116,6 +162,7 @@ class StatusOutput(BaseModel):
     graph_freshness: str
     next_action: str
     staleness_reasons: list[str] = Field(default_factory=list)
+    wikigraph: WikiGraphStatusBlock | None = None
 
 
 class LintOutput(BaseModel):
@@ -298,6 +345,21 @@ class UpdateInput(BaseModel):
     graph_method: GraphMethod = "auto"
     no_graph: bool = False
     graph_only: bool = False
+    wikigraph: bool = Field(
+        True,
+        description=(
+            "Refresh the WikiGraphRAG index after compile (default on). "
+            "Set to false to skip the wikigraph build (equivalent to "
+            "`kb update --no-wikigraph`)."
+        ),
+    )
+    wikigraph_include_graphrag_export_pages: bool = Field(
+        False,
+        description=(
+            "Include wiki/graph (GraphRAG-exported) pages in the WikiGraphRAG "
+            "build for the optional ablation."
+        ),
+    )
 
 
 class UpdateOutput(BaseModel):
@@ -374,10 +436,13 @@ class ResearchRunRecord(BaseModel):
 __all__ = [
     "AgentRunRecord",
     "AgentToolResult",
+    "AskKbEngine",
     "AskKbInput",
+    "AskKbMethod",
     "AskKbOutput",
     "ClaimSupportLevel",
     "ConfidenceLevel",
+    "FindKbEngine",
     "FindKbInput",
     "FindKbOutput",
     "FindKbResult",
@@ -403,4 +468,5 @@ __all__ = [
     "UpdateOutput",
     "WebFinding",
     "WebResearchResult",
+    "WikiGraphStatusBlock",
 ]
