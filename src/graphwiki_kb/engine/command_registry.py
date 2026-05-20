@@ -32,6 +32,7 @@ FLAT_COMMAND_MODULES = {
     "sources": "graphwiki_kb.commands.sources",
     "status": "graphwiki_kb.commands.status",
     "update": "graphwiki_kb.commands.update",
+    "wikigraph": "graphwiki_kb.commands.wikigraph",
 }
 
 
