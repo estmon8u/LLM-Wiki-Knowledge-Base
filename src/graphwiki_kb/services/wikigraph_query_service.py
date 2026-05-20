@@ -41,7 +41,8 @@ class WikiGraphQueryService:
         index = self.index_service.load()
         if index is None:
             raise WikiGraphQueryError(
-                "WikiGraphRAG index is missing. Run `kb wikigraph build` first."
+                "WikiGraphRAG index is missing. Run `kb update` to build it "
+                "(it is enabled by default; pass `--no-wikigraph` to skip)."
             )
         return WikiGraphQueryEngine(index=index)
 

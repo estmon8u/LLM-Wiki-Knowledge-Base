@@ -339,7 +339,9 @@ def test_end_to_end_cli_flow_for_local_html_source() -> None:
         legacy_find_result = runner.invoke(main, ["legacy", "find", "uniquegraphtoken"])
         assert find_result.exit_code == 0
         assert "Generated Graph" in find_result.output
-        assert "wiki/graph/entities/gen" in find_result.output
+        # Rich truncates the path column; assert a prefix that survives the
+        # default 80-column table layout (see AGENTS.md note on Rich width).
+        assert "wiki/graph/entities" in find_result.output
 
         json_find = runner.invoke(main, ["find", "--json", "uniquegraphtoken"])
         assert json_find.exit_code == 0
@@ -1515,7 +1517,9 @@ def test_find_json_output() -> None:
         assert data["retriever"] == "graph-and-wiki-index"
         assert isinstance(data["results"], list)
         assert len(data["results"]) > 0
-        assert data["results"][0]["retriever"] == "wiki-index"
+        # `kb find` now fuses wiki-index and wikigraph results; either may rank
+        # first depending on the corpus.
+        assert data["results"][0]["retriever"] in {"wiki-index", "wikigraph"}
         assert "title" in data["results"][0]
         assert "path" in data["results"][0]
         assert "score" in data["results"][0]

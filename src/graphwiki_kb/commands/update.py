@@ -59,6 +59,7 @@ def _get_update_service(command_context: CommandContext) -> UpdateService:
         graphrag_workspace_service=command_context.services.graphrag_workspace,
         graphrag_sync_service=command_context.services.graphrag_sync,
         graphrag_wiki_export_service=command_context.services.graphrag_wiki_export,
+        wikigraph_index_service=command_context.services.wikigraph_index,
     )
 
 
@@ -132,6 +133,20 @@ def create_command() -> click.Command:
         default=None,
         help="Opt in or out of legacy concept page generation for this update.",
     )
+    @click.option(
+        "--wikigraph/--no-wikigraph",
+        default=True,
+        show_default=True,
+        help="Build the WikiGraphRAG index after wiki compile (default on).",
+    )
+    @click.option(
+        "--wikigraph-include-graphrag-export-pages",
+        is_flag=True,
+        help=(
+            "Ablation: also feed wiki/graph (GraphRAG export) pages to the "
+            "WikiGraphRAG build."
+        ),
+    )
     @click.pass_obj
     def command(
         command_context: CommandContext,
@@ -143,6 +158,8 @@ def create_command() -> click.Command:
         graph_method: str,
         allow_partial: bool,
         concepts: bool | None,
+        wikigraph: bool,
+        wikigraph_include_graphrag_export_pages: bool,
     ) -> None:
         """Command.
 
@@ -169,6 +186,10 @@ def create_command() -> click.Command:
             graph_method=graph_method,
             allow_partial=allow_partial,
             concepts=concepts,
+            wikigraph=wikigraph,
+            wikigraph_include_graphrag_export_pages=(
+                wikigraph_include_graphrag_export_pages
+            ),
         )
 
         console.print(f"Mode: {_mode_label(options)}")
@@ -283,5 +304,24 @@ def create_command() -> click.Command:
                 console.print(f"[yellow]{graph_result.warning}[/yellow]")
             elif graph_result.skipped and graph_result.skip_reason:
                 console.print(f"Graph skipped: {graph_result.skip_reason}")
+
+        # Render WikiGraphRAG phase
+        console.print("")
+        echo_section("WikiGraphRAG Summary")
+        if result.wikigraph_skipped:
+            console.print(
+                f"WikiGraphRAG skipped: {result.wikigraph_skip_reason or 'unknown'}"
+            )
+        elif result.wikigraph_result is not None:
+            report = result.wikigraph_result
+            console.print(
+                f"Built {report.node_count} node(s), {report.edge_count} edge(s), "
+                f"{report.community_count} community(ies) "
+                f"from {report.source_count} source page(s)"
+            )
+            for warning in report.warnings:
+                console.print(f"[yellow]{warning}[/yellow]")
+        else:
+            console.print("WikiGraphRAG build did not run.")
 
     return command

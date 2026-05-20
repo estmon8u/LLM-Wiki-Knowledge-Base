@@ -60,8 +60,8 @@ from graphwiki_kb.wikigraph.models import (
 )
 from graphwiki_kb.wikigraph.query_service import WikiGraphQueryEngine
 
-
-REALM_PAGE = textwrap.dedent("""\
+REALM_PAGE = textwrap.dedent(
+    """\
 ---
 title: REALM
 type: source
@@ -86,9 +86,11 @@ REALM is a retrieval-augmented language model.
 ## Methods
 
 REALM backpropagates through retrieval. See [[RAG]].
-""")
+"""
+)
 
-RAG_PAGE = textwrap.dedent("""\
+RAG_PAGE = textwrap.dedent(
+    """\
 ---
 title: RAG
 type: source
@@ -111,7 +113,8 @@ RAG combines a frozen retriever and a seq2seq generator.
 ## Methods
 
 RAG decouples retrieval and generation. See [[REALM]].
-""")
+"""
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -211,8 +214,14 @@ def test_lexical_index_pure_python_fallback(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(lexical_module, "_BM25S_AVAILABLE", False)
     monkeypatch.setattr(lexical_module, "bm25s", None)
     index = LexicalIndex()
-    index.add(LexicalDocument(doc_id="a", text="REALM trains a retriever and a language model."))
-    index.add(LexicalDocument(doc_id="b", text="RAG decouples retrieval and generation."))
+    index.add(
+        LexicalDocument(
+            doc_id="a", text="REALM trains a retriever and a language model."
+        )
+    )
+    index.add(
+        LexicalDocument(doc_id="b", text="RAG decouples retrieval and generation.")
+    )
     index.add(LexicalDocument(doc_id="c", text="Unrelated text about cats."))
     index.fit()
     hits = index.search("retriever language", limit=2)
@@ -342,7 +351,9 @@ def test_answer_service_provider_backed_success(test_project) -> None:
 
 def test_answer_service_provider_invalid_payload(test_project) -> None:
     engine = _build_engine(test_project)
-    service = WikiGraphAnswerService(engine=engine, provider=_StaticProvider("not json"))
+    service = WikiGraphAnswerService(
+        engine=engine, provider=_StaticProvider("not json")
+    )
     answer = service.ask("REALM and RAG", method="basic")
     assert "provider-parse-error" in answer.warnings
 
@@ -480,7 +491,8 @@ def test_entity_node_dedup_when_slug_collides(test_project) -> None:
     )
     index = build_wikigraph_index(test_project.paths)
     realm_nodes = [
-        node for node in index.nodes
+        node
+        for node in index.nodes
         if node.kind == "entity" and node.title.lower() == "realm"
     ]
     assert len(realm_nodes) == 1
@@ -491,8 +503,12 @@ def test_dedupe_undirected_merges_reverse_edges() -> None:
     from graphwiki_kb.wikigraph.index_builder import _dedupe_undirected
 
     edges = [
-        WikiGraphEdge(source="z", target="a", kind="related_to", weight=1.0, evidence=["p"]),
-        WikiGraphEdge(source="a", target="z", kind="related_to", weight=1.5, evidence=["q"]),
+        WikiGraphEdge(
+            source="z", target="a", kind="related_to", weight=1.0, evidence=["p"]
+        ),
+        WikiGraphEdge(
+            source="a", target="z", kind="related_to", weight=1.5, evidence=["q"]
+        ),
     ]
     merged = _dedupe_undirected(edges)
     assert len(merged) == 1

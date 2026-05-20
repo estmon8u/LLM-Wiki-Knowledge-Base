@@ -12,6 +12,8 @@ from rich.markdown import Markdown as RichMarkdown
 
 from graphwiki_kb.commands.common import (
     console,
+    echo_bullet,
+    echo_section,
     emit_json,
     live_status,
     require_initialized,
@@ -20,11 +22,17 @@ from graphwiki_kb.models.command_models import CommandContext, CommandSpec
 from graphwiki_kb.services.graph_ask_controller_service import GraphAskControllerError
 from graphwiki_kb.services.graphrag_query_service import GraphRAGQueryError
 from graphwiki_kb.services.query_router_service import GRAPH_ASK_METHODS
+from graphwiki_kb.services.wikigraph_query_service import WikiGraphQueryError
+from graphwiki_kb.wikigraph.models import QueryMethod, WikiGraphAnswer
 
 SUMMARY = (
-    "Ask with the GraphRAG-aware answer controller. Legacy FTS-backed ask lives "
-    "under kb legacy ask."
+    "Ask with the GraphRAG-aware answer controller or the custom WikiGraphRAG "
+    "backend. Legacy FTS-backed ask lives under `kb legacy ask`."
 )
+
+ENGINE_CHOICES = ("graphrag", "wikigraph")
+WIKIGRAPH_METHODS = ("auto", "basic", "local", "global", "drift-lite")
+ALL_METHOD_CHOICES = tuple(sorted(set(GRAPH_ASK_METHODS).union(WIKIGRAPH_METHODS)))
 
 
 def build_spec(_: CommandContext | None = None) -> CommandSpec:
@@ -49,11 +57,24 @@ def create_command() -> click.Command:
     @click.command(name="ask", help=SUMMARY, short_help="Ask with GraphRAG.")
     @click.argument("question_terms", nargs=-1)
     @click.option(
+        "--engine",
+        type=click.Choice(ENGINE_CHOICES),
+        default="graphrag",
+        show_default=True,
+        help=(
+            "Backend to use. `graphrag` runs Microsoft GraphRAG. `wikigraph` "
+            "runs the custom WikiGraphRAG backend over the maintained wiki."
+        ),
+    )
+    @click.option(
         "--method",
-        type=click.Choice(GRAPH_ASK_METHODS),
+        type=click.Choice(ALL_METHOD_CHOICES),
         default="auto",
         show_default=True,
-        help="GraphRAG method or deterministic auto-routing.",
+        help=(
+            "Retrieval method. GraphRAG supports auto/basic/local/global/drift; "
+            "WikiGraphRAG supports auto/basic/local/global/drift-lite."
+        ),
     )
     @click.option(
         "--community-level",
@@ -100,6 +121,7 @@ def create_command() -> click.Command:
     def command(
         command_context: CommandContext,
         question_terms: tuple[str, ...],
+        engine: str,
         method: str,
         community_level: int | None,
         dynamic_community_selection: bool | None,
@@ -145,6 +167,20 @@ def create_command() -> click.Command:
                 "--show-source-trace.[/yellow]"
             )
         question = " ".join(question_terms).strip()
+
+        if engine == "wikigraph":
+            _validate_method_for_engine(engine, method)
+            _run_wikigraph_ask(
+                command_context,
+                question,
+                method=method,
+                save_answer=save_answer,
+                save_as_name=save_as_name,
+                as_json=as_json,
+            )
+            return
+
+        _validate_method_for_engine(engine, method)
         controller = command_context.services.graph_ask_controller
 
         try:
@@ -202,3 +238,66 @@ def create_command() -> click.Command:
             console.print(f"\nSaved analysis page: {answer.saved_path}")
 
     return command
+
+
+def _validate_method_for_engine(engine: str, method: str) -> None:
+    """Raise a friendly error when `--method` is not valid for the engine."""
+    if engine == "wikigraph":
+        if method not in WIKIGRAPH_METHODS:
+            raise click.ClickException(
+                f"--method {method!r} is not valid for engine=wikigraph. "
+                f"Choose one of: {', '.join(WIKIGRAPH_METHODS)}."
+            )
+        return
+    if method not in GRAPH_ASK_METHODS:
+        raise click.ClickException(
+            f"--method {method!r} is not valid for engine=graphrag. "
+            f"Choose one of: {', '.join(GRAPH_ASK_METHODS)}."
+        )
+
+
+def _run_wikigraph_ask(
+    command_context: CommandContext,
+    question: str,
+    *,
+    method: str,
+    save_answer: bool,
+    save_as_name: str | None,
+    as_json: bool,
+) -> None:
+    """Route ``kb ask --engine wikigraph`` through WikiGraphQueryService."""
+    query_service = command_context.services.wikigraph_query
+    try:
+        with live_status("Querying WikiGraphRAG"):
+            wikigraph_method: QueryMethod = method  # type: ignore[assignment]
+            answer: WikiGraphAnswer = query_service.ask(
+                question,
+                method=wikigraph_method,
+                save=save_answer,
+                save_as=save_as_name,
+            )
+    except WikiGraphQueryError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    if as_json:
+        payload = answer.model_dump()
+        payload["citation_count"] = len(answer.citations)
+        emit_json(payload)
+        return
+
+    provider_mode = answer.provider_status.get("mode", "provider-free")
+    console.print(
+        f"[dim]\\[engine: wikigraph, method: {answer.method}, "
+        f"provider: {provider_mode}][/dim]"
+    )
+    if answer.warnings:
+        console.print("[yellow]Warnings: " + ", ".join(answer.warnings) + "[/yellow]")
+    console.print("")
+    console.print(RichMarkdown(answer.answer or "No answer text returned."))
+    if answer.contexts:
+        console.print("")
+        echo_section("Contexts")
+        for ctx in answer.contexts:
+            echo_bullet(f"{ctx.title} [{ctx.citation_ref}] (score={ctx.score:.3f})")
+    if answer.saved_path:
+        console.print(f"\nSaved analysis page: {answer.saved_path}")
