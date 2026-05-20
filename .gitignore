@@ -27,3 +27,4 @@ graph/runs/*.json
 
 # Evaluation run artifacts can contain local corpus text or model output
 eval/results/artifacts/
+graph/graphrag/.workspace.state.lock
