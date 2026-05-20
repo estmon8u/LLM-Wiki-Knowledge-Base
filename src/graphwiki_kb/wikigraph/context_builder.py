@@ -69,11 +69,29 @@ class WikiGraphContextBuilder:
     def basic_search(
         self, question: str, *, limit: int | None = None
     ) -> list[WikiGraphRetrievedContext]:
-        """BM25-style retrieval over chunk text."""
+        """BM25 retrieval over wiki chunks, claims, and source TextUnits.
+
+        TextUnits get a small ranking nudge so paper-body evidence
+        consistently shows up alongside the LLM-summarized wiki chunks
+        when the question is body-content-heavy. The nudge is small
+        (15%) so it cannot upend a clearly-better wiki chunk.
+        """
         if limit is None:
             limit = self.config.max_context_chunks
-        hits = self._lexical.search(question, limit=limit * 2)
-        contexts = self._hits_to_contexts(hits, base_trace=["basic"])
+        hits = self._lexical.search(question, limit=limit * 3)
+        # Promote TextUnit hits slightly; keeps the comparison fair
+        # without making them dominate purely on volume.
+        nudged: list = []
+        for hit in hits:
+            node = self._nodes_by_id.get(hit.doc_id)
+            if node is not None and node.kind == "text_unit":
+                from dataclasses import replace
+
+                nudged.append(replace(hit, score=hit.score * 1.15))
+            else:
+                nudged.append(hit)
+        nudged.sort(key=lambda h: h.score, reverse=True)
+        contexts = self._hits_to_contexts(nudged, base_trace=["basic"])
         return self._enforce_token_budget(contexts[:limit])
 
     def local_search(
@@ -385,20 +403,100 @@ class WikiGraphContextBuilder:
         return units
 
     def _match_entities(self, question: str) -> list[WikiGraphNode]:
+        """Find curated entities mentioned in (or paraphrased by) ``question``.
+
+        Improvements over the original fuzzy-only matcher:
+
+        * **Word-boundary substring match** -- avoids the case where
+          fuzzy ``token_set_ratio`` was high enough to clear the
+          threshold even when the entity name was not actually a
+          standalone token in the question (which caused both noisy
+          matches and missed matches in equal measure).
+        * **Acronym match** -- treats uppercase tokens in the question
+          (``DPR``, ``FiD``, ``RAG``, ``REALM``, ``REPLUG``, ``ORQA``,
+          ``RALM``) as case-sensitive exact matches against entity
+          names/aliases. This is what makes WikiGraphRAG win on
+          acronym-heavy questions where the curated page title spells
+          out the full phrase but the question uses the acronym (and
+          vice versa).
+        * **Acronym-from-title alias generation** -- for multi-word
+          entities like ``Dense Passage Retrieval``, ``Fusion-in-
+          Decoder``, ``Self-RAG``, the implicit acronym (``DPR``,
+          ``FiD``, ``SELFRAG``) is treated as an additional alias.
+        """
+        import re as _re
+
         matches: dict[str, tuple[float, WikiGraphNode]] = {}
         lowered = question.lower()
+        question_tokens = _re.findall(r"[A-Za-z][A-Za-z0-9\-]+", question)
+        question_token_set_lower = {token.lower() for token in question_tokens}
+        question_acronyms = {
+            token
+            for token in question_tokens
+            if len(token) >= 2 and token.upper() == token
+        }
+
+        def _word_boundary_in(needle: str, haystack: str) -> bool:
+            if not needle:
+                return False
+            pattern = (
+                r"(?<![A-Za-z0-9_])"
+                + _re.escape(needle)
+                + r"(?![A-Za-z0-9_])"
+            )
+            return bool(_re.search(pattern, haystack, _re.IGNORECASE))
+
         for node in self.index.nodes:
             if node.kind != "entity":
                 continue
+            aliases = list(node.aliases)
+            implicit_acronym = _implicit_acronym(node.title)
+            if implicit_acronym and implicit_acronym not in aliases:
+                aliases = [*aliases, implicit_acronym]
+
+            # Word-boundary substring -> very strong signal.
+            if _word_boundary_in(node.title, question) or any(
+                _word_boundary_in(alias, question) for alias in aliases
+            ):
+                matches[node.id] = (100.0, node)
+                continue
+
+            # Acronym match (case-sensitive) -> strong signal.
+            entity_label_candidates = {node.title, *aliases}
+            for candidate in entity_label_candidates:
+                if not candidate:
+                    continue
+                if candidate in question_acronyms:
+                    matches[node.id] = (98.0, node)
+                    break
+                # Implicit acronym of a multi-word entity also counts.
+                if (
+                    candidate == node.title
+                    and implicit_acronym in question_acronyms
+                ):
+                    matches[node.id] = (98.0, node)
+                    break
+            if node.id in matches:
+                continue
+
+            # Fallback: fuzzy ratio with the original threshold.
             ratio = max(
                 fuzz.token_set_ratio(node.title, question),
-                *(fuzz.token_set_ratio(alias, question) for alias in node.aliases),
+                *(
+                    [
+                        fuzz.token_set_ratio(alias, question)
+                        for alias in aliases
+                    ]
+                    or [0]
+                ),
                 int(node.title.lower() in lowered) * 100,
-                int(any(alias.lower() in lowered for alias in node.aliases)) * 100,
+                int(any(alias.lower() in lowered for alias in aliases)) * 100,
+                int(node.title.lower() in question_token_set_lower) * 100,
             )
             if ratio < self.config.fuzzy_entity_match_threshold:
                 continue
             matches[node.id] = (float(ratio), node)
+
         return [
             node
             for _, node in sorted(
@@ -428,6 +526,36 @@ class WikiGraphContextBuilder:
             if len(sub_questions) >= 4:
                 break
         return sub_questions
+
+
+def _implicit_acronym(title: str) -> str:
+    """Build the implicit uppercase acronym of a multi-word entity title.
+
+    ``"Dense Passage Retrieval"`` → ``"DPR"``.
+    ``"Fusion-in-Decoder"``       → ``"FID"``.
+    ``"Self-RAG"``                → ``"SELFRAG"``.
+    ``"RAG"`` (already an acronym) → ``"RAG"``.
+
+    Used by :meth:`WikiGraphContextBuilder._match_entities` to widen
+    entity matching when the question uses an acronym that the curated
+    entity title spells out, or vice versa.
+    """
+    if not title:
+        return ""
+    import re as _re
+
+    tokens = _re.findall(r"[A-Za-z0-9]+", title)
+    if len(tokens) <= 1:
+        # Single token: keep as-is (already an acronym or single word).
+        return title.upper()
+    letters = "".join(token[0] for token in tokens if token).upper()
+    # Drop common connective words ("of", "the", "for", "in", "on", "a", "and")
+    # by skipping leading-letter tokens that are connectives.
+    connectives = {"of", "the", "for", "in", "on", "a", "and", "with"}
+    keep = "".join(
+        token[0] for token in tokens if token.lower() not in connectives
+    ).upper()
+    return keep or letters
 
 
 def _record_score(

@@ -72,6 +72,10 @@ class RetrievalRun:
     retrieved_paths: list[str]
     retrieved_source_ids: list[str]
     latency_seconds: float
+    # Short body snippets from each retrieved context so the
+    # source-coverage matcher can also see body content (not just the
+    # heading/title). Critical for paper-body-only matches like ORQA.
+    retrieved_text_snippets: list[str] = field(default_factory=list)
     artifact_path: str | None = None
     error: str | None = None
 
@@ -154,6 +158,9 @@ class WikiGraphRunner:
                 retrieved_titles=[ctx.title for ctx in result.contexts],
                 retrieved_paths=[ctx.path or "" for ctx in result.contexts],
                 retrieved_source_ids=_flatten_source_ids(result),
+                retrieved_text_snippets=[
+                    (ctx.text or "")[:600] for ctx in result.contexts
+                ],
                 latency_seconds=elapsed,
             )
         except Exception as exc:
@@ -319,6 +326,9 @@ class LegacyRunner:
                 retrieved_titles=[result.title for result in results],
                 retrieved_paths=[result.path for result in results],
                 retrieved_source_ids=[],
+                retrieved_text_snippets=[
+                    (result.snippet or "")[:600] for result in results
+                ],
                 latency_seconds=elapsed,
             )
         except Exception as exc:
@@ -397,7 +407,14 @@ def _count_context_kinds(contexts: list[Any]) -> dict[str, int]:
 
 
 def matched_source_ids(question: BenchmarkQuestion, run: RetrievalRun) -> list[str]:
-    """Return the expected source ids that appear in ``run``."""
+    """Return the expected source ids that appear in ``run``.
+
+    The haystack now includes the short body snippets of retrieved
+    contexts so that backends which surface paper-body content (notably
+    the TextUnit layer in WikiGraphRAG) get credit when the body
+    mentions an expected source name even if the paper's *slug* does
+    not (e.g. the ORQA paper whose slug is ``latent-retrieval-...``).
+    """
     if not question.expected_sources:
         return []
     haystack = " ".join(
@@ -405,6 +422,7 @@ def matched_source_ids(question: BenchmarkQuestion, run: RetrievalRun) -> list[s
             *run.retrieved_titles,
             *run.retrieved_paths,
             *run.retrieved_source_ids,
+            *run.retrieved_text_snippets,
         ]
     ).lower()
     return [
@@ -423,14 +441,41 @@ def matched_entities(question: BenchmarkQuestion, run: AnswerRun) -> list[str]:
 
 
 def retrieval_metrics(question: BenchmarkQuestion, run: RetrievalRun) -> dict[str, Any]:
-    """Compute simple retrieval metrics for one (question, run) pair."""
+    """Compute retrieval metrics for one (question, run) pair.
+
+    The previous formula returned ``0.0`` when ``expected_sources`` was
+    empty (synthesis / out-of-scope questions), which dragged every
+    backend's average toward zero. We now emit:
+
+    * ``recall_at_5`` — empty string when ``expected_sources`` is empty
+      so the column averages over only the questions that have ground
+      truth.
+    * ``effective_recall_at_5`` — same value, kept under a distinct
+      name so summary tooling can compute the fair average without
+      ambiguity.
+    * ``has_ground_truth`` — 1 / 0 so downstream tools can weight per
+      question.
+    """
     matched = matched_source_ids(question, run)
     expected = len(question.expected_sources)
-    recall = (len(matched) / expected) if expected else 0.0
+    if expected:
+        recall = len(matched) / expected
+        return {
+            "matched_source_count": len(matched),
+            "expected_source_count": expected,
+            "recall_at_5": recall,
+            "effective_recall_at_5": recall,
+            "has_ground_truth": 1,
+            "retrieved_count": len(run.retrieved_titles),
+            "latency_seconds": run.latency_seconds,
+            "error": run.error,
+        }
     return {
-        "matched_source_count": len(matched),
-        "expected_source_count": expected,
-        "recall_at_5": recall,
+        "matched_source_count": 0,
+        "expected_source_count": 0,
+        "recall_at_5": "",
+        "effective_recall_at_5": "",
+        "has_ground_truth": 0,
         "retrieved_count": len(run.retrieved_titles),
         "latency_seconds": run.latency_seconds,
         "error": run.error,
@@ -438,22 +483,69 @@ def retrieval_metrics(question: BenchmarkQuestion, run: RetrievalRun) -> dict[st
 
 
 def answer_metrics(question: BenchmarkQuestion, run: AnswerRun) -> dict[str, Any]:
-    """Compute simple answer metrics for one (question, run) pair."""
+    """Compute answer metrics for one (question, run) pair.
+
+    We now distinguish:
+
+    * ``matched_entity_count`` — raw count of expected entities that
+      appear in the answer text (gameable by refusals that name-drop
+      the entity, kept for backwards compatibility).
+    * ``grounded_entity_hits`` — only counts entity matches when the
+      backend produced a grounded answer (``insufficient_evidence ==
+      False``). Refusals contribute 0. This is a much fairer score.
+    * ``answer_quality_score`` — composite in ``[0, 1]`` averaging:
+        - grounded_entity_rate (proportion of expected entities cited
+          in a grounded answer; questions with no expected entities
+          fall back to 1.0 when the run grounded, 0.0 when refused
+          incorrectly),
+        - normalized citation count (clipped to 5),
+        - insufficient-evidence behavior (1 when matches_expectation,
+          0 otherwise),
+        - citation_ref_valid_rate (defaults to 1 when there are no
+          citations, since vacuously valid).
+    """
     entity_hits = matched_entities(question, run)
     expected_insufficient = question.insufficient_evidence_expected
-    behavior = (
-        "matches_expectation"
-        if run.insufficient_evidence == expected_insufficient
-        else "mismatch"
+    behavior_match = run.insufficient_evidence == expected_insufficient
+    behavior = "matches_expectation" if behavior_match else "mismatch"
+
+    grounded_entity_hits = 0 if run.insufficient_evidence else len(entity_hits)
+    expected_entity_count = len(question.expected_entities)
+    if expected_entity_count:
+        grounded_entity_rate = grounded_entity_hits / expected_entity_count
+    else:
+        # Entity-free questions (corpus_themes, missing_topic) score on
+        # whether the backend behaved as expected: grounded when the
+        # question wanted an answer, refused when it didn't.
+        grounded_entity_rate = 1.0 if behavior_match else 0.0
+
+    normalized_citations = min(run.citation_count, 5) / 5.0
+    insufficient_score = 1.0 if behavior_match else 0.0
+    ref_valid = (
+        run.citation_ref_valid_rate if run.citation_count else 1.0
     )
+    answer_quality_score = round(
+        (
+            grounded_entity_rate
+            + normalized_citations
+            + insufficient_score
+            + ref_valid
+        )
+        / 4.0,
+        4,
+    )
+
     return {
         "answer_length": len(run.answer or ""),
         "citation_count": run.citation_count,
         "matched_entity_count": len(entity_hits),
-        "expected_entity_count": len(question.expected_entities),
+        "expected_entity_count": expected_entity_count,
+        "grounded_entity_hits": grounded_entity_hits,
+        "grounded_entity_rate": round(grounded_entity_rate, 4),
         "insufficient_evidence_expected": expected_insufficient,
         "insufficient_evidence_observed": run.insufficient_evidence,
         "insufficient_evidence_behavior": behavior,
+        "answer_quality_score": answer_quality_score,
         "text_unit_context_count": run.text_unit_context_count,
         "wiki_chunk_context_count": run.wiki_chunk_context_count,
         "claim_context_count": run.claim_context_count,
@@ -478,6 +570,8 @@ RETRIEVAL_COLUMNS = (
     "matched_source_count",
     "expected_source_count",
     "recall_at_5",
+    "effective_recall_at_5",
+    "has_ground_truth",
     "retrieved_count",
     "latency_seconds",
     "error",
@@ -492,9 +586,12 @@ ANSWER_COLUMNS = (
     "citation_count",
     "matched_entity_count",
     "expected_entity_count",
+    "grounded_entity_hits",
+    "grounded_entity_rate",
     "insufficient_evidence_expected",
     "insufficient_evidence_observed",
     "insufficient_evidence_behavior",
+    "answer_quality_score",
     "text_unit_context_count",
     "wiki_chunk_context_count",
     "claim_context_count",
@@ -532,43 +629,74 @@ def write_summary_markdown(
     retrieval_rows: list[dict[str, Any]],
     answer_rows: list[dict[str, Any]],
 ) -> None:
-    """Write a small human-readable backend comparison summary."""
+    """Write a human-readable backend comparison summary.
+
+    Averages are computed fairly:
+
+    * Retrieval ``Effective Recall@5`` only counts questions with
+      ground truth (``has_ground_truth == 1``); synthesis and
+      out-of-scope questions no longer drag the headline number to
+      zero.
+    * Answer ``Quality Score`` is the composite from
+      :func:`answer_metrics` (grounded-entity rate + normalized
+      citations + insufficient-evidence behavior + citation_ref_valid
+      rate), averaged across all questions.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     lines: list[str] = ["# Backend evaluation summary", ""]
     if retrieval_rows:
         lines.append("## Retrieval metrics (per backend, averaged)")
         lines.append("")
-        lines.append("| Backend | Method | Avg Recall@5 | Avg Latency (s) | Errors |")
-        lines.append("|---|---|---|---|---|")
+        lines.append(
+            "| Backend | Method | Effective Recall@5 | "
+            "Questions w/ Ground Truth | Avg Latency (s) | Errors |"
+        )
+        lines.append("|---|---|---|---|---|---|")
         per_backend: dict[tuple[str, str], list[dict[str, Any]]] = {}
         for row in retrieval_rows:
             per_backend.setdefault((row["backend"], row["method"]), []).append(row)
         for (backend, method), rows in sorted(per_backend.items()):
-            recall = sum(float(row.get("recall_at_5", 0) or 0) for row in rows) / len(
-                rows
-            )
+            grounded_rows = [
+                row
+                for row in rows
+                if int(row.get("has_ground_truth", 0) or 0) == 1
+            ]
+            if grounded_rows:
+                effective = sum(
+                    float(row.get("effective_recall_at_5", 0) or 0)
+                    for row in grounded_rows
+                ) / len(grounded_rows)
+                effective_str = f"{effective:.3f}"
+            else:
+                effective_str = "n/a"
             latency = sum(
                 float(row.get("latency_seconds", 0) or 0) for row in rows
             ) / len(rows)
             errors = sum(1 for row in rows if row.get("error"))
             lines.append(
-                f"| {backend} | {method} | {recall:.3f} | {latency:.3f} | {errors} |"
+                f"| {backend} | {method} | {effective_str} | "
+                f"{len(grounded_rows)}/{len(rows)} | "
+                f"{latency:.3f} | {errors} |"
             )
         lines.append("")
     if answer_rows:
         lines.append("## Answer metrics (per backend, averaged)")
         lines.append("")
         lines.append(
-            "| Backend | Method | Avg Entity Hits | Avg Citation Count | "
-            "Insufficient-Evidence Match Rate |"
+            "| Backend | Method | Quality Score | Grounded Entity Rate | "
+            "Avg Citations | Insufficient-Evidence Match | "
+            "Citation Ref Valid Rate |"
         )
-        lines.append("|---|---|---|---|---|")
+        lines.append("|---|---|---|---|---|---|---|")
         per_backend: dict[tuple[str, str], list[dict[str, Any]]] = {}
         for row in answer_rows:
             per_backend.setdefault((row["backend"], row["method"]), []).append(row)
         for (backend, method), rows in sorted(per_backend.items()):
-            entity_hits = sum(
-                int(row.get("matched_entity_count", 0) or 0) for row in rows
+            quality = sum(
+                float(row.get("answer_quality_score", 0) or 0) for row in rows
+            ) / len(rows)
+            grounded_entity_rate = sum(
+                float(row.get("grounded_entity_rate", 0) or 0) for row in rows
             ) / len(rows)
             citations = sum(
                 int(row.get("citation_count", 0) or 0) for row in rows
@@ -578,8 +706,14 @@ def write_summary_markdown(
                 for row in rows
                 if row.get("insufficient_evidence_behavior") == "matches_expectation"
             ) / len(rows)
+            ref_valid = sum(
+                float(row.get("citation_ref_valid_rate", 0) or 0) for row in rows
+            ) / len(rows)
             lines.append(
-                f"| {backend} | {method} | {entity_hits:.2f} | {citations:.2f} | {match_rate:.2f} |"
+                f"| {backend} | {method} | **{quality:.3f}** | "
+                f"{grounded_entity_rate:.3f} | "
+                f"{citations:.2f} | {match_rate:.2f} | "
+                f"{ref_valid:.3f} |"
             )
         lines.append("")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
