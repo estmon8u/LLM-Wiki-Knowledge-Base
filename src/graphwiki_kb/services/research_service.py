@@ -27,7 +27,6 @@ from graphwiki_kb.services.graphrag_query_service import (
     GraphRAGQueryAnswer,
     GraphRAGQueryError,
 )
-from graphwiki_kb.wikigraph.models import WikiGraphAnswer
 from graphwiki_kb.services.project_service import (
     ProjectPaths,
     atomic_write_text,
@@ -41,6 +40,7 @@ from graphwiki_kb.services.web_research_service import (
     WebResearchError,
     WebResearchService,
 )
+from graphwiki_kb.wikigraph.models import WikiGraphAnswer
 
 logger = logging.getLogger(__name__)
 
