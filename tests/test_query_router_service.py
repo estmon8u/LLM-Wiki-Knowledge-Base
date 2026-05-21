@@ -99,6 +99,12 @@ def test_router_matches_benchmark_expected_methods_with_corpus_aliases() -> None
         "FiD": ["Fusion-in-Decoder"],
         "Dense Passage Retrieval": ["DPR"],
         "Self-RAG": ["reflection"],
+        # Aliases for the v3 corpus-aware benchmark questions.
+        "ORQA": ["latent retrieval", "inverse cloze"],
+        "REPLUG": ["black-box"],
+        "In-Context RALM": ["in-context retrieval"],
+        "Atlas": ["few-shot retrieval"],
+        "Microsoft GraphRAG": ["community summaries"],
     }
     router = QueryRouterService(routing_aliases=aliases)
 
