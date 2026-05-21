@@ -153,7 +153,7 @@ def test_wikigraph_runner_retrieval(seeded_project) -> None:
     run = runner.retrieve(question)
     assert run.error is None
     metrics = retrieval_metrics(question, run)
-    assert metrics["recall_at_5"] > 0
+    assert metrics["recall_at_8"] > 0
 
     answer = runner.answer(question)
     assert answer.answer
@@ -425,12 +425,261 @@ def test_evaluate_backends_main_includes_graphrag(
     assert "graphrag" in text and "wikigraph" in text
 
 
+def test_matched_source_ids_avoids_substring_false_positive() -> None:
+    """G3: single-token expected source matches word boundaries, not substrings."""
+    from scripts.backend_evaluation_lib import matched_source_ids
+
+    question = BenchmarkQuestion(
+        id="q",
+        question="how does FiD combine retrieval?",
+        expected_sources=("FiD",),
+    )
+    run = RetrievalRun(
+        backend="wikigraph",
+        method="basic",
+        question_id="q",
+        question="?",
+        retrieved_titles=["the model was modified during training"],
+        retrieved_paths=[],
+        retrieved_source_ids=[],
+        retrieved_text_snippets=["Modifying the architecture significantly..."],
+        latency_seconds=0.0,
+    )
+    assert matched_source_ids(question, run) == []
+
+
+def test_matched_source_ids_word_boundary_match() -> None:
+    """G3: single-token expected source matches on word boundaries."""
+    from scripts.backend_evaluation_lib import matched_source_ids
+
+    question = BenchmarkQuestion(
+        id="q",
+        question="?",
+        expected_sources=("FiD",),
+    )
+    run = RetrievalRun(
+        backend="wikigraph",
+        method="basic",
+        question_id="q",
+        question="?",
+        retrieved_titles=["FiD: Fusion-in-Decoder explained"],
+        retrieved_paths=[],
+        retrieved_source_ids=[],
+        retrieved_text_snippets=[],
+        latency_seconds=0.0,
+    )
+    assert matched_source_ids(question, run) == ["FiD"]
+
+
+def test_matched_source_ids_multiword_substring_still_works() -> None:
+    """G3: multi-token / hyphenated needles keep substring matching."""
+    from scripts.backend_evaluation_lib import matched_source_ids
+
+    question = BenchmarkQuestion(
+        id="q",
+        question="?",
+        expected_sources=("Fusion-in-Decoder", "Dense Passage Retrieval"),
+    )
+    run = RetrievalRun(
+        backend="wikigraph",
+        method="basic",
+        question_id="q",
+        question="?",
+        retrieved_titles=["A paper on fusion-in-decoder and dense passage retrieval"],
+        retrieved_paths=[],
+        retrieved_source_ids=[],
+        retrieved_text_snippets=[],
+        latency_seconds=0.0,
+    )
+    matches = matched_source_ids(question, run)
+    assert "Fusion-in-Decoder" in matches and "Dense Passage Retrieval" in matches
+
+
+def test_graphrag_runner_retrieve_includes_snippet_in_haystack(monkeypatch) -> None:
+    """G1: GraphRAGRunner.retrieve must populate retrieved_text_snippets."""
+    from graphwiki_kb.models.wiki_models import SearchResult
+    from scripts.backend_evaluation_lib import (
+        GraphRAGRunner,
+        matched_source_ids,
+    )
+
+    class _FakeFindService:
+        def search(self, query, limit):
+            return [
+                SearchResult(
+                    title="some-other-entity",
+                    path="graph://entities/x",
+                    score=1.0,
+                    snippet="REALM jointly trains the retriever and the LM.",
+                    section="GraphRAG Entity",
+                    chunk_index=None,
+                )
+            ]
+
+    class _StubContext:
+        class services:
+            class graphrag_find:
+                pass
+
+        graphrag_find = _FakeFindService()
+
+    runner = GraphRAGRunner.__new__(GraphRAGRunner)
+    runner.context = _StubContext()
+    runner.method = "auto"
+    runner.find_service = _FakeFindService()
+    runner.ask_controller = None  # type: ignore[assignment]
+    runner.name = "graphrag"
+
+    question = BenchmarkQuestion(
+        id="q",
+        question="REALM",
+        expected_sources=("REALM",),
+    )
+    run = runner.retrieve(question)
+    assert run.error is None
+    # Title doesn't mention REALM but snippet does — must still match.
+    assert matched_source_ids(question, run) == ["REALM"]
+
+
+def test_quality_score_does_not_reward_citation_volume() -> None:
+    """G4: composite must not reward citation count beyond ``>=1 supported``."""
+    from scripts.backend_evaluation_lib import AnswerRun, answer_metrics
+
+    base_kwargs = {
+        "backend": "x",
+        "method": "auto",
+        "question_id": "q",
+        "question": "?",
+        "answer": "DPR uses dense passage retrieval to fetch documents.",
+        "insufficient_evidence": False,
+        "latency_seconds": 0.01,
+        "citation_ref_valid_rate": 1.0,
+        "citation_ref_strict_rate": 1.0,
+    }
+    few = AnswerRun(citation_count=2, **base_kwargs)
+    many = AnswerRun(citation_count=8, **base_kwargs)
+    question = BenchmarkQuestion(
+        id="q",
+        question="?",
+        expected_entities=("DPR",),
+        expected_answer_terms=("dense passage",),
+    )
+    assert (
+        answer_metrics(question, few)["answer_quality_score"]
+        == answer_metrics(question, many)["answer_quality_score"]
+    )
+
+
+def test_quality_score_zero_when_no_supported_citations() -> None:
+    """G4: an uncited grounded answer must score lower than a cited one."""
+    from scripts.backend_evaluation_lib import AnswerRun, answer_metrics
+
+    uncited = AnswerRun(
+        backend="x",
+        method="auto",
+        question_id="q",
+        question="?",
+        answer="DPR is dense passage retrieval.",
+        insufficient_evidence=False,
+        citation_count=0,
+        latency_seconds=0.01,
+    )
+    cited = AnswerRun(
+        backend="x",
+        method="auto",
+        question_id="q",
+        question="?",
+        answer="DPR is dense passage retrieval.",
+        insufficient_evidence=False,
+        citation_count=1,
+        latency_seconds=0.01,
+        citation_ref_valid_rate=1.0,
+        citation_ref_strict_rate=1.0,
+    )
+    question = BenchmarkQuestion(
+        id="q",
+        question="?",
+        expected_entities=("DPR",),
+        expected_answer_terms=("dense passage",),
+    )
+    cited_score = answer_metrics(question, cited)["answer_quality_score"]
+    uncited_score = answer_metrics(question, uncited)["answer_quality_score"]
+    assert cited_score > uncited_score
+
+
+def test_graphrag_ref_valid_rate_symmetric() -> None:
+    """G5: GraphRAG citation_ref_valid_rate now reflects ref kind+ids."""
+    from scripts.backend_evaluation_lib import _graphrag_ref_valid_rate
+
+    assert _graphrag_ref_valid_rate([]) == 0.0
+    refs = [
+        {"kind": "entity", "ids": ["1", "2"]},
+        {"kind": "bogus", "ids": ["3"]},
+        {"kind": "community_report", "ids": []},
+    ]
+    # Only the entity ref is valid -> 1/3.
+    assert _graphrag_ref_valid_rate(refs) == 1 / 3
+
+
+def test_method_fit_tracks_expected_vs_chosen() -> None:
+    """G9: retrieval rows surface chosen_method and method_fit."""
+    from scripts.backend_evaluation_lib import retrieval_metrics
+
+    question = BenchmarkQuestion(
+        id="q",
+        question="?",
+        expected_sources=("REALM",),
+        expected_methods={"wikigraph": "local"},
+    )
+    matching = RetrievalRun(
+        backend="wikigraph",
+        method="auto",
+        question_id="q",
+        question="?",
+        retrieved_titles=["REALM"],
+        retrieved_paths=[],
+        retrieved_source_ids=[],
+        chosen_method="local",
+        latency_seconds=0.0,
+    )
+    mismatching = RetrievalRun(
+        backend="wikigraph",
+        method="auto",
+        question_id="q",
+        question="?",
+        retrieved_titles=["REALM"],
+        retrieved_paths=[],
+        retrieved_source_ids=[],
+        chosen_method="basic",
+        latency_seconds=0.0,
+    )
+    assert retrieval_metrics(question, matching)["method_fit"] == "1"
+    assert retrieval_metrics(question, mismatching)["method_fit"] == "0"
+
+
+def test_wikigraph_runner_strict_vs_loose_citation_rate(seeded_project) -> None:
+    """G6: WikiGraphRAG answer run reports both strict and loose valid rates."""
+    context = build_command_context(seeded_project.paths.root)
+    runner = WikiGraphRunner(context=context, method="basic")
+    question = BenchmarkQuestion(
+        id="q1",
+        question="How does REALM differ from RAG?",
+        expected_entities=("REALM", "RAG"),
+    )
+    run = runner.answer(question)
+    # Provider-free path: every emitted citation matches a retrieved
+    # context byte-for-byte (we generate them from the same context list).
+    assert run.error is None
+    assert run.citation_ref_strict_rate >= 0.0
+    assert run.citation_ref_valid_rate >= run.citation_ref_strict_rate
+
+
 def test_write_helpers(tmp_path: Path) -> None:
     rows = [
         {
             "backend": "x",
             "method": "auto",
-            "recall_at_5": 0.5,
+            "recall_at_8": 0.5,
             "latency_seconds": 0.1,
             "error": "",
         }

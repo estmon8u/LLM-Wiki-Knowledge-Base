@@ -85,6 +85,13 @@ class RetrievalRun:
     # source-coverage matcher can also see body content (not just the
     # heading/title). Critical for paper-body-only matches like ORQA.
     retrieved_text_snippets: list[str] = field(default_factory=list)
+    # The actual retrieval *method* chosen by the backend (e.g.
+    # ``local`` / ``global`` / ``drift-lite``). For WikiGraphRAG we
+    # pass the WikiGraphFindResult.method here; for GraphRAG we record
+    # the artifact-search or text-unit retrieval mode label. Used to
+    # score ``method_fit`` against the benchmark ``expected_methods``
+    # (G9 fix).
+    chosen_method: str = ""
     artifact_path: str | None = None
     error: str | None = None
 
@@ -109,7 +116,14 @@ class AnswerRun:
     claim_context_count: int = 0
     community_context_count: int = 0
     unique_source_id_count: int = 0
+    # Loose validity: an LLM citation ref counts when it shares the
+    # *path* of any retrieved context (WikiGraphRAG normalizes neighbor
+    # anchors). Defined symmetrically for GraphRAG too (G5 fix).
     citation_ref_valid_rate: float = 0.0
+    # Strict validity (G5): only counts when the citation ref equals a
+    # retrieved-context citation_ref byte-for-byte. Reported alongside
+    # the loose rate for transparency without changing the composite.
+    citation_ref_strict_rate: float = 0.0
     provider_mode: str = ""
     artifact_path: str | None = None
     error: str | None = None
@@ -171,6 +185,9 @@ class WikiGraphRunner:
                 retrieved_text_snippets=[
                     (ctx.text or "")[:600] for ctx in result.contexts
                 ],
+                # Record what the auto router actually chose so the
+                # evaluator can compute method_fit (G9 fix).
+                chosen_method=result.method or self.method,
                 latency_seconds=elapsed,
             )
         except Exception as exc:
@@ -198,9 +215,22 @@ class WikiGraphRunner:
             unique_sources = {sid for ctx in ans.contexts for sid in ctx.source_ids}
             cited_refs = {citation.get("ref") for citation in ans.citations}
             known_refs = {ctx.citation_ref for ctx in ans.contexts}
-            valid_cited = sum(1 for ref in cited_refs if ref in known_refs)
+            # Strict validity: byte-for-byte match against a retrieved
+            # context's citation_ref. Loose validity (G6): any ref
+            # sharing the path of a retrieved context counts because
+            # the LLM was reasoning over the same source document.
+            known_paths = {ctx.citation_ref.split("#", 1)[0] for ctx in ans.contexts}
+            valid_strict = sum(1 for ref in cited_refs if ref in known_refs)
+            valid_loose = sum(
+                1
+                for ref in cited_refs
+                if ref in known_refs or str(ref or "").split("#", 1)[0] in known_paths
+            )
+            citation_ref_strict_rate = (
+                valid_strict / len(cited_refs) if cited_refs else 0.0
+            )
             citation_ref_valid_rate = (
-                valid_cited / len(cited_refs) if cited_refs else 0.0
+                valid_loose / len(cited_refs) if cited_refs else 0.0
             )
             return AnswerRun(
                 backend=self.name,
@@ -217,6 +247,7 @@ class WikiGraphRunner:
                 community_context_count=kind_counts.get("community", 0),
                 unique_source_id_count=len(unique_sources),
                 citation_ref_valid_rate=citation_ref_valid_rate,
+                citation_ref_strict_rate=citation_ref_strict_rate,
                 provider_mode=str(ans.provider_status.get("mode", "")),
             )
         except Exception as exc:
@@ -258,6 +289,12 @@ class GraphRAGRunner:
                 retrieved_titles=[r.title for r in results],
                 retrieved_paths=[str(r.path) for r in results],
                 retrieved_source_ids=[],
+                # G1 fix: include the entity/relationship description in
+                # the haystack so source matching is symmetric with the
+                # WikiGraphRAG/Legacy runners. Without this, GraphRAG
+                # could only score on title/path matches.
+                retrieved_text_snippets=[(r.snippet or "")[:600] for r in results],
+                chosen_method="find",
                 latency_seconds=elapsed,
             )
         except Exception as exc:
@@ -284,6 +321,8 @@ class GraphRAGRunner:
                 "insufficient-evidence",
                 "stale-index",
             }
+            refs = list(answer.graph_data_references or [])
+            valid_rate = _graphrag_ref_valid_rate(refs)
             return AnswerRun(
                 backend=self.name,
                 method=answer.method or self.method,
@@ -291,11 +330,15 @@ class GraphRAGRunner:
                 question=question.question,
                 answer=answer.answer or "",
                 insufficient_evidence=insufficient,
-                citation_count=len(answer.graph_data_references or []),
+                citation_count=len(refs),
                 latency_seconds=elapsed,
-                citation_ref_valid_rate=(
-                    1.0 if len(answer.graph_data_references or []) else 0.0
-                ),
+                # G5 fix: compute a real fraction of inline [Data: ...]
+                # parts whose `kind` is a known GraphRAG reference kind
+                # and whose `ids` parsed cleanly. Both rates equal here
+                # because GraphRAG has no "loose" anchor concept; the
+                # strict rate is the same as the loose rate.
+                citation_ref_valid_rate=valid_rate,
+                citation_ref_strict_rate=valid_rate,
                 provider_mode="provider-backed",
             )
         except Exception as exc:
@@ -394,6 +437,40 @@ class LegacyRunner:
 # --------------------------------------------------------------------------- #
 
 
+_KNOWN_GRAPHRAG_REF_KINDS = frozenset(
+    {
+        "source",
+        "document",
+        "text_unit",
+        "entity",
+        "relationship",
+        "community",
+        "community_report",
+    }
+)
+
+
+def _graphrag_ref_valid_rate(refs: list[dict]) -> float:
+    """Return the fraction of GraphRAG inline ``[Data: ...]`` refs that resolve.
+
+    A reference is considered *valid* when it has a known kind (one of
+    the labels GraphRAG emits, e.g. ``Entities``, ``Reports``, ``Text
+    Units``) AND a non-empty parsed id list. This is the symmetric
+    counterpart to WikiGraphRAG's citation_ref validity calculation
+    (G5 fix).
+    """
+    if not refs:
+        return 0.0
+    total = len(refs)
+    valid = 0
+    for ref in refs:
+        kind = str(ref.get("kind", "")).strip().lower()
+        ids = ref.get("ids", []) or []
+        if kind in _KNOWN_GRAPHRAG_REF_KINDS and ids:
+            valid += 1
+    return valid / total
+
+
 def _flatten_source_ids(result: WikiGraphFindResult) -> list[str]:
     out: list[str] = []
     for ctx in result.contexts:
@@ -429,6 +506,14 @@ def matched_source_ids(question: BenchmarkQuestion, run: RetrievalRun) -> list[s
     the TextUnit layer in WikiGraphRAG) get credit when the body
     mentions an expected source name even if the paper's *slug* does
     not (e.g. the ORQA paper whose slug is ``latent-retrieval-...``).
+
+    Matching is now case-insensitive *word-boundary* for single-token
+    expected sources (G3 fix). Substring matching is retained for
+    multi-token expected sources like ``"Dense Passage Retrieval"`` or
+    ``"Fusion-in-Decoder"`` because tokenising those would split the
+    surface form. This prevents bug-tier false positives like ``"fid"``
+    matching ``"modified"`` or ``"rag"`` matching ``"fragment"``, which
+    asymmetrically inflated long-body backends (WikiGraphRAG).
     """
     if not question.expected_sources:
         return []
@@ -439,12 +524,37 @@ def matched_source_ids(question: BenchmarkQuestion, run: RetrievalRun) -> list[s
             *run.retrieved_source_ids,
             *run.retrieved_text_snippets,
         ]
-    ).lower()
-    return [
-        expected
-        for expected in question.expected_sources
-        if expected.lower() in haystack
-    ]
+    )
+    haystack_lower = haystack.lower()
+    matched: list[str] = []
+    for expected in question.expected_sources:
+        if _expected_source_in_haystack(expected, haystack, haystack_lower):
+            matched.append(expected)
+    return matched
+
+
+def _expected_source_in_haystack(
+    needle: str, haystack: str, haystack_lower: str
+) -> bool:
+    """Return True when ``needle`` appears in ``haystack``.
+
+    Single-token needles use a word-boundary regex (case-insensitive);
+    multi-token / hyphenated / whitespace-containing needles fall back
+    to a case-insensitive substring check.
+    """
+    import re as _re
+
+    lowered = needle.lower().strip()
+    if not lowered:
+        return False
+    # Multi-token / hyphenated -> substring is the only reliable form
+    # because a word-boundary regex would punish curly punctuation or
+    # missing connectives. We accept the small false-positive risk; it
+    # affects both backends equally.
+    if any(ch in lowered for ch in (" ", "\t", "-", "/", ".")):
+        return lowered in haystack_lower
+    pattern = r"(?<![A-Za-z0-9_])" + _re.escape(lowered) + r"(?![A-Za-z0-9_])"
+    return bool(_re.search(pattern, haystack, _re.IGNORECASE))
 
 
 # Small alias table so an expected entity like ``FiD`` is credited
@@ -511,39 +621,75 @@ def retrieval_metrics(question: BenchmarkQuestion, run: RetrievalRun) -> dict[st
     empty (synthesis / out-of-scope questions), which dragged every
     backend's average toward zero. We now emit:
 
-    * ``recall_at_5`` — empty string when ``expected_sources`` is empty
+    * ``recall_at_8`` — empty string when ``expected_sources`` is empty
       so the column averages over only the questions that have ground
-      truth.
-    * ``effective_recall_at_5`` — same value, kept under a distinct
+      truth. Renamed from ``recall_at_5`` because both backends
+      actually retrieve up to 8 contexts (limit=8 / max_context_chunks=8).
+    * ``effective_recall_at_8`` — same value, kept under a distinct
       name so summary tooling can compute the fair average without
       ambiguity.
     * ``has_ground_truth`` — 1 / 0 so downstream tools can weight per
       question.
+    * ``expected_method`` / ``chosen_method`` / ``method_fit`` — G9
+      fix: surface whether the backend's auto router picked the
+      expected query method.
     """
     matched = matched_source_ids(question, run)
     expected = len(question.expected_sources)
+    expected_method = (
+        question.expected_methods.get(run.backend, "")
+        if question.expected_methods
+        else ""
+    )
+    chosen_method = run.chosen_method or run.method or ""
+    method_fit = _method_fit(expected_method, chosen_method)
+    common = {
+        "expected_method": expected_method,
+        "chosen_method": chosen_method,
+        "method_fit": method_fit,
+    }
     if expected:
         recall = len(matched) / expected
         return {
             "matched_source_count": len(matched),
             "expected_source_count": expected,
-            "recall_at_5": recall,
-            "effective_recall_at_5": recall,
+            "recall_at_8": recall,
+            "effective_recall_at_8": recall,
             "has_ground_truth": 1,
             "retrieved_count": len(run.retrieved_titles),
             "latency_seconds": run.latency_seconds,
             "error": run.error,
+            **common,
         }
     return {
         "matched_source_count": 0,
         "expected_source_count": 0,
-        "recall_at_5": "",
-        "effective_recall_at_5": "",
+        "recall_at_8": "",
+        "effective_recall_at_8": "",
         "has_ground_truth": 0,
         "retrieved_count": len(run.retrieved_titles),
         "latency_seconds": run.latency_seconds,
         "error": run.error,
+        **common,
     }
+
+
+def _method_fit(expected_method: str, chosen_method: str) -> str:
+    """Return 1/0/'' for whether the chosen method matches the expectation.
+
+    Empty string when no expectation was declared so averages skip
+    those rows. Comparison folds case and ``-``/``_`` separators so
+    ``drift`` matches ``drift-lite`` is *not* a match (separate
+    families), but ``community_report`` matches ``community-report``
+    is.
+    """
+    if not expected_method:
+        return ""
+    if not chosen_method:
+        return "0"
+    norm_expected = expected_method.strip().lower().replace("_", "-")
+    norm_chosen = chosen_method.strip().lower().replace("_", "-")
+    return "1" if norm_expected == norm_chosen else "0"
 
 
 def answer_metrics(question: BenchmarkQuestion, run: AnswerRun) -> dict[str, Any]:
@@ -591,19 +737,25 @@ def answer_metrics(question: BenchmarkQuestion, run: AnswerRun) -> dict[str, Any
     else:
         grounded_answer_term_rate = 1.0 if behavior_match else 0.0
 
+    # G4 fix: replace the gameable ``min(citations, 5)/5`` term with a
+    # binary ``has_supported_citations`` signal so the composite no
+    # longer rewards verbose citation lists. Refusals on intentionally
+    # unsupported questions still score full marks.
     if expected_insufficient and run.insufficient_evidence:
-        normalized_citations = 1.0
+        has_supported_citations = 1.0
         ref_valid = 1.0
     else:
-        normalized_citations = min(run.citation_count, 5) / 5.0
         ref_valid = run.citation_ref_valid_rate if run.citation_count else 0.0
+        has_supported_citations = (
+            1.0 if (run.citation_count > 0 and ref_valid >= 0.5) else 0.0
+        )
     insufficient_score = 1.0 if behavior_match else 0.0
     forbidden_score = 1.0 if not forbidden_hits else 0.0
     content_rate = (grounded_entity_rate + grounded_answer_term_rate) / 2.0
     answer_quality_score = round(
         (
             content_rate
-            + normalized_citations
+            + has_supported_citations
             + insufficient_score
             + ref_valid
             + forbidden_score
@@ -615,6 +767,7 @@ def answer_metrics(question: BenchmarkQuestion, run: AnswerRun) -> dict[str, Any
     return {
         "answer_length": len(run.answer or ""),
         "citation_count": run.citation_count,
+        "has_supported_citations": has_supported_citations,
         "matched_entity_count": len(entity_hits),
         "expected_entity_count": expected_entity_count,
         "grounded_entity_hits": grounded_entity_hits,
@@ -633,6 +786,7 @@ def answer_metrics(question: BenchmarkQuestion, run: AnswerRun) -> dict[str, Any
         "community_context_count": run.community_context_count,
         "unique_source_id_count": run.unique_source_id_count,
         "citation_ref_valid_rate": run.citation_ref_valid_rate,
+        "citation_ref_strict_rate": run.citation_ref_strict_rate,
         "provider_mode": run.provider_mode,
         "latency_seconds": run.latency_seconds,
         "error": run.error,
@@ -651,10 +805,13 @@ RETRIEVAL_COLUMNS = (
     "method",
     "matched_source_count",
     "expected_source_count",
-    "recall_at_5",
-    "effective_recall_at_5",
+    "recall_at_8",
+    "effective_recall_at_8",
     "has_ground_truth",
     "retrieved_count",
+    "expected_method",
+    "chosen_method",
+    "method_fit",
     "latency_seconds",
     "error",
 )
@@ -666,6 +823,7 @@ ANSWER_COLUMNS = (
     "method",
     "answer_length",
     "citation_count",
+    "has_supported_citations",
     "matched_entity_count",
     "expected_entity_count",
     "grounded_entity_hits",
@@ -684,6 +842,7 @@ ANSWER_COLUMNS = (
     "community_context_count",
     "unique_source_id_count",
     "citation_ref_valid_rate",
+    "citation_ref_strict_rate",
     "provider_mode",
     "latency_seconds",
     "error",
@@ -735,10 +894,11 @@ def write_summary_markdown(
         lines.append("## Retrieval metrics (per backend, averaged)")
         lines.append("")
         lines.append(
-            "| Backend | Method | Effective Recall@5 | "
-            "Questions w/ Ground Truth | Avg Latency (s) | Errors |"
+            "| Backend | Method | Effective Recall@8 | "
+            "Questions w/ Ground Truth | Method Fit | "
+            "Avg Latency (s) | Errors |"
         )
-        lines.append("|---|---|---|---|---|---|")
+        lines.append("|---|---|---|---|---|---|---|")
         per_backend: dict[tuple[str, str], list[dict[str, Any]]] = {}
         for row in retrieval_rows:
             per_backend.setdefault((row["backend"], row["method"]), []).append(row)
@@ -748,7 +908,7 @@ def write_summary_markdown(
             ]
             if grounded_rows:
                 effective = sum(
-                    float(row.get("effective_recall_at_5", 0) or 0)
+                    float(row.get("effective_recall_at_8", 0) or 0)
                     for row in grounded_rows
                 ) / len(grounded_rows)
                 effective_str = f"{effective:.3f}"
@@ -758,9 +918,17 @@ def write_summary_markdown(
                 float(row.get("latency_seconds", 0) or 0) for row in rows
             ) / len(rows)
             errors = sum(1 for row in rows if row.get("error"))
+            method_rows = [row for row in rows if str(row.get("method_fit", ""))]
+            if method_rows:
+                fit_rate = sum(
+                    1 for row in method_rows if str(row["method_fit"]) == "1"
+                ) / len(method_rows)
+                fit_str = f"{fit_rate:.2f} ({len(method_rows)})"
+            else:
+                fit_str = "n/a"
             lines.append(
                 f"| {backend} | {method} | {effective_str} | "
-                f"{len(grounded_rows)}/{len(rows)} | "
+                f"{len(grounded_rows)}/{len(rows)} | {fit_str} | "
                 f"{latency:.3f} | {errors} |"
             )
         lines.append("")
@@ -769,10 +937,12 @@ def write_summary_markdown(
         lines.append("")
         lines.append(
             "| Backend | Method | Provider Modes | Quality Score | "
-            "Grounded Entity Rate | Grounded Term Rate | Avg Citations | "
-            "Insufficient-Evidence Match | Citation Ref Valid Rate |"
+            "Grounded Entity Rate | Grounded Term Rate | "
+            "Has Supported Citations | Avg Citations | "
+            "Insufficient-Evidence Match | Citation Ref Valid (loose) | "
+            "Citation Ref Valid (strict) |"
         )
-        lines.append("|---|---|---|---|---|---|---|---|---|")
+        lines.append("|---|---|---|---|---|---|---|---|---|---|---|")
         per_backend: dict[tuple[str, str], list[dict[str, Any]]] = {}
         for row in answer_rows:
             per_backend.setdefault((row["backend"], row["method"]), []).append(row)
@@ -789,6 +959,9 @@ def write_summary_markdown(
             citations = sum(
                 int(row.get("citation_count", 0) or 0) for row in rows
             ) / len(rows)
+            has_supported = sum(
+                float(row.get("has_supported_citations", 0) or 0) for row in rows
+            ) / len(rows)
             match_rate = sum(
                 1
                 for row in rows
@@ -797,6 +970,9 @@ def write_summary_markdown(
             ref_valid = sum(
                 float(row.get("citation_ref_valid_rate", 0) or 0) for row in rows
             ) / len(rows)
+            ref_strict = sum(
+                float(row.get("citation_ref_strict_rate", 0) or 0) for row in rows
+            ) / len(rows)
             provider_modes = ", ".join(
                 sorted({str(row.get("provider_mode") or "unknown") for row in rows})
             )
@@ -804,8 +980,9 @@ def write_summary_markdown(
                 f"| {backend} | {method} | {provider_modes} | "
                 f"**{quality:.3f}** | "
                 f"{grounded_entity_rate:.3f} | {grounded_term_rate:.3f} | "
+                f"{has_supported:.2f} | "
                 f"{citations:.2f} | {match_rate:.2f} | "
-                f"{ref_valid:.3f} |"
+                f"{ref_valid:.3f} | {ref_strict:.3f} |"
             )
         lines.append("")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
