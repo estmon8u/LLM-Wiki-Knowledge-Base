@@ -54,7 +54,7 @@ GraphRAG is the retrieval and synthesis engine.
   - MarkItDown for bounded born-digital subset with quality-gated fallbacks.
 - Update pipeline that builds source pages, updates the wiki index, optionally refreshes legacy concept pages, refreshes the deprecated FTS5 comparator index with markdown-scan fallback warnings, writes lock-protected compile-run state for resumable runs, and runs GraphRAG sync/index/export unless `--no-graph` is set.
 - Deterministic lint for links, fragments, headings, frontmatter, duplicates, empties, manifest artifact drift, stale pages, GraphRAG input/index/export staleness, and maintenance signals.
-- Deprecated source-page-only search via SQLite FTS5 chunk index through `kb legacy find`, now treated as temporary legacy infrastructure rather than the future default.
+- Deprecated source-page-only search via SQLite FTS5 chunk index through `kb find --engine legacy`, now treated as temporary legacy infrastructure rather than the future default.
 - Microsoft GraphRAG dependency and initialized workspace under `graph/graphrag/`, with tracked settings/prompts/input scaffolding and ignored local `.env`, generated input, output, cache, and logs.
 - Main-command GraphRAG input/index sync through `kb update`, which writes `graph/graphrag/input/sources.json` from `raw/_manifest.json` and `raw/normalized/`, configures JSON input and metadata prepending in `settings.yaml`, warns and skips isolated missing normalized artifacts during normal updates, and auto-selects full `fast`, incremental `fast-update`, retry, or skip based on output completeness plus source/runtime digests.
 - Main-command GraphRAG workspace/status/export through `kb init`, `kb status`, `kb doctor`, `kb lint`, `kb update`, and `kb export`.
@@ -64,10 +64,10 @@ GraphRAG is the retrieval and synthesis engine.
 - GraphRAG hardening for active-output selection, vector-store state checks, method-specific query readiness, runtime/settings/prompt digest freshness, unique saved-analysis filenames, blank-answer refusal, and raw stdout/stderr preservation.
 - Graph-aware top-level `kb find`, which searches direct graph entities/relationships plus maintained wiki pages with bounded streamed Parquet scans, graph artifact diagnostics, stable deduplication, and global ranking of merged candidates.
 - Phase 8 benchmark and runners: `eval/benchmark.yaml`, `scripts/evaluate_graph_modes.py`, `scripts/evaluate_retrieval.py`, and `scripts/evaluate_answers.py` write `eval/results/summary.md`, `retrieval_metrics.csv`, and `answer_metrics.csv`.
-- Provider-backed `kb legacy ask` and `kb review` with explicit failure semantics.
+- Provider-backed `kb ask --engine legacy` and `kb review` with explicit failure semantics.
 - Structured provider review output: `kb review` requires JSON/schema-backed findings and rejects malformed legacy pipe-style output instead of treating it as a compatibility fallback.
-- Answer persistence with `kb legacy ask --save` and `--save-as`; saved analysis pages are indexed immediately.
-- Source-grounded ask behavior: `kb legacy ask` uses source-page chunks as primary evidence, excludes generated concept pages and saved analysis pages from evidence, validates structured claims/citations, and strips raw citation-ref markers from answer prose before display or save.
+- Answer persistence with `kb ask --engine legacy --save` and `--save-as`; saved analysis pages are indexed immediately.
+- Source-grounded ask behavior: `kb ask --engine legacy` uses source-page chunks as primary evidence, excludes generated concept pages and saved analysis pages from evidence, validates structured claims/citations, and strips raw citation-ref markers from answer prose before display or save.
 - Obsidian vault export via `kb export`.
 - Library-backed simplification pass: shared Markdown/frontmatter parsing, Pydantic config validation, NLTK collocation-based concept topic extraction, RapidFuzz terminology variants, and Unicode-aware slugging.
 - `kb agent` control plane using the optional `graphwiki-kb[agent]` extra, OpenAI Agents SDK runtime boundary, service-backed tools for ask/find/status/lint/review/research/list-recommendations, sessionless one-shot runs, optional SQLite sessions, durable run traces, and ignored local state under `graph/runs/agent/`.

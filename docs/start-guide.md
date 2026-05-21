@@ -12,7 +12,7 @@ Requirements:
 | --- | --- | --- |
 | Python 3.11 or 3.12 | Yes | The project is pinned to Python `>=3.11,<3.13` while Microsoft GraphRAG documents Python 3.10-3.12 support. |
 | Poetry | Yes | Installs dependencies and runs the `kb` entrypoint. |
-| LLM API key | Yes for `kb update`, `kb legacy ask`, `kb review`, and real GraphRAG index/query jobs | Normal `kb update` warns and skips graph indexing if GraphRAG credentials are missing; `kb update --graph-only` requires them. |
+| LLM API key | Yes for `kb update`, `kb ask --engine legacy`, `kb review`, and real GraphRAG index/query jobs | Normal `kb update` warns and skips graph indexing if GraphRAG credentials are missing; `kb update --graph-only` requires them. |
 | Mistral API key | Required for PDFs, Office docs, images, and HTML OCR | Markdown and plain text do not need it. |
 | HTML renderer | Required only for HTML OCR | `wkhtmltopdf` is preferred when installed; bundled `xhtml2pdf` is the pure-Python fallback. |
 
@@ -135,7 +135,7 @@ poetry run kb --project-root $projectRoot update
 refreshes `wiki/index.md` and `wiki/log.md`, rebuilds the maintained wiki search
 index used by `kb find`, and refreshes the deprecated legacy comparator index.
 During the GraphRAG pivot, GraphRAG is the default answer path and deprecated
-FTS comparison commands are exposed only through `kb legacy ...`.
+FTS comparison commands are exposed only through `kb find/ask --engine legacy`.
 
 If a run is interrupted, resume it:
 
@@ -228,7 +228,7 @@ poetry run kb --project-root $projectRoot ask --method drift --save "Compare RAG
 
 Do not use the deprecated top-level `--limit` flag with `kb ask`; GraphRAG
 answers reject it because source-page evidence limiting only applies to
-`kb legacy ask`.
+`kb ask --engine legacy`.
 
 The default `--method auto` router uses question wording and a capped scan of
 known graph terms to choose Basic, Local, Global, or DRIFT. It does not fall
@@ -278,11 +278,10 @@ Save useful legacy comparison answers as analysis pages:
 
 ```powershell
 poetry run kb --project-root $projectRoot legacy ask --save "What does the update pipeline do?"
-poetry run kb --project-root $projectRoot legacy ask --save-as update-pipeline "What does the update pipeline do?"
+poetry run kb --project-root $projectRoot ask --engine legacy --save-as update-pipeline "What does the update pipeline do?"
 ```
 
-Saved analysis pages are searchable with top-level `kb find`, but `kb legacy
-find` and later legacy ask runs stay source-only so saved answers, generated
+Saved analysis pages are searchable with top-level `kb find`, but `kb find --engine legacy` and later `kb ask --engine legacy` runs stay source-only so saved answers, generated
 concept pages, and direct graph artifacts are not treated as primary evidence.
 
 Optional natural-language control is available through `kb agent` when the

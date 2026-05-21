@@ -2,9 +2,9 @@
 
 A CLI-first GraphRAG research-memory system for ingesting technical documents, building a graph-based retrieval index, answering local/global research questions, and exporting inspectable wiki artifacts with provenance and source traceability.
 
-The wiki is not the retrieval engine. The wiki is the human-readable artifact layer. GraphRAG is the retrieval and synthesis engine.
+The wiki is the human-readable artifact layer. Microsoft GraphRAG and the custom WikiGraphRAG backend are retrieval/synthesis engines; choose explicitly with `kb ask --engine graphrag` or `kb ask --engine wikigraph` when comparing them.
 
-This branch is in the GraphRAG pivot. GraphRAG is the target default retrieval and synthesis path. The existing SQLite FTS5 search and source-grounded ask workflow is now explicit source-page-only legacy behavior under `kb legacy find` and `kb legacy ask` with deprecation warnings. Top-level `kb ask` is a GraphRAG-aware answer controller that checks graph readiness, chooses a query mode with deterministic routing by default, calls GraphRAG, and can save analysis pages with graph metadata and source trace. Top-level `kb find` is a non-generative search over direct GraphRAG entity/relationship artifacts plus the maintained wiki index, including generated graph pages when they exist. GraphRAG setup and maintenance are folded into the main command surface: `kb init` creates the graph workspace, `kb update` syncs input, indexes when needed, and exports graph wiki pages from complete graph output even when indexing is skipped as current, `kb status` reports graph health, and `kb export` refreshes graph inspection pages when complete graph output exists. The old `kb graph` command group has been removed. See [docs/graphrag-pivot.md](docs/graphrag-pivot.md) for the pivot rationale and target architecture.
+This branch is in the GraphRAG pivot. WikiGraphRAG is the current default `kb ask` engine because it is local, inspectable, and can run provider-free; Microsoft GraphRAG remains available explicitly with `kb ask --engine graphrag` for provider-backed graph queries and side-by-side comparison. The existing SQLite FTS5 search and source-grounded ask workflow is explicit source-page-only legacy behavior under `kb find --engine legacy` and `kb ask --engine legacy` with deprecation warnings. Top-level `kb find` is a non-generative search over direct GraphRAG entity/relationship artifacts, the maintained wiki index, and WikiGraphRAG contexts, including generated graph pages when they exist. GraphRAG setup and maintenance are folded into the main command surface: `kb init` creates the graph workspace, `kb update` syncs input, indexes when needed, and exports graph wiki pages from complete graph output even when indexing is skipped as current, `kb status` reports graph health, and `kb export` refreshes graph inspection pages when complete graph output exists. The old `kb graph` command group has been removed. See [docs/graphrag-pivot.md](docs/graphrag-pivot.md) for the pivot rationale and target architecture.
 
 ## Requirements
 
@@ -44,20 +44,25 @@ GraphWiki KB currently pins Microsoft GraphRAG to `>=3.0.9,<3.1` and supports Gr
 
 ## Evaluation Harness
 
-Phase 8 adds an evaluation harness for comparing the deprecated legacy FTS path against GraphRAG Basic, Local, Global, and DRIFT query modes. The benchmark lives in `eval/benchmark.yaml`; generated reports are written under `eval/results/`.
+The benchmark in `eval/benchmark.yaml` now supports two complementary evaluation paths:
+
+1. `scripts/evaluate_graph_modes.py` verifies GraphRAG mode routing and the deprecated legacy FTS comparator.
+2. `scripts/evaluate_backends.py` compares WikiGraphRAG, Microsoft GraphRAG, and legacy FTS retrieval/answer rows with stricter expected entities, expected answer terms, citation/reference validity, insufficient-evidence behavior, and provider-mode metadata.
 
 ```bash
 # Local-safe baseline: legacy find + auto-router fit, provider-backed rows skipped
 poetry run python scripts/evaluate_graph_modes.py
 
-# Retrieval-only CSV
-poetry run python scripts/evaluate_retrieval.py
+# Local-safe cross-backend retrieval comparison
+poetry run python scripts/evaluate_backends.py --retrieval-only \
+  --backends wikigraph graphrag legacy
 
 # Provider-backed answer comparison when the graph provider/API key is ready
-poetry run python scripts/evaluate_graph_modes.py --allow-provider-calls --include-legacy-ask
+poetry run python scripts/evaluate_backends.py --backends wikigraph graphrag \
+  --allow-provider-calls
 ```
 
-The default run does not call model providers. It records skipped rows for GraphRAG and legacy answer commands unless `--allow-provider-calls` is passed, because those jobs can incur provider costs and may include local corpus text in generated artifacts. Per-question JSON artifacts are written under `eval/results/artifacts/`, which is ignored by Git.
+Default/local-safe runs do not prove answer superiority: GraphRAG and legacy answer rows are skipped unless `--allow-provider-calls` is passed, while WikiGraphRAG provider-free rows are marked as provider-free diagnostics. Treat headline answer comparisons as valid only when both WikiGraphRAG and Microsoft GraphRAG have successful comparable rows. Per-question JSON artifacts are written under `eval/results/artifacts/`, which is ignored by Git.
 
 ## Quick Start
 
@@ -72,9 +77,9 @@ poetry run kb add path/to/research-papers/
 #    This compiles, builds the graph index, and exports graph wiki pages.
 poetry run kb update
 
-# 4. Ask GraphRAG-backed questions
+# 4. Ask questions (WikiGraphRAG by default; Microsoft GraphRAG explicitly)
 poetry run kb ask "How does REALM differ from RAG?"
-poetry run kb ask "What are the main retrieval themes across the corpus?" --method global
+poetry run kb ask --engine graphrag "What are the main retrieval themes across the corpus?" --method global
 
 # 5. Check project health
 poetry run kb status
@@ -100,7 +105,7 @@ There is no silent fallback from GraphRAG to FTS5.
 For a slower first-run walkthrough that keeps the repository and knowledge-base
 project in separate directories, see [docs/start-guide.md](docs/start-guide.md).
 
-Before running `kb update`, `kb legacy ask`, or `kb review`, configure the active
+Before running `kb update`, `kb ask --engine legacy`, or `kb review`, configure the active
 provider in `kb.config.yaml` and set the matching API key environment
 variable. If you ingest `.pdf`, `.docx`, `.pptx`, supported images, or
 `.html` / `.htm`, also set `MISTRAL_API_KEY`. HTML inputs additionally require
@@ -335,7 +340,7 @@ Troubleshooting paths:
 Searches direct GraphRAG entity and relationship artifacts and the maintained
 wiki index, then deduplicates and ranks all candidates together so weak graph
 hits do not hide stronger wiki pages. Use
-`kb legacy find` only when you specifically need the deprecated source-page-only
+`kb find --engine legacy` only when you specifically need the deprecated source-page-only
 FTS5 comparator path.
 
 ```bash
@@ -353,14 +358,14 @@ This is non-generative navigation over the maintained wiki search index. JSON
 output includes `retriever: "wiki-index"`. It does not call GraphRAG query
 modes or the deprecated FTS ask path.
 
-### `kb legacy find <terms>`
+### `kb find --engine legacy <terms>`
 
 Search the deprecated SQLite FTS5 comparator index for source-page snippets.
 
 ```bash
-poetry run kb legacy find "traceability citation"
-poetry run kb legacy find --limit 10 "agent architecture"
-poetry run kb legacy find --json "REALM vs RAG"
+poetry run kb find --engine legacy "traceability citation"
+poetry run kb find --engine legacy --limit 10 "agent architecture"
+poetry run kb find --engine legacy --json "REALM vs RAG"
 ```
 
 | Option | Default | Description |
@@ -475,16 +480,16 @@ audit, answer prose is cleaned before the `## Answer` section, blank GraphRAG
 answers are refused, and repeated saves use unique filenames instead of
 overwriting the prior analysis page.
 
-### `kb legacy ask <question>`
+### `kb ask --engine legacy <question>`
 
 Answer a question from compiled source-page evidence with provider-backed synthesis and citations through the deprecated SQLite FTS5 retrieval path.
 
 ```bash
-poetry run kb legacy ask "How does the wiki handle stale pages?"
-poetry run kb legacy ask --limit 5 "What normalization converters are supported?"
-poetry run kb legacy ask --save "What does the update pipeline do?"
-poetry run kb legacy ask --save-as freshness "How is freshness tracked?"
-poetry run kb legacy ask --show-evidence "What formats are supported?"
+poetry run kb ask --engine legacy "How does the wiki handle stale pages?"
+poetry run kb ask --engine legacy --limit 5 "What normalization converters are supported?"
+poetry run kb ask --engine legacy --save "What does the update pipeline do?"
+poetry run kb ask --engine legacy --save-as freshness "How is freshness tracked?"
+poetry run kb ask --engine legacy --show-evidence "What formats are supported?"
 ```
 
 | Option | Default | Description |
@@ -498,7 +503,7 @@ Requires a configured provider. Retrieves the best-matching source-page chunks a
 
 Provider-backed answers must be both parseable and useful. Empty `answer_markdown`, missing claims when `insufficient_evidence` is false, claims without citation refs, and citation refs outside the retrieved evidence set fail the command instead of being treated as a successful answer. Provider failures include response diagnostics such as finish reason and token counts when the selected SDK exposes them.
 
-Use `--save` or `--save-as` to persist the answer as a markdown analysis page in `wiki/analysis/` with YAML frontmatter (`type: analysis`), the question, a timestamp, `insufficient_evidence`, claim/citation counts, structured claims/provider citations when available, provider status diagnostics, and backlinks to cited source chunks. Blank answers are refused rather than saved. Saved analysis pages are indexed for top-level `kb find` and appear in `wiki/index.md` immediately, but `kb legacy find` and later legacy ask runs stay source-only so saved answers are not recursively cited as primary evidence. Repeated saves use unique `wiki/log.md` headings so lint does not treat a rerun as a duplicate-heading issue.
+Use `--save` or `--save-as` to persist the answer as a markdown analysis page in `wiki/analysis/` with YAML frontmatter (`type: analysis`), the question, a timestamp, `insufficient_evidence`, claim/citation counts, structured claims/provider citations when available, provider status diagnostics, and backlinks to cited source chunks. Blank answers are refused rather than saved. Saved analysis pages are indexed for top-level `kb find` and appear in `wiki/index.md` immediately, but `kb find --engine legacy` and later legacy ask runs stay source-only so saved answers are not recursively cited as primary evidence. Repeated saves use unique `wiki/log.md` headings so lint does not treat a rerun as a duplicate-heading issue.
 
 ### `kb lint`
 
@@ -635,12 +640,12 @@ as "Skip to content" from becoming the durable source title after OCR.
 
 ## Provider Configuration
 
-`kb update`, `kb legacy ask`, and `kb review` require a configured provider
+`kb update`, `kb ask --engine legacy`, and `kb review` require a configured provider
 for legacy compile/review work. `kb update --graph-only` can refresh GraphRAG
 without the legacy text-provider section when the GraphRAG provider credentials
 are available.
 If the provider is missing, those commands fail with a configuration error.
-`kb legacy ask` and `kb review` fail on provider execution errors; `kb update`
+`kb ask --engine legacy` and `kb review` fail on provider execution errors; `kb update`
 keeps deterministic fallbacks for compile summaries and concept clustering after
 a provider call failure. During a normal `kb update`, missing GraphRAG credentials
 skip graph indexing with an explicit warning after the wiki compile finishes.
@@ -650,7 +655,7 @@ sync/index/export failures are hard failures by default; use
 refresh to finish while graph work is reported as a warning.
 
 Provider responses carry the returned text plus model/provider diagnostics such
-as finish reason and token counts when the SDK exposes them. Saved `kb legacy ask`
+as finish reason and token counts when the SDK exposes them. Saved `kb ask --engine legacy`
 analysis pages persist those parsed/validated diagnostics under `provider_status`
 when the answer comes from a provider. Structured provider
 outputs are parsed through the shared JSON parser, which accepts direct JSON,
@@ -789,7 +794,7 @@ legacy fallback path. OpenAI response storage is disabled by default through
 `providers.openai.store_responses: false`; set it to `true` only when you
 explicitly want provider-side response retention for your account.
 
-The `graph` section controls GraphRAG runtime setup independently from the text-provider section used by `kb update`, `kb review`, and `kb legacy ask`, but it does not duplicate API keys by default. `api_key_env: null` means "resolve this from `providers.<graph.provider>.api_key_env`"; `embedding_api_key_env: null` does the same for `providers.<graph.embedding_provider>.api_key_env`. `graph.chunking`, `graph.extraction`, and `graph.input.max_source_bytes` are CLI-managed GraphRAG settings; the default entity taxonomy is tuned for technical and research corpora rather than person/place/news corpora. Run `kb init` after editing it to refresh the managed provider/model/API-key/chunking/extraction/input fields in `graph/graphrag/settings.yaml`; `kb update` also syncs those managed fields before deciding whether model or prompt changes require a rebuild while preserving unrelated GraphRAG tuning in the workspace settings file.
+The `graph` section controls GraphRAG runtime setup independently from the text-provider section used by `kb update`, `kb review`, and `kb ask --engine legacy`, but it does not duplicate API keys by default. `api_key_env: null` means "resolve this from `providers.<graph.provider>.api_key_env`"; `embedding_api_key_env: null` does the same for `providers.<graph.embedding_provider>.api_key_env`. `graph.chunking`, `graph.extraction`, and `graph.input.max_source_bytes` are CLI-managed GraphRAG settings; the default entity taxonomy is tuned for technical and research corpora rather than person/place/news corpora. Run `kb init` after editing it to refresh the managed provider/model/API-key/chunking/extraction/input fields in `graph/graphrag/settings.yaml`; `kb update` also syncs those managed fields before deciding whether model or prompt changes require a rebuild while preserving unrelated GraphRAG tuning in the workspace settings file.
 
 OpenAI and Google Gemini both expose embedding models that can be configured for GraphRAG. Anthropic does not currently provide its own embedding model; Anthropic's embedding guidance points users to Voyage AI instead. GraphRAG uses LiteLLM underneath and supports non-OpenAI providers, but its own docs say OpenAI GPT-4-series models remain the most thoroughly tested path.
 
@@ -798,7 +803,7 @@ OpenAI and Google Gemini both expose embedding models that can be configured for
 You can also override the provider per-invocation without editing the config file:
 
 ```bash
-kb --provider anthropic legacy ask "How does REALM differ from RAG?"
+kb --provider anthropic ask --engine legacy "How does REALM differ from RAG?"
 kb --provider gemini review
 ```
 
@@ -819,12 +824,12 @@ See the official model documentation for the full list of available models, pric
 - **Anthropic:** [docs.anthropic.com/en/docs/about-claude/models](https://docs.anthropic.com/en/docs/about-claude/models)
 - **Google Gemini:** [ai.google.dev/gemini-api/docs/models](https://ai.google.dev/gemini-api/docs/models)
 
-If the provider is not configured, `kb update`, `kb legacy ask`, and `kb review`
+If the provider is not configured, `kb update`, `kb ask --engine legacy`, and `kb review`
 fail with a configuration error. If the provider is configured but the API key
 is missing, those commands fail before provider-backed work begins. Provider
 calls retry transient failures (rate limits, timeouts, server errors)
 automatically with exponential backoff and jitter; after retries are exhausted,
-`kb legacy ask` and `kb review` fail while `kb update` can fall back for summaries and
+`kb ask --engine legacy` and `kb review` fail while `kb update` can fall back for summaries and
 concept clustering.
 
 ### Windows and Corporate TLS
