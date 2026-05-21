@@ -469,6 +469,26 @@ def test_context_builder_drift_lite_returns_subquestions(test_project) -> None:
     assert subs  # At least one sub-question generated
 
 
+def test_query_engine_auto_routes_by_question_intent(test_project) -> None:
+    engine = _build_engine(test_project)
+
+    comparison = engine.find("How does REALM differ from RAG?", method="auto")
+    global_query = engine.find(
+        "What are the main themes across the corpus?", method="auto"
+    )
+    local_query = engine.find("What does REALM do?", method="auto")
+    basic_query = engine.find("purple bananas", method="auto")
+
+    assert comparison.method == "drift-lite"
+    assert "auto-selected drift-lite" in comparison.diagnostics
+    assert global_query.method == "global"
+    assert "auto-selected global" in global_query.diagnostics
+    assert local_query.method == "local"
+    assert "auto-selected local" in local_query.diagnostics
+    assert basic_query.method == "basic"
+    assert "auto-selected basic" in basic_query.diagnostics
+
+
 def test_models_default_warnings_lists() -> None:
     answer = WikiGraphAnswer(method="basic", question="x", answer="y")
     assert answer.warnings == []

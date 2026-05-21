@@ -14,6 +14,30 @@ from graphwiki_kb.wikigraph.models import (
     WikiGraphIndex,
 )
 
+_WIKIGRAPH_GLOBAL_KEYWORDS = (
+    "main theme",
+    "main themes",
+    "overall",
+    "across",
+    "patterns",
+    "landscape",
+    "whole corpus",
+)
+_WIKIGRAPH_DRIFT_KEYWORDS = (
+    "compare",
+    "differ",
+    "difference",
+    "tradeoff",
+    "trade-off",
+    "relate",
+    "related to",
+    "relationship",
+    "relationship between",
+    " versus ",
+    " vs ",
+    "contrast",
+)
+
 
 @dataclass
 class WikiGraphQueryEngine:
@@ -35,14 +59,24 @@ class WikiGraphQueryEngine:
     ) -> WikiGraphFindResult:
         """Retrieve contexts for ``question`` using ``method``.
 
-        ``method="auto"`` picks ``local`` when at least one entity matches the
-        question, otherwise ``basic`` when no entities are found.
+        ``method="auto"`` mirrors the GraphRAG router intent classes:
+        comparison questions use ``drift-lite``, corpus/theme questions use
+        ``global``, entity matches use ``local``, and unmatched questions fall
+        back to ``basic``.
         """
         chosen_method: QueryMethod = method
         diagnostics: list[str] = []
         if method == "auto":
             auto_seed_entities = self._builder._match_entities(question)
-            chosen_method = "local" if auto_seed_entities else "basic"
+            normalized_question = f" {question.casefold()} "
+            if _matched_keywords(_WIKIGRAPH_DRIFT_KEYWORDS, normalized_question):
+                chosen_method = "drift-lite"
+            elif _matched_keywords(_WIKIGRAPH_GLOBAL_KEYWORDS, normalized_question):
+                chosen_method = "global"
+            elif auto_seed_entities:
+                chosen_method = "local"
+            else:
+                chosen_method = "basic"
             diagnostics.append(f"auto-selected {chosen_method}")
         if chosen_method == "basic":
             contexts = self._builder.basic_search(question)
@@ -108,3 +142,8 @@ class WikiGraphQueryEngine:
                 diagnostics=diagnostics,
             )
         raise ValueError(f"Unknown wikigraph method: {method}")
+
+
+def _matched_keywords(keywords: tuple[str, ...], normalized_question: str) -> bool:
+    """Return true when any routing keyword appears in the normalized query."""
+    return any(keyword in normalized_question for keyword in keywords)
