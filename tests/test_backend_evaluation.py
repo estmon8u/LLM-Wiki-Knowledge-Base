@@ -495,39 +495,34 @@ def test_matched_source_ids_multiword_substring_still_works() -> None:
     assert "Fusion-in-Decoder" in matches and "Dense Passage Retrieval" in matches
 
 
-def test_graphrag_runner_retrieve_includes_snippet_in_haystack(monkeypatch) -> None:
+def test_graphrag_runner_retrieve_includes_snippet_in_haystack() -> None:
     """G1: GraphRAGRunner.retrieve must populate retrieved_text_snippets."""
-    from graphwiki_kb.models.wiki_models import SearchResult
     from scripts.backend_evaluation_lib import (
         GraphRAGRunner,
         matched_source_ids,
     )
+    from scripts.graphrag_artifact_retriever import GraphRAGArtifactResult
 
-    class _FakeFindService:
+    class _FakeArtifactRetriever:
         def search(self, query, limit):
             return [
-                SearchResult(
-                    title="some-other-entity",
-                    path="graph://entities/x",
-                    score=1.0,
+                GraphRAGArtifactResult(
+                    kind="text_units",
+                    title="text_unit 42",
+                    path="graph://text_units/42",
                     snippet="REALM jointly trains the retriever and the LM.",
-                    section="GraphRAG Entity",
-                    chunk_index=None,
+                    score=10.0,
+                    source_ids=(),
                 )
             ]
 
-    class _StubContext:
-        class services:
-            class graphrag_find:
-                pass
-
-        graphrag_find = _FakeFindService()
-
     runner = GraphRAGRunner.__new__(GraphRAGRunner)
-    runner.context = _StubContext()
+    runner.context = None  # type: ignore[assignment]
     runner.method = "auto"
-    runner.find_service = _FakeFindService()
+    runner.retrieve_mode = "text_units"
+    runner.find_service = None  # type: ignore[assignment]
     runner.ask_controller = None  # type: ignore[assignment]
+    runner.artifact_retriever = _FakeArtifactRetriever()
     runner.name = "graphrag"
 
     question = BenchmarkQuestion(

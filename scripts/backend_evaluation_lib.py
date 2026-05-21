@@ -269,32 +269,50 @@ class GraphRAGRunner:
 
     name = "graphrag"
 
-    def __init__(self, context: CommandContext, *, method: str = "auto") -> None:
+    def __init__(
+        self,
+        context: CommandContext,
+        *,
+        method: str = "auto",
+        retrieve_mode: str = "text_units",
+    ) -> None:
         self.context = context
         self.method = method
+        self.retrieve_mode = retrieve_mode
         self.find_service = context.services.graphrag_find
         self.ask_controller = context.services.graph_ask_controller
+        # Lazy import to keep WikiGraphRunner-only callers fast.
+        from scripts.graphrag_artifact_retriever import GraphRAGArtifactRetriever
+
+        self.artifact_retriever = GraphRAGArtifactRetriever(
+            context.services.graphrag_status,
+            mode=retrieve_mode,
+        )
 
     def retrieve(self, question: BenchmarkQuestion) -> RetrievalRun:
-        """Execute provider-free retrieval via the GraphRAG find service."""
+        """Execute provider-free retrieval over GraphRAG output parquets.
+
+        Phase 3 (apples-to-apples): switches from the entity/relationship
+        artifact-directory search to the full GraphRAG retrieval surface
+        (text_units + community_reports + entities + relationships).
+        """
         start = time.perf_counter()
         try:
-            results = self.find_service.search(question.question, limit=8)
+            results = self.artifact_retriever.search(question.question, limit=8)
             elapsed = time.perf_counter() - start
             return RetrievalRun(
                 backend=self.name,
-                method="find",
+                method=self.retrieve_mode,
                 question_id=question.id,
                 question=question.question,
                 retrieved_titles=[r.title for r in results],
-                retrieved_paths=[str(r.path) for r in results],
-                retrieved_source_ids=[],
-                # G1 fix: include the entity/relationship description in
-                # the haystack so source matching is symmetric with the
-                # WikiGraphRAG/Legacy runners. Without this, GraphRAG
-                # could only score on title/path matches.
-                retrieved_text_snippets=[(r.snippet or "")[:600] for r in results],
-                chosen_method="find",
+                retrieved_paths=[r.path for r in results],
+                retrieved_source_ids=[sid for r in results for sid in r.source_ids],
+                # G1 fix: include the body text of each retrieved
+                # artifact so source-name matching is symmetric with
+                # WikiGraphRAG.
+                retrieved_text_snippets=[r.snippet[:600] for r in results],
+                chosen_method=self.retrieve_mode,
                 latency_seconds=elapsed,
             )
         except Exception as exc:

@@ -97,6 +97,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Methods to evaluate against the Microsoft GraphRAG backend.",
     )
     parser.add_argument(
+        "--graphrag-retrieve-mode",
+        choices=["text_units", "artifact", "both"],
+        default="text_units",
+        help=(
+            "Which GraphRAG output tables to score retrieval against. "
+            "'text_units' (default) reads text_units + community_reports + "
+            "entities + relationships for an apples-to-apples comparison with "
+            "WikiGraphRAG; 'artifact' preserves the legacy "
+            "entity/relationship-only scan; 'both' mixes by score."
+        ),
+    )
+    parser.add_argument(
         "--retrieval-only",
         action="store_true",
         help="Skip provider-backed answer evaluation.",
@@ -150,6 +162,7 @@ def main() -> int:
         "backends": list(args.backends),
         "wikigraph_methods": list(args.wikigraph_methods),
         "graphrag_methods": list(args.graphrag_methods),
+        "graphrag_retrieve_mode": args.graphrag_retrieve_mode,
         "allow_provider_calls": bool(args.allow_provider_calls),
         "retrieval_only": bool(args.retrieval_only),
         "results": {"retrieval": [], "answers": []},
@@ -161,7 +174,13 @@ def main() -> int:
             backends.append(WikiGraphRunner(context=context, method=method))
     if "graphrag" in args.backends:
         for method in args.graphrag_methods:
-            backends.append(GraphRAGRunner(context=context, method=method))
+            backends.append(
+                GraphRAGRunner(
+                    context=context,
+                    method=method,
+                    retrieve_mode=args.graphrag_retrieve_mode,
+                )
+            )
     if "legacy" in args.backends:
         backends.append(LegacyRunner(context=context))
 
