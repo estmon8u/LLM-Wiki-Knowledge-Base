@@ -775,11 +775,11 @@ def write_summary_markdown(
         lines.append("## Answer metrics (per backend, averaged)")
         lines.append("")
         lines.append(
-            "| Backend | Method | Quality Score | Grounded Entity Rate | "
-            "Avg Citations | Insufficient-Evidence Match | "
-            "Citation Ref Valid Rate |"
+            "| Backend | Method | Provider Modes | Quality Score | "
+            "Grounded Entity Rate | Grounded Term Rate | Avg Citations | "
+            "Insufficient-Evidence Match | Citation Ref Valid Rate |"
         )
-        lines.append("|---|---|---|---|---|---|---|")
+        lines.append("|---|---|---|---|---|---|---|---|---|")
         per_backend: dict[tuple[str, str], list[dict[str, Any]]] = {}
         for row in answer_rows:
             per_backend.setdefault((row["backend"], row["method"]), []).append(row)
@@ -789,6 +789,9 @@ def write_summary_markdown(
             ) / len(rows)
             grounded_entity_rate = sum(
                 float(row.get("grounded_entity_rate", 0) or 0) for row in rows
+            ) / len(rows)
+            grounded_term_rate = sum(
+                float(row.get("grounded_answer_term_rate", 0) or 0) for row in rows
             ) / len(rows)
             citations = sum(
                 int(row.get("citation_count", 0) or 0) for row in rows
@@ -801,9 +804,13 @@ def write_summary_markdown(
             ref_valid = sum(
                 float(row.get("citation_ref_valid_rate", 0) or 0) for row in rows
             ) / len(rows)
+            provider_modes = ", ".join(
+                sorted({str(row.get("provider_mode") or "unknown") for row in rows})
+            )
             lines.append(
-                f"| {backend} | {method} | **{quality:.3f}** | "
-                f"{grounded_entity_rate:.3f} | "
+                f"| {backend} | {method} | {provider_modes} | "
+                f"**{quality:.3f}** | "
+                f"{grounded_entity_rate:.3f} | {grounded_term_rate:.3f} | "
                 f"{citations:.2f} | {match_rate:.2f} | "
                 f"{ref_valid:.3f} |"
             )

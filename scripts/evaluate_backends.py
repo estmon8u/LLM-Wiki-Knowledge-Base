@@ -3,18 +3,21 @@
 This driver runs benchmark questions against any subset of:
 
 * ``legacy``    -- the deprecated SQLite FTS5 path
+* ``graphrag``  -- Microsoft GraphRAG through ``kb ask --engine graphrag``
 * ``wikigraph`` -- the custom WikiGraphRAG backend
 
-By default it only runs **retrieval** (provider-free) so it can execute in
-CI without API keys. Provider-backed answer generation is opt-in via
-``--allow-provider-calls``.
+By default it compares WikiGraphRAG and GraphRAG retrieval. Provider-backed
+answer generation is opt-in via ``--allow-provider-calls``; provider-free
+WikiGraphRAG answer rows are marked as such and should not be treated as
+like-for-like answer wins over skipped GraphRAG rows.
 
 Sample invocations::
 
     poetry run python scripts/evaluate_backends.py --retrieval-only
     poetry run python scripts/evaluate_backends.py --retrieval-only \\
-        --backends wikigraph --wikigraph-methods basic local global drift-lite
-    poetry run python scripts/evaluate_backends.py --allow-provider-calls
+        --backends wikigraph graphrag legacy
+    poetry run python scripts/evaluate_backends.py --backends wikigraph graphrag \\
+        --allow-provider-calls
 """
 
 from __future__ import annotations
@@ -52,8 +55,8 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the argument parser."""
     parser = argparse.ArgumentParser(
         description=(
-            "Run benchmark questions through legacy and/or wikigraph backends "
-            "and write retrieval/answer metrics."
+            "Run benchmark questions through WikiGraphRAG, Microsoft GraphRAG, "
+            "and/or legacy FTS backends and write retrieval/answer metrics."
         )
     )
     parser.add_argument(
@@ -78,7 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--backends",
         nargs="+",
         choices=["legacy", "graphrag", "wikigraph"],
-        default=["wikigraph"],
+        default=["wikigraph", "graphrag"],
         help="Subset of backends to evaluate.",
     )
     parser.add_argument(
@@ -146,6 +149,9 @@ def main() -> int:
         "benchmark": str(args.benchmark),
         "backends": list(args.backends),
         "wikigraph_methods": list(args.wikigraph_methods),
+        "graphrag_methods": list(args.graphrag_methods),
+        "allow_provider_calls": bool(args.allow_provider_calls),
+        "retrieval_only": bool(args.retrieval_only),
         "results": {"retrieval": [], "answers": []},
     }
 
