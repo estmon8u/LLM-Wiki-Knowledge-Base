@@ -190,6 +190,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "max_context_tokens": 8000,
         "chunk_char_limit": 1200,
         "fuzzy_entity_match_threshold": 88,
+        "retrieval_improvements_enabled": True,
+        "rrf_k": 60,
+        "alias_query_token_budget": 16,
+        "section_title_overlap_boost": 0.10,
         "export_generated_artifacts": False,
         "export_text_unit_artifacts": False,
     },
@@ -876,6 +880,12 @@ class _WikiGraphConfig(BaseModel):
     max_context_tokens: StrictInt = Field(default=8000, ge=500, le=32000)
     chunk_char_limit: StrictInt = Field(default=1200, ge=200, le=5000)
     fuzzy_entity_match_threshold: StrictInt = Field(default=88, ge=50, le=100)
+    # Phase 4 retrieval improvements toggle. Enabled by default;
+    # baseline-vs-improved ablation flips this to False.
+    retrieval_improvements_enabled: StrictBool = True
+    rrf_k: StrictInt = Field(default=60, ge=1, le=1000)
+    alias_query_token_budget: StrictInt = Field(default=16, ge=0, le=256)
+    section_title_overlap_boost: float = Field(default=0.10, ge=0.0, le=2.0)
     export_generated_artifacts: StrictBool = False
     export_text_unit_artifacts: StrictBool = False
 
@@ -899,6 +909,10 @@ class WikiGraphRuntimeConfig:
     max_context_tokens: int
     chunk_char_limit: int
     fuzzy_entity_match_threshold: int
+    retrieval_improvements_enabled: bool
+    rrf_k: int
+    alias_query_token_budget: int
+    section_title_overlap_boost: float
     export_generated_artifacts: bool
     export_text_unit_artifacts: bool
 
@@ -1027,6 +1041,12 @@ def resolve_wikigraph_config(config: dict[str, Any]) -> WikiGraphRuntimeConfig:
         max_context_tokens=int(validated["max_context_tokens"]),
         chunk_char_limit=int(validated["chunk_char_limit"]),
         fuzzy_entity_match_threshold=int(validated["fuzzy_entity_match_threshold"]),
+        retrieval_improvements_enabled=bool(
+            validated["retrieval_improvements_enabled"]
+        ),
+        rrf_k=int(validated["rrf_k"]),
+        alias_query_token_budget=int(validated["alias_query_token_budget"]),
+        section_title_overlap_boost=float(validated["section_title_overlap_boost"]),
         export_generated_artifacts=bool(validated["export_generated_artifacts"]),
         export_text_unit_artifacts=bool(validated["export_text_unit_artifacts"]),
     )

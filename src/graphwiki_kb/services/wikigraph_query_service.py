@@ -52,6 +52,10 @@ class WikiGraphQueryService:
             max_hops=runtime.max_hops,
             fuzzy_entity_match_threshold=runtime.fuzzy_entity_match_threshold,
             lexical_backend=runtime.lexical_backend,
+            retrieval_improvements_enabled=runtime.retrieval_improvements_enabled,
+            rrf_k=runtime.rrf_k,
+            alias_query_token_budget=runtime.alias_query_token_budget,
+            section_title_overlap_boost=runtime.section_title_overlap_boost,
         )
 
     def _ensure_engine(self) -> WikiGraphQueryEngine:

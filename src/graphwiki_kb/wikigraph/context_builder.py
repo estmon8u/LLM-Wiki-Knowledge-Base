@@ -25,6 +25,9 @@ from graphwiki_kb.wikigraph.lexical_index import (
     LexicalDocument,
     LexicalIndex,
 )
+from graphwiki_kb.wikigraph.lexical_index import (
+    tokenize as _tokenize_for_boost,
+)
 from graphwiki_kb.wikigraph.models import (
     EVIDENCE_NODE_KINDS,
     WikiGraphIndex,
@@ -42,6 +45,19 @@ class ContextBuilderConfig:
     max_hops: int = 2
     fuzzy_entity_match_threshold: int = 82
     lexical_backend: str = "bm25s"
+    # Phase 4 — retrieval improvements (enabled by default; flip off
+    # for the baseline ablation row by setting
+    # ``retrieval_improvements_enabled=False``).
+    retrieval_improvements_enabled: bool = True
+    # RRF constant: standard Cormack et al. 2009 value.
+    rrf_k: int = 60
+    # Cap on alias tokens appended to a BM25 query during alias-aware
+    # query expansion; tuned to keep BM25 from overweighting alias spam.
+    alias_query_token_budget: int = 16
+    # Per-hit score nudge when at least one query token also appears in
+    # the chunk's section title. Kept small (additive) so it cannot
+    # upend a clearly-better-ranked chunk.
+    section_title_overlap_boost: float = 0.10
 
 
 class WikiGraphContextBuilder:
@@ -75,6 +91,13 @@ class WikiGraphContextBuilder:
         consistently shows up alongside the LLM-summarized wiki chunks
         when the question is body-content-heavy. The nudge is small
         (15%) so it cannot upend a clearly-better wiki chunk.
+
+        Phase 4: when ``retrieval_improvements_enabled`` is true, chunks
+        whose ``section`` title shares one or more non-stopword tokens
+        with the question receive a small additive boost
+        (``section_title_overlap_boost``). Helps surface section-anchor
+        evidence (e.g. the "Methods" section of a paper) on
+        method-specific questions.
         """
         if limit is None:
             limit = self.config.max_context_chunks
@@ -82,27 +105,65 @@ class WikiGraphContextBuilder:
         # Promote TextUnit hits slightly; keeps the comparison fair
         # without making them dominate purely on volume.
         nudged: list = []
+        question_tokens = set(_tokenize_for_boost(question))
         for hit in hits:
             node = self._nodes_by_id.get(hit.doc_id)
-            if node is not None and node.kind == "text_unit":
-                from dataclasses import replace
-
-                nudged.append(replace(hit, score=hit.score * 1.15))
-            else:
+            if node is None:
                 nudged.append(hit)
+                continue
+            from dataclasses import replace
+
+            new_score = hit.score
+            if node.kind == "text_unit":
+                new_score *= 1.15
+            if self.config.retrieval_improvements_enabled:
+                new_score += self._section_boost(node, question_tokens)
+            nudged.append(replace(hit, score=new_score))
         nudged.sort(key=lambda h: h.score, reverse=True)
         contexts = self._hits_to_contexts(nudged, base_trace=["basic"])
         return self._enforce_token_budget(contexts[:limit])
 
+    def _section_boost(self, node: WikiGraphNode, question_tokens: set[str]) -> float:
+        """Return an additive boost when the node's section overlaps the question."""
+        if not self.config.retrieval_improvements_enabled:
+            return 0.0
+        if not question_tokens:
+            return 0.0
+        section_text = ""
+        if node.metadata and isinstance(node.metadata.get("section"), str):
+            section_text = node.metadata["section"]
+        if not section_text:
+            return 0.0
+        section_tokens = set(_tokenize_for_boost(section_text))
+        if not section_tokens:
+            return 0.0
+        if section_tokens & question_tokens:
+            return float(self.config.section_title_overlap_boost)
+        return 0.0
+
     def local_search(
         self, question: str, *, limit: int | None = None
     ) -> tuple[list[WikiGraphRetrievedContext], list[str]]:
-        """Entity-centered retrieval with 1-2 hop expansion."""
+        """Entity-centered retrieval with 1-2 hop expansion.
+
+        Phase 4 (``retrieval_improvements_enabled``):
+
+        * **Reciprocal-rank fusion** across three ranked lists --
+          entity-hop expansion, BM25 over the bare question, and BM25
+          over the question augmented with seed-entity titles+aliases.
+          RRF (Cormack et al., 2009) is robust to score-scale
+          differences across the three signals.
+        * **Alias-aware query expansion**: BM25 query is rewritten to
+          include matched entity titles and aliases. Surfaces text
+          units that mention the spelled-out form when the question
+          uses the acronym (and vice-versa).
+        """
         if limit is None:
             limit = self.config.max_context_chunks
         seed_entities = self._match_entities(question)
         if not seed_entities:
             return self.basic_search(question, limit=limit), []
+
         expanded_chunks: dict[str, tuple[float, list[str]]] = {}
         seed_titles: list[str] = []
         for entity_node in seed_entities:
@@ -150,25 +211,96 @@ class WikiGraphContextBuilder:
                         score * 0.9,
                         [f"local:{entity_node.title}->claim"],
                     )
-        lex_hits = self._lexical.search(question, limit=limit * 2)
-        for hit in lex_hits:
-            _record_score(
-                expanded_chunks, hit.doc_id, hit.score * 0.5, ["local:bm25-boost"]
+
+        improvements = self.config.retrieval_improvements_enabled
+        if improvements:
+            # Reciprocal-rank fusion across three signals.
+            entity_hop_order = [
+                node_id
+                for node_id, _ in sorted(
+                    expanded_chunks.items(), key=lambda item: item[1][0], reverse=True
+                )
+            ]
+            bm25_hits = self._lexical.search(question, limit=limit * 3)
+            bm25_order = [hit.doc_id for hit in bm25_hits]
+            expanded_query = self._expand_query_with_aliases(question, seed_entities)
+            alias_hits = (
+                self._lexical.search(expanded_query, limit=limit * 3)
+                if expanded_query != question
+                else bm25_hits
             )
-        ranked = sorted(
-            expanded_chunks.items(), key=lambda item: item[1][0], reverse=True
-        )
+            alias_order = [hit.doc_id for hit in alias_hits]
+            fused = _reciprocal_rank_fusion(
+                [entity_hop_order, bm25_order, alias_order],
+                k=self.config.rrf_k,
+            )
+            # Carry over entity-hop trace where present; fall back to a
+            # generic RRF trace.
+            ranked_ids: list[tuple[str, float, list[str]]] = []
+            for node_id, fusion_score in fused:
+                trace = expanded_chunks.get(node_id, (0.0, []))[1]
+                if not trace:
+                    trace = [
+                        (
+                            "local:rrf-bm25"
+                            if node_id in set(bm25_order)
+                            else "local:rrf-alias"
+                        )
+                    ]
+                ranked_ids.append((node_id, fusion_score, trace))
+        else:
+            # Pre-Phase-4 behavior: simple weighted BM25 boost.
+            lex_hits = self._lexical.search(question, limit=limit * 2)
+            for hit in lex_hits:
+                _record_score(
+                    expanded_chunks, hit.doc_id, hit.score * 0.5, ["local:bm25-boost"]
+                )
+            ranked = sorted(
+                expanded_chunks.items(), key=lambda item: item[1][0], reverse=True
+            )
+            ranked_ids = [(node_id, score, trace) for node_id, (score, trace) in ranked]
+
+        question_tokens = set(_tokenize_for_boost(question))
         contexts: list[WikiGraphRetrievedContext] = []
-        for node_id, (score, trace) in ranked:
+        for node_id, score, trace in ranked_ids:
             node = self._nodes_by_id.get(node_id)
             if node is None:
                 continue
             if node.kind not in EVIDENCE_NODE_KINDS:
                 continue
-            contexts.append(self._node_to_context(node, score=score, trace=trace))
+            adjusted_score = score + self._section_boost(node, question_tokens)
+            contexts.append(
+                self._node_to_context(node, score=adjusted_score, trace=trace)
+            )
             if len(contexts) >= limit:
                 break
         return self._enforce_token_budget(contexts), seed_titles
+
+    def _expand_query_with_aliases(
+        self,
+        question: str,
+        seed_entities: list[WikiGraphNode],
+    ) -> str:
+        """Append entity title + aliases to ``question`` for BM25 expansion."""
+        if not seed_entities:
+            return question
+        budget = max(0, int(self.config.alias_query_token_budget))
+        if budget <= 0:
+            return question
+        alias_terms: list[str] = []
+        for entity in seed_entities:
+            for candidate in [entity.title, *entity.aliases]:
+                if candidate and candidate not in alias_terms:
+                    alias_terms.append(candidate)
+        if not alias_terms:
+            return question
+        alias_blob = " ".join(alias_terms)
+        # Token-budget the alias blob so we do not flood BM25.
+        tokens = _tokenize_for_boost(alias_blob)
+        if not tokens:
+            return question
+        capped = tokens[:budget]
+        return f"{question} {' '.join(capped)}"
 
     def global_search(
         self, question: str, *, limit: int | None = None
@@ -237,30 +369,71 @@ class WikiGraphContextBuilder:
     def drift_lite(
         self, question: str, *, limit: int | None = None
     ) -> tuple[list[WikiGraphRetrievedContext], list[str], list[str]]:
-        """Local search expanded by deterministic sub-questions."""
+        """Local search expanded by deterministic sub-questions.
+
+        Phase 4: when ``retrieval_improvements_enabled`` is true the
+        sub-question bundles are fused via reciprocal-rank fusion
+        instead of the first-write-wins dict merge, so sub-questions
+        contribute to ranking instead of only filling tail slots.
+        """
         if limit is None:
             limit = self.config.max_context_chunks
         local_contexts, seed_entities = self.local_search(
             question, limit=max(limit // 2, 3)
         )
         sub_questions = self._derive_sub_questions(question, seed_entities)
-        combined: dict[str, WikiGraphRetrievedContext] = {
+        if not self.config.retrieval_improvements_enabled or not sub_questions:
+            combined: dict[str, WikiGraphRetrievedContext] = {
+                ctx.node_id: ctx for ctx in local_contexts
+            }
+            for sub_question in sub_questions:
+                sub_contexts, _ = self.local_search(sub_question, limit=3)
+                for ctx in sub_contexts:
+                    if ctx.node_id in combined:
+                        continue
+                    combined[ctx.node_id] = ctx.model_copy(
+                        update={"trace": [*ctx.trace, f"drift:sub={sub_question}"]}
+                    )
+                    if len(combined) >= limit:
+                        break
+                if len(combined) >= limit:
+                    break
+            return (
+                self._enforce_token_budget(list(combined.values())[:limit]),
+                seed_entities,
+                sub_questions,
+            )
+
+        # RRF over the main local result + each sub-question's local
+        # result. Highest fusion score wins regardless of which bundle
+        # surfaced it first.
+        bundles: list[list[str]] = [[ctx.node_id for ctx in local_contexts]]
+        contexts_by_id: dict[str, WikiGraphRetrievedContext] = {
             ctx.node_id: ctx for ctx in local_contexts
         }
         for sub_question in sub_questions:
             sub_contexts, _ = self.local_search(sub_question, limit=3)
+            bundles.append([ctx.node_id for ctx in sub_contexts])
             for ctx in sub_contexts:
-                if ctx.node_id in combined:
+                if ctx.node_id in contexts_by_id:
                     continue
-                combined[ctx.node_id] = ctx.model_copy(
+                contexts_by_id[ctx.node_id] = ctx.model_copy(
                     update={"trace": [*ctx.trace, f"drift:sub={sub_question}"]}
                 )
-                if len(combined) >= limit:
-                    break
-            if len(combined) >= limit:
+
+        fused = _reciprocal_rank_fusion(bundles, k=self.config.rrf_k)
+        ordered: list[WikiGraphRetrievedContext] = []
+        for node_id, fusion_score in fused:
+            ctx = contexts_by_id.get(node_id)
+            if ctx is None:
+                continue
+            ordered.append(
+                ctx.model_copy(update={"score": float(ctx.score) + fusion_score})
+            )
+            if len(ordered) >= limit:
                 break
         return (
-            self._enforce_token_budget(list(combined.values())[:limit]),
+            self._enforce_token_budget(ordered),
             seed_entities,
             sub_questions,
         )
@@ -561,6 +734,26 @@ def _record_score(
         if entry not in merged_trace:
             merged_trace.append(entry)
     scores[node_id] = (current_score + score, merged_trace)
+
+
+def _reciprocal_rank_fusion(
+    bundles: list[list[str]],
+    *,
+    k: int = 60,
+) -> list[tuple[str, float]]:
+    """Fuse ranked id lists using reciprocal-rank fusion (Cormack et al. 2009).
+
+    Each id earns ``1 / (k + rank)`` per bundle it appears in, summed
+    across bundles. The output is ``(id, score)`` pairs sorted by
+    score (highest first). Empty bundles are ignored. The ``k=60``
+    default is the original paper value and is also what most modern
+    RAG stacks use.
+    """
+    scores: dict[str, float] = {}
+    for bundle in bundles:
+        for rank, node_id in enumerate(bundle, start=1):
+            scores[node_id] = scores.get(node_id, 0.0) + 1.0 / (k + rank)
+    return sorted(scores.items(), key=lambda item: item[1], reverse=True)
 
 
 def merge_contexts(
