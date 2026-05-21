@@ -211,6 +211,10 @@ def _record_result(
     record: dict[str, Any],
     terms: list[str],
 ) -> GraphRAGArtifactResult | None:
+    # Snippet cap of 4000 chars matches the WikiGraphRAG path so
+    # source-name matching is symmetric across backends; word-boundary
+    # matching prevents false positives like "fid" matching "modified".
+    snippet_cap = 4000
     if table_name == "text_units":
         text = _first_text(record, "text")
         if not text:
@@ -218,7 +222,7 @@ def _record_result(
         artifact_id = _first_text(record, "human_readable_id", "id") or "text_unit"
         title = f"text_unit {artifact_id}"
         path = f"graph://text_units/{artifact_id}"
-        snippet = text[:600]
+        snippet = text[:snippet_cap]
         searchable = text.casefold()
         source_ids = _tuple_of_strings(record.get("document_ids"))
     elif table_name == "community_reports":
@@ -230,7 +234,7 @@ def _record_result(
             return None
         artifact_id = _first_text(record, "human_readable_id", "id") or "community"
         path = f"graph://community_reports/{artifact_id}"
-        snippet = (summary or title)[:600]
+        snippet = (summary or title)[:snippet_cap]
         searchable = _join_text(title, summary).casefold()
         source_ids = ()
     elif table_name == "entities":
@@ -238,7 +242,7 @@ def _record_result(
         description = _first_text(record, "description")
         artifact_id = _first_text(record, "human_readable_id", "id") or "entity"
         path = f"graph://entities/{artifact_id}"
-        snippet = (description or title)[:600]
+        snippet = (description or title)[:snippet_cap]
         searchable = _join_text(
             title,
             description,
@@ -253,7 +257,7 @@ def _record_result(
         description = _first_text(record, "description")
         artifact_id = _first_text(record, "human_readable_id", "id") or "relationship"
         path = f"graph://relationships/{artifact_id}"
-        snippet = (description or title)[:600]
+        snippet = (description or title)[:snippet_cap]
         searchable = _join_text(source_node, target_node, description).casefold()
         source_ids = ()
     else:

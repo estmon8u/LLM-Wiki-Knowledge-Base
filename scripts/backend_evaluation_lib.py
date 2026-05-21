@@ -182,8 +182,13 @@ class WikiGraphRunner:
                 retrieved_titles=[ctx.title for ctx in result.contexts],
                 retrieved_paths=[ctx.path or "" for ctx in result.contexts],
                 retrieved_source_ids=_flatten_source_ids(result),
+                # G3 follow-up: bumped from 600 -> 4000 chars so the
+                # haystack covers the full text of a TextUnit body.
+                # Source-name matching is word-boundary on single
+                # tokens so the larger snippet cannot trigger false
+                # positives like "fid" matching "modified".
                 retrieved_text_snippets=[
-                    (ctx.text or "")[:600] for ctx in result.contexts
+                    (ctx.text or "")[:4000] for ctx in result.contexts
                 ],
                 # Record what the auto router actually chose so the
                 # evaluator can compute method_fit (G9 fix).
@@ -310,8 +315,10 @@ class GraphRAGRunner:
                 retrieved_source_ids=[sid for r in results for sid in r.source_ids],
                 # G1 fix: include the body text of each retrieved
                 # artifact so source-name matching is symmetric with
-                # WikiGraphRAG.
-                retrieved_text_snippets=[r.snippet[:600] for r in results],
+                # WikiGraphRAG. Snippet cap matches the WikiGraphRAG
+                # path (4000 chars) so neither backend gets penalized
+                # for shorter snippets.
+                retrieved_text_snippets=[r.snippet[:4000] for r in results],
                 chosen_method=self.retrieve_mode,
                 latency_seconds=elapsed,
             )

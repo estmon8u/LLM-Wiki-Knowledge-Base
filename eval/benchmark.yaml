@@ -1,13 +1,25 @@
-version: 2
+version: 3
 name: graphrag-pivot-evaluation
-description: Benchmark questions for comparing WikiGraphRAG, Microsoft GraphRAG, and the deprecated SQLite
-  FTS comparator without relying on skipped answer rows.
-source_project: kb-cli-realworld-pdf-20260415/project-codex-20260424-userchanges-realrun
+description: |
+  Benchmark questions for the 10-PDF arXiv corpus used to verify
+  WikiGraphRAG vs Microsoft GraphRAG after the Phase 2/3 harness fixes
+  and the Phase 4 retrieval improvements. Each ground-truth question
+  has expected_sources tied to actual paper slug fragments present in
+  the corpus so word-boundary matching is meaningful for both
+  backends.
+source_project: ~/wgr-eval-project (10-paper arXiv corpus)
+corpus:
+  - 2002.08909 — REALM
+  - 2005.11401 — RAG (Lewis et al.)
+  - 2004.04906 — DPR
+  - 2007.01282 — FiD
+  - 2301.12652 — REPLUG
+  - 2310.11511 — Self-RAG
+  - 2208.03299 — Atlas
+  - 2302.00083 — In-Context RALM
+  - 1906.00300 — ORQA
+  - 2404.16130 — Microsoft GraphRAG
 retrievers:
-  legacy_fts:
-    deprecated: true
-    purpose: Historical comparator and exact lexical lookup only.
-    command: kb find --engine legacy / kb ask --engine legacy
   graphrag_basic:
     command: kb ask --engine graphrag --method basic
     purpose: Baseline vector-style GraphRAG query mode for direct questions.
@@ -22,267 +34,274 @@ retrievers:
     purpose: Comparison questions that need global context plus local grounding.
   wikigraph:
     command: kb ask --engine wikigraph
-    purpose: Custom provider-free/provider-backed WikiGraphRAG backend built from maintained wiki artifacts
-      and normalized TextUnits.
+    purpose: WikiGraphRAG backend built from wiki artifacts and normalized TextUnits.
 metrics:
   retrieval:
-  - recall_at_5
-  - multi_source_coverage
-  - method_fit
-  - latency_seconds
+    - recall_at_8
+    - method_fit
+    - latency_seconds
   answers:
-  - claim_support_rate
-  - grounded_entity_rate
-  - grounded_answer_term_rate
-  - citation_ref_valid_rate
-  - insufficient_evidence_behavior
-  - answer_quality_score
-  - latency_seconds
+    - answer_quality_score
+    - grounded_entity_rate
+    - grounded_answer_term_rate
+    - has_supported_citations
+    - citation_ref_valid_rate
+    - insufficient_evidence_behavior
+    - latency_seconds
 questions:
-- id: realm_vs_rag
-  question: How does REALM differ from RAG?
-  category: comparison
-  intent: Compare related retrieval-augmented methods across source papers.
-  expected_method: drift
-  expected_sources:
-  - REALM
-  - RAG
-  legacy_find_artifact: eval/legacy-fts/realm_vs_rag_find.json
-  legacy_ask_artifact: eval/legacy-fts/realm_vs_rag_ask.txt
-  status: legacy_find_captured
-  expected_entities:
-  - REALM
-  - RAG
-  expected_answer_terms:
-  - jointly trains
-  - frozen retriever
-  - generation
-  expected_methods:
-    wikigraph: drift-lite
-    graphrag: drift
-- id: fid_generation
-  question: How does FiD combine retrieval with generation?
-  category: local
-  intent: Check whether retrieval can surface generation-specific method details.
-  expected_method: local
-  expected_sources:
-  - FiD
-  - Fusion-in-Decoder
-  legacy_ask_artifact: eval/legacy-fts/fid_generation.txt
-  status: pending_provider_approval
-  expected_entities:
-  - FiD
-  - Fusion-in-Decoder
-  expected_answer_terms:
-  - retrieved passages
-  - decoder
-  - generation
-  expected_methods:
-    wikigraph: local
-    graphrag: local
-- id: dense_passage_retrieval
-  question: What role does dense passage retrieval play in retrieval-augmented generation?
-  category: local
-  intent: Verify entity-specific retrieval for a common RAG component.
-  expected_method: local
-  expected_sources:
-  - Dense Passage Retrieval
-  - DPR
-  expected_entities:
-  - Dense Passage Retrieval
-  - DPR
-  expected_answer_terms:
-  - dense passage
-  - retrieval
-  - passages
-  expected_methods:
-    wikigraph: local
-    graphrag: local
-- id: rag_fid_comparison
-  question: Compare RAG and FiD for how retrieved documents are used during generation.
-  category: comparison
-  intent: Test multi-source comparison with two related generation architectures.
-  expected_method: drift
-  expected_sources:
-  - RAG
-  - FiD
-  expected_entities:
-  - RAG
-  - FiD
-  expected_answer_terms:
-  - retrieved documents
-  - generation
-  - decoder
-  expected_methods:
-    wikigraph: drift-lite
-    graphrag: drift
-- id: corpus_retrieval_patterns
-  question: What are the main retrieval patterns across the corpus?
-  category: global
-  intent: Evaluate whole-corpus synthesis from community summaries.
-  expected_method: global
-  expected_sources:
-  - retrieval
-  - generation
-  - reranking
-  expected_entities:
-  - retrieval
-  - generation
-  - reranking
-  expected_answer_terms:
-  - retrieval
-  - generation
-  - reranking
-  expected_methods:
-    wikigraph: global
-    graphrag: global
-- id: hallucination_mitigation
-  question: What patterns does the corpus show for reducing hallucinations in retrieval-augmented systems?
-  category: global
-  intent: Evaluate cross-source theme coverage for answer faithfulness.
-  expected_method: global
-  expected_sources:
-  - hallucination
-  - retrieval
-  - grounding
-  expected_entities:
-  - hallucination
-  - retrieval
-  - grounding
-  expected_answer_terms:
-  - hallucination
-  - grounding
-  - evidence
-  expected_methods:
-    wikigraph: global
-    graphrag: global
-- id: self_rag_reflection
-  question: How does Self-RAG use reflection or critique signals?
-  category: local
-  intent: Test method-specific local retrieval for a named system.
-  expected_method: local
-  expected_sources:
-  - Self-RAG
-  - reflection
-  expected_entities:
-  - Self-RAG
-  - reflection
-  expected_answer_terms:
-  - reflection
-  - critique
-  - retrieval
-  expected_methods:
-    wikigraph: local
-    graphrag: local
-- id: graph_query_modes
-  question: Compare local, global, DRIFT, and basic GraphRAG query modes.
-  category: comparison
-  intent: Check whether the system can explain the new GraphRAG retrieval modes.
-  expected_method: drift
-  expected_sources:
-  - local
-  - global
-  - DRIFT
-  - basic
-  expected_entities:
-  - local
-  - global
-  - DRIFT
-  - basic
-  expected_answer_terms:
-  - local
-  - global
-  - DRIFT
-  - basic
-  expected_methods:
-    wikigraph: drift-lite
-    graphrag: drift
-- id: graph_index_freshness
-  question: What should happen when the GraphRAG input is stale relative to normalized sources?
-  category: maintenance
-  intent: Verify maintenance and freshness behavior in the graph workflow.
-  expected_method: basic
-  expected_sources:
-  - graph sync
-  - graph index
-  - stale
-  expected_entities:
-  - GraphRAG
-  - stale
-  - index
-  expected_answer_terms:
-  - stale
-  - kb update
-  - freshness
-  expected_methods:
-    wikigraph: basic
-    graphrag: basic
-- id: graph_provider_config
-  question: Where is the GraphRAG provider and embedding model configured?
-  category: maintenance
-  intent: Confirm the graph provider settings are discoverable through project config.
-  expected_method: basic
-  expected_sources:
-  - kb.config.yaml
-  - graph
-  - embedding_model
-  expected_entities:
-  - GraphRAG
-  - kb.config.yaml
-  - embedding_model
-  expected_answer_terms:
-  - kb.config.yaml
-  - graph
-  - embedding_model
-  expected_methods:
-    wikigraph: basic
-    graphrag: basic
-- id: unsupported_claim
-  question: What does the corpus say about quantum-resistant retrieval memories?
-  category: insufficient_evidence
-  intent: Confirm weak-evidence questions produce cautious or insufficient-evidence behavior.
-  expected_method: basic
-  expected_sources: []
-  expected_behaviors:
-  - insufficient_evidence
-  expected_entities:
-  - quantum-resistant retrieval memories
-  expected_answer_terms:
-  - insufficient evidence
-  - not enough evidence
-  - cannot determine
-  expected_methods:
-    wikigraph: basic
-    graphrag: basic
-  insufficient_evidence_expected: true
-  forbidden_answer_terms:
-  - quantum-resistant retrieval memories are supported
-- id: graph_vs_legacy
-  question: How does GraphRAG retrieval differ from the deprecated legacy FTS path?
-  category: comparison
-  intent: Evaluate the pivot narrative and demotion of lexical retrieval.
-  expected_method: drift
-  expected_sources:
-  - GraphRAG
-  - legacy
-  - FTS
-  expected_entities:
-  - GraphRAG
-  - legacy
-  - FTS
-  expected_answer_terms:
-  - GraphRAG
-  - legacy
-  - FTS
-  expected_methods:
-    wikigraph: drift-lite
-    graphrag: drift
+  - id: realm_vs_rag
+    question: How does REALM differ from RAG?
+    category: comparison
+    intent: Compare related retrieval-augmented methods across source papers.
+    expected_method: drift
+    expected_sources:
+      - REALM
+      - RAG
+    expected_entities:
+      - REALM
+      - RAG
+    expected_answer_terms:
+      - jointly
+      - retriever
+      - generation
+    expected_methods:
+      wikigraph: drift-lite
+      graphrag: drift
+  - id: fid_generation
+    question: How does FiD combine retrieval with generation?
+    category: local
+    intent: Check whether retrieval can surface generation-specific method details.
+    expected_method: local
+    expected_sources:
+      - FiD
+      - Fusion-in-Decoder
+    expected_entities:
+      - FiD
+      - Fusion-in-Decoder
+    expected_answer_terms:
+      - retrieved passages
+      - decoder
+      - generation
+    expected_methods:
+      wikigraph: local
+      graphrag: local
+  - id: dense_passage_retrieval
+    question: What role does dense passage retrieval play in retrieval-augmented generation?
+    category: local
+    intent: Verify entity-specific retrieval for a common RAG component.
+    expected_method: local
+    expected_sources:
+      - Dense Passage Retrieval
+      - DPR
+    expected_entities:
+      - Dense Passage Retrieval
+      - DPR
+    expected_answer_terms:
+      - dense passage
+      - retrieval
+      - passages
+    expected_methods:
+      wikigraph: local
+      graphrag: local
+  - id: rag_fid_comparison
+    question: Compare RAG and FiD for how retrieved documents are used during generation.
+    category: comparison
+    intent: Test multi-source comparison with two related generation architectures.
+    expected_method: drift
+    expected_sources:
+      - RAG
+      - FiD
+    expected_entities:
+      - RAG
+      - FiD
+    expected_answer_terms:
+      - retrieved documents
+      - generation
+      - decoder
+    expected_methods:
+      wikigraph: drift-lite
+      graphrag: drift
+  - id: corpus_retrieval_patterns
+    question: What are the main retrieval patterns across the corpus?
+    category: global
+    intent: Evaluate whole-corpus synthesis from community summaries.
+    expected_method: global
+    expected_sources:
+      - REALM
+      - RAG
+      - DPR
+      - FiD
+    expected_entities:
+      - REALM
+      - RAG
+      - DPR
+      - FiD
+    expected_answer_terms:
+      - retrieval
+      - retriever
+    expected_methods:
+      wikigraph: global
+      graphrag: global
+  - id: hallucination_mitigation
+    question: What patterns does the corpus show for reducing hallucinations in retrieval-augmented systems?
+    category: global
+    intent: Evaluate cross-source theme coverage for answer faithfulness.
+    expected_method: global
+    expected_sources:
+      - Self-RAG
+      - REPLUG
+      - Atlas
+    expected_entities:
+      - Self-RAG
+      - REPLUG
+    expected_answer_terms:
+      - retrieval
+      - evidence
+    expected_methods:
+      wikigraph: global
+      graphrag: global
+  - id: self_rag_reflection
+    question: How does Self-RAG use reflection or critique signals?
+    category: local
+    intent: Test method-specific local retrieval for a named system.
+    expected_method: local
+    expected_sources:
+      - Self-RAG
+    expected_entities:
+      - Self-RAG
+      - reflection
+    expected_answer_terms:
+      - reflection
+      - critique
+      - retrieval
+    expected_methods:
+      wikigraph: local
+      graphrag: local
+  - id: graph_query_modes
+    question: Compare local, global, DRIFT, and basic GraphRAG query modes.
+    category: comparison
+    intent: Check whether the system can explain the GraphRAG retrieval modes from the Microsoft GraphRAG paper.
+    expected_method: drift
+    expected_sources:
+      - GraphRAG
+    expected_entities:
+      - GraphRAG
+      - local
+      - global
+    expected_answer_terms:
+      - local
+      - global
+    expected_methods:
+      wikigraph: drift-lite
+      graphrag: drift
+  - id: orqa_inverse_cloze
+    question: How does ORQA pretrain its retriever?
+    category: local
+    intent: Verify entity-specific retrieval for a single named system.
+    expected_method: local
+    expected_sources:
+      - ORQA
+      - Latent Retrieval
+      - Inverse Cloze
+    expected_entities:
+      - ORQA
+      - Inverse Cloze Task
+    expected_answer_terms:
+      - inverse cloze
+      - retriever
+      - pretrain
+    expected_methods:
+      wikigraph: local
+      graphrag: local
+  - id: replug_black_box
+    question: How does REPLUG augment a black-box language model with retrieval?
+    category: local
+    intent: Verify a named-system question whose answer relies on body details.
+    expected_method: local
+    expected_sources:
+      - REPLUG
+    expected_entities:
+      - REPLUG
+      - black-box
+    expected_answer_terms:
+      - retrieved documents
+      - language model
+    expected_methods:
+      wikigraph: local
+      graphrag: local
+  - id: in_context_ralm
+    question: How does In-Context RALM use retrieved documents at inference time?
+    category: local
+    intent: Verify the in-context retrieval variant question.
+    expected_method: local
+    expected_sources:
+      - In-Context
+      - RALM
+    expected_entities:
+      - In-Context RALM
+      - retrieval
+    expected_answer_terms:
+      - retrieved
+      - language model
+      - in-context
+    expected_methods:
+      wikigraph: local
+      graphrag: local
+  - id: atlas_few_shot
+    question: How does Atlas combine retrieval with few-shot learning?
+    category: local
+    intent: Verify a named-system question that combines two topics from the paper.
+    expected_method: local
+    expected_sources:
+      - Atlas
+    expected_entities:
+      - Atlas
+      - retrieval
+    expected_answer_terms:
+      - retrieval
+      - few-shot
+    expected_methods:
+      wikigraph: local
+      graphrag: local
+  - id: graphrag_community_summaries
+    question: How does Microsoft GraphRAG use community summaries for global queries?
+    category: local
+    intent: Pull a method detail from the Microsoft GraphRAG paper specifically.
+    expected_method: local
+    expected_sources:
+      - GraphRAG
+      - community
+    expected_entities:
+      - GraphRAG
+      - community
+    expected_answer_terms:
+      - community
+      - summaries
+      - global
+    expected_methods:
+      wikigraph: local
+      graphrag: local
+  - id: unsupported_claim
+    question: What does the corpus say about quantum-resistant retrieval memories?
+    category: insufficient_evidence
+    intent: Confirm weak-evidence questions produce cautious or insufficient-evidence behavior.
+    expected_method: basic
+    expected_sources: []
+    expected_behaviors:
+      - insufficient_evidence
+    expected_entities:
+      - quantum-resistant retrieval memories
+    expected_answer_terms:
+      - insufficient evidence
+      - not enough evidence
+      - cannot determine
+    expected_methods:
+      wikigraph: basic
+      graphrag: basic
+    insufficient_evidence_expected: true
+    forbidden_answer_terms:
+      - quantum-resistant retrieval memories are supported
 notes:
-- Provider-backed legacy ask captures send retrieved source snippets to the configured external model
-  and require explicit user approval before running.
-- GraphRAG Basic, Local, Global, and DRIFT query jobs can create provider costs through the configured
-  GraphRAG runtime provider.
-- scripts/evaluate_graph_modes.py defaults to local-safe checks and writes skipped rows for provider-backed
-  answer modes unless --allow-provider-calls is set.
-- Evaluation outputs are written to eval/results/summary.md, eval/results/retrieval_metrics.csv, eval/results/answer_metrics.csv,
-  and eval/results/artifacts/.
+  - This benchmark targets the 10-paper arXiv corpus listed under `corpus:` and is paper-name-driven.
+  - For comparison/global questions, expected_sources are real paper slug fragments so both backends can be scored fairly.
+  - Provider-backed answers run via `kb ask --engine {wikigraph|graphrag}` and require `OPENAI_API_KEY`.

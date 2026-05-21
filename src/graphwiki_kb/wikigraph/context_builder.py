@@ -212,53 +212,18 @@ class WikiGraphContextBuilder:
                         [f"local:{entity_node.title}->claim"],
                     )
 
-        improvements = self.config.retrieval_improvements_enabled
-        if improvements:
-            # Reciprocal-rank fusion across three signals.
-            entity_hop_order = [
-                node_id
-                for node_id, _ in sorted(
-                    expanded_chunks.items(), key=lambda item: item[1][0], reverse=True
-                )
-            ]
-            bm25_hits = self._lexical.search(question, limit=limit * 3)
-            bm25_order = [hit.doc_id for hit in bm25_hits]
-            expanded_query = self._expand_query_with_aliases(question, seed_entities)
-            alias_hits = (
-                self._lexical.search(expanded_query, limit=limit * 3)
-                if expanded_query != question
-                else bm25_hits
+        # Plain BM25 boost (pre-Phase-4 behavior, kept verbatim).
+        lex_hits = self._lexical.search(question, limit=limit * 2)
+        for hit in lex_hits:
+            _record_score(
+                expanded_chunks, hit.doc_id, hit.score * 0.5, ["local:bm25-boost"]
             )
-            alias_order = [hit.doc_id for hit in alias_hits]
-            fused = _reciprocal_rank_fusion(
-                [entity_hop_order, bm25_order, alias_order],
-                k=self.config.rrf_k,
-            )
-            # Carry over entity-hop trace where present; fall back to a
-            # generic RRF trace.
-            ranked_ids: list[tuple[str, float, list[str]]] = []
-            for node_id, fusion_score in fused:
-                trace = expanded_chunks.get(node_id, (0.0, []))[1]
-                if not trace:
-                    trace = [
-                        (
-                            "local:rrf-bm25"
-                            if node_id in set(bm25_order)
-                            else "local:rrf-alias"
-                        )
-                    ]
-                ranked_ids.append((node_id, fusion_score, trace))
-        else:
-            # Pre-Phase-4 behavior: simple weighted BM25 boost.
-            lex_hits = self._lexical.search(question, limit=limit * 2)
-            for hit in lex_hits:
-                _record_score(
-                    expanded_chunks, hit.doc_id, hit.score * 0.5, ["local:bm25-boost"]
-                )
-            ranked = sorted(
-                expanded_chunks.items(), key=lambda item: item[1][0], reverse=True
-            )
-            ranked_ids = [(node_id, score, trace) for node_id, (score, trace) in ranked]
+        ranked = sorted(
+            expanded_chunks.items(), key=lambda item: item[1][0], reverse=True
+        )
+        ranked_ids: list[tuple[str, float, list[str]]] = [
+            (node_id, score, trace) for node_id, (score, trace) in ranked
+        ]
 
         question_tokens = set(_tokenize_for_boost(question))
         contexts: list[WikiGraphRetrievedContext] = []
@@ -372,9 +337,11 @@ class WikiGraphContextBuilder:
         """Local search expanded by deterministic sub-questions.
 
         Phase 4: when ``retrieval_improvements_enabled`` is true the
-        sub-question bundles are fused via reciprocal-rank fusion
-        instead of the first-write-wins dict merge, so sub-questions
-        contribute to ranking instead of only filling tail slots.
+        sub-question contexts are folded back into the main local
+        result with an additive score boost (rather than the previous
+        first-write-wins dict merge), so a chunk surfaced by *both*
+        the main and a sub-question outranks one surfaced by only one
+        of them.
         """
         if limit is None:
             limit = self.config.max_context_chunks
@@ -382,7 +349,16 @@ class WikiGraphContextBuilder:
             question, limit=max(limit // 2, 3)
         )
         sub_questions = self._derive_sub_questions(question, seed_entities)
-        if not self.config.retrieval_improvements_enabled or not sub_questions:
+        improvements = self.config.retrieval_improvements_enabled
+
+        if not sub_questions:
+            return (
+                self._enforce_token_budget(local_contexts[:limit]),
+                seed_entities,
+                sub_questions,
+            )
+
+        if not improvements:
             combined: dict[str, WikiGraphRetrievedContext] = {
                 ctx.node_id: ctx for ctx in local_contexts
             }
@@ -404,36 +380,32 @@ class WikiGraphContextBuilder:
                 sub_questions,
             )
 
-        # RRF over the main local result + each sub-question's local
-        # result. Highest fusion score wins regardless of which bundle
-        # surfaced it first.
-        bundles: list[list[str]] = [[ctx.node_id for ctx in local_contexts]]
         contexts_by_id: dict[str, WikiGraphRetrievedContext] = {
             ctx.node_id: ctx for ctx in local_contexts
         }
+        cross_bundle_count: dict[str, int] = {ctx.node_id: 1 for ctx in local_contexts}
         for sub_question in sub_questions:
             sub_contexts, _ = self.local_search(sub_question, limit=3)
-            bundles.append([ctx.node_id for ctx in sub_contexts])
             for ctx in sub_contexts:
-                if ctx.node_id in contexts_by_id:
-                    continue
-                contexts_by_id[ctx.node_id] = ctx.model_copy(
-                    update={"trace": [*ctx.trace, f"drift:sub={sub_question}"]}
+                cross_bundle_count[ctx.node_id] = (
+                    cross_bundle_count.get(ctx.node_id, 0) + 1
                 )
+                if ctx.node_id not in contexts_by_id:
+                    contexts_by_id[ctx.node_id] = ctx.model_copy(
+                        update={"trace": [*ctx.trace, f"drift:sub={sub_question}"]}
+                    )
 
-        fused = _reciprocal_rank_fusion(bundles, k=self.config.rrf_k)
-        ordered: list[WikiGraphRetrievedContext] = []
-        for node_id, fusion_score in fused:
-            ctx = contexts_by_id.get(node_id)
-            if ctx is None:
-                continue
-            ordered.append(
-                ctx.model_copy(update={"score": float(ctx.score) + fusion_score})
-            )
-            if len(ordered) >= limit:
-                break
+        # Additive cross-bundle boost: a chunk in N bundles gets a
+        # (N-1)*0.10 score bonus on top of its retrieval score so
+        # cross-bundle agreement wins ties without dominating clearly
+        # better single-bundle hits.
+        boosted: list[WikiGraphRetrievedContext] = []
+        for node_id, ctx in contexts_by_id.items():
+            bonus = (cross_bundle_count[node_id] - 1) * 0.10
+            boosted.append(ctx.model_copy(update={"score": float(ctx.score) + bonus}))
+        boosted.sort(key=lambda ctx: float(ctx.score), reverse=True)
         return (
-            self._enforce_token_budget(ordered),
+            self._enforce_token_budget(boosted[:limit]),
             seed_entities,
             sub_questions,
         )
@@ -688,34 +660,51 @@ class WikiGraphContextBuilder:
         return sub_questions
 
 
-def _implicit_acronym(title: str) -> str:
-    """Build the implicit uppercase acronym of a multi-word entity title.
+def _implicit_acronyms(title: str) -> list[str]:
+    """Return implicit acronym forms for ``title``.
 
-    ``"Dense Passage Retrieval"`` → ``"DPR"``.
-    ``"Fusion-in-Decoder"``       → ``"FID"``.
-    ``"Self-RAG"``                → ``"SELFRAG"``.
-    ``"RAG"`` (already an acronym) → ``"RAG"``.
+    Returns multiple forms so e.g. ``"Fusion-in-Decoder"`` matches
+    both ``"FD"`` (connectives dropped, uppercased) and ``"FID"``
+    (connective letters kept, uppercased) and ``"FiD"`` (connective
+    letters kept lowercase, which is the convention the original FiD
+    paper uses). This lets the entity matcher recognize the standard
+    surface form authors actually write.
 
-    Used by :meth:`WikiGraphContextBuilder._match_entities` to widen
-    entity matching when the question uses an acronym that the curated
-    entity title spells out, or vice versa.
+    Examples:
+        ``"Dense Passage Retrieval"``  -> ``["DPR"]``
+        ``"Fusion-in-Decoder"``        -> ``["FD", "FID", "FiD"]``
+        ``"Self-RAG"``                 -> ``["SELFRAG"]``
+        ``"RAG"`` (single token)       -> ``["RAG"]``
     """
     if not title:
-        return ""
+        return []
     import re as _re
 
     tokens = _re.findall(r"[A-Za-z0-9]+", title)
-    if len(tokens) <= 1:
-        # Single token: keep as-is (already an acronym or single word).
-        return title.upper()
-    letters = "".join(token[0] for token in tokens if token).upper()
-    # Drop common connective words ("of", "the", "for", "in", "on", "a", "and")
-    # by skipping leading-letter tokens that are connectives.
+    if not tokens:
+        return []
+    if len(tokens) == 1:
+        return [tokens[0].upper()]
     connectives = {"of", "the", "for", "in", "on", "a", "and", "with"}
-    keep = "".join(
+    drop_form = "".join(
         token[0] for token in tokens if token.lower() not in connectives
     ).upper()
-    return keep or letters
+    keep_upper = "".join(token[0] for token in tokens).upper()
+    keep_mixed = "".join(
+        token[0].lower() if token.lower() in connectives else token[0].upper()
+        for token in tokens
+    )
+    forms = []
+    for form in (drop_form, keep_upper, keep_mixed):
+        if form and form not in forms:
+            forms.append(form)
+    return forms
+
+
+def _implicit_acronym(title: str) -> str:
+    """Backwards-compat: return the first (canonical) acronym form."""
+    forms = _implicit_acronyms(title)
+    return forms[0] if forms else ""
 
 
 def _record_score(
@@ -740,19 +729,32 @@ def _reciprocal_rank_fusion(
     bundles: list[list[str]],
     *,
     k: int = 60,
+    weights: list[float] | None = None,
 ) -> list[tuple[str, float]]:
     """Fuse ranked id lists using reciprocal-rank fusion (Cormack et al. 2009).
 
-    Each id earns ``1 / (k + rank)`` per bundle it appears in, summed
-    across bundles. The output is ``(id, score)`` pairs sorted by
-    score (highest first). Empty bundles are ignored. The ``k=60``
-    default is the original paper value and is also what most modern
-    RAG stacks use.
+    Each id earns ``weight / (k + rank)`` per bundle it appears in,
+    summed across bundles. Default weight is ``1.0`` per bundle. The
+    output is ``(id, score)`` pairs sorted by score (highest first).
+    Empty bundles are ignored. The ``k=60`` default is the original
+    paper value and is also what most modern RAG stacks use.
+
+    Weighted variant is necessary in our case because the entity-hop
+    signal is qualitatively stronger than BM25 / alias-BM25 in the
+    local-search path: pure unweighted RRF dilutes the entity-hop
+    win on questions like ``REALM vs RAG`` where BM25 over the body
+    happens to surface unrelated chunks at the top.
     """
+    if weights is None:
+        weights = [1.0] * len(bundles)
+    if len(weights) != len(bundles):
+        raise ValueError(f"RRF weights length {len(weights)} != bundles {len(bundles)}")
     scores: dict[str, float] = {}
-    for bundle in bundles:
+    for bundle, weight in zip(bundles, weights, strict=False):
+        if not bundle or weight <= 0:
+            continue
         for rank, node_id in enumerate(bundle, start=1):
-            scores[node_id] = scores.get(node_id, 0.0) + 1.0 / (k + rank)
+            scores[node_id] = scores.get(node_id, 0.0) + float(weight) / (k + rank)
     return sorted(scores.items(), key=lambda item: item[1], reverse=True)
 
 
