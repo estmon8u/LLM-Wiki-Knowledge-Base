@@ -120,11 +120,17 @@ def test_benchmark_question_from_dict() -> None:
             "question": "?",
             "expected_sources": ["a", "b"],
             "expected_entities": ["A"],
+            "expected_answer_terms": ["alpha"],
+            "forbidden_answer_terms": ["omega"],
             "expected_methods": {"wikigraph": "local"},
+            "expected_behaviors": ["insufficient_evidence"],
         }
     )
     assert question.expected_sources == ("a", "b")
+    assert question.expected_answer_terms == ("alpha",)
+    assert question.forbidden_answer_terms == ("omega",)
     assert question.expected_methods["wikigraph"] == "local"
+    assert question.insufficient_evidence_expected is True
 
 
 def test_load_benchmark(tmp_path: Path) -> None:
@@ -353,6 +359,36 @@ def test_answer_quality_score_penalizes_refusal_when_grounding_expected() -> Non
     assert metrics["grounded_entity_hits"] == 0
     assert metrics["insufficient_evidence_behavior"] == "mismatch"
     assert metrics["answer_quality_score"] < 0.3
+
+
+def test_answer_quality_score_penalizes_generic_uncited_answer() -> None:
+    """Name-dropping without citations/required terms should not score highly."""
+    run = AnswerRun(
+        backend="wikigraph",
+        method="basic",
+        question_id="graph_config",
+        question="Where is GraphRAG provider configuration stored?",
+        answer="GraphRAG is mentioned in the project.",
+        citation_count=0,
+        insufficient_evidence=False,
+        latency_seconds=0.01,
+        citation_ref_valid_rate=0.0,
+    )
+    question = BenchmarkQuestion(
+        id="graph_config",
+        question="Where is GraphRAG provider configuration stored?",
+        expected_entities=("GraphRAG",),
+        expected_answer_terms=("kb.config.yaml", "embedding_model"),
+        forbidden_answer_terms=("not available",),
+        insufficient_evidence_expected=False,
+    )
+
+    metrics = answer_metrics(question, run)
+
+    assert metrics["matched_entity_count"] == 1
+    assert metrics["matched_answer_term_count"] == 0
+    assert metrics["citation_count"] == 0
+    assert metrics["answer_quality_score"] < 0.7
 
 
 def test_evaluate_backends_main_includes_graphrag(

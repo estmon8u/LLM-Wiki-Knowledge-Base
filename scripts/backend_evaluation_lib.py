@@ -36,6 +36,8 @@ class BenchmarkQuestion:
     category: str = "unspecified"
     expected_sources: tuple[str, ...] = ()
     expected_entities: tuple[str, ...] = ()
+    expected_answer_terms: tuple[str, ...] = ()
+    forbidden_answer_terms: tuple[str, ...] = ()
     expected_methods: dict[str, str] = field(default_factory=dict)
     insufficient_evidence_expected: bool = False
 
@@ -53,9 +55,17 @@ class BenchmarkQuestion:
             expected_entities=tuple(
                 str(s) for s in payload.get("expected_entities", []) or []
             ),
+            expected_answer_terms=tuple(
+                str(s) for s in payload.get("expected_answer_terms", []) or []
+            ),
+            forbidden_answer_terms=tuple(
+                str(s) for s in payload.get("forbidden_answer_terms", []) or []
+            ),
             expected_methods={str(k): str(v) for k, v in expected_methods.items()},
             insufficient_evidence_expected=bool(
                 payload.get("insufficient_evidence_expected", False)
+                or "insufficient_evidence"
+                in (payload.get("expected_behaviors") or [])
             ),
         )
 
@@ -101,6 +111,7 @@ class AnswerRun:
     community_context_count: int = 0
     unique_source_id_count: int = 0
     citation_ref_valid_rate: float = 0.0
+    provider_mode: str = ""
     artifact_path: str | None = None
     error: str | None = None
 
@@ -207,6 +218,7 @@ class WikiGraphRunner:
                 community_context_count=kind_counts.get("community", 0),
                 unique_source_id_count=len(unique_sources),
                 citation_ref_valid_rate=citation_ref_valid_rate,
+                provider_mode=str(ans.provider_status.get("mode", "")),
             )
         except Exception as exc:
             return AnswerRun(
@@ -282,6 +294,10 @@ class GraphRAGRunner:
                 insufficient_evidence=insufficient,
                 citation_count=len(answer.graph_data_references or []),
                 latency_seconds=elapsed,
+                citation_ref_valid_rate=(
+                    1.0 if len(answer.graph_data_references or []) else 0.0
+                ),
+                provider_mode="provider-backed",
             )
         except Exception as exc:
             return AnswerRun(
@@ -473,6 +489,26 @@ def matched_entities(question: BenchmarkQuestion, run: AnswerRun) -> list[str]:
     return hits
 
 
+def matched_answer_terms(question: BenchmarkQuestion, run: AnswerRun) -> list[str]:
+    """Return expected answer terms that appear in a grounded answer."""
+    if not question.expected_answer_terms or run.insufficient_evidence:
+        return []
+    text = run.answer.lower()
+    return [
+        term for term in question.expected_answer_terms if term.lower() in text
+    ]
+
+
+def forbidden_answer_hits(question: BenchmarkQuestion, run: AnswerRun) -> list[str]:
+    """Return forbidden answer terms that appear in the answer text."""
+    if not question.forbidden_answer_terms:
+        return []
+    text = run.answer.lower()
+    return [
+        term for term in question.forbidden_answer_terms if term.lower() in text
+    ]
+
+
 def retrieval_metrics(question: BenchmarkQuestion, run: RetrievalRun) -> dict[str, Any]:
     """Compute retrieval metrics for one (question, run) pair.
 
@@ -538,6 +574,8 @@ def answer_metrics(question: BenchmarkQuestion, run: AnswerRun) -> dict[str, Any
           citations, since vacuously valid).
     """
     entity_hits = matched_entities(question, run)
+    answer_term_hits = matched_answer_terms(question, run)
+    forbidden_hits = forbidden_answer_hits(question, run)
     expected_insufficient = question.insufficient_evidence_expected
     behavior_match = run.insufficient_evidence == expected_insufficient
     behavior = "matches_expectation" if behavior_match else "mismatch"
@@ -547,24 +585,35 @@ def answer_metrics(question: BenchmarkQuestion, run: AnswerRun) -> dict[str, Any
     if expected_entity_count:
         grounded_entity_rate = grounded_entity_hits / expected_entity_count
     else:
-        # Entity-free questions (corpus_themes, missing_topic) score on
-        # whether the backend behaved as expected: grounded when the
-        # question wanted an answer, refused when it didn't.
         grounded_entity_rate = 1.0 if behavior_match else 0.0
 
-    normalized_citations = min(run.citation_count, 5) / 5.0
+    grounded_answer_term_hits = len(answer_term_hits)
+    expected_answer_term_count = len(question.expected_answer_terms)
+    if expected_answer_term_count:
+        grounded_answer_term_rate = (
+            grounded_answer_term_hits / expected_answer_term_count
+        )
+    else:
+        grounded_answer_term_rate = 1.0 if behavior_match else 0.0
+
+    if expected_insufficient and run.insufficient_evidence:
+        normalized_citations = 1.0
+        ref_valid = 1.0
+    else:
+        normalized_citations = min(run.citation_count, 5) / 5.0
+        ref_valid = run.citation_ref_valid_rate if run.citation_count else 0.0
     insufficient_score = 1.0 if behavior_match else 0.0
-    ref_valid = (
-        run.citation_ref_valid_rate if run.citation_count else 1.0
-    )
+    forbidden_score = 1.0 if not forbidden_hits else 0.0
+    content_rate = (grounded_entity_rate + grounded_answer_term_rate) / 2.0
     answer_quality_score = round(
         (
-            grounded_entity_rate
+            content_rate
             + normalized_citations
             + insufficient_score
             + ref_valid
+            + forbidden_score
         )
-        / 4.0,
+        / 5.0,
         4,
     )
 
@@ -575,6 +624,10 @@ def answer_metrics(question: BenchmarkQuestion, run: AnswerRun) -> dict[str, Any
         "expected_entity_count": expected_entity_count,
         "grounded_entity_hits": grounded_entity_hits,
         "grounded_entity_rate": round(grounded_entity_rate, 4),
+        "matched_answer_term_count": grounded_answer_term_hits,
+        "expected_answer_term_count": expected_answer_term_count,
+        "grounded_answer_term_rate": round(grounded_answer_term_rate, 4),
+        "forbidden_answer_hit_count": len(forbidden_hits),
         "insufficient_evidence_expected": expected_insufficient,
         "insufficient_evidence_observed": run.insufficient_evidence,
         "insufficient_evidence_behavior": behavior,
@@ -585,6 +638,7 @@ def answer_metrics(question: BenchmarkQuestion, run: AnswerRun) -> dict[str, Any
         "community_context_count": run.community_context_count,
         "unique_source_id_count": run.unique_source_id_count,
         "citation_ref_valid_rate": run.citation_ref_valid_rate,
+        "provider_mode": run.provider_mode,
         "latency_seconds": run.latency_seconds,
         "error": run.error,
     }
@@ -621,6 +675,10 @@ ANSWER_COLUMNS = (
     "expected_entity_count",
     "grounded_entity_hits",
     "grounded_entity_rate",
+    "matched_answer_term_count",
+    "expected_answer_term_count",
+    "grounded_answer_term_rate",
+    "forbidden_answer_hit_count",
     "insufficient_evidence_expected",
     "insufficient_evidence_observed",
     "insufficient_evidence_behavior",
@@ -631,6 +689,7 @@ ANSWER_COLUMNS = (
     "community_context_count",
     "unique_source_id_count",
     "citation_ref_valid_rate",
+    "provider_mode",
     "latency_seconds",
     "error",
 )
