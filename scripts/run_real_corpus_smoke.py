@@ -16,7 +16,6 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-
 SUPPORTED_SUFFIXES = {
     ".csv",
     ".docx",

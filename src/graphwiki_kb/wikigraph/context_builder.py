@@ -439,11 +439,7 @@ class WikiGraphContextBuilder:
         def _word_boundary_in(needle: str, haystack: str) -> bool:
             if not needle:
                 return False
-            pattern = (
-                r"(?<![A-Za-z0-9_])"
-                + _re.escape(needle)
-                + r"(?![A-Za-z0-9_])"
-            )
+            pattern = r"(?<![A-Za-z0-9_])" + _re.escape(needle) + r"(?![A-Za-z0-9_])"
             return bool(_re.search(pattern, haystack, _re.IGNORECASE))
 
         for node in self.index.nodes:
@@ -470,10 +466,7 @@ class WikiGraphContextBuilder:
                     matches[node.id] = (98.0, node)
                     break
                 # Implicit acronym of a multi-word entity also counts.
-                if (
-                    candidate == node.title
-                    and implicit_acronym in question_acronyms
-                ):
+                if candidate == node.title and implicit_acronym in question_acronyms:
                     matches[node.id] = (98.0, node)
                     break
             if node.id in matches:
@@ -482,13 +475,7 @@ class WikiGraphContextBuilder:
             # Fallback: fuzzy ratio with the original threshold.
             ratio = max(
                 fuzz.token_set_ratio(node.title, question),
-                *(
-                    [
-                        fuzz.token_set_ratio(alias, question)
-                        for alias in aliases
-                    ]
-                    or [0]
-                ),
+                *([fuzz.token_set_ratio(alias, question) for alias in aliases] or [0]),
                 int(node.title.lower() in lowered) * 100,
                 int(any(alias.lower() in lowered for alias in aliases)) * 100,
                 int(node.title.lower() in question_token_set_lower) * 100,

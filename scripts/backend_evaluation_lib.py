@@ -64,8 +64,7 @@ class BenchmarkQuestion:
             expected_methods={str(k): str(v) for k, v in expected_methods.items()},
             insufficient_evidence_expected=bool(
                 payload.get("insufficient_evidence_expected", False)
-                or "insufficient_evidence"
-                in (payload.get("expected_behaviors") or [])
+                or "insufficient_evidence" in (payload.get("expected_behaviors") or [])
             ),
         )
 
@@ -482,7 +481,7 @@ def matched_entities(question: BenchmarkQuestion, run: AnswerRun) -> list[str]:
         if lowered in text:
             hits.append(entity)
             continue
-        for alias in _ENTITY_ALIAS_EXPANSIONS.get(lowered, ()):  # noqa: PERF401
+        for alias in _ENTITY_ALIAS_EXPANSIONS.get(lowered, ()):
             if alias in text:
                 hits.append(entity)
                 break
@@ -494,9 +493,7 @@ def matched_answer_terms(question: BenchmarkQuestion, run: AnswerRun) -> list[st
     if not question.expected_answer_terms or run.insufficient_evidence:
         return []
     text = run.answer.lower()
-    return [
-        term for term in question.expected_answer_terms if term.lower() in text
-    ]
+    return [term for term in question.expected_answer_terms if term.lower() in text]
 
 
 def forbidden_answer_hits(question: BenchmarkQuestion, run: AnswerRun) -> list[str]:
@@ -504,9 +501,7 @@ def forbidden_answer_hits(question: BenchmarkQuestion, run: AnswerRun) -> list[s
     if not question.forbidden_answer_terms:
         return []
     text = run.answer.lower()
-    return [
-        term for term in question.forbidden_answer_terms if term.lower() in text
-    ]
+    return [term for term in question.forbidden_answer_terms if term.lower() in text]
 
 
 def retrieval_metrics(question: BenchmarkQuestion, run: RetrievalRun) -> dict[str, Any]:
@@ -749,9 +744,7 @@ def write_summary_markdown(
             per_backend.setdefault((row["backend"], row["method"]), []).append(row)
         for (backend, method), rows in sorted(per_backend.items()):
             grounded_rows = [
-                row
-                for row in rows
-                if int(row.get("has_ground_truth", 0) or 0) == 1
+                row for row in rows if int(row.get("has_ground_truth", 0) or 0) == 1
             ]
             if grounded_rows:
                 effective = sum(

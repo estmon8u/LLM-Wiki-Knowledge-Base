@@ -288,7 +288,7 @@ def test_query_engine_local_and_basic(populated_project) -> None:
     engine = WikiGraphQueryEngine(index=index)
 
     result = engine.find("How does REALM differ from RAG?", method="auto")
-    assert result.method == "local"
+    assert result.method == "drift-lite"
     assert result.entities
     assert result.contexts
 

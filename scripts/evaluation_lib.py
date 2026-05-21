@@ -7,15 +7,16 @@ surface that uses it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import csv
 import json
 import re
 import subprocess
 import sys
 import time
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any
 
 import yaml
 
@@ -23,7 +24,6 @@ from graphwiki_kb.services.graphrag_query_service import GRAPH_QUERY_METHODS
 from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
 from graphwiki_kb.services.project_service import build_project_paths, utc_now_iso
 from graphwiki_kb.services.query_router_service import QueryRouterService
-
 
 RESULTS_DIR = Path("eval") / "results"
 ARTIFACTS_DIR = "artifacts"
@@ -83,7 +83,7 @@ class BenchmarkQuestion:
     notes: str | None = None
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "BenchmarkQuestion":
+    def from_dict(cls, payload: dict[str, Any]) -> BenchmarkQuestion:
         """Builds an instance from a dictionary payload.
 
         Args:
