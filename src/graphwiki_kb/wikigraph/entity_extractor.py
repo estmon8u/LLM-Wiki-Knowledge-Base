@@ -150,7 +150,18 @@ def _candidate_entity_phrases(text: str) -> list[str]:
 def extract_page_entities(page: WikiPage) -> list[ExtractedEntity]:
     """Extract entities for a single wiki page."""
     sources = tuple(page.source_ids)
-    seed_aliases = [page.title, *page.aliases]
+    seed_aliases: list[str] = [page.title, *page.aliases]
+    # When a page title is colon-formatted (e.g. ``REALM: Retrieval-
+    # Augmented Language Model Pre-Training``) the part before the
+    # colon is almost always the canonical short name the corpus uses
+    # when referencing the paper. Lifting it into the alias list makes
+    # the entity matcher actually find the entity when a user asks
+    # ``How does REALM differ from RAG?``.
+    title = page.title.strip()
+    if ":" in title:
+        prefix = title.split(":", 1)[0].strip()
+        if prefix and prefix not in seed_aliases:
+            seed_aliases.append(prefix)
     aliases_normalized = tuple(
         dict.fromkeys(alias for alias in seed_aliases if _is_acceptable_entity(alias))
     )
