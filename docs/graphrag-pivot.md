@@ -2,6 +2,23 @@
 
 Date: 2026-05-11
 
+Commit `4a96bc6` updated the documentation after the full `kb agent` control
+plane landed. The pivot framing remains retrieval-first: the agent is a bounded
+natural-language layer over existing services, approval gates, and research
+recommendation storage, not a replacement retrieval backend.
+
+Commit `84b1ed6` captured the second review pass on the WikiGraphRAG branch:
+WikiGraphRAG update flags now defer to config when unset, context budgets are
+enforced before answers are assembled, `lexical_backend: simple` is respected,
+and the backend evaluator has a first-class Microsoft GraphRAG runner for
+three-way comparison.
+
+Commit `f57e4b0` added the Phase 4 WikiGraphRAG retrieval experiment surface:
+RRF over entity-hop and BM25 signals, alias-aware query expansion,
+section-title overlap boosts, and drift-lite bundle fusion. These are
+config-gated under `wikigraph.retrieval_improvements_enabled` for baseline vs
+improved A/B comparison.
+
 ## 1. Why the pivot is necessary
 
 The current project already has useful research-memory infrastructure: source ingestion, normalized markdown or plain-text artifacts, manifest metadata, provenance-aware source pages, saved analysis pages, structural linting, provider-backed review, vault export, and a rebuildable SQLite FTS5 search index.
@@ -22,7 +39,7 @@ Keep this sentence in project materials:
 
 ```text
 The wiki is not the retrieval engine. The wiki is the human-readable artifact layer.
-GraphRAG is the retrieval and synthesis engine.
+Microsoft GraphRAG and WikiGraphRAG are the retrieval/synthesis engines.
 ```
 
 ## 2. What stays from the old system
@@ -30,7 +47,7 @@ GraphRAG is the retrieval and synthesis engine.
 - Raw source files remain the source of truth.
 - Normalized markdown or plain-text artifacts remain the stable bridge between heterogeneous inputs and downstream processing.
 - `raw/_manifest.json` remains the provenance ledger for source IDs, hashes, converter metadata, and freshness checks.
-- `kb update` remains responsible for wiki artifact maintenance and may continue refreshing the temporary FTS index while legacy commands exist.
+- `kb update` remains responsible for wiki artifact maintenance and may continue refreshing the temporary FTS index while the deprecated legacy engine exists.
 - `wiki/sources/`, legacy `wiki/concepts/`, `wiki/graph/`, `wiki/analysis/`, `wiki/index.md`, and `wiki/log.md` remain inspectable artifacts.
 - FTS5 behavior is retained only behind explicit `kb find --engine legacy` and `kb ask --engine legacy` commands with deprecation warnings; both legacy commands stay source-page-only comparators.
 - `kb lint`, `kb review`, `kb status`, `kb doctor`, and `kb export` remain maintenance and operations surfaces.
@@ -91,8 +108,9 @@ The immediate design rule is to wrap GraphRAG rather than reimplement it. The pr
 
 CLI design guardrails:
 
-- `kb ask` is the GraphRAG-aware default controller.
-- `kb ask --method local|global|drift|basic` exposes explicit GraphRAG method control.
+- `kb ask` defaults to WikiGraphRAG.
+- `kb ask --engine graphrag --method local|global|drift|basic` exposes explicit Microsoft GraphRAG method control.
+- `kb ask --engine legacy` and `kb find --engine legacy` are the only legacy FTS surfaces; commit `04a1b9b` removed the standalone `kb legacy` command group.
 - `kb find` is graph-aware but non-generative: it searches direct GraphRAG entity/relationship artifacts before falling back to maintained wiki pages.
 - `kb export` refreshes graph artifact pages when complete GraphRAG output exists, so inspection pages can be regenerated without rerunning GraphRAG.
 - Old FTS5 behavior should not be available through a normal `--retriever lexical` option.
@@ -121,7 +139,7 @@ Minimum metrics:
 
 | Metric | Purpose |
 | --- | --- |
-| Recall@5 | Confirm expected sources appear in retrieved evidence or source references |
+| Recall@8 | Confirm expected sources appear in retrieved evidence or source references |
 | Multi-source coverage | Check whether comparison questions retrieve both or all required sources |
 | Method fit | Check whether local/global/drift/basic routing matches the question type |
 | Claim support rate | Measure whether answer claims are grounded in retrieved source material |
@@ -136,13 +154,13 @@ This evaluation story directly explains the pivot: the original wiki workflow re
 Current evaluation outputs:
 
 - `scripts/evaluate_graph_modes.py` runs the full Phase 8 matrix and writes `eval/results/summary.md`, `eval/results/retrieval_metrics.csv`, and `eval/results/answer_metrics.csv`.
-- `scripts/evaluate_retrieval.py` focuses on retrieval metrics such as Recall@5, multi-source coverage, method fit, and latency.
+- `scripts/evaluate_retrieval.py` focuses on retrieval metrics such as Recall@8, multi-source coverage, method fit, and latency.
 - `scripts/evaluate_answers.py` focuses on answer metrics such as claim-support status, insufficient-evidence behavior, comprehensiveness, diversity, and latency.
 - `eval/results/artifacts/` stores per-question JSON command captures and is ignored because artifacts can include local corpus text or provider output.
 
 ## Source notes
 
-- Current code source of truth: `src/graphwiki_kb/services/search_service.py` maintains the SQLite FTS5 path at `graph/exports/search_index.sqlite3`, `src/graphwiki_kb/services/query_service.py` builds legacy answers from source-page search results, and `src/graphwiki_kb/commands/legacy.py` is the only CLI surface that invokes those retrieval behaviors.
+- Current code source of truth: `src/graphwiki_kb/services/search_service.py` maintains the SQLite FTS5 path at `graph/exports/search_index.sqlite3`, `src/graphwiki_kb/services/query_service.py` builds legacy answers from source-page search results, and `src/graphwiki_kb/commands/find.py` plus `src/graphwiki_kb/commands/ask.py` expose the deprecated behavior only through `--engine legacy`.
 - CLI design source: the Command Line Interface Guidelines emphasize human-first design, composability through stdout/stderr/exit codes, discoverable help, visible system state, human-readable errors, deprecation warnings before breaking changes, and simple lowercase names: <https://clig.dev/>
 - Microsoft GraphRAG docs describe GraphRAG as a structured, hierarchical RAG approach that extracts a knowledge graph, builds community hierarchies, generates community summaries, and uses those structures for RAG tasks: <https://microsoft.github.io/graphrag/>
 - Microsoft GraphRAG query docs describe Local, Global, DRIFT, and Basic Search modes: <https://microsoft.github.io/graphrag/query/overview/>

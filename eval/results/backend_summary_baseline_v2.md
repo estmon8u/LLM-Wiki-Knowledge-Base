@@ -1,5 +1,9 @@
 # Backend evaluation summary
 
+Branch note: commit `1db294e` added this baseline-vs-improved retrieval
+artifact for the Phase 4 ablation. This file is the WGR baseline with
+`wikigraph.retrieval_improvements_enabled=false`.
+
 ## Retrieval metrics (per backend, averaged)
 
 | Backend | Method | Effective Recall@8 | Questions w/ Ground Truth | Method Fit | Avg Latency (s) | Errors |

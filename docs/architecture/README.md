@@ -8,6 +8,10 @@ This directory holds the versioned architecture docs for the Python CLI knowledg
 - `mid-level.md` maps subsystems, command-to-service boundaries, and data movement.
 - `low-level.md` maps key files and current implementation responsibilities.
 
+The agent merge point at commit `336a5ff` is treated as architecture, not just
+CLI sugar: it adds an optional OpenAI Agents SDK boundary while preserving the
+existing command/service split and local approval gates.
+
 ## Update Rules
 
 Update the relevant layer when any of the following changes:

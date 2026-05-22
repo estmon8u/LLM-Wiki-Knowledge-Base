@@ -1,5 +1,10 @@
 # Command surface end-to-end smoke test
 
+This report was first added in commit `1031eb8` as the branch's persisted
+command-surface verification artifact. It exercises the unified post-pivot CLI
+surface, including `find --engine ...`, `ask --engine ...`, `agent`, `export`,
+and `update --no-graph`.
+
 - Project root: `/tmp/wikigraph-verify-project`
 - Commands exercised: 47
 - OK: 47

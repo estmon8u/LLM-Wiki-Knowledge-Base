@@ -29,3 +29,5 @@ Stub summary of the document.
 ## Key Excerpt
 
 This is the first paragraph. This is the second paragraph.
+
+<!-- branch-docs-note: Reviewed during the sequential WikiGraphRAG branch documentation pass; fixture semantics unchanged. -->

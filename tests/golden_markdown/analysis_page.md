@@ -26,3 +26,5 @@ No structured claims.
 
 - [[Alpha Page]] (`wiki/sources/alpha.md#chunk-0`) - Section: Summary
 - [[Beta Page]] (`wiki/sources/beta.md#chunk-2`) - Section: Evidence
+
+<!-- branch-docs-note: Reviewed during the sequential WikiGraphRAG branch documentation pass; fixture semantics unchanged. -->

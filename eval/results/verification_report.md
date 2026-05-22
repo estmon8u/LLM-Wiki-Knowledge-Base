@@ -5,7 +5,7 @@
 `text-embedding-3-small`) and Mistral OCR for PDF normalization.
 
 **Headline result.** WikiGraphRAG is **not universally better** than Microsoft
-GraphRAG. On this 10-paper corpus, after fixing eight gameability issues in
+GraphRAG. On this 10-paper corpus, after fixing nine gameability issues in
 the evaluation harness, WGR wins on **retrieval recall and latency**, ties on
 **citation-ref grounding**, and **loses on answer quality, grounded-entity
 rate, and insufficient-evidence behavior**. The previous "0.907 vs 0.830"
@@ -34,9 +34,18 @@ per-question rows.
 ## 1. What was wrong with the previous evaluation
 
 The previous report (`verification_report.md`@`1031eb8`) claimed WGR
-won on every headline metric. We audited the harness and found eight
+won on every headline metric. We audited the harness and found nine
 issues. Each one independently advantaged WGR or asymmetrically
 penalised GraphRAG. Plain-language summary:
+
+Commit `564b20d` is the Phase 2 de-game commit for G1, G3-G6, G8, and
+G9. It made snippets symmetric, removed substring false positives, replaced
+citation-volume scoring with supported-citation scoring, published strict and
+loose citation-ref validity, and exposed `method_fit` for router observability.
+G2 and G7 are covered by neighboring commits.
+Commit `cc67fd5` covers G2 by making the evaluator retrieve from GraphRAG
+`text_units` and `community_reports` by default instead of only scanning
+entity/relationship artifacts.
 
 | ID | Gameability finding | Fix |
 |---|---|---|
@@ -225,7 +234,7 @@ retrieved-context lists for every benchmark question.
 | `eval/results/per_pdf_review.md` | Per-paper inspection: wiki page, TextUnit count, WGR entities, GraphRAG entity mentions. |
 | `eval/results/backend_summary_baseline_v2.md` | WGR baseline (improvements OFF) for the Phase 4 A/B. |
 | `eval/results/backend_summary_improved_v5.md` | WGR improved (improvements ON) for the Phase 4 A/B. |
-| `eval/results/backend_summary_improved_wgr_graphrag_artifact.md` | GraphRAG via legacy entity-artifact path (shows G2 impact). |
+| G2 artifact-mode ablation | Intermediate CSV/Markdown files were removed from the final tracked artifact set; the G2 impact is summarized above by comparing 0.449 legacy artifact-mode recall with 0.827 text-units-mode recall. |
 
 ---
 
