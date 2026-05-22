@@ -14,8 +14,19 @@ from graphwiki_kb.commands.common import (
 )
 from graphwiki_kb.models.command_models import CommandContext, CommandSpec
 from graphwiki_kb.models.wiki_models import SearchResult
+from graphwiki_kb.services.wikigraph_query_service import WikiGraphQueryError
+from graphwiki_kb.wikigraph.models import WikiGraphRetrievedContext
 
-SUMMARY = "Search direct GraphRAG artifacts plus the maintained wiki index."
+SUMMARY = (
+    "Search direct GraphRAG artifacts, the maintained wiki index, the "
+    "WikiGraphRAG backend, or the deprecated legacy FTS path."
+)
+
+ENGINE_CHOICES = ("auto", "graphrag", "wiki", "wikigraph", "legacy", "all")
+LEGACY_DEPRECATION_NOTE = (
+    "Deprecated: SQLite FTS5 retrieval is legacy-only. "
+    "GraphRAG and WikiGraphRAG are the active retrieval paths."
+)
 
 
 def build_spec(_: CommandContext | None = None) -> CommandSpec:
@@ -45,12 +56,23 @@ def create_command() -> click.Command:
         show_default=True,
         type=click.IntRange(min=1, max=100),
     )
+    @click.option(
+        "--engine",
+        type=click.Choice(ENGINE_CHOICES),
+        default="auto",
+        show_default=True,
+        help=(
+            "Backend to query. `auto`/`all` fuse GraphRAG artifacts, the wiki "
+            "index, and WikiGraphRAG via reciprocal rank fusion."
+        ),
+    )
     @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
     @click.pass_obj
     def command(
         command_context: CommandContext,
         query_terms: tuple[str, ...],
         limit: int,
+        engine: str,
         as_json: bool,
     ) -> None:
         """Command.
@@ -59,6 +81,7 @@ def create_command() -> click.Command:
             command_context: Command context value used by the operation.
             query_terms: Query terms value used by the operation.
             limit: Maximum number of results to return or process.
+            engine: Retrieval backend selector.
             as_json: As json value used by the operation.
         """
         require_initialized(command_context)
@@ -66,35 +89,93 @@ def create_command() -> click.Command:
             raise click.ClickException("Provide at least one search term.")
         search_service = command_context.services.search
         graph_find_service = command_context.services.graphrag_find
+        wikigraph_query_service = command_context.services.wikigraph_query
         graph_status = command_context.services.graphrag_status.status().to_dict(
             command_context.project_root
         )
-        graph_diagnostics = _graph_find_diagnostics(graph_status)
+        diagnostics = _graph_find_diagnostics(graph_status)
         query = " ".join(query_terms).strip()
         candidate_limit = max(limit * 4, 20)
-        graph_results = graph_find_service.search(query, limit=candidate_limit)
-        wiki_results = search_service.search(
-            query,
-            limit=candidate_limit,
-            include_concepts=True,
-        )
-        results = _merge_results(graph_results, wiki_results, limit=limit)
+
+        run_graph = engine in {"auto", "all", "graphrag"}
+        run_wiki = engine in {"auto", "all", "wiki"}
+        run_wikigraph = engine in {"auto", "all", "wikigraph"}
+        run_legacy = engine == "legacy"
+
+        if run_legacy and not as_json:
+            console.print(f"[yellow]{LEGACY_DEPRECATION_NOTE}[/yellow]")
+
+        graph_results: list[SearchResult] = []
+        wiki_results: list[SearchResult] = []
+        wikigraph_results: list[SearchResult] = []
+        wikigraph_contexts: list[WikiGraphRetrievedContext] = []
+        legacy_results: list[SearchResult] = []
+
+        if run_graph:
+            graph_results = graph_find_service.search(query, limit=candidate_limit)
+        if run_wiki:
+            wiki_results = search_service.search(
+                query,
+                limit=candidate_limit,
+                include_concepts=True,
+            )
+        if run_wikigraph:
+            try:
+                find_result = wikigraph_query_service.find(query, method="auto")
+                wikigraph_contexts = find_result.contexts
+                wikigraph_results = [
+                    _wikigraph_to_search_result(ctx) for ctx in wikigraph_contexts
+                ]
+            except WikiGraphQueryError as exc:
+                if engine == "wikigraph":
+                    raise click.ClickException(str(exc)) from exc
+                diagnostics.append(f"WikiGraphRAG unavailable: {exc}")
+        if run_legacy:
+            legacy_results = search_service.search(
+                query,
+                limit=candidate_limit,
+                include_concepts=False,
+                include_analysis=False,
+                page_types={"source"},
+            )
+            for result in legacy_results:
+                result.retriever = "legacy-fts"
+
+        if run_legacy:
+            results = legacy_results[:limit]
+        else:
+            results = _merge_results(
+                graph_results, wiki_results, wikigraph_results, limit=limit
+            )
 
         if as_json:
-            emit_json(
-                {
-                    "retriever": "graph-and-wiki-index",
-                    "query": query,
-                    "diagnostics": graph_diagnostics,
-                    "results": [_search_result_payload(result) for result in results],
-                }
-            )
+            payload: dict[str, object] = {
+                "retriever": _retriever_label(engine),
+                "engine": engine,
+                "query": query,
+                "diagnostics": diagnostics,
+                "results": [_search_result_payload(result) for result in results],
+                "wikigraph": {
+                    "contexts": [ctx.model_dump() for ctx in wikigraph_contexts],
+                },
+            }
+            if run_legacy:
+                payload["deprecated"] = True
+                payload["warning"] = LEGACY_DEPRECATION_NOTE
+            emit_json(payload)
             return
 
-        for diagnostic in graph_diagnostics:
+        for diagnostic in diagnostics:
             console.print(f"[yellow]{diagnostic}[/yellow]")
         if not results:
-            console.print("No graph artifacts or wiki pages matched that query.")
+            if engine == "legacy":
+                console.print("No wiki pages matched that query.")
+            elif engine == "wikigraph":
+                console.print("No WikiGraphRAG contexts matched that query.")
+            elif engine == "graphrag":
+                console.print("No GraphRAG artifacts matched that query.")
+            else:
+                console.print("No graph artifacts or wiki pages matched that query.")
             return
 
         table = make_table(
@@ -115,12 +196,44 @@ def create_command() -> click.Command:
     return command
 
 
-def _search_result_payload(result: SearchResult) -> dict[str, object]:
-    retriever = (
-        "graphrag-artifacts"
-        if str(result.path).startswith("graph://")
-        else "wiki-index"
+def _wikigraph_to_search_result(
+    ctx: WikiGraphRetrievedContext,
+) -> SearchResult:
+    snippet = ctx.text.replace("\n", " ").strip()
+    if len(snippet) > 240:
+        snippet = snippet[:240].rstrip() + "..."
+    return SearchResult(
+        title=ctx.title,
+        path=ctx.path or ctx.node_id,
+        score=ctx.score,
+        snippet=snippet or ctx.title,
+        section=ctx.section,
+        chunk_index=ctx.chunk_index,
+        retriever="wikigraph",
     )
+
+
+def _retriever_label(engine: str) -> str:
+    if engine == "wikigraph":
+        return "wikigraph"
+    if engine == "graphrag":
+        return "graphrag-artifacts"
+    if engine == "wiki":
+        return "wiki-index"
+    if engine == "legacy":
+        return "legacy-fts"
+    # auto/all preserves the existing JSON contract.
+    return "graph-and-wiki-index"
+
+
+def _search_result_payload(result: SearchResult) -> dict[str, object]:
+    path = str(result.path)
+    if result.retriever:
+        retriever = result.retriever
+    elif path.startswith("graph://"):
+        retriever = "graphrag-artifacts"
+    else:
+        retriever = "wiki-index"
     return {
         "retriever": retriever,
         "title": result.title,
@@ -135,12 +248,14 @@ def _search_result_payload(result: SearchResult) -> dict[str, object]:
 def _merge_results(
     graph_results: list[SearchResult],
     wiki_results: list[SearchResult],
+    wikigraph_results: list[SearchResult] | None = None,
     *,
     limit: int,
 ) -> list[SearchResult]:
+    wikigraph_results = wikigraph_results or []
     candidates: dict[tuple[str, str, str, str], SearchResult] = {}
     rrf_scores: defaultdict[tuple[str, str, str, str], float] = defaultdict(float)
-    for source_results in (graph_results, wiki_results):
+    for source_results in (graph_results, wiki_results, wikigraph_results):
         for rank, result in enumerate(source_results, start=1):
             key = _result_identity(result)
             rrf_scores[key] += 1 / (60 + rank)
@@ -170,6 +285,7 @@ def _with_score(result: SearchResult, score: float) -> SearchResult:
         snippet=result.snippet,
         section=result.section,
         chunk_index=result.chunk_index,
+        retriever=result.retriever,
     )
 
 
@@ -189,13 +305,19 @@ def _graph_find_diagnostics(graph_status: dict[str, object]) -> list[str]:
 
 
 def _result_identity(result: SearchResult) -> tuple[str, str, str, str]:
-    namespace = "graph" if str(result.path).startswith("graph://") else "wiki"
+    path = str(result.path)
+    if result.retriever == "wikigraph":
+        namespace = "wikigraph"
+    elif path.startswith("graph://"):
+        namespace = "graph"
+    else:
+        namespace = "wiki"
     section_id = (
         str(result.chunk_index) if result.chunk_index is not None else result.section
     )
     return (
         namespace,
-        str(result.path).casefold(),
+        path.casefold(),
         str(result.section).casefold(),
         str(section_id).casefold(),
     )

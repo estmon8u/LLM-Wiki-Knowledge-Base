@@ -2,11 +2,28 @@
 
 Date: 2026-05-11
 
+Commit `4a96bc6` updated the documentation after the full `kb agent` control
+plane landed. The pivot framing remains retrieval-first: the agent is a bounded
+natural-language layer over existing services, approval gates, and research
+recommendation storage, not a replacement retrieval backend.
+
+Commit `84b1ed6` captured the second review pass on the WikiGraphRAG branch:
+WikiGraphRAG update flags now defer to config when unset, context budgets are
+enforced before answers are assembled, `lexical_backend: simple` is respected,
+and the backend evaluator has a first-class Microsoft GraphRAG runner for
+three-way comparison.
+
+Commit `f57e4b0` added the Phase 4 WikiGraphRAG retrieval experiment surface:
+RRF over entity-hop and BM25 signals, alias-aware query expansion,
+section-title overlap boosts, and drift-lite bundle fusion. These are
+config-gated under `wikigraph.retrieval_improvements_enabled` for baseline vs
+improved A/B comparison.
+
 ## 1. Why the pivot is necessary
 
 The current project already has useful research-memory infrastructure: source ingestion, normalized markdown or plain-text artifacts, manifest metadata, provenance-aware source pages, saved analysis pages, structural linting, provider-backed review, vault export, and a rebuildable SQLite FTS5 search index.
 
-The weak point is retrieval. The deprecated `kb legacy find` path is centered on lexical SQLite FTS5 search, and `kb legacy ask` retrieves source-page chunks through that search path before asking a provider to synthesize an answer. That legacy path can work for direct factual questions when the right source chunk is retrieved, but it is not enough for cross-paper comparison, whole-corpus themes, or questions that need synthesis across related methods.
+The weak point is retrieval. The deprecated `kb find --engine legacy` path is centered on lexical SQLite FTS5 search, and `kb ask --engine legacy` retrieves source-page chunks through that search path before asking a provider to synthesize an answer. That legacy path can work for direct factual questions when the right source chunk is retrieved, but it is not enough for cross-paper comparison, whole-corpus themes, or questions that need synthesis across related methods.
 
 GraphRAG is a better fit for that gap because it indexes raw text into a knowledge graph, detects communities, summarizes those communities, and supports query modes for entity-specific questions, whole-dataset questions, DRIFT-style mixed global/local retrieval, and basic vector-RAG comparison. The pivot keeps the maintainable wiki system, but moves retrieval and synthesis toward GraphRAG.
 
@@ -22,7 +39,7 @@ Keep this sentence in project materials:
 
 ```text
 The wiki is not the retrieval engine. The wiki is the human-readable artifact layer.
-GraphRAG is the retrieval and synthesis engine.
+Microsoft GraphRAG and WikiGraphRAG are the retrieval/synthesis engines.
 ```
 
 ## 2. What stays from the old system
@@ -30,9 +47,9 @@ GraphRAG is the retrieval and synthesis engine.
 - Raw source files remain the source of truth.
 - Normalized markdown or plain-text artifacts remain the stable bridge between heterogeneous inputs and downstream processing.
 - `raw/_manifest.json` remains the provenance ledger for source IDs, hashes, converter metadata, and freshness checks.
-- `kb update` remains responsible for wiki artifact maintenance and may continue refreshing the temporary FTS index while legacy commands exist.
+- `kb update` remains responsible for wiki artifact maintenance and may continue refreshing the temporary FTS index while the deprecated legacy engine exists.
 - `wiki/sources/`, legacy `wiki/concepts/`, `wiki/graph/`, `wiki/analysis/`, `wiki/index.md`, and `wiki/log.md` remain inspectable artifacts.
-- FTS5 behavior is retained only behind explicit `kb legacy find` and `kb legacy ask` commands with deprecation warnings; both legacy commands stay source-page-only comparators.
+- FTS5 behavior is retained only behind explicit `kb find --engine legacy` and `kb ask --engine legacy` commands with deprecation warnings; both legacy commands stay source-page-only comparators.
 - `kb lint`, `kb review`, `kb status`, `kb doctor`, and `kb export` remain maintenance and operations surfaces.
 - Provider configuration, conversion routing, and Windows/corporate TLS setup remain part of the current project support story.
 
@@ -50,7 +67,7 @@ GraphRAG is the retrieval and synthesis engine.
   - `local` for specific entity, paper, or method questions,
   - `global` for whole-corpus themes,
   - `drift` for comparison questions that benefit from global context plus local refinement.
-- Top-level `kb ask` is now the default GraphRAG-aware answer controller. It checks graph readiness, chooses `basic`, `local`, `global`, or `drift` with deterministic routing unless `--method` is explicit, preserves tri-state query options such as dynamic community selection, passes the active output directory to GraphRAG's Python query entrypoints, preserves returned non-streaming answers when GraphRAG logs instead of printing, runs GraphRAG retrieval, and saves analysis pages with planner, method, route confidence, matched terms, index-run, graph-input hash, raw-manifest hash when available, source-trace, conservative support-level metadata, and parsed `[Data: ...]` references when GraphRAG emits them.
+- `kb ask --engine graphrag` is the explicit Microsoft GraphRAG answer controller; top-level `kb ask` defaults to WikiGraphRAG for local inspectable answers. It checks graph readiness, chooses `basic`, `local`, `global`, or `drift` with deterministic routing unless `--method` is explicit, preserves tri-state query options such as dynamic community selection, passes the active output directory to GraphRAG's Python query entrypoints, preserves returned non-streaming answers when GraphRAG logs instead of printing, runs GraphRAG retrieval, and saves analysis pages with planner, method, route confidence, matched terms, index-run, graph-input hash, raw-manifest hash when available, source-trace, conservative support-level metadata, and parsed `[Data: ...]` references when GraphRAG emits them.
 - GraphRAG runtime configuration now lives in the `graph` section of `kb.config.yaml`; `kb init` syncs completion provider/model, embedding provider/model, JSON input settings, technical extraction defaults, chunking, source-size limits, prompt paths, and API-key environment variables resolved from the centralized `providers` catalog into `graph/graphrag/settings.yaml`.
 - `kb update` and `kb export` convert active complete GraphRAG Parquet outputs into generated markdown pages under `wiki/graph/` for documents, text units, entities, relationships, and communities. Complete output means the required Parquet tables are present and readable, and the configured vector store is ready. `kb update` also refreshes graph pages when indexing is skipped because the graph is already current. Raw document/text-unit content is fenced to keep source markdown inspectable without creating wiki lint failures, and relationship-page materialization is capped while full relationship row counts remain visible in the graph index.
 - Wiki pages are now the inspection, provenance, export, and maintenance layer over the graph workflow.
@@ -91,12 +108,13 @@ The immediate design rule is to wrap GraphRAG rather than reimplement it. The pr
 
 CLI design guardrails:
 
-- `kb ask` is the GraphRAG-aware default controller.
-- `kb ask --method local|global|drift|basic` exposes explicit GraphRAG method control.
+- `kb ask` defaults to WikiGraphRAG.
+- `kb ask --engine graphrag --method local|global|drift|basic` exposes explicit Microsoft GraphRAG method control.
+- `kb ask --engine legacy` and `kb find --engine legacy` are the only legacy FTS surfaces; commit `04a1b9b` removed the standalone `kb legacy` command group.
 - `kb find` is graph-aware but non-generative: it searches direct GraphRAG entity/relationship artifacts before falling back to maintained wiki pages.
 - `kb export` refreshes graph artifact pages when complete GraphRAG output exists, so inspection pages can be regenerated without rerunning GraphRAG.
 - Old FTS5 behavior should not be available through a normal `--retriever lexical` option.
-- Old FTS5 behavior is exposed only through source-only `kb legacy find` and `kb legacy ask`.
+- Old FTS5 behavior is exposed only through source-only `kb find --engine legacy` and `kb ask --engine legacy`.
 - Legacy commands should print deprecation warnings to stderr for human output and keep primary answer/search output on stdout.
 - `--json` output should stay machine-readable, keep stderr empty, and include retriever metadata such as `retriever: "legacy-fts"`, `deprecated: true`, and a `warning` field.
 - If the GraphRAG workspace, synced input, output tables, or vector store are missing, empty, unreadable, or incompatible, top-level `kb ask`, `kb status`, `kb doctor`, and `kb lint` should report actionable next steps instead of silently falling back to FTS5.
@@ -107,7 +125,7 @@ CLI design guardrails:
 
 The pivot demotes the old retrieval path to a legacy comparator instead of a product default. Evaluation may compare:
 
-1. Deprecated SQLite FTS5 retrieval through explicit `kb legacy ...` commands.
+1. Deprecated SQLite FTS5 retrieval through explicit `kb find/ask --engine legacy` commands.
 2. GraphRAG Basic Search.
 3. GraphRAG Local Search.
 4. GraphRAG Global Search.
@@ -115,13 +133,13 @@ The pivot demotes the old retrieval path to a legacy comparator instead of a pro
 
 Benchmark questions should include local factual questions, exact lookup questions, semantic entity questions, cross-paper comparisons, whole-corpus theme questions, and maintenance/freshness checks.
 
-Phase 8 implements this as a scriptable benchmark under `eval/benchmark.yaml` plus evaluation runners under `scripts/`. The default runner is local-safe: it records deprecated `kb legacy find --json` metrics and deterministic `kb ask` auto-router method fit, then marks provider-backed legacy ask and GraphRAG query rows as skipped unless `--allow-provider-calls` is passed. This keeps cost-bearing model work explicit while still producing repeatable CSV baselines for retrieval and routing.
+Phase 8 implements this as a scriptable benchmark under `eval/benchmark.yaml` plus evaluation runners under `scripts/`. The default runner is local-safe: it records deprecated `kb find --engine legacy --json` metrics and deterministic `kb ask` auto-router method fit, then marks provider-backed legacy ask and GraphRAG query rows as skipped unless `--allow-provider-calls` is passed. This keeps cost-bearing model work explicit while still producing repeatable CSV baselines for retrieval and routing.
 
 Minimum metrics:
 
 | Metric | Purpose |
 | --- | --- |
-| Recall@5 | Confirm expected sources appear in retrieved evidence or source references |
+| Recall@8 | Confirm expected sources appear in retrieved evidence or source references |
 | Multi-source coverage | Check whether comparison questions retrieve both or all required sources |
 | Method fit | Check whether local/global/drift/basic routing matches the question type |
 | Claim support rate | Measure whether answer claims are grounded in retrieved source material |
@@ -136,19 +154,19 @@ This evaluation story directly explains the pivot: the original wiki workflow re
 Current evaluation outputs:
 
 - `scripts/evaluate_graph_modes.py` runs the full Phase 8 matrix and writes `eval/results/summary.md`, `eval/results/retrieval_metrics.csv`, and `eval/results/answer_metrics.csv`.
-- `scripts/evaluate_retrieval.py` focuses on retrieval metrics such as Recall@5, multi-source coverage, method fit, and latency.
+- `scripts/evaluate_retrieval.py` focuses on retrieval metrics such as Recall@8, multi-source coverage, method fit, and latency.
 - `scripts/evaluate_answers.py` focuses on answer metrics such as claim-support status, insufficient-evidence behavior, comprehensiveness, diversity, and latency.
 - `eval/results/artifacts/` stores per-question JSON command captures and is ignored because artifacts can include local corpus text or provider output.
 
 ## Source notes
 
-- Current code source of truth: `src/graphwiki_kb/services/search_service.py` maintains the SQLite FTS5 path at `graph/exports/search_index.sqlite3`, `src/graphwiki_kb/services/query_service.py` builds legacy answers from source-page search results, and `src/graphwiki_kb/commands/legacy.py` is the only CLI surface that invokes those retrieval behaviors.
+- Current code source of truth: `src/graphwiki_kb/services/search_service.py` maintains the SQLite FTS5 path at `graph/exports/search_index.sqlite3`, `src/graphwiki_kb/services/query_service.py` builds legacy answers from source-page search results, and `src/graphwiki_kb/commands/find.py` plus `src/graphwiki_kb/commands/ask.py` expose the deprecated behavior only through `--engine legacy`.
 - CLI design source: the Command Line Interface Guidelines emphasize human-first design, composability through stdout/stderr/exit codes, discoverable help, visible system state, human-readable errors, deprecation warnings before breaking changes, and simple lowercase names: <https://clig.dev/>
 - Microsoft GraphRAG docs describe GraphRAG as a structured, hierarchical RAG approach that extracts a knowledge graph, builds community hierarchies, generates community summaries, and uses those structures for RAG tasks: <https://microsoft.github.io/graphrag/>
 - Microsoft GraphRAG query docs describe Local, Global, DRIFT, and Basic Search modes: <https://microsoft.github.io/graphrag/query/overview/>
 - Microsoft GraphRAG indexing docs describe entity, relationship, claim, community, summary, embedding, and Parquet output behavior: <https://microsoft.github.io/graphrag/index/overview/>
 - Microsoft GraphRAG CLI docs expose `init`, `index`, `query`, `prompt-tune`, and `update`: <https://microsoft.github.io/graphrag/cli/>
 - Microsoft GraphRAG API docs expose Python entrypoints for indexing and Local, Global, DRIFT, and Basic search: <https://microsoft.github.io/graphrag/examples_notebooks/api_overview/>
-- Phase 9 local workspace source of truth: `pyproject.toml` declares `graphrag` and restricts the project runtime to Python 3.11/3.12 while GraphRAG documents Python 3.10-3.12 support; `kb.config.yaml` version 8 owns the `graph` provider/model/embedding defaults, graph routing aliases, OpenAI API backend/response-storage selection, agent settings, research settings, and trusted HTML local-file access flag while API-key environment variables are resolved from `providers` unless graph-specific overrides are set; `kb init` creates and syncs `graph/graphrag/settings.yaml` through a signature-aware Python-entrypoint adapter with documented CLI fallback for entrypoint contract drift; bundled prompt templates are wheel-included, discovered from packaged or editable layouts, copied only when missing, and written as sibling `*.new` files when bundled defaults change after user tuning; `kb update` writes compact `graph/graphrag/input/sources.json` from `raw/_manifest.json` and `raw/normalized/`, supports `--graph-method auto|standard|fast|standard-update|fast-update`, auto-selects full/update/skip index actions from input digests, source hashes, and GraphRAG package/settings/prompt/schema/runtime digests, records run metadata including early runner failures, warns and skips isolated missing normalized artifacts during normal mixed wiki/graph updates while keeping `--graph-only` strict, prints the active graph output path after indexing, and exports generated graph markdown; `kb status`, `kb doctor`, and `kb lint` include GraphRAG readiness/freshness checks for settings, input, output table health, vector-store states, corrupt/missing/mismatched run metadata, and strict readiness; lint also reports manifest raw/normalized artifact drift; `kb ask --method auto|basic|local|global|drift` is the user-facing GraphRAG query controller, checks method-specific readiness, prints the route reason, routes the active output directory through GraphRAG's Python query entrypoints, filters unsupported kwargs such as Basic Search `response_type`, consumes returned answers when stdout is empty, refuses blank saves, and preserves raw stdout/stderr separately in saved analysis pages; `kb agent` is an optional OpenAI Agents SDK control plane that routes natural-language requests to typed service tools for KB ask/find/status/lint/review, Responses `web_search` research, durable source recommendations, approved recommendation ingestion, and approved update; `kb find` searches direct GraphRAG entity/relationship artifacts plus maintained wiki pages with bounded streamed Parquet scans, graph artifact diagnostics, and token-aware scoring before globally ranking merged candidates after dedupe; `kb export` refreshes graph wiki pages with index-run/runtime-digest metadata when complete output exists and clean mode removes only vault markdown absent from the current export set; runtime `.env`, generated input, `output`, `cache`, `logs`, `graph/runs/*.json`, and `graph/runs/agent/` files are ignored. The old `kb graph` command group has been removed.
+- Phase 9 local workspace source of truth: `pyproject.toml` declares `graphrag` and restricts the project runtime to Python 3.11/3.12 while GraphRAG documents Python 3.10-3.12 support; `kb.config.yaml` version 8 owns the `graph` provider/model/embedding defaults, graph routing aliases, OpenAI API backend/response-storage selection, agent settings, research settings, and trusted HTML local-file access flag while API-key environment variables are resolved from `providers` unless graph-specific overrides are set; `kb init` creates and syncs `graph/graphrag/settings.yaml` through a signature-aware Python-entrypoint adapter with documented CLI fallback for entrypoint contract drift; bundled prompt templates are wheel-included, discovered from packaged or editable layouts, copied only when missing, and written as sibling `*.new` files when bundled defaults change after user tuning; `kb update` writes compact `graph/graphrag/input/sources.json` from `raw/_manifest.json` and `raw/normalized/`, supports `--graph-method auto|standard|fast|standard-update|fast-update`, auto-selects full/update/skip index actions from input digests, source hashes, and GraphRAG package/settings/prompt/schema/runtime digests, records run metadata including early runner failures, warns and skips isolated missing normalized artifacts during normal mixed wiki/graph updates while keeping `--graph-only` strict, prints the active graph output path after indexing, and exports generated graph markdown; `kb status`, `kb doctor`, and `kb lint` include GraphRAG readiness/freshness checks for settings, input, output table health, vector-store states, corrupt/missing/mismatched run metadata, and strict readiness; lint also reports manifest raw/normalized artifact drift; `kb ask --engine graphrag --method auto|basic|local|global|drift` is the user-facing Microsoft GraphRAG query controller, checks method-specific readiness, prints the route reason, routes the active output directory through GraphRAG's Python query entrypoints, filters unsupported kwargs such as Basic Search `response_type`, consumes returned answers when stdout is empty, refuses blank saves, and preserves raw stdout/stderr separately in saved analysis pages; `kb agent` is an optional OpenAI Agents SDK control plane that routes natural-language requests to typed service tools for KB ask/find/status/lint/review, Responses `web_search` research, durable source recommendations, approved recommendation ingestion, and approved update; `kb find` searches direct GraphRAG entity/relationship artifacts plus maintained wiki pages with bounded streamed Parquet scans, graph artifact diagnostics, and token-aware scoring before globally ranking merged candidates after dedupe; `kb export` refreshes graph wiki pages with index-run/runtime-digest metadata when complete output exists and clean mode removes only vault markdown absent from the current export set; runtime `.env`, generated input, `output`, `cache`, `logs`, `graph/runs/*.json`, and `graph/runs/agent/` files are ignored. The old `kb graph` command group has been removed.
 - Provider source notes: Google Gemini exposes embedding models such as `gemini-embedding-2` and `gemini-embedding-001` through the Gemini API; Anthropic does not offer its own embedding model and points embedding users to Voyage AI; Microsoft GraphRAG uses LiteLLM for model calls and supports non-OpenAI providers, while documenting OpenAI GPT-4-series models as its most tested path.
 - Phase 8 local workspace source of truth: `eval/benchmark.yaml` contains the 12-question comparison benchmark; `scripts/evaluation_lib.py`, `scripts/evaluate_graph_modes.py`, `scripts/evaluate_retrieval.py`, and `scripts/evaluate_answers.py` generate retrieval and answer metrics; `eval/results/summary.md`, `eval/results/retrieval_metrics.csv`, and `eval/results/answer_metrics.csv` are the report outputs; `eval/results/artifacts/` is ignored because run captures may include source snippets or model output.

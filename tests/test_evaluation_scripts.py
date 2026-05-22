@@ -104,6 +104,8 @@ questions:
         encoding="utf-8",
     )
 
+    commands: list[tuple[str, ...]] = []
+
     def fake_run_command(command, *, cwd, timeout_seconds):
         """Fake run command.
 
@@ -112,6 +114,7 @@ questions:
             cwd: Cwd value used by the operation.
             timeout_seconds: Timeout seconds value used by the operation.
         """
+        commands.append(tuple(command))
         return CommandRun(
             command=tuple(command),
             returncode=0,
@@ -164,6 +167,14 @@ questions:
     assert legacy_row["recall_at_5"] == "1.0"
     assert legacy_row["multi_source_coverage"] == "1"
     assert all(row["status"] == "skipped_provider_call" for row in result.answer_rows)
+    legacy_find_commands = [
+        command for command in commands if "find" in command and "legacy" in command
+    ]
+    assert legacy_find_commands
+    for command in legacy_find_commands:
+        find_index = command.index("find")
+        assert command[find_index + 1 : find_index + 3] == ("--engine", "legacy")
+        assert "legacy" not in command[:find_index]
 
 
 def test_graph_method_provider_payload_scores_claim_support(
@@ -186,6 +197,8 @@ def test_graph_method_provider_payload_scores_claim_support(
         expected_behaviors=(),
     )
 
+    commands: list[tuple[str, ...]] = []
+
     def fake_run_command(command, *, cwd, timeout_seconds):
         """Fake run command.
 
@@ -194,13 +207,21 @@ def test_graph_method_provider_payload_scores_claim_support(
             cwd: Cwd value used by the operation.
             timeout_seconds: Timeout seconds value used by the operation.
         """
+        commands.append(tuple(command))
         return CommandRun(
             command=tuple(command),
             returncode=0,
             stdout=json.dumps(
                 {
                     "answer": "REALM and RAG are both retrieval systems.",
-                    "claim_support": "graph-grounded",
+                    "claim_support": "cited-graph-answer",
+                    "graph_data_references": [
+                        {"kind": "entity", "ids": ["REALM", "RAG"]}
+                    ],
+                    "source_trace": {
+                        "index_run_id": "run-1",
+                        "graph_input_hash": "abc",
+                    },
                 }
             ),
             stderr="",
@@ -219,8 +240,13 @@ def test_graph_method_provider_payload_scores_claim_support(
     )
 
     assert row["status"] == "ok"
-    assert row["claim_support"] == "graph-provenance-only"
-    assert row["claim_support_rate"] == 0.0
+    assert row["claim_support"] == "cited-graph-answer"
+    assert row["claim_support_rate"] == 1.0
     assert row["graph_provenance_rate"] == 1.0
-    assert row["citation_verified_claim_rate"] == 0.0
+    assert row["citation_verified_claim_rate"] == 1.0
     assert row["diversity"] == 1.0
+    assert commands
+    command = commands[0]
+    ask_index = command.index("ask")
+    assert command[ask_index + 1 : ask_index + 3] == ("--engine", "graphrag")
+    assert command[ask_index + 3 : ask_index + 5] == ("--method", "drift")

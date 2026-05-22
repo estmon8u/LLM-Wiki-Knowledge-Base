@@ -174,6 +174,29 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "quora.com",
         ],
     },
+    "wikigraph": {
+        "enabled": True,
+        "include_graphrag_export_pages": False,
+        "include_normalized_text_units": True,
+        "text_unit_char_limit": 4800,
+        "text_unit_overlap_chars": 400,
+        "text_unit_min_chars": 120,
+        "text_unit_source": "normalized_only",
+        "text_unit_entity_mode": "mentions_existing_entities",
+        "lexical_backend": "bm25s",
+        "community_algorithm": "louvain",
+        "max_hops": 2,
+        "max_context_chunks": 12,
+        "max_context_tokens": 8000,
+        "chunk_char_limit": 1200,
+        "fuzzy_entity_match_threshold": 88,
+        "retrieval_improvements_enabled": True,
+        "rrf_k": 60,
+        "alias_query_token_budget": 16,
+        "section_title_overlap_boost": 0.10,
+        "export_generated_artifacts": False,
+        "export_text_unit_artifacts": False,
+    },
     "extensions": {},
 }
 
@@ -833,6 +856,67 @@ class _ConversionConfig(_StrictConfigModel):
     fallbacks: _FallbacksConfig
 
 
+class _WikiGraphConfig(BaseModel):
+    """Validated WikiGraphRAG runtime settings."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: StrictBool = True
+    include_graphrag_export_pages: StrictBool = False
+    include_normalized_text_units: StrictBool = True
+    text_unit_char_limit: StrictInt = Field(default=4800, ge=500, le=20000)
+    text_unit_overlap_chars: StrictInt = Field(default=400, ge=0, le=5000)
+    text_unit_min_chars: StrictInt = Field(default=120, ge=1, le=2000)
+    text_unit_source: Literal[
+        "normalized_only", "normalized_with_text_raw_fallback"
+    ] = "normalized_only"
+    text_unit_entity_mode: Literal[
+        "mentions_existing_entities", "extract_new_entities"
+    ] = "mentions_existing_entities"
+    lexical_backend: Literal["bm25s", "simple"] = "bm25s"
+    community_algorithm: Literal["louvain"] = "louvain"
+    max_hops: StrictInt = Field(default=2, ge=1, le=4)
+    max_context_chunks: StrictInt = Field(default=12, ge=1, le=50)
+    max_context_tokens: StrictInt = Field(default=8000, ge=500, le=32000)
+    chunk_char_limit: StrictInt = Field(default=1200, ge=200, le=5000)
+    fuzzy_entity_match_threshold: StrictInt = Field(default=88, ge=50, le=100)
+    # Phase 4 retrieval improvements toggle. Enabled by default;
+    # baseline-vs-improved ablation flips this to False.
+    retrieval_improvements_enabled: StrictBool = True
+    rrf_k: StrictInt = Field(default=60, ge=1, le=1000)
+    alias_query_token_budget: StrictInt = Field(default=16, ge=0, le=256)
+    section_title_overlap_boost: float = Field(default=0.10, ge=0.0, le=2.0)
+    export_generated_artifacts: StrictBool = False
+    export_text_unit_artifacts: StrictBool = False
+
+
+@dataclass(frozen=True)
+class WikiGraphRuntimeConfig:
+    """Resolved WikiGraphRAG runtime settings."""
+
+    enabled: bool
+    include_graphrag_export_pages: bool
+    include_normalized_text_units: bool
+    text_unit_char_limit: int
+    text_unit_overlap_chars: int
+    text_unit_min_chars: int
+    text_unit_source: str
+    text_unit_entity_mode: str
+    lexical_backend: str
+    community_algorithm: str
+    max_hops: int
+    max_context_chunks: int
+    max_context_tokens: int
+    chunk_char_limit: int
+    fuzzy_entity_match_threshold: int
+    retrieval_improvements_enabled: bool
+    rrf_k: int
+    alias_query_token_budget: int
+    section_title_overlap_boost: float
+    export_generated_artifacts: bool
+    export_text_unit_artifacts: bool
+
+
 class _KbConfigModel(BaseModel):
     """Top-level config schema with strict nested sections."""
 
@@ -850,6 +934,7 @@ class _KbConfigModel(BaseModel):
     conversion: _ConversionConfig
     agent: dict[str, Any] = Field(default_factory=dict)
     research: dict[str, Any] = Field(default_factory=dict)
+    wikigraph: _WikiGraphConfig = Field(default_factory=_WikiGraphConfig)
     extensions: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -911,6 +996,59 @@ def resolve_graph_config(config: dict[str, Any]) -> GraphRAGRuntimeConfig:
         entity_types=tuple(validated["extraction"]["entity_types"]),
         max_gleanings=int(validated["extraction"]["max_gleanings"]),
         max_source_bytes=int(validated["input"]["max_source_bytes"]),
+    )
+
+
+def resolve_wikigraph_config(config: dict[str, Any]) -> WikiGraphRuntimeConfig:
+    """Resolve WikiGraphRAG settings from project config.
+
+    Args:
+        config: Loaded knowledge-base configuration mapping.
+
+    Returns:
+        WikiGraphRuntimeConfig produced by the operation.
+
+    Raises:
+        ValueError: When ``wikigraph`` is malformed or fields are out of range.
+    """
+    section = config.get("wikigraph", DEFAULT_CONFIG["wikigraph"])
+    if not isinstance(section, dict):
+        raise ValueError("kb.config.yaml 'wikigraph' must contain a YAML mapping.")
+    try:
+        validated = _WikiGraphConfig.model_validate(section).model_dump(mode="python")
+    except ValidationError as exc:
+        error = exc.errors()[0]
+        if str(error.get("type", "")) == "extra_forbidden":
+            loc_parts = tuple(str(part) for part in error.get("loc", ()))
+            key = loc_parts[-1] if loc_parts else "unknown"
+            raise ValueError(
+                f"kb.config.yaml 'wikigraph' contains unknown keys: {key}."
+            ) from exc
+        raise ValueError(_format_config_validation_error(exc)) from exc
+    return WikiGraphRuntimeConfig(
+        enabled=bool(validated["enabled"]),
+        include_graphrag_export_pages=bool(validated["include_graphrag_export_pages"]),
+        include_normalized_text_units=bool(validated["include_normalized_text_units"]),
+        text_unit_char_limit=int(validated["text_unit_char_limit"]),
+        text_unit_overlap_chars=int(validated["text_unit_overlap_chars"]),
+        text_unit_min_chars=int(validated["text_unit_min_chars"]),
+        text_unit_source=str(validated["text_unit_source"]),
+        text_unit_entity_mode=str(validated["text_unit_entity_mode"]),
+        lexical_backend=str(validated["lexical_backend"]),
+        community_algorithm=str(validated["community_algorithm"]),
+        max_hops=int(validated["max_hops"]),
+        max_context_chunks=int(validated["max_context_chunks"]),
+        max_context_tokens=int(validated["max_context_tokens"]),
+        chunk_char_limit=int(validated["chunk_char_limit"]),
+        fuzzy_entity_match_threshold=int(validated["fuzzy_entity_match_threshold"]),
+        retrieval_improvements_enabled=bool(
+            validated["retrieval_improvements_enabled"]
+        ),
+        rrf_k=int(validated["rrf_k"]),
+        alias_query_token_budget=int(validated["alias_query_token_budget"]),
+        section_title_overlap_boost=float(validated["section_title_overlap_boost"]),
+        export_generated_artifacts=bool(validated["export_generated_artifacts"]),
+        export_text_unit_artifacts=bool(validated["export_text_unit_artifacts"]),
     )
 
 

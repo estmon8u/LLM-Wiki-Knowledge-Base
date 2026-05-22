@@ -19,12 +19,14 @@ from graphwiki_kb.services.config_service import (
     concept_generation_enabled,
     concept_provider_backed_enabled,
     resolve_graph_config,
+    resolve_wikigraph_config,
 )
 from graphwiki_kb.services.graphrag_defaults import env_file_has_key
 from graphwiki_kb.services.graphrag_sync_service import GraphRAGSyncResult
 from graphwiki_kb.services.graphrag_wiki_export_service import GraphRAGWikiExportResult
 from graphwiki_kb.services.ingest_service import IngestService
 from graphwiki_kb.services.search_service import SearchService
+from graphwiki_kb.wikigraph.models import WikiGraphBuildReport
 
 GRAPH_INDEX_METHODS = ("auto", "standard", "fast", "standard-update", "fast-update")
 
@@ -41,6 +43,16 @@ class UpdateOptions:
     allow_partial: bool = False
     concepts: bool | None = None
     graph_method: str = "auto"
+    # Tri-state: ``None`` means "use ``wikigraph.enabled`` from config".
+    wikigraph: bool | None = None
+    wikigraph_include_graphrag_export_pages: bool = False
+    # Tri-state: ``None`` means "use ``wikigraph.export_generated_artifacts``
+    # from config".
+    export_wikigraph_artifacts: bool | None = None
+    wikigraph_artifact_types: tuple[str, ...] | None = None
+    # Tri-state: ``None`` means "use
+    # ``wikigraph.include_normalized_text_units`` from config".
+    wikigraph_include_normalized_text_units: bool | None = None
 
 
 @dataclass
@@ -65,6 +77,10 @@ class UpdateResult:
     search_refreshed: bool = False
     search_warning: str = ""
     graph_result: GraphUpdateResult | None = None
+    wikigraph_result: WikiGraphBuildReport | None = None
+    wikigraph_skipped: bool = False
+    wikigraph_skip_reason: str = ""
+    wikigraph_artifact_paths: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -106,6 +122,7 @@ class UpdateService:
         graphrag_workspace_service: Any | None = None,
         graphrag_sync_service: Any | None = None,
         graphrag_wiki_export_service: Any | None = None,
+        wikigraph_index_service: Any | None = None,
     ) -> None:
         self._ingest = ingest_service
         self._compile = compile_service
@@ -115,6 +132,7 @@ class UpdateService:
         self._graphrag_workspace = graphrag_workspace_service
         self._graphrag_sync = graphrag_sync_service
         self._graphrag_wiki_export = graphrag_wiki_export_service
+        self._wikigraph_index = wikigraph_index_service
 
     def preflight(self) -> None:
         """Raise if provider is missing or broken."""
@@ -159,6 +177,7 @@ class UpdateService:
             result.graph_result = self._run_graph_sync(
                 options, status_callback=graph_status_callback
             )
+            self._maybe_build_wikigraph(options, result)
             return result
 
         self.preflight()
@@ -218,6 +237,8 @@ class UpdateService:
         result.graph_result = self._run_graph_sync(
             options, status_callback=graph_status_callback
         )
+
+        self._maybe_build_wikigraph(options, result)
 
         return result
 
@@ -371,6 +392,84 @@ class UpdateService:
                 return result
             raise ValueError(message) from exc
         return result
+
+    def _maybe_build_wikigraph(
+        self,
+        options: UpdateOptions,
+        result: UpdateResult,
+    ) -> None:
+        """Refresh the WikiGraphRAG index when enabled and viable.
+
+        Resolution precedence (clig.dev: CLI overrides config):
+
+        * If ``--wikigraph`` / ``--no-wikigraph`` (or the equivalent
+          ``UpdateOptions.wikigraph`` value) is explicitly set, honor it.
+        * Otherwise, fall back to ``wikigraph.enabled`` from project
+          config (default ``True``).
+
+        Likewise for artifact export, ``--export-wikigraph-artifacts`` /
+        ``UpdateOptions.export_wikigraph_artifacts`` overrides config's
+        ``wikigraph.export_generated_artifacts`` when set; otherwise the
+        config value drives the behavior.
+        """
+        try:
+            wg_config = resolve_wikigraph_config(self._config)
+        except ValueError:
+            wg_config = resolve_wikigraph_config({})
+
+        effective_enabled = (
+            options.wikigraph if options.wikigraph is not None else wg_config.enabled
+        )
+        if not effective_enabled:
+            result.wikigraph_skipped = True
+            result.wikigraph_skip_reason = (
+                "--no-wikigraph requested."
+                if options.wikigraph is False
+                else "Disabled by `wikigraph.enabled: false` in config."
+            )
+            return
+        if self._wikigraph_index is None:
+            result.wikigraph_skipped = True
+            result.wikigraph_skip_reason = "WikiGraphRAG index service unavailable."
+            return
+        try:
+            result.wikigraph_result = self._wikigraph_index.build(
+                include_graphrag_export_pages=(
+                    options.wikigraph_include_graphrag_export_pages
+                ),
+                include_normalized_text_units=(
+                    options.wikigraph_include_normalized_text_units
+                ),
+            )
+        except Exception as exc:
+            if options.allow_partial:
+                result.wikigraph_skipped = True
+                result.wikigraph_skip_reason = f"WikiGraphRAG build failed: {exc}"
+                return
+            raise
+
+        effective_export = (
+            options.export_wikigraph_artifacts
+            if options.export_wikigraph_artifacts is not None
+            else wg_config.export_generated_artifacts
+        )
+        if effective_export:
+            try:
+                result.wikigraph_artifact_paths = list(
+                    self._wikigraph_index.export_artifacts(
+                        types=options.wikigraph_artifact_types,
+                    )
+                )
+            except FileNotFoundError:
+                # The build either skipped or produced no nodes; no artifacts.
+                result.wikigraph_artifact_paths = []
+            except Exception as exc:
+                if not options.allow_partial:
+                    raise
+                result.wikigraph_skip_reason = (
+                    f"{result.wikigraph_skip_reason} "
+                    f"(artifact export failed: {exc})"
+                ).strip()
 
     def _active_graph_output_dir(self) -> str | None:
         if self._graphrag_sync is None:

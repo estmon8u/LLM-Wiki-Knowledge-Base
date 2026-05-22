@@ -1,5 +1,11 @@
 # GraphRAG Evaluation Summary
 
+This is a pre-WikiGraphRAG Phase 8 evaluator artifact. The branch kept it for
+history, then commit `1031eb8` introduced the first persisted real verification
+reports for the unified WikiGraphRAG / GraphRAG / legacy command surface. Use
+`verification_report.md` and the `backend_summary_*` files for the current
+comparison.
+
 - Generated at: 2026-05-11T22:27:19+00:00
 - Benchmark: graphrag-pivot-evaluation v2
 - Project root: `../kb-cli-realworld-pdf-20260415/project-codex-20260424-userchanges-realrun`
@@ -7,7 +13,7 @@
 - Questions: 12
 - Retrieval rows: 24 (ok: 24)
 - Answer rows: 48 (skipped_provider_call: 48)
-- Average Recall@5: 0.530
+- Average legacy recall label: 0.530
 - Auto-router method fit: 0.667
 - Claim support rate: n/a
 

@@ -1108,7 +1108,9 @@ def test_query_service_without_provider_raises_configuration_error(
     """
     test_project.write_file("wiki/sources/citations.md", "traceability appears here")
 
-    with pytest.raises(ProviderConfigurationError, match="kb legacy ask requires"):
+    with pytest.raises(
+        ProviderConfigurationError, match="kb ask --engine legacy requires"
+    ):
         test_project.services["query"].answer_question("traceability")
 
 

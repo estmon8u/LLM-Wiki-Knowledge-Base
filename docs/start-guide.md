@@ -12,7 +12,7 @@ Requirements:
 | --- | --- | --- |
 | Python 3.11 or 3.12 | Yes | The project is pinned to Python `>=3.11,<3.13` while Microsoft GraphRAG documents Python 3.10-3.12 support. |
 | Poetry | Yes | Installs dependencies and runs the `kb` entrypoint. |
-| LLM API key | Yes for `kb update`, `kb legacy ask`, `kb review`, and real GraphRAG index/query jobs | Normal `kb update` warns and skips graph indexing if GraphRAG credentials are missing; `kb update --graph-only` requires them. |
+| LLM API key | Yes for `kb update`, `kb ask --engine legacy`, `kb review`, and real GraphRAG index/query jobs | Normal `kb update` warns and skips graph indexing if GraphRAG credentials are missing; `kb update --graph-only` requires them. |
 | Mistral API key | Required for PDFs, Office docs, images, and HTML OCR | Markdown and plain text do not need it. |
 | HTML renderer | Required only for HTML OCR | `wkhtmltopdf` is preferred when installed; bundled `xhtml2pdf` is the pure-Python fallback. |
 
@@ -25,7 +25,8 @@ poetry run kb --help
 ```
 
 For package installs outside the repo, choose the extras you need, such as
-`graphwiki-kb[openai]`, `graphwiki-kb[agent]`, `graphwiki-kb[pdf]`, or
+`graphwiki-kb[openai]`, `graphwiki-kb[agent]`, `graphwiki-kb[pdf]`,
+`graphwiki-kb[wikigraph]`, `graphwiki-kb[wikigraph-eval]`, or
 `graphwiki-kb[all]`.
 
 ## 2. Create a project
@@ -134,8 +135,19 @@ poetry run kb --project-root $projectRoot update
 `kb update` compiles source pages, generates concept pages when useful,
 refreshes `wiki/index.md` and `wiki/log.md`, rebuilds the maintained wiki search
 index used by `kb find`, and refreshes the deprecated legacy comparator index.
-During the GraphRAG pivot, GraphRAG is the default answer path and deprecated
-FTS comparison commands are exposed only through `kb legacy ...`.
+During the GraphRAG pivot, `kb ask` now defaults to WikiGraphRAG. Microsoft
+GraphRAG remains explicit with `kb ask --engine graphrag`, and deprecated FTS
+comparison behavior is exposed only through `kb find/ask --engine legacy`.
+By commit `29cc191`, WikiGraphRAG build defaults live in the typed `wikigraph`
+config section, optional NetworkX-backed dependencies load lazily, and
+`--export-wikigraph-artifacts` writes generated entity, community, and chunk
+cards under `wiki/wikigraph/` without allowing those generated cards to feed
+back into the next graph build.
+Commit `58b909a` adds a normalized source TextUnit layer to that build. Unless
+`--no-wikigraph-normalized-text` or config disables it, WikiGraphRAG creates
+source-document and TextUnit nodes from `raw/normalized/`, persists
+`documents.json` and `text_units.json`, and reports the included document and
+TextUnit counts in the update summary.
 
 If a run is interrupted, resume it:
 
@@ -194,7 +206,7 @@ Real GraphRAG index actions call GraphRAG's installed Python entrypoints through
 a signature-aware adapter with documented CLI fallback for entrypoint contract
 drift, and use the configured GraphRAG model and embedding provider. Set the
 provider API key such as `OPENAI_API_KEY`, or put the same variable in the local
-GraphRAG `.env` file, before running graph indexing, `kb ask`, or
+GraphRAG `.env` file, before running graph indexing, `kb ask --engine graphrag`, or
 `kb update --graph-only`. A normal `kb update` without GraphRAG
 credentials still compiles the wiki and reports graph indexing as skipped.
 Interactive terminals show a live indexing status spinner while GraphRAG runs.
@@ -210,41 +222,42 @@ written beside it as `*.new` instead of overwriting your tuned prompt.
 
 ## 7. Search and ask
 
-Search direct GraphRAG entity/relationship artifacts plus the maintained wiki
-index for source, analysis, concept, and generated graph pages:
+Search direct GraphRAG entity/relationship artifacts, WikiGraphRAG contexts,
+the maintained wiki index, or the deprecated source-page legacy path:
 
 ```powershell
 poetry run kb --project-root $projectRoot find "citation grounding"
 poetry run kb --project-root $projectRoot find --limit 10 "agent architecture"
+poetry run kb --project-root $projectRoot find --engine legacy "citation grounding"
 ```
 
-After a real `kb update`, ask through the default GraphRAG controller:
+After a real `kb update`, ask through the default WikiGraphRAG backend. Use
+`--engine graphrag`, comma-separated engines, or `--engine all` when you want a
+comparison run:
 
 ```powershell
 poetry run kb --project-root $projectRoot ask "What are the main retrieval design patterns?"
 poetry run kb --project-root $projectRoot ask --method global "What are the main retrieval design patterns?"
-poetry run kb --project-root $projectRoot ask --method drift --save "Compare RAG, REALM, FiD, Self-RAG, and GraphRAG."
+poetry run kb --project-root $projectRoot ask --engine graphrag --method drift --save "Compare RAG, REALM, FiD, Self-RAG, and GraphRAG."
+poetry run kb --project-root $projectRoot ask --engine all "How does REALM differ from RAG?"
 ```
 
-Do not use the deprecated top-level `--limit` flag with `kb ask`; GraphRAG
-answers reject it because source-page evidence limiting only applies to
-`kb legacy ask`.
+Do not use the deprecated top-level `--limit` flag with `kb ask`; answer
+backends reject it because source-page evidence limiting only applies to
+`kb ask --engine legacy`.
 
-The default `--method auto` router uses question wording and a capped scan of
-known graph terms to choose Basic, Local, Global, or DRIFT. It does not fall
-back to FTS5 if the graph is missing or not ready; it fails with the next
-GraphRAG setup command to run. Readiness is checked per query method, so a
-global question can run from community reports while local/basic/drift questions
-still require the vector store and their method-specific tables. Non-streaming
-GraphRAG answers are preserved even when the underlying entrypoint returns the
-answer instead of printing it.
-
-Use `local` for specific entity, method, or paper questions; `global` for
-whole-corpus themes; `drift` for multi-paper comparisons; and `basic` as the
-simple vector-RAG baseline. Saved graph answers go to `wiki/analysis/` with
-graph metadata, source trace, support level, separate raw stdout/stderr audit
-sections, and unique filenames on repeated saves. Blank GraphRAG answers are
-not saved.
+The default `--method auto` router is backend-specific. WikiGraphRAG supports
+`basic`, `local`, `global`, and `drift-lite`. Since commit `4dbc437`,
+WikiGraphRAG auto-routing uses question intent: comparison words such as
+`compare`, `differ`, `vs`, or `contrast` choose `drift-lite`; corpus-wide
+phrases such as `main themes`, `across`, or `whole corpus` choose `global`;
+matched entities choose `local`; otherwise it falls back to `basic`. Microsoft
+GraphRAG supports `basic`, `local`, `global`, and `drift` through
+`--engine graphrag`. Neither graph-backed path silently falls back to FTS5; the
+legacy comparator must be requested with `--engine legacy`. Saved graph answers
+go to `wiki/analysis/` with graph metadata, source trace, support level, and
+unique filenames on repeated saves. Multi-engine saves prefix the slug per
+engine so outputs do not collide.
 
 Export graph artifacts into inspectable wiki pages:
 
@@ -259,36 +272,37 @@ wiki lint failures. Large relationship tables are counted in the graph index,
 but only the strongest relationship pages are materialized. Existing
 `wiki/concepts/` pages stay in place as legacy concept pages.
 
-Deprecated legacy search returns matching wiki pages:
+Deprecated legacy search returns matching source pages through the unified
+`find` command:
 
 ```powershell
-poetry run kb --project-root $projectRoot legacy find "citation grounding"
-poetry run kb --project-root $projectRoot legacy find --limit 10 "agent architecture"
+poetry run kb --project-root $projectRoot find --engine legacy "citation grounding"
+poetry run kb --project-root $projectRoot find --engine legacy --limit 10 "agent architecture"
 ```
 
 Deprecated legacy search and ask are source-page-only comparators. Legacy ask
-uses source-page chunks as evidence and returns a cited answer:
+uses source-page chunks as evidence and returns a cited answer through the
+unified `ask` command:
 
 ```powershell
-poetry run kb --project-root $projectRoot legacy ask "How does the wiki handle stale pages?"
-poetry run kb --project-root $projectRoot legacy ask --show-evidence "What formats are supported?"
+poetry run kb --project-root $projectRoot ask --engine legacy "How does the wiki handle stale pages?"
+poetry run kb --project-root $projectRoot ask --engine legacy --show-source-trace "What formats are supported?"
 ```
 
 Save useful legacy comparison answers as analysis pages:
 
 ```powershell
-poetry run kb --project-root $projectRoot legacy ask --save "What does the update pipeline do?"
-poetry run kb --project-root $projectRoot legacy ask --save-as update-pipeline "What does the update pipeline do?"
+poetry run kb --project-root $projectRoot ask --engine legacy --save-as update-pipeline "What does the update pipeline do?"
 ```
 
-Saved analysis pages are searchable with top-level `kb find`, but `kb legacy
-find` and later legacy ask runs stay source-only so saved answers, generated
+Saved analysis pages are searchable with top-level `kb find`, but `kb find --engine legacy` and later `kb ask --engine legacy` runs stay source-only so saved answers, generated
 concept pages, and direct graph artifacts are not treated as primary evidence.
 
 Optional natural-language control is available through `kb agent` when the
 agent extra and `OPENAI_API_KEY` are installed. It routes through the same typed
-services as the direct commands, so local KB answers still come from the
-GraphRAG ask controller and research recommendations are stored separately from
+services as the direct commands, so local KB answers can use GraphRAG or
+WikiGraphRAG through `ask_kb`, searches can use the same fused `find_kb`
+engines as `kb find`, and research recommendations are stored separately from
 ingestion:
 
 ```powershell
@@ -302,7 +316,13 @@ poetry run kb --project-root $projectRoot agent
 One-shot `kb agent "..."` calls are sessionless unless you pass `--session ID`.
 Interactive mode uses a persistent `repl` session. Write tools such as
 recommendation ingestion and `update_kb` require an approval prompt or `--yes`;
-research never ingests a web source automatically.
+research never ingests a web source automatically. Commit `f38709d` made
+"show previous recommendations" read the latest saved run that actually has
+recommendations, so an empty follow-up research run does not hide the numbered
+sources a user is preparing to ingest.
+Commit `eb87f69` also taught the agent to compare Microsoft GraphRAG and
+WikiGraphRAG by calling `ask_kb` once per engine instead of substituting one
+backend for the other.
 
 ## 8. Check and export
 
@@ -346,6 +366,7 @@ cleanup uses the exact destination paths exported by that run.
 | GraphRAG workspace is missing | Run `kb init`. |
 | GraphRAG input is missing | Run `kb update`. |
 | GraphRAG output or vector store is missing, empty, unreadable, or incompatible | Set graph provider credentials, then run `kb update`; a normal update without them only refreshes the wiki and warns. |
+| WikiGraphRAG reports that NetworkX is missing | Install `graphwiki-kb[wikigraph]` or use the repository development install with all extras. Commit `29cc191` keeps this dependency lazy, so unrelated non-WikiGraphRAG commands do not need NetworkX. |
 | Update warns about missing normalized graph input | Run `kb lint` to identify the stale manifest entry, then re-add or remove the affected source. |
 | Generated pages look stale | Run `kb status --changed`, then `kb update --force` if needed. |
 | `kb agent` says `openai-agents` is not installed | Install the optional agent extra with `poetry install -E agent` or use the repository development install with all extras. |

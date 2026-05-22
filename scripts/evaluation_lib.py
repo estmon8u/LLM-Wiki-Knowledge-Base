@@ -7,15 +7,16 @@ surface that uses it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import csv
 import json
 import re
 import subprocess
 import sys
 import time
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any
 
 import yaml
 
@@ -23,7 +24,6 @@ from graphwiki_kb.services.graphrag_query_service import GRAPH_QUERY_METHODS
 from graphwiki_kb.services.graphrag_status_service import GraphRAGStatusService
 from graphwiki_kb.services.project_service import build_project_paths, utc_now_iso
 from graphwiki_kb.services.query_router_service import QueryRouterService
-
 
 RESULTS_DIR = Path("eval") / "results"
 ARTIFACTS_DIR = "artifacts"
@@ -83,7 +83,7 @@ class BenchmarkQuestion:
     notes: str | None = None
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "BenchmarkQuestion":
+    def from_dict(cls, payload: dict[str, Any]) -> BenchmarkQuestion:
         """Builds an instance from a dictionary payload.
 
         Args:
@@ -409,8 +409,9 @@ def evaluate_legacy_find(
         )
     command = _kb_command(
         project_root,
-        "legacy",
         "find",
+        "--engine",
+        "legacy",
         "--limit",
         str(limit),
         "--json",
@@ -509,7 +510,7 @@ def evaluate_legacy_ask(
             method="ask",
             status="skipped_no_project_root",
         )
-    command = _kb_command(project_root, "legacy", "ask", question.question)
+    command = _kb_command(project_root, "ask", "--engine", "legacy", question.question)
     run = run_command(command, cwd=command_cwd, timeout_seconds=timeout_seconds)
     artifact_path = write_artifact(
         results_dir,
@@ -583,6 +584,8 @@ def evaluate_graph_method(
     command = _kb_command(
         project_root,
         "ask",
+        "--engine",
+        "graphrag",
         "--method",
         method,
         "--json",
@@ -612,8 +615,17 @@ def evaluate_graph_method(
         )
     answer_text = ""
     claim_support = "graph-provenance-only"
+    graph_data_references: Sequence[object] = ()
+    source_trace: object = None
     if isinstance(payload, dict):
         answer_text = str(payload.get("answer") or payload.get("raw_output") or "")
+        payload_claim_support = payload.get("claim_support")
+        if isinstance(payload_claim_support, str) and payload_claim_support.strip():
+            claim_support = payload_claim_support.strip()
+        refs = payload.get("graph_data_references")
+        if isinstance(refs, list):
+            graph_data_references = refs
+        source_trace = payload.get("source_trace")
     else:
         answer_text = run.stdout
     return score_answer_row(
@@ -623,6 +635,8 @@ def evaluate_graph_method(
         status="ok",
         answer_text=answer_text,
         claim_support=claim_support,
+        graph_data_references=graph_data_references,
+        source_trace=source_trace,
         latency_seconds=run.latency_seconds,
         artifact_path=artifact_path,
         error="",
@@ -704,6 +718,8 @@ def score_answer_row(
     status: str,
     answer_text: str,
     claim_support: str,
+    graph_data_references: Sequence[object] = (),
+    source_trace: object = None,
     latency_seconds: float,
     artifact_path: str,
     error: str,
@@ -736,9 +752,15 @@ def score_answer_row(
         method=method,
         status=status,
         claim_support=claim_support,
-        claim_support_rate=_claim_support_rate(claim_support),
-        graph_provenance_rate=_graph_provenance_rate(claim_support),
-        citation_verified_claim_rate=_citation_verified_claim_rate(claim_support),
+        claim_support_rate=_claim_support_rate(
+            claim_support, graph_data_references=graph_data_references
+        ),
+        graph_provenance_rate=_graph_provenance_rate(
+            claim_support, source_trace=source_trace
+        ),
+        citation_verified_claim_rate=_citation_verified_claim_rate(
+            claim_support, graph_data_references=graph_data_references
+        ),
         insufficient_evidence_expected=_bool_metric(expected_insufficient),
         insufficient_evidence_observed=_bool_metric(observed_insufficient),
         insufficient_evidence_behavior=(
@@ -1265,7 +1287,9 @@ def _mentions_insufficient_evidence(answer_text: str) -> bool:
     return any(marker in normalized for marker in markers)
 
 
-def _claim_support_rate(claim_support: str) -> object:
+def _claim_support_rate(
+    claim_support: str, *, graph_data_references: Sequence[object] = ()
+) -> object:
     """Handles claim support rate.
 
     Args:
@@ -1279,35 +1303,68 @@ def _claim_support_rate(claim_support: str) -> object:
         return ""
     if normalized == "legacy-citation-validated":
         return 1.0
+    if normalized == "cited-graph-answer":
+        return 1.0
+    if normalized == "graph-index-answer":
+        return 0.75
     if normalized == "stale-index":
         return 0.5
-    if normalized == "no-answer":
+    if normalized in {"no-answer", "insufficient-evidence"}:
         return 0.0
+    if graph_data_references and normalized.startswith("graph-"):
+        return 0.75
     if normalized.startswith("graph-"):
-        return 0.0
+        return 0.25
     return ""
 
 
-def _graph_provenance_rate(claim_support: str) -> object:
+def _graph_provenance_rate(
+    claim_support: str, *, source_trace: object = None
+) -> object:
     """Return whether the answer has GraphRAG run/index provenance."""
     normalized = claim_support.casefold()
-    if not normalized:
-        return ""
+    if _has_graph_source_trace(source_trace):
+        return 1.0
     if normalized.startswith("graph-"):
         return 1.0
+    if not normalized:
+        return ""
     return 0.0
 
 
-def _citation_verified_claim_rate(claim_support: str) -> object:
+def _citation_verified_claim_rate(
+    claim_support: str, *, graph_data_references: Sequence[object] = ()
+) -> object:
     """Return whether answer claims were verified against source citations."""
     normalized = claim_support.casefold()
     if not normalized:
         return ""
     if normalized == "legacy-citation-validated":
         return 1.0
-    if normalized.startswith("graph-") or normalized == "no-answer":
+    if normalized == "cited-graph-answer":
+        return 1.0 if graph_data_references else 0.75
+    if graph_data_references and normalized.startswith("graph-"):
+        return 1.0
+    if normalized.startswith("graph-") or normalized in {
+        "no-answer",
+        "insufficient-evidence",
+    }:
         return 0.0
     return ""
+
+
+def _has_graph_source_trace(source_trace: object) -> bool:
+    """Return true when a GraphRAG JSON payload includes index/source trace."""
+    if not isinstance(source_trace, dict):
+        return False
+    keys = (
+        "index_run_id",
+        "graph_run_id",
+        "graph_input_hash",
+        "input_manifest_hash",
+        "output_dir",
+    )
+    return any(bool(source_trace.get(key)) for key in keys)
 
 
 def _comprehensiveness_score(answer_text: str) -> object:

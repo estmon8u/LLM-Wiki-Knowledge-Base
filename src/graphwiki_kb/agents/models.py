@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 ClaimSupportLevel = Literal[
     "cited-graph-answer",
     "graph-index-answer",
+    "insufficient-evidence",
     "stale-index",
     "no-answer",
     "unverified",
@@ -37,13 +38,34 @@ SourceType = Literal[
 ]
 
 
+AskKbEngine = Literal["graphrag", "wikigraph"]
+AskKbMethod = Literal["auto", "basic", "local", "global", "drift", "drift-lite"]
+
+
 class AskKbInput(BaseModel):
     """Inputs accepted by the ask_kb agent tool."""
 
     model_config = ConfigDict(extra="forbid")
 
     question: str = Field(..., description="Natural-language KB question.")
-    method: Literal["auto", "basic", "local", "global", "drift"] = "auto"
+    engine: AskKbEngine = Field(
+        "wikigraph",
+        description=(
+            "Retrieval backend. `wikigraph` (default) runs the custom "
+            "WikiGraphRAG backend built from the maintained wiki -- fast, "
+            "cheap, fully grounded, and the recommended default. `graphrag` "
+            "runs the Microsoft GraphRAG controller; choose it when the "
+            "user explicitly asks for GraphRAG or for synthesis-heavy "
+            "whole-corpus answers."
+        ),
+    )
+    method: AskKbMethod = Field(
+        "auto",
+        description=(
+            "Retrieval method. GraphRAG supports auto/basic/local/global/drift; "
+            "WikiGraphRAG supports auto/basic/local/global/drift-lite."
+        ),
+    )
     save: bool = Field(
         False,
         description="Save the answer as an analysis page in wiki/analysis/.",
@@ -71,6 +93,9 @@ class AskKbOutput(BaseModel):
     index_run_id: str | None = None
 
 
+FindKbEngine = Literal["auto", "graphrag", "wiki", "wikigraph", "all"]
+
+
 class FindKbInput(BaseModel):
     """Inputs accepted by the find_kb agent tool."""
 
@@ -78,6 +103,13 @@ class FindKbInput(BaseModel):
 
     query: str
     limit: int = Field(5, ge=1, le=50)
+    engine: FindKbEngine = Field(
+        "auto",
+        description=(
+            "Retrieval backend. `auto`/`all` fuse GraphRAG, wiki, and "
+            "WikiGraphRAG via reciprocal rank fusion."
+        ),
+    )
 
 
 class FindKbResult(BaseModel):
@@ -89,7 +121,7 @@ class FindKbResult(BaseModel):
     path: str
     score: float
     snippet: str
-    retriever: Literal["graph", "wiki"]
+    retriever: Literal["graph", "wiki", "wikigraph"]
 
 
 class FindKbOutput(BaseModel):
@@ -100,6 +132,27 @@ class FindKbOutput(BaseModel):
     query: str
     results: list[FindKbResult] = Field(default_factory=list)
     graph_diagnostics: list[str] = Field(default_factory=list)
+
+
+class WikiGraphStatusBlock(BaseModel):
+    """Compact snapshot of the WikiGraphRAG index for the agent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    initialized: bool
+    built_at: str | None = None
+    node_count: int = 0
+    edge_count: int = 0
+    chunk_count: int = 0
+    text_unit_count: int = 0
+    document_count: int = 0
+    entity_count: int = 0
+    community_count: int = 0
+    source_count: int = 0
+    include_graphrag_export_pages: bool = False
+    include_normalized_text_units: bool = False
+    readable: bool = True
+    message: str = ""
 
 
 class StatusOutput(BaseModel):
@@ -116,6 +169,7 @@ class StatusOutput(BaseModel):
     graph_freshness: str
     next_action: str
     staleness_reasons: list[str] = Field(default_factory=list)
+    wikigraph: WikiGraphStatusBlock | None = None
 
 
 class LintOutput(BaseModel):
@@ -298,6 +352,40 @@ class UpdateInput(BaseModel):
     graph_method: GraphMethod = "auto"
     no_graph: bool = False
     graph_only: bool = False
+    wikigraph: bool | None = Field(
+        None,
+        description=(
+            "Refresh the WikiGraphRAG index after compile. When unset, "
+            "`wikigraph.enabled` from project config drives the behavior "
+            "(defaults to true)."
+        ),
+    )
+    wikigraph_include_graphrag_export_pages: bool = Field(
+        False,
+        description=(
+            "Include wiki/graph (GraphRAG-exported) pages in the WikiGraphRAG "
+            "build for the optional ablation."
+        ),
+    )
+    wikigraph_include_normalized_text_units: bool | None = Field(
+        None,
+        description=(
+            "Whether to include source-derived TextUnits (raw/normalized/*) "
+            "in the WikiGraphRAG build. When unset, "
+            "`wikigraph.include_normalized_text_units` from project config "
+            "drives the behavior (defaults to true). Setting this to false "
+            "produces the wiki-only ablation variant."
+        ),
+    )
+    export_wikigraph_artifacts: bool | None = Field(
+        None,
+        description=(
+            "After the WikiGraphRAG build, write generated entity, community, "
+            "and chunk cards under wiki/wikigraph/. When unset, "
+            "`wikigraph.export_generated_artifacts` from project config "
+            "drives the behavior (defaults to false)."
+        ),
+    )
 
 
 class UpdateOutput(BaseModel):
@@ -374,10 +462,13 @@ class ResearchRunRecord(BaseModel):
 __all__ = [
     "AgentRunRecord",
     "AgentToolResult",
+    "AskKbEngine",
     "AskKbInput",
+    "AskKbMethod",
     "AskKbOutput",
     "ClaimSupportLevel",
     "ConfidenceLevel",
+    "FindKbEngine",
     "FindKbInput",
     "FindKbOutput",
     "FindKbResult",
@@ -403,4 +494,5 @@ __all__ = [
     "UpdateOutput",
     "WebFinding",
     "WebResearchResult",
+    "WikiGraphStatusBlock",
 ]

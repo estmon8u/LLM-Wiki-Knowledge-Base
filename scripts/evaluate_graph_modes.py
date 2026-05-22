@@ -8,18 +8,17 @@ surface that uses it.
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import sys
-
+from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.evaluation_lib import (
-    EvaluationConfig,
+from scripts.evaluation_lib import (  # noqa: E402
     GRAPH_QUERY_METHODS,
     RESULTS_DIR,
+    EvaluationConfig,
     run_graph_modes_evaluation,
 )
 
@@ -75,7 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--include-legacy-ask",
         action="store_true",
         help=(
-            "Include deprecated provider-backed kb legacy ask rows. Requires "
+            "Include deprecated provider-backed kb ask --engine legacy rows. Requires "
             "--allow-provider-calls to execute instead of skip."
         ),
     )

@@ -8,19 +8,18 @@ surface that uses it.
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import sys
-
+from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.evaluation_lib import (
+from scripts.evaluation_lib import (  # noqa: E402
     ANSWER_COLUMNS,
-    EvaluationConfig,
     GRAPH_QUERY_METHODS,
     RESULTS_DIR,
+    EvaluationConfig,
     run_graph_modes_evaluation,
     write_csv,
 )
@@ -64,7 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--include-legacy-ask",
         action="store_true",
-        help="Include deprecated kb legacy ask rows.",
+        help="Include deprecated kb ask --engine legacy rows.",
     )
     parser.add_argument(
         "--methods",
