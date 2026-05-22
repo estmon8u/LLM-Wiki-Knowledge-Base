@@ -123,6 +123,7 @@ show_error_codes = true
 [tool.coverage.report]
 exclude_lines = [
 	"pragma: no cover",
+	"if TYPE_CHECKING:",
 ]
 
 [build-system]
