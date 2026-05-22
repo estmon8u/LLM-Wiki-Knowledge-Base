@@ -135,19 +135,16 @@ poetry run kb --project-root $projectRoot update
 `kb update` compiles source pages, generates concept pages when useful,
 refreshes `wiki/index.md` and `wiki/log.md`, rebuilds the maintained wiki search
 index used by `kb find`, and refreshes the deprecated legacy comparator index.
-During the GraphRAG pivot, `kb ask` now defaults to WikiGraphRAG. Microsoft
-GraphRAG remains explicit with `kb ask --engine graphrag`, and deprecated FTS
-comparison behavior is exposed only through `kb find/ask --engine legacy`.
-By commit `29cc191`, WikiGraphRAG build defaults live in the typed `wikigraph`
-config section, optional NetworkX-backed dependencies load lazily, and
-`--export-wikigraph-artifacts` writes generated entity, community, and chunk
-cards under `wiki/wikigraph/` without allowing those generated cards to feed
-back into the next graph build.
-Commit `58b909a` adds a normalized source TextUnit layer to that build. Unless
-`--no-wikigraph-normalized-text` or config disables it, WikiGraphRAG creates
-source-document and TextUnit nodes from `raw/normalized/`, persists
-`documents.json` and `text_units.json`, and reports the included document and
-TextUnit counts in the update summary.
+`kb ask` defaults to WikiGraphRAG. Microsoft GraphRAG remains explicit with
+`kb ask --engine graphrag`, and deprecated FTS comparison behavior is exposed
+only through `kb find/ask --engine legacy`. WikiGraphRAG build defaults live in
+the typed `wikigraph` config section, optional NetworkX-backed dependencies load
+lazily, and `--export-wikigraph-artifacts` writes generated entity, community,
+and chunk cards under `wiki/wikigraph/` without allowing those generated cards
+to feed back into the next graph build. Unless `--no-wikigraph-normalized-text`
+or config disables it, WikiGraphRAG creates source-document and TextUnit nodes
+from `raw/normalized/`, persists `documents.json` and `text_units.json`, and
+reports the included document and TextUnit counts in the update summary.
 
 If a run is interrupted, resume it:
 
@@ -247,11 +244,11 @@ backends reject it because source-page evidence limiting only applies to
 `kb ask --engine legacy`.
 
 The default `--method auto` router is backend-specific. WikiGraphRAG supports
-`basic`, `local`, `global`, and `drift-lite`. Since commit `4dbc437`,
-WikiGraphRAG auto-routing uses question intent: comparison words such as
-`compare`, `differ`, `vs`, or `contrast` choose `drift-lite`; corpus-wide
-phrases such as `main themes`, `across`, or `whole corpus` choose `global`;
-matched entities choose `local`; otherwise it falls back to `basic`. Microsoft
+`basic`, `local`, `global`, and `drift-lite`. WikiGraphRAG auto-routing uses
+question intent: comparison words such as `compare`, `differ`, `vs`, or
+`contrast` choose `drift-lite`; corpus-wide phrases such as `main themes`,
+`across`, or `whole corpus` choose `global`; matched entities choose `local`;
+otherwise it falls back to `basic`. Microsoft
 GraphRAG supports `basic`, `local`, `global`, and `drift` through
 `--engine graphrag`. Neither graph-backed path silently falls back to FTS5; the
 legacy comparator must be requested with `--engine legacy`. Saved graph answers
@@ -316,13 +313,12 @@ poetry run kb --project-root $projectRoot agent
 One-shot `kb agent "..."` calls are sessionless unless you pass `--session ID`.
 Interactive mode uses a persistent `repl` session. Write tools such as
 recommendation ingestion and `update_kb` require an approval prompt or `--yes`;
-research never ingests a web source automatically. Commit `f38709d` made
-"show previous recommendations" read the latest saved run that actually has
-recommendations, so an empty follow-up research run does not hide the numbered
-sources a user is preparing to ingest.
-Commit `eb87f69` also taught the agent to compare Microsoft GraphRAG and
-WikiGraphRAG by calling `ask_kb` once per engine instead of substituting one
-backend for the other.
+research never ingests a web source automatically. "Show previous
+recommendations" reads the latest saved run that actually has recommendations,
+so an empty follow-up research run does not hide the numbered sources a user is
+preparing to ingest. When asked to compare Microsoft GraphRAG and WikiGraphRAG,
+the agent calls `ask_kb` once per engine instead of substituting one backend for
+the other.
 
 ## 8. Check and export
 
@@ -366,7 +362,7 @@ cleanup uses the exact destination paths exported by that run.
 | GraphRAG workspace is missing | Run `kb init`. |
 | GraphRAG input is missing | Run `kb update`. |
 | GraphRAG output or vector store is missing, empty, unreadable, or incompatible | Set graph provider credentials, then run `kb update`; a normal update without them only refreshes the wiki and warns. |
-| WikiGraphRAG reports that NetworkX is missing | Install `graphwiki-kb[wikigraph]` or use the repository development install with all extras. Commit `29cc191` keeps this dependency lazy, so unrelated non-WikiGraphRAG commands do not need NetworkX. |
+| WikiGraphRAG reports that NetworkX is missing | Install `graphwiki-kb[wikigraph]` or use the repository development install with all extras. WikiGraphRAG dependencies load lazily, so unrelated non-WikiGraphRAG commands do not need NetworkX. |
 | Update warns about missing normalized graph input | Run `kb lint` to identify the stale manifest entry, then re-add or remove the affected source. |
 | Generated pages look stale | Run `kb status --changed`, then `kb update --force` if needed. |
 | `kb agent` says `openai-agents` is not installed | Install the optional agent extra with `poetry install -E agent` or use the repository development install with all extras. |

@@ -17,8 +17,7 @@
 
 ## Command To Service Mapping
 
-Most commands are flat top-level verbs. Commit `04a1b9b` removed the standalone
-`legacy` group: deprecated lexical behavior now lives behind
+Most commands are flat top-level verbs. Deprecated lexical behavior now lives behind
 `kb find --engine legacy` and `kb ask --engine legacy`, while WikiGraphRAG and
 Microsoft GraphRAG are selected through the same unified command surface.
 
@@ -53,7 +52,7 @@ Microsoft GraphRAG are selected through the same unified command surface.
 | Default ask | user question plus `--engine` selection and method options | `kb ask` defaults to WikiGraphRAG; `--engine graphrag` returns GraphRAG metadata with deterministic route reason, planner metadata, source trace, graph-input hash, raw-manifest hash when available, and conservative support level; `--engine legacy` keeps the deprecated source-page comparator path; comma lists and `--engine all` render side-by-side sections and prefix saved slugs per engine |
 | Agent turn | natural-language request plus optional session id and approval mode | OpenAI Agents SDK run over typed tools; durable `agent-run-*.json` trace; optional `sessions.sqlite`; research runs and recommendations under `graph/runs/agent/`; web findings separated from local KB answers; write tools paused behind approval or `--yes` |
 | GraphRAG wiki export | active complete GraphRAG Parquet output tables during `kb update` or `kb export` | generated markdown graph pages under `wiki/graph/` for documents, text units, entities, relationships, and communities; export also runs when update skips indexing because complete output is current; raw source text is fenced and high-volume relationship page export is capped while row counts remain visible |
-| WikiGraphRAG build | maintained wiki artifacts plus normalized source material | commit `a75f7c8` introduced `src/graphwiki_kb/wikigraph/`: wiki-aware parsing, deterministic entity/claim extraction, NetworkX-backed JSON graph storage, BM25 retrieval, Louvain/community fallback, and basic/local/global/drift-lite context assembly; commit `b0ae976` moved the user-facing surface from a temporary `kb wikigraph` group into `kb update`, `kb find --engine`, and `kb ask --engine`; commit `58b909a` added normalized source TextUnits, `source_document` nodes, `documents.json`, `text_units.json`, and source-derived citation refs so WikiGraphRAG retrieval is compared against source text as well as curated wiki chunks |
+| WikiGraphRAG build | maintained wiki artifacts plus normalized source material | `src/graphwiki_kb/wikigraph/` owns wiki-aware parsing, deterministic entity/claim extraction, NetworkX-backed JSON graph storage, BM25 retrieval, Louvain/community fallback, basic/local/global/drift-lite context assembly, normalized source TextUnits, `source_document` nodes, `documents.json`, `text_units.json`, and source-derived citation refs; user-facing access is through `kb update`, `kb find --engine`, and `kb ask --engine` |
 | Evaluation | benchmark questions plus an initialized KB project | `eval/results/summary.md`, `retrieval_metrics.csv`, `answer_metrics.csv`, and ignored per-question command artifacts |
 | Lint | compiled wiki and metadata | structural findings for links, fragments, headings, titles, typed frontmatter, empty pages, raw/normalized manifest artifact drift, graph staleness, and maintenance signals |
 | Review | compiled source/concept pages | semantic findings from deterministic overlap checks over source pages, terminology-variant checks over reviewable source/concept pages, and schema-guided single-pass provider review over curated source-page excerpts |

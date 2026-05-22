@@ -2,22 +2,18 @@
 
 Date: 2026-05-11
 
-Commit `4a96bc6` updated the documentation after the full `kb agent` control
-plane landed. The pivot framing remains retrieval-first: the agent is a bounded
-natural-language layer over existing services, approval gates, and research
-recommendation storage, not a replacement retrieval backend.
+The pivot framing is retrieval-first: `kb agent` is a bounded natural-language
+layer over existing services, approval gates, and research recommendation
+storage, not a replacement retrieval backend. WikiGraphRAG update flags defer to
+config when unset, context budgets are enforced before answers are assembled,
+`lexical_backend: simple` is respected, and the backend evaluator has a
+first-class Microsoft GraphRAG runner for three-way comparison.
 
-Commit `84b1ed6` captured the second review pass on the WikiGraphRAG branch:
-WikiGraphRAG update flags now defer to config when unset, context budgets are
-enforced before answers are assembled, `lexical_backend: simple` is respected,
-and the backend evaluator has a first-class Microsoft GraphRAG runner for
-three-way comparison.
-
-Commit `f57e4b0` added the Phase 4 WikiGraphRAG retrieval experiment surface:
-RRF over entity-hop and BM25 signals, alias-aware query expansion,
-section-title overlap boosts, and drift-lite bundle fusion. These are
-config-gated under `wikigraph.retrieval_improvements_enabled` for baseline vs
-improved A/B comparison.
+WikiGraphRAG keeps a config-gated retrieval experiment surface under
+`wikigraph.retrieval_improvements_enabled`: RRF helpers, alias-aware query
+expansion, section-title overlap boosts, and drift-lite bundle fusion. The
+landed public retrieval path keeps only the conservative subset that survived
+the real-corpus check.
 
 ## 1. Why the pivot is necessary
 
@@ -110,7 +106,7 @@ CLI design guardrails:
 
 - `kb ask` defaults to WikiGraphRAG.
 - `kb ask --engine graphrag --method local|global|drift|basic` exposes explicit Microsoft GraphRAG method control.
-- `kb ask --engine legacy` and `kb find --engine legacy` are the only legacy FTS surfaces; commit `04a1b9b` removed the standalone `kb legacy` command group.
+- `kb ask --engine legacy` and `kb find --engine legacy` are the only legacy FTS surfaces; the standalone `kb legacy` command group is not part of the current CLI.
 - `kb find` is graph-aware but non-generative: it searches direct GraphRAG entity/relationship artifacts before falling back to maintained wiki pages.
 - `kb export` refreshes graph artifact pages when complete GraphRAG output exists, so inspection pages can be regenerated without rerunning GraphRAG.
 - Old FTS5 behavior should not be available through a normal `--retriever lexical` option.

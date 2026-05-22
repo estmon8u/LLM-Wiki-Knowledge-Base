@@ -1,10 +1,10 @@
 # Title: GraphWiki KB: A CLI GraphRAG System with Inspectable Wiki Artifacts
 
 Date: 04/18/2026
-Updated: 05/22/2026 during the sequential WikiGraphRAG branch documentation pass. Commit `0e6eb47` originally reframed the proposal around main-line GraphRAG hardening, the read-only `kb agent` MVP, and final evaluation framing.
+Updated: 05/22/2026 to describe the current GraphRAG/WikiGraphRAG system state, the bounded `kb agent` MVP, and final evaluation framing.
 Updated: 05/20/2026 to fold the custom WikiGraphRAG backend into `kb update`, `kb find`, and `kb ask` for a three-way backend comparison while keeping the existing [Command Line Interface Guidelines](https://clig.dev/) (clig.dev) requirements such as consistent flags, discoverable help, machine-readable `--json` output, sensible defaults, and friendly errors
 Updated: 05/20/2026 (later) to make `--engine wikigraph` the default for `kb ask` (fastest and cheapest of the three backends on the real-PDF benchmark) and to fold the deprecated legacy FTS path into the unified `kb ask --engine legacy` / `kb find --engine legacy` surface, removing the standalone `kb legacy` command group
-Updated: 05/21/2026 after commit `6966831` to replace the early optimistic WikiGraphRAG benchmark narrative with the final post-fix result. After nine evaluator gameability fixes (G1-G9), WikiGraphRAG is not universally better than Microsoft GraphRAG: the two tie on Effective Recall@8 (0.827), WikiGraphRAG is much faster and has stricter citation refs, while Microsoft GraphRAG leads on answer quality (0.874 vs 0.839), grounded entity/term rates, and insufficient-evidence calibration.
+Updated: 05/21/2026 to replace the early optimistic WikiGraphRAG benchmark narrative with the final post-fix result. After nine evaluator gameability fixes (G1-G9), WikiGraphRAG is not universally better than Microsoft GraphRAG: the two tie on Effective Recall@8 (0.827), WikiGraphRAG is much faster and has stricter citation refs, while Microsoft GraphRAG leads on answer quality (0.874 vs 0.839), grounded entity/term rates, and insufficient-evidence calibration.
 
 Team Member:
 
@@ -94,7 +94,7 @@ These give Legacy FTS no place to hide on its strongest historical territory (pa
 
 ### 5. Final post-fix headline numbers (10-PDF corpus, 14 questions)
 
-The early all-WikiGraphRAG-win result did not survive the Phase 2-7 evaluator audit. Commit `6966831` records the honest final comparison in `eval/results/verification_report.md` and the per-question review artifacts.
+The early all-WikiGraphRAG-win result did not survive the evaluator audit. The honest final comparison is recorded in `eval/results/verification_report.md` and the per-question review artifacts.
 
 | Metric | **WikiGraphRAG** | **Microsoft GraphRAG** | Winner |
 |---|---:|---:|---|

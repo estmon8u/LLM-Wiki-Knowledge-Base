@@ -28,5 +28,3 @@ This concept groups dense retrieval sources that support question answering work
 
 - [[alpha|Alpha Page]] (`wiki/sources/alpha.md`) — Alpha summary.
 - [[beta|Beta Page]] (`wiki/sources/beta.md`) — Beta summary.
-
-<!-- branch-docs-note: Reviewed during the sequential WikiGraphRAG branch documentation pass; fixture semantics unchanged. -->

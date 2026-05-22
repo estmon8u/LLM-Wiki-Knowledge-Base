@@ -1,9 +1,9 @@
 # Backend evaluation summary
 
-Branch note: commit `c1e5f46` adds colon-prefix title aliases to the
-WikiGraphRAG entity catalog. This v6 retrieval artifact shows the tradeoff:
-entity matching improves for short paper names such as `REALM`, while recall can
-shift when local expansion fans out from the newly matched entity.
+This v6 retrieval artifact includes colon-prefix title aliases in the
+WikiGraphRAG entity catalog. It shows the tradeoff: entity matching improves for
+short paper names such as `REALM`, while recall can shift when local expansion
+fans out from the newly matched entity.
 
 ## Retrieval metrics (per backend, averaged)
 

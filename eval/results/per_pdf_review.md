@@ -1,8 +1,8 @@
 # Per-PDF inspection (10-paper arXiv corpus)
 
-Commit `6966831` added this tracked corpus-inspection artifact alongside
-`scripts/render_eval_reviews.py` so the final report can be checked at the
-paper level.
+This tracked corpus-inspection artifact is rendered by
+`scripts/render_eval_reviews.py` so the final report can be checked at the paper
+level.
 
 For each of the 10 PDFs we record:
 - Normalized markdown path + length

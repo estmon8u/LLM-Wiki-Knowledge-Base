@@ -33,19 +33,16 @@ per-question rows.
 
 ## 1. What was wrong with the previous evaluation
 
-The previous report (`verification_report.md`@`1031eb8`) claimed WGR
-won on every headline metric. We audited the harness and found nine
-issues. Each one independently advantaged WGR or asymmetrically
-penalised GraphRAG. Plain-language summary:
+The previous report claimed WGR won on every headline metric. We audited the
+harness and found nine issues. Each one independently advantaged WGR or
+asymmetrically penalised GraphRAG. Plain-language summary:
 
-Commit `564b20d` is the Phase 2 de-game commit for G1, G3-G6, G8, and
-G9. It made snippets symmetric, removed substring false positives, replaced
-citation-volume scoring with supported-citation scoring, published strict and
-loose citation-ref validity, and exposed `method_fit` for router observability.
-G2 and G7 are covered by neighboring commits.
-Commit `cc67fd5` covers G2 by making the evaluator retrieve from GraphRAG
-`text_units` and `community_reports` by default instead of only scanning
-entity/relationship artifacts.
+The de-game pass made snippets symmetric, removed substring false positives,
+replaced citation-volume scoring with supported-citation scoring, published
+strict and loose citation-ref validity, and exposed `method_fit` for router
+observability. It also makes the evaluator retrieve from GraphRAG `text_units`
+and `community_reports` by default instead of only scanning entity/relationship
+artifacts.
 
 | ID | Gameability finding | Fix |
 |---|---|---|

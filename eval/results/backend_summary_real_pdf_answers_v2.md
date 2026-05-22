@@ -1,8 +1,8 @@
 # Backend evaluation summary
 
-Branch note: this provider-backed real-PDF answer summary includes the
-`c1e5f46` colon-prefix alias behavior, so short paper names in questions can
-resolve to colon-formatted wiki page titles before answer synthesis.
+This provider-backed real-PDF answer summary includes colon-prefix alias
+behavior, so short paper names in questions can resolve to colon-formatted wiki
+page titles before answer synthesis.
 
 ## Retrieval metrics (per backend, averaged)
 

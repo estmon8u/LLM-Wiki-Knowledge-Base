@@ -1,11 +1,11 @@
 # Capstone Project Status Overview
 
 Date: 2026-04-24
-Updated: 2026-05-22 during the sequential WikiGraphRAG branch documentation pass. Commit `0e6eb47` originally reframed this status note around main-line GraphRAG hardening, the read-only `kb agent` MVP, real-data validation, and lint/type/test cleanup.
+Updated: 2026-05-22 to describe the current GraphRAG/WikiGraphRAG system state, the bounded `kb agent` control plane, real-data validation, and final evaluation framing.
 
 ## Current Position
 
-The project has moved from scaffold+implementation through the GraphRAG pivot into a mostly stable graph-backed system. Commit `6966831` adds the final honest WikiGraphRAG vs Microsoft GraphRAG verification report, so the remaining work is presentation polish and any explicitly scoped follow-up rather than another architecture rebuild.
+The project has moved from scaffold+implementation through the GraphRAG pivot into a mostly stable graph-backed system. The tracked verification report now gives the honest WikiGraphRAG vs Microsoft GraphRAG comparison, so the remaining work is presentation polish and any explicitly scoped follow-up rather than another architecture rebuild.
 
 1. Proposal, architecture, and the original command surface are complete.
 2. Simplification and deterministic baseline are complete.
@@ -18,11 +18,11 @@ The project has moved from scaffold+implementation through the GraphRAG pivot in
 9. `kb update` and `kb export` export GraphRAG output tables into generated markdown pages under `wiki/graph/`.
 10. `kb status`, `kb doctor`, and `kb lint` include GraphRAG readiness, vector-store health, freshness, stale input/index/export checks, and strict readiness modes.
 11. Phase 8 evaluation scripts compare deprecated FTS against GraphRAG Basic, Local, Global, and DRIFT with local-safe defaults and opt-in provider-backed answer runs.
-12. `kb agent` is implemented as a bounded natural-language control plane over existing services, including local KB ask/find/status/lint/review, web-backed research, durable source recommendations, approved recommendation ingestion, and approved `kb update`; commit `4a96bc6` documented that boundary across the README, start guide, and architecture docs.
+12. `kb agent` is implemented as a bounded natural-language control plane over existing services, including local KB ask/find/status/lint/review, web-backed research, durable source recommendations, approved recommendation ingestion, and approved `kb update`.
 13. State hardening now protects config migrations, manifest writes, compile-run state, graph index-run state, wiki logs, and GraphRAG workspace operations.
 14. Wiki artifacts remain the inspectable provenance, maintenance, and export layer.
 
-In short, the core workflow works end-to-end, and the pivot keeps that work instead of discarding it. The project is now graph-backed while preserving the original wiki system as the artifact layer. Commit `04a1b9b` made WikiGraphRAG the default `kb ask` engine, kept Microsoft GraphRAG explicit through `--engine graphrag`, and exposed old FTS retrieval only through `--engine legacy` on the unified `find` and `ask` commands.
+In short, the core workflow works end-to-end, and the pivot keeps that work instead of discarding it. The project is now graph-backed while preserving the original wiki system as the artifact layer. WikiGraphRAG is the default `kb ask` engine, Microsoft GraphRAG stays explicit through `--engine graphrag`, and old FTS retrieval is exposed only through `--engine legacy` on the unified `find` and `ask` commands.
 
 ## GraphRAG Pivot Framing
 
@@ -80,7 +80,7 @@ Microsoft GraphRAG and WikiGraphRAG are the retrieval/synthesis engines.
 ## In Progress Now
 
 - Turning the final verification evidence into the presentation narrative: Effective Recall@8 ties at 0.827, WikiGraphRAG is faster with strict citation refs, and Microsoft GraphRAG leads on answer quality plus refusal calibration.
-- Keeping provider-backed reruns explicit because they consume model budget and the tracked `eval/results/verification_report.md` is now the branch's source-of-truth comparison.
+- Keeping provider-backed reruns explicit because they consume model budget and the tracked `eval/results/verification_report.md` is now the source-of-truth comparison.
 - Keeping the agent demo bounded around service-backed KB operations, research recommendations, and explicit write approvals.
 
 ## Next Regular Work

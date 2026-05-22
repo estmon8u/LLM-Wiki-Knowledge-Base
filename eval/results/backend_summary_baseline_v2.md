@@ -1,8 +1,7 @@
 # Backend evaluation summary
 
-Branch note: commit `1db294e` added this baseline-vs-improved retrieval
-artifact for the Phase 4 ablation. This file is the WGR baseline with
-`wikigraph.retrieval_improvements_enabled=false`.
+This baseline-vs-improved retrieval artifact is part of the Phase 4 ablation.
+This file is the WGR baseline with `wikigraph.retrieval_improvements_enabled=false`.
 
 ## Retrieval metrics (per backend, averaged)
 

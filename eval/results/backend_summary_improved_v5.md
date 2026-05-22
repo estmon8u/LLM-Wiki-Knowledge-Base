@@ -1,8 +1,8 @@
 # Backend evaluation summary
 
-Branch note: commit `1db294e` records the conservative Phase 4 result here:
-section-title overlap boost and drift-lite additive cross-bundle bonus remained,
-while aggressive RRF plus alias-expanded BM25 was not kept in public retrieval.
+This file records the conservative Phase 4 result: section-title overlap boost
+and drift-lite additive cross-bundle bonus remained, while aggressive RRF plus
+alias-expanded BM25 was not kept in public retrieval.
 
 ## Retrieval metrics (per backend, averaged)
 

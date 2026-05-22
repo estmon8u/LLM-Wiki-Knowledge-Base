@@ -1,8 +1,7 @@
 # Per-question side-by-side review (WGR vs GraphRAG)
 
-Commit `6966831` added this tracked review artifact alongside
-`scripts/render_eval_reviews.py` so the final verification report can be audited
-question by question.
+This tracked review artifact is rendered by `scripts/render_eval_reviews.py` so
+the final verification report can be audited question by question.
 
 Run label: `real_pdf_answers_v2` — see `eval/results/backend_summary_real_pdf_answers_v2.md` for the headline numbers.
 Each section shows the question text, both backends' answers, citation counts, and what the retrieval surfaced.

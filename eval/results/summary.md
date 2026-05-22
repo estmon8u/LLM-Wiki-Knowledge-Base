@@ -1,10 +1,8 @@
 # GraphRAG Evaluation Summary
 
-This is a pre-WikiGraphRAG Phase 8 evaluator artifact. The branch kept it for
-history, then commit `1031eb8` introduced the first persisted real verification
-reports for the unified WikiGraphRAG / GraphRAG / legacy command surface. Use
-`verification_report.md` and the `backend_summary_*` files for the current
-comparison.
+This is a pre-WikiGraphRAG Phase 8 evaluator artifact kept for historical
+comparison. Use `verification_report.md` and the `backend_summary_*` files for
+the current unified WikiGraphRAG / GraphRAG / legacy command-surface comparison.
 
 - Generated at: 2026-05-11T22:27:19+00:00
 - Benchmark: graphrag-pivot-evaluation v2
