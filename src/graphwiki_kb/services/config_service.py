@@ -949,6 +949,14 @@ class _LightRagEmbeddingConfig(_StrictConfigModel):
     model: StrictStr = "bm25-fallback"
     dimension: StrictInt = Field(default=0, ge=0, le=16384)
     local_fallback: Literal["bm25", "hashing"] = "bm25"
+    api_key_env: StrictStr | None = None
+
+    @field_validator("api_key_env")
+    @classmethod
+    def _api_key_env_must_be_non_empty(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("must be null or a non-empty string")
+        return value
 
 
 class _LightRagConfig(_StrictConfigModel):
@@ -1055,6 +1063,7 @@ class LightRagEmbeddingRuntimeConfig:
     model: str
     dimension: int
     local_fallback: str
+    api_key_env: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1240,6 +1249,11 @@ def resolve_wikigraph_config(config: dict[str, Any]) -> WikiGraphRuntimeConfig:
             model=str(embeddings_section["model"]),
             dimension=int(embeddings_section["dimension"]),
             local_fallback=str(embeddings_section["local_fallback"]),
+            api_key_env=(
+                str(embeddings_section["api_key_env"]).strip()
+                if embeddings_section.get("api_key_env")
+                else None
+            ),
         ),
     )
     return WikiGraphRuntimeConfig(
