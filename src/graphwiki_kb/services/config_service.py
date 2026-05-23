@@ -245,6 +245,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
                 "dimension": 0,
                 "local_fallback": "bm25",
             },
+            "extraction": {
+                "extractor": "deterministic",
+                "provider": None,
+                "max_tokens": 2048,
+                "max_chunk_chars": 6000,
+            },
         },
     },
     "extensions": {},
@@ -645,7 +651,10 @@ def _migrate_v8_to_v9(config: dict[str, Any]) -> dict[str, Any]:
     """Introduce ``wikigraph.mode`` and the ``wikigraph.lightrag`` section.
 
     Existing configs always migrate to ``mode: classic`` so the live
-    behavior is unchanged until the user opts in to ``lightrag``.
+    behavior is unchanged until the user opts in to ``lightrag``. The
+    new ``lightrag.extraction`` and ``lightrag.embeddings`` blocks default
+    to the deterministic / BM25 fallback path so projects without API
+    keys still get a usable LightRAG mode out of the box.
     """
     migrated = deepcopy(config)
     existing_wikigraph = migrated.get("wikigraph", {})
@@ -959,6 +968,22 @@ class _LightRagEmbeddingConfig(_StrictConfigModel):
         return value
 
 
+class _LightRagExtractionConfig(_StrictConfigModel):
+    """Validated LightRAG entity/relation extractor settings."""
+
+    extractor: Literal["deterministic", "llm"] = "deterministic"
+    provider: StrictStr | None = None
+    max_tokens: StrictInt = Field(default=2048, ge=128, le=16384)
+    max_chunk_chars: StrictInt = Field(default=6000, ge=500, le=32000)
+
+    @field_validator("provider")
+    @classmethod
+    def _provider_must_be_non_empty(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("must be null or a non-empty string")
+        return value
+
+
 class _LightRagConfig(_StrictConfigModel):
     """Validated LightRAG-style WikiGraphRAG settings."""
 
@@ -1001,6 +1026,9 @@ class _LightRagConfig(_StrictConfigModel):
     )
     embeddings: _LightRagEmbeddingConfig = Field(
         default_factory=_LightRagEmbeddingConfig
+    )
+    extraction: _LightRagExtractionConfig = Field(
+        default_factory=_LightRagExtractionConfig
     )
 
 
@@ -1067,6 +1095,16 @@ class LightRagEmbeddingRuntimeConfig:
 
 
 @dataclass(frozen=True)
+class LightRagExtractionRuntimeConfig:
+    """Resolved LightRAG extractor settings."""
+
+    extractor: str
+    provider: str | None
+    max_tokens: int
+    max_chunk_chars: int
+
+
+@dataclass(frozen=True)
 class LightRagRuntimeConfig:
     """Resolved LightRAG-style WikiGraphRAG settings."""
 
@@ -1081,6 +1119,7 @@ class LightRagRuntimeConfig:
     relation_types: tuple[str, ...]
     retrieval: LightRagRetrievalRuntimeConfig
     embeddings: LightRagEmbeddingRuntimeConfig
+    extraction: LightRagExtractionRuntimeConfig
 
 
 @dataclass(frozen=True)
@@ -1254,6 +1293,16 @@ def resolve_wikigraph_config(config: dict[str, Any]) -> WikiGraphRuntimeConfig:
                 if embeddings_section.get("api_key_env")
                 else None
             ),
+        ),
+        extraction=LightRagExtractionRuntimeConfig(
+            extractor=str(lightrag_section["extraction"]["extractor"]),
+            provider=(
+                str(lightrag_section["extraction"]["provider"]).strip()
+                if lightrag_section["extraction"].get("provider")
+                else None
+            ),
+            max_tokens=int(lightrag_section["extraction"]["max_tokens"]),
+            max_chunk_chars=int(lightrag_section["extraction"]["max_chunk_chars"]),
         ),
     )
     return WikiGraphRuntimeConfig(

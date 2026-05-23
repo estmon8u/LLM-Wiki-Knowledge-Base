@@ -28,6 +28,11 @@ from graphwiki_kb.wikigraph.index_builder import (
     BuildOptions,
     build_wikigraph_index,
 )
+from graphwiki_kb.wikigraph.light_extractor import (
+    DeterministicLightExtractor,
+    LightExtractor,
+    LightExtractorOptions,
+)
 from graphwiki_kb.wikigraph.light_graph_store import (
     LightGraphStore,
     LightGraphStorePaths,
@@ -36,6 +41,7 @@ from graphwiki_kb.wikigraph.light_index_builder import (
     LightGraphBuildOptions,
     build_lightgraph_index,
 )
+from graphwiki_kb.wikigraph.light_llm_extractor import LLMLightExtractor
 from graphwiki_kb.wikigraph.light_models import LightGraphIndex
 from graphwiki_kb.wikigraph.models import (
     WikiGraphBuildReport,
@@ -172,6 +178,60 @@ class WikiGraphIndexService:
             warnings=warnings,
         )
 
+    def _resolve_extractor(
+        self,
+        runtime: WikiGraphRuntimeConfig,
+        light_options: LightGraphBuildOptions,
+    ) -> LightExtractor:
+        """Pick the LightRAG extractor based on ``wikigraph.lightrag.extraction``.
+
+        Falls back to the deterministic offline extractor when:
+
+        * ``extractor`` is ``"deterministic"`` (the default).
+        * ``extractor`` is ``"llm"`` but no completion provider is
+          configured at the project level (``provider.name``).
+        * ``extractor`` is ``"llm"`` but the configured provider can
+          not be instantiated.
+
+        The build manifest's ``extractor`` field records which extractor
+        actually ran so strict-vs-fallback runs cannot be silently
+        conflated.
+        """
+        extraction = runtime.lightrag.extraction
+        opts = LightExtractorOptions(
+            entity_types=light_options.entity_types
+            or LightExtractorOptions().entity_types,
+            relation_types=light_options.relation_types
+            or LightExtractorOptions().relation_types,
+            min_occurrences=light_options.extraction_min_occurrences,
+        )
+        if extraction.extractor != "llm":
+            return DeterministicLightExtractor(options=opts)
+
+        from graphwiki_kb.providers import (
+            UnavailableProvider,
+            build_provider,
+        )
+
+        # Honor an explicit lightrag.extraction.provider override by
+        # injecting it into a shallow config copy; otherwise fall back
+        # to the project-level active provider (config['provider']).
+        provider_config = self.config
+        if extraction.provider:
+            provider_config = dict(self.config)
+            provider_section = dict(provider_config.get("provider") or {})
+            provider_section["name"] = extraction.provider
+            provider_config["provider"] = provider_section
+        text_provider = build_provider(provider_config)
+        if text_provider is None or isinstance(text_provider, UnavailableProvider):
+            return DeterministicLightExtractor(options=opts)
+        return LLMLightExtractor(
+            provider=text_provider,
+            options=opts,
+            max_tokens=extraction.max_tokens,
+            max_chunk_chars=extraction.max_chunk_chars,
+        )
+
     def _build_lightgraph(
         self, runtime: WikiGraphRuntimeConfig
     ) -> WikiGraphBuildReport:
@@ -209,10 +269,12 @@ class WikiGraphIndexService:
             self.config
         )
         embedding_resolution = build_embedding_provider(embedding_runtime)
+        extractor = self._resolve_extractor(runtime, light_options)
         index, report = build_lightgraph_index(
             self.paths,
             sources,
             options=light_options,
+            extractor=extractor,
             embedding_resolution=embedding_resolution,
             previous_index=previous,
             store=self._light_store,
