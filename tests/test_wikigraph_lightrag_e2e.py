@@ -102,12 +102,13 @@ def test_lightgraph_query_engine_basic_returns_chunk_contexts(tmp_path: Path):
     engine = LightGraphQueryEngine(index=index)
     result = engine.find("dual encoder", method="basic")
     assert result.method == "basic"
-    chunk_contexts = [c for c in result.contexts if c.node_kind == "text_unit"]
+    chunk_contexts = [c for c in result.contexts if c.node_kind == "chunk"]
     assert chunk_contexts, "basic mode should return chunk contexts"
-    # Classic context shape uses #text-unit-N for normalized text;
-    # both ``#chunk-`` and ``#text-unit-`` anchors are acceptable here.
+    # LightRAG-converted contexts use the ``chunk`` node kind so the
+    # citation_ref renders as ``path#chunk-N`` end-to-end (matching
+    # what the answer prompt shows the model).
     for ctx in chunk_contexts:
-        assert "#chunk-" in ctx.citation_ref or "#text-unit-" in ctx.citation_ref
+        assert "#chunk-" in ctx.citation_ref
 
 
 def test_lightanswer_service_provider_free_emits_citations(tmp_path: Path):
@@ -120,10 +121,14 @@ def test_lightanswer_service_provider_free_emits_citations(tmp_path: Path):
     assert answer.provider_status.get("mode") == "provider-free"
     assert answer.contexts
     assert "Evidence summary" in answer.answer
-    # Citations include at least one chunk reference with a #chunk-
-    # or #text-unit- anchor (classic shape compatibility).
-    refs = [c["ref"] for c in answer.citations]
-    assert any("#chunk-" in r or "#text-unit-" in r for r in refs)
+    # Citations point at the LightRAG-canonical refs returned by the
+    # retrieval bundle. They may be entity / relation ids when the
+    # hybrid retriever returns no chunk-kind contexts; the important
+    # invariant is that every citation matches a returned context.
+    refs = {c["ref"] for c in answer.citations}
+    known_refs = {ctx.citation_ref for ctx in answer.contexts}
+    assert refs.issubset(known_refs)
+    assert refs
 
 
 def test_render_answer_prompt_contains_sections(tmp_path: Path):

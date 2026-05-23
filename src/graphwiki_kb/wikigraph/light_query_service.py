@@ -51,9 +51,19 @@ def _light_method_to_classic(method: LightQueryMethod) -> QueryMethod:
 
 
 def _context_to_classic(ctx: LightRetrievedContext) -> WikiGraphRetrievedContext:
-    """Render a :class:`LightRetrievedContext` in the classic context shape."""
+    """Render a :class:`LightRetrievedContext` in the classic context shape.
+
+    LightRAG chunks render their citation_ref with a ``#chunk-N`` anchor,
+    so we deliberately use the classic ``"chunk"`` node kind (not
+    ``"text_unit"``) to keep the same anchor format end-to-end. This
+    matters for the evaluation harness: the provider-backed answer
+    citation that the LightAnswerService records uses the
+    LightRetrievedContext.citation_ref, and the harness validates it
+    against the converted WikiGraphRetrievedContext.citation_ref. Using
+    ``"chunk"`` keeps both ends at ``path#chunk-N``.
+    """
     if ctx.kind == "chunk":
-        node_kind = "text_unit"
+        node_kind = "chunk"
     elif ctx.kind == "relation":
         node_kind = "claim"
     else:
@@ -132,27 +142,31 @@ def render_answer_prompt(question: str, bundle: LightRetrievedBundle) -> str:
         "summaries, not standalone evidence unless backed by a source "
         "excerpt. If the evidence is insufficient, say so."
     )
+    # Cap scaffolding bulk so the model has token budget left for
+    # reasoning and answer generation. Entities and relations are
+    # scaffolding — they help the model orient — but the real evidence
+    # lives in the source excerpts.
     lines.extend(["", "# Retrieved entities"])
-    for idx, entity in enumerate(bundle.entities, start=1):
+    for idx, entity in enumerate(bundle.entities[:8], start=1):
         lines.append(f"[E{idx}] {entity.canonical_name} — {entity.type}")
         if entity.description:
-            lines.append(entity.description)
+            lines.append(entity.description[:240])
         if entity.source_ids:
-            lines.append("Sources: " + ", ".join(entity.source_ids[:6]))
+            lines.append("Sources: " + ", ".join(entity.source_ids[:4]))
         lines.append("")
 
     lines.append("# Retrieved relationships")
-    for idx, relation in enumerate(bundle.relations, start=1):
+    for idx, relation in enumerate(bundle.relations[:8], start=1):
         lines.append(
             f"[R{idx}] {relation.source_entity_id} {relation.relation_type} "
             f"{relation.target_entity_id}"
         )
         if relation.description:
-            lines.append(relation.description)
+            lines.append(relation.description[:240])
         if relation.keywords:
             lines.append("Keywords: " + ", ".join(relation.keywords[:6]))
         if relation.source_ids:
-            lines.append("Sources: " + ", ".join(relation.source_ids[:6]))
+            lines.append("Sources: " + ", ".join(relation.source_ids[:4]))
         lines.append("")
 
     lines.append("# Source excerpts")
@@ -226,6 +240,11 @@ class LightAnswerService:
 
         prompt = render_answer_prompt(question, bundle)
         try:
+            # ``max_tokens=4096`` matches the classic backend. Lower
+            # budgets get consumed entirely by the OpenAI Responses API
+            # reasoning step on long structured prompts and leave no
+            # output budget — observed empirically as empty answers in
+            # the LightRAG end-to-end evaluation.
             response: ProviderResponse = self.provider.generate(
                 ProviderRequest(
                     prompt=prompt,
@@ -234,7 +253,7 @@ class LightAnswerService:
                         "using only the retrieved entities, relationships, and "
                         "source excerpts. Cite source excerpts with [C#]."
                     ),
-                    max_tokens=1024,
+                    max_tokens=4096,
                 )
             )
         except Exception as exc:  # pragma: no cover - defensive
@@ -273,7 +292,11 @@ def _provider_free_answer(
     contexts: list[WikiGraphRetrievedContext],
     method: QueryMethod,
 ) -> WikiGraphAnswer:
-    chunk_contexts = [c for c in contexts if c.node_kind == "text_unit"]
+    # LightRAG chunk contexts come through with node_kind=="chunk"
+    # (see _context_to_classic). Fall back to any context when no
+    # chunk-kind context was returned so provider-free runs still
+    # carry citations rather than silently emitting nothing.
+    chunk_contexts = [c for c in contexts if c.node_kind == "chunk"]
     if not chunk_contexts:
         chunk_contexts = contexts
     if not chunk_contexts:
