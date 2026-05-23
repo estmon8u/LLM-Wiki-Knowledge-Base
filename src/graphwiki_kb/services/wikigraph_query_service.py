@@ -20,6 +20,13 @@ from graphwiki_kb.services.wikigraph_index_service import (
 )
 from graphwiki_kb.wikigraph.answer_service import WikiGraphAnswerService
 from graphwiki_kb.wikigraph.context_builder import ContextBuilderConfig
+from graphwiki_kb.wikigraph.light_context_builder import LightRetrievalConfig
+from graphwiki_kb.wikigraph.light_graph_store import LightGraphStorePaths
+from graphwiki_kb.wikigraph.light_models import LightGraphFindResult
+from graphwiki_kb.wikigraph.light_query_service import (
+    LightGraphAnswerService,
+    LightGraphQueryService,
+)
 from graphwiki_kb.wikigraph.models import (
     QueryMethod,
     WikiGraphAnswer,
@@ -58,6 +65,31 @@ class WikiGraphQueryService:
             section_title_overlap_boost=runtime.section_title_overlap_boost,
         )
 
+    def _light_service(self) -> LightGraphQueryService:
+        index = self.index_service.load_light()
+        if index is None:
+            raise WikiGraphQueryError(
+                "LightRAG WikiGraph index is missing. Run `kb update` to build it."
+            )
+        runtime = resolve_wikigraph_config(self.config or {})
+        light = runtime.lightrag
+        return LightGraphQueryService(
+            index=index,
+            store_paths=LightGraphStorePaths(
+                self.paths.graph_dir / "wikigraph" / "lightrag"
+            ),
+            provider=self.provider,
+            retrieval_config=LightRetrievalConfig(
+                top_k_entities=light.top_k_entities,
+                top_k_relations=light.top_k_relations,
+                top_k_chunks=light.top_k_chunks,
+                max_entity_tokens=light.max_entity_tokens,
+                max_relation_tokens=light.max_relation_tokens,
+                max_chunk_tokens=light.max_chunk_tokens,
+                max_total_tokens=light.max_total_tokens,
+            ),
+        )
+
     def _ensure_engine(self) -> WikiGraphQueryEngine:
         index = self.index_service.load()
         if index is None:
@@ -70,10 +102,19 @@ class WikiGraphQueryService:
             config=self._context_builder_config(),
         )
 
+    @property
+    def _is_lightrag(self) -> bool:
+        try:
+            return resolve_wikigraph_config(self.config or {}).mode == "lightrag"
+        except ValueError:
+            return False
+
     def find(
         self, question: str, *, method: QueryMethod = "auto"
-    ) -> WikiGraphFindResult:
-        """Run a provider-free retrieval and return a :class:`WikiGraphFindResult`."""
+    ) -> WikiGraphFindResult | LightGraphFindResult:
+        """Run a provider-free retrieval and return a find result."""
+        if self._is_lightrag:
+            return self._light_service().find(question, method=method)  # type: ignore[arg-type]
         engine = self._ensure_engine()
         return engine.find(question, method=method)
 
@@ -87,13 +128,24 @@ class WikiGraphQueryService:
         save_as: str | None = None,
     ) -> WikiGraphAnswer:
         """Run a full WikiGraphRAG answer pipeline for ``question``."""
-        engine = self._ensure_engine()
-        service = WikiGraphAnswerService(engine=engine, provider=self.provider)
-        answer = service.ask(
-            question,
-            method=method,
-            require_provider=require_provider,
-        )
+        if self._is_lightrag:
+            service = LightGraphAnswerService(
+                query_service=self._light_service(),
+                provider=self.provider,
+            )
+            answer = service.ask(
+                question,
+                method=method,  # type: ignore[arg-type]
+                require_provider=require_provider,
+            )
+        else:
+            engine = self._ensure_engine()
+            service = WikiGraphAnswerService(engine=engine, provider=self.provider)
+            answer = service.ask(
+                question,
+                method=method,
+                require_provider=require_provider,
+            )
         if save or save_as:
             saved_path = self.save_answer(question, answer, slug=save_as)
             answer = answer.model_copy(update={"saved_path": saved_path})

@@ -10,6 +10,10 @@ from graphwiki_kb.services.config_service import (
     WikiGraphRuntimeConfig,
     resolve_wikigraph_config,
 )
+from graphwiki_kb.services.embedding_service import (
+    build_embedding_provider,
+    resolve_embedding_config,
+)
 from graphwiki_kb.services.manifest_service import ManifestService
 from graphwiki_kb.services.project_service import ProjectPaths
 from graphwiki_kb.wikigraph.graph_store import (
@@ -20,6 +24,15 @@ from graphwiki_kb.wikigraph.index_builder import (
     BuildOptions,
     build_wikigraph_index,
 )
+from graphwiki_kb.wikigraph.light_graph_store import (
+    LightGraphStore,
+    LightGraphStorePaths,
+)
+from graphwiki_kb.wikigraph.light_index_builder import (
+    LightGraphConfig,
+    build_lightgraph_index,
+)
+from graphwiki_kb.wikigraph.light_models import LightGraphBuildReport
 from graphwiki_kb.wikigraph.models import (
     WikiGraphBuildReport,
     WikiGraphIndex,
@@ -36,9 +49,24 @@ class WikiGraphIndexService:
     manifest_service: ManifestService | None = None
 
     def __post_init__(self) -> None:
-        self._store = WikiGraphStore(
+        self._classic_store = WikiGraphStore(
             WikiGraphStorePaths(self.paths.graph_dir / "wikigraph")
         )
+        self._light_store_paths = LightGraphStorePaths(
+            self.paths.graph_dir / "wikigraph" / "lightrag"
+        )
+        self._light_store = LightGraphStore(self._light_store_paths)
+
+    @property
+    def mode(self) -> str:
+        try:
+            return self.runtime_config.mode
+        except ValueError:
+            return "classic"
+
+    @property
+    def _store(self) -> WikiGraphStore:
+        return self._classic_store
 
     @property
     def runtime_config(self) -> WikiGraphRuntimeConfig:
@@ -61,7 +89,9 @@ class WikiGraphIndexService:
         include_graphrag_export_pages: bool | None = None,
         chunk_char_limit: int | None = None,
         include_normalized_text_units: bool | None = None,
-    ) -> WikiGraphBuildReport:
+        mode: str | None = None,
+        provider: Any | None = None,
+    ) -> WikiGraphBuildReport | LightGraphBuildReport:
         """Build the index from the maintained wiki and persist it.
 
         When ``include_graphrag_export_pages`` or ``chunk_char_limit`` is
@@ -88,6 +118,10 @@ class WikiGraphIndexService:
             if include_normalized_text_units is not None
             else runtime.include_normalized_text_units
         )
+        effective_mode = mode or self.mode
+        if effective_mode == "lightrag":
+            return self._build_lightrag(provider=provider)
+
         sources = (
             self.manifest_service.list_sources()
             if self.manifest_service is not None
@@ -134,9 +168,56 @@ class WikiGraphIndexService:
             warnings=warnings,
         )
 
+    def _build_lightrag(self, *, provider: Any | None = None) -> LightGraphBuildReport:
+        runtime = self.runtime_config
+        light = runtime.lightrag
+        sources = (
+            self.manifest_service.list_sources()
+            if self.manifest_service is not None
+            else []
+        )
+        embedding_runtime = resolve_embedding_config(self.config)
+        embedding_provider = build_embedding_provider(embedding_runtime)
+        previous = self._light_store.load_or_none()
+        report = build_lightgraph_index(
+            self.paths,
+            sources,
+            config=LightGraphConfig(
+                chunk_token_size=light.chunk_token_size,
+                chunk_overlap_tokens=light.chunk_overlap_tokens,
+                entity_extract_max_gleaning=light.entity_extract_max_gleaning,
+                entity_types=light.entity_types,
+                relation_types=light.relation_types,
+                embedding_runtime=embedding_runtime,
+                local_fallback=light.local_fallback,
+            ),
+            provider=provider,
+            embedding_provider=embedding_provider,
+            previous_index=previous,
+        )
+        if runtime.export_generated_artifacts:
+            from graphwiki_kb.services.wikigraph_light_export_service import (
+                WikiGraphLightExportService,
+            )
+
+            exporter = WikiGraphLightExportService(self.paths)
+            try:
+                report.artifacts.extend(exporter.export_cards())
+            except Exception as exc:
+                report.warnings.append(f"artifact export failed: {exc}")
+        return report
+
     def load(self) -> WikiGraphIndex | None:
-        """Load the persisted index from disk."""
+        """Load the persisted classic index from disk."""
+        if self.mode == "lightrag":
+            return None
         return self._store.load()
+
+    def load_light(self) -> Any | None:
+        """Load the persisted LightRAG index when active."""
+        if self.mode != "lightrag":
+            return None
+        return self._light_store.load_or_none()
 
     SUPPORTED_ARTIFACT_TYPES: tuple[str, ...] = (
         "entities",
@@ -336,6 +417,8 @@ class WikiGraphIndexService:
 
     def status(self) -> dict[str, object]:
         """Return a quick-look status payload for ``kb wikigraph status``."""
+        if self.mode == "lightrag":
+            return self._light_status()
         if not self._store.exists():
             return {
                 "initialized": False,
@@ -368,4 +451,41 @@ class WikiGraphIndexService:
             "source_count": index.source_count,
             "include_graphrag_export_pages": index.include_graphrag_export_pages,
             "include_normalized_text_units": index.include_normalized_text_units,
+        }
+
+    def _light_status(self) -> dict[str, object]:
+        if not self._light_store.exists():
+            return {
+                "mode": "lightrag",
+                "initialized": False,
+                "index_path": str(self._light_store_paths.root),
+                "message": "Run `kb update` to build the LightRAG-style WikiGraph index.",
+            }
+        index = self._light_store.load_or_none()
+        if index is None:
+            return {
+                "mode": "lightrag",
+                "initialized": True,
+                "readable": False,
+                "index_path": str(self._light_store_paths.root),
+            }
+        manifest = self._light_store.load_build_manifest() or {}
+        stale = [
+            item.get("source_id", "")
+            for item in manifest.get("missing_sources", [])
+            if isinstance(item, dict)
+        ]
+        return {
+            "mode": "lightrag",
+            "initialized": True,
+            "fresh": not stale,
+            "built_at": index.built_at,
+            "source_count": len(index.source_hashes),
+            "chunk_count": index.chunk_count,
+            "entity_count": index.entity_count,
+            "relation_count": index.relation_count,
+            "embedding_model": index.embedding_model,
+            "provider_required": True,
+            "provider_ready": bool(index.provider_identity),
+            "stale_reasons": [f"missing_source:{sid}" for sid in stale if sid],
         }

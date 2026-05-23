@@ -26,6 +26,7 @@ from graphwiki_kb.services.graphrag_sync_service import GraphRAGSyncResult
 from graphwiki_kb.services.graphrag_wiki_export_service import GraphRAGWikiExportResult
 from graphwiki_kb.services.ingest_service import IngestService
 from graphwiki_kb.services.search_service import SearchService
+from graphwiki_kb.wikigraph.light_models import LightGraphBuildReport
 from graphwiki_kb.wikigraph.models import WikiGraphBuildReport
 
 GRAPH_INDEX_METHODS = ("auto", "standard", "fast", "standard-update", "fast-update")
@@ -53,6 +54,7 @@ class UpdateOptions:
     # Tri-state: ``None`` means "use
     # ``wikigraph.include_normalized_text_units`` from config".
     wikigraph_include_normalized_text_units: bool | None = None
+    wikigraph_mode: str | None = None
 
 
 @dataclass
@@ -77,7 +79,7 @@ class UpdateResult:
     search_refreshed: bool = False
     search_warning: str = ""
     graph_result: GraphUpdateResult | None = None
-    wikigraph_result: WikiGraphBuildReport | None = None
+    wikigraph_result: WikiGraphBuildReport | LightGraphBuildReport | None = None
     wikigraph_skipped: bool = False
     wikigraph_skip_reason: str = ""
     wikigraph_artifact_paths: list[str] = field(default_factory=list)
@@ -440,6 +442,7 @@ class UpdateService:
                 include_normalized_text_units=(
                     options.wikigraph_include_normalized_text_units
                 ),
+                mode=options.wikigraph_mode,
             )
         except Exception as exc:
             if options.allow_partial:

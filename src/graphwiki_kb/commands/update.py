@@ -144,6 +144,15 @@ def create_command() -> click.Command:
         ),
     )
     @click.option(
+        "--wikigraph-mode",
+        type=click.Choice(["classic", "lightrag"], case_sensitive=False),
+        default=None,
+        help=(
+            "WikiGraphRAG backend mode. When unset, `wikigraph.mode` from "
+            "config drives the behavior (defaults to classic)."
+        ),
+    )
+    @click.option(
         "--wikigraph-include-graphrag-export-pages",
         is_flag=True,
         help=(
@@ -197,6 +206,7 @@ def create_command() -> click.Command:
         allow_partial: bool,
         concepts: bool | None,
         wikigraph: bool | None,
+        wikigraph_mode: str | None,
         wikigraph_include_graphrag_export_pages: bool,
         wikigraph_normalized_text: bool | None,
         export_wikigraph_artifacts: bool | None,
@@ -228,6 +238,7 @@ def create_command() -> click.Command:
             allow_partial=allow_partial,
             concepts=concepts,
             wikigraph=wikigraph,
+            wikigraph_mode=wikigraph_mode,
             wikigraph_include_graphrag_export_pages=(
                 wikigraph_include_graphrag_export_pages
             ),
@@ -364,22 +375,35 @@ def create_command() -> click.Command:
             )
         elif result.wikigraph_result is not None:
             report = result.wikigraph_result
-            console.print(
-                f"Built {report.node_count} node(s), {report.edge_count} edge(s), "
-                f"{report.community_count} community(ies) "
-                f"from {report.source_count} source page(s)"
-            )
-            if report.include_normalized_text_units:
+            mode = getattr(report, "mode", "classic")
+            if mode == "lightrag":
                 console.print(
-                    f"Included {report.text_unit_count} TextUnit(s) "
-                    f"from {report.document_count} source document(s) "
-                    "(normalized source layer)"
+                    f"LightGraph: {report.chunk_count} chunk(s), "
+                    f"{report.entity_count} entit(ies), "
+                    f"{report.relation_count} relation(s) "
+                    f"from {report.source_count} source(s)"
                 )
+                if getattr(report, "fallback_mode", ""):
+                    console.print(f"Retrieval: {report.fallback_mode}")
+                if getattr(report, "incremental", False):
+                    console.print("Update: incremental extraction")
             else:
                 console.print(
-                    "Normalized source TextUnits not included "
-                    "(--no-wikigraph-normalized-text or config-disabled)"
+                    f"Built {report.node_count} node(s), {report.edge_count} edge(s), "
+                    f"{report.community_count} community(ies) "
+                    f"from {report.source_count} source page(s)"
                 )
+                if report.include_normalized_text_units:
+                    console.print(
+                        f"Included {report.text_unit_count} TextUnit(s) "
+                        f"from {report.document_count} source document(s) "
+                        "(normalized source layer)"
+                    )
+                else:
+                    console.print(
+                        "Normalized source TextUnits not included "
+                        "(--no-wikigraph-normalized-text or config-disabled)"
+                    )
             for warning in report.warnings:
                 console.print(f"[yellow]{warning}[/yellow]")
             if result.wikigraph_artifact_paths:

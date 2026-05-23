@@ -51,6 +51,8 @@ def test_resolve_wikigraph_config_defaults_are_complete() -> None:
     runtime = resolve_wikigraph_config(copy.deepcopy(DEFAULT_CONFIG))
     assert isinstance(runtime, WikiGraphRuntimeConfig)
     assert runtime.enabled is True
+    assert runtime.mode == "classic"
+    assert runtime.lightrag.chunk_token_size == 1200
     assert runtime.max_hops == 2
     assert runtime.max_context_chunks == 12
     assert runtime.chunk_char_limit == 1200
