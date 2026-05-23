@@ -10,8 +10,16 @@ from graphwiki_kb.services.config_service import (
     WikiGraphRuntimeConfig,
     resolve_wikigraph_config,
 )
+from graphwiki_kb.services.embedding_service import (
+    EmbeddingRuntimeConfig,
+    build_embedding_provider,
+    resolve_lightrag_embedding_config,
+)
 from graphwiki_kb.services.manifest_service import ManifestService
 from graphwiki_kb.services.project_service import ProjectPaths
+from graphwiki_kb.services.wikigraph_light_export_service import (
+    WikiGraphLightExportService,
+)
 from graphwiki_kb.wikigraph.graph_store import (
     WikiGraphStore,
     WikiGraphStorePaths,
@@ -174,6 +182,11 @@ class WikiGraphIndexService:
         keep working during migration. Callers that want lightrag-only
         builds should not rely on classic artifacts and may switch to
         querying the lightrag store directly.
+
+        The embedding provider is resolved from
+        ``wikigraph.lightrag.embeddings``; missing credentials or
+        unsupported providers fall back to BM25 with a labeled
+        diagnostic so strict-vs-fallback runs cannot be confused.
         """
         sources = (
             self.manifest_service.list_sources()
@@ -192,16 +205,33 @@ class WikiGraphIndexService:
             extraction_min_occurrences=runtime.lightrag.extraction_min_occurrences,
         )
         previous = self._light_store.load()
-        _index, report = build_lightgraph_index(
+        embedding_runtime: EmbeddingRuntimeConfig = resolve_lightrag_embedding_config(
+            self.config
+        )
+        embedding_resolution = build_embedding_provider(embedding_runtime)
+        index, report = build_lightgraph_index(
             self.paths,
             sources,
             options=light_options,
+            embedding_resolution=embedding_resolution,
             previous_index=previous,
             store=self._light_store,
         )
         warnings = list(report.warnings)
         if not sources:
             warnings.append("no source records found in manifest")
+        warnings.append(f"embedding_tier={report.embedding_tier}")
+        warnings.append(f"embedding_tier_reason={report.embedding_tier_reason}")
+        artifacts = list(report.artifacts)
+        if runtime.export_generated_artifacts:
+            try:
+                exporter = WikiGraphLightExportService(
+                    paths=self.paths, store=self._light_store
+                )
+                exported = exporter.export_cards(index=index)
+                artifacts.extend(exported)
+            except FileNotFoundError as exc:  # pragma: no cover - defensive
+                warnings.append(f"lightrag_export_skipped:{exc}")
         return WikiGraphBuildReport(
             built_at=report.built_at,
             node_count=report.entity_count + report.relation_count + report.chunk_count,
@@ -214,7 +244,7 @@ class WikiGraphIndexService:
             source_count=report.source_count,
             include_graphrag_export_pages=False,
             include_normalized_text_units=True,
-            artifacts=report.artifacts,
+            artifacts=artifacts,
             warnings=warnings,
         )
 
@@ -503,5 +533,7 @@ class WikiGraphIndexService:
             "extractor": index.manifest.extractor,
             "embedding_provider": index.manifest.embedding_provider,
             "embedding_model": index.manifest.embedding_model,
+            "embedding_tier": index.manifest.embedding_tier,
+            "embedding_tier_reason": index.manifest.embedding_tier_reason,
             "stale_reasons": stale_reasons,
         }

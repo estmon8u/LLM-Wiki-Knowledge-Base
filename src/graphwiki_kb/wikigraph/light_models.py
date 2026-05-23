@@ -165,8 +165,11 @@ class LightGraphBuildManifest(BaseModel):
     embedding_provider: StrictStr = "bm25"
     embedding_model: StrictStr = "bm25-fallback"
     embedding_dimension: int = 0
+    embedding_tier: Literal["strict", "fallback"] = "fallback"
+    embedding_tier_reason: StrictStr = ""
     extractor: StrictStr = "deterministic"
     index_schema_version: int = 1
+    missing_sources: list[dict[StrictStr, Any]] = Field(default_factory=list)
 
 
 class LightGraphIndex(BaseModel):
@@ -265,6 +268,10 @@ class LightGraphBuildReport(BaseModel):
     extractor: StrictStr = "deterministic"
     embedding_provider: StrictStr = "bm25"
     embedding_model: StrictStr = "bm25-fallback"
+    embedding_tier: Literal["strict", "fallback"] = "fallback"
+    embedding_tier_reason: StrictStr = ""
     incremental: bool = False
+    reused_source_count: int = 0
+    reprocessed_source_count: int = 0
     artifacts: list[StrictStr] = Field(default_factory=list)
     warnings: list[StrictStr] = Field(default_factory=list)

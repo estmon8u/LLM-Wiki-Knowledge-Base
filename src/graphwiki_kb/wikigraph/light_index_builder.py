@@ -25,6 +25,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from graphwiki_kb.models.source_models import RawSourceRecord
+from graphwiki_kb.providers.embedding_base import EmbeddingProvider
+from graphwiki_kb.services.embedding_service import (
+    ResolvedEmbedding,
+)
 from graphwiki_kb.services.project_service import ProjectPaths, utc_now_iso
 from graphwiki_kb.wikigraph.light_chunker import (
     LightChunkerOptions,
@@ -37,7 +41,6 @@ from graphwiki_kb.wikigraph.light_deduper import (
 )
 from graphwiki_kb.wikigraph.light_embeddings import (
     BM25SparseEmbeddingProvider,
-    EmbeddingProvider,
 )
 from graphwiki_kb.wikigraph.light_extractor import (
     DeterministicLightExtractor,
@@ -52,6 +55,9 @@ from graphwiki_kb.wikigraph.light_graph_store import (
     serialize_vectors,
 )
 from graphwiki_kb.wikigraph.light_models import (
+    ExtractedEntity,
+    ExtractedRelation,
+    LightExtractionResult,
     LightGraphBuildManifest,
     LightGraphBuildReport,
     LightGraphIndex,
@@ -88,6 +94,7 @@ def build_lightgraph_index(
     options: LightGraphBuildOptions | None = None,
     extractor: LightExtractor | None = None,
     embedding_provider: EmbeddingProvider | None = None,
+    embedding_resolution: ResolvedEmbedding | None = None,
     previous_index: LightGraphIndex | None = None,
     changed_source_ids: set[str] | None = None,
     store: LightGraphStore | None = None,
@@ -139,28 +146,27 @@ def build_lightgraph_index(
     )
 
     incremental = False
-    if previous_index is not None and changed_source_ids is None:
+    reused_source_ids: set[str] = set()
+    reprocessed_source_ids: set[str] = set()
+
+    if previous_index is not None:
         prev_hashes = previous_index.manifest.source_hashes or {}
         current_hashes = {s.source_id: s.content_hash for s in sources}
-        changed_source_ids = {
-            sid for sid, h in current_hashes.items() if prev_hashes.get(sid) != h
-        }
-        # When the source set is unchanged AND hashes match, the change
-        # set is empty and we can return the previous index unmodified.
-        prev_ids = set(prev_hashes)
-        new_ids = set(current_hashes)
-        if not changed_source_ids and prev_ids == new_ids:
-            incremental = True
-
-    sources_to_process: list[RawSourceRecord]
-    if previous_index is not None and changed_source_ids is not None:
+        if changed_source_ids is None:
+            changed_source_ids = {
+                sid for sid, h in current_hashes.items() if prev_hashes.get(sid) != h
+            }
+        else:
+            # Honor explicit caller-supplied change set, but make sure
+            # genuinely-changed hashes are not silently skipped.
+            changed_source_ids = set(changed_source_ids) | {
+                sid for sid, h in current_hashes.items() if prev_hashes.get(sid) != h
+            }
         incremental = True
-        # The minimum-viable incremental path: rebuild only the changed
-        # source contributions. We still re-dedupe across all sources to
-        # produce stable canonical ids. (See recommendation §11 / §22.)
-        sources_to_process = list(sources)
-    else:
-        sources_to_process = list(sources)
+        reused_source_ids = {
+            s.source_id for s in sources if s.source_id not in changed_source_ids
+        }
+        reprocessed_source_ids = set(changed_source_ids)
 
     chunker_opts = LightChunkerOptions(
         chunk_token_size=opts.chunk_token_size,
@@ -168,18 +174,51 @@ def build_lightgraph_index(
         min_tokens=opts.min_chunk_tokens,
     )
 
-    chunks = build_light_chunks(
+    # Source-level incremental chunking. Reuse previous chunks for
+    # unchanged sources verbatim — they share content hashes with the
+    # current normalized artifacts, so the extraction cache will hit on
+    # them anyway, but skipping the re-chunk avoids re-reading the file.
+    reused_chunks: list = []
+    if previous_index is not None and reused_source_ids:
+        reused_chunks = [
+            chunk
+            for chunk in previous_index.chunks
+            if chunk.source_id in reused_source_ids
+        ]
+    sources_to_chunk = [
+        s
+        for s in sources
+        if previous_index is None or s.source_id not in reused_source_ids
+    ]
+    if previous_index is None:
+        reprocessed_source_ids = {s.source_id for s in sources_to_chunk}
+
+    fresh_chunks = build_light_chunks(
         root=paths.root,
-        sources=sources_to_process,
+        sources=sources_to_chunk,
         options=chunker_opts,
         compiled_page_lookup=lambda s: _wiki_source_path(s, paths.root),
     )
+    chunks = [*reused_chunks, *fresh_chunks]
 
     cache: LightExtractionCache | None = None
     if use_cache:
         cache = LightExtractionCache(store.paths.extraction_cache_dir)
 
-    extraction_results = extract_corpus(chunks, extractor, cache=cache)
+    # True source-level incremental extraction:
+    #   * fresh_chunks → run the extractor (with cache when enabled).
+    #   * reused_chunks → reconstruct ExtractedEntity / ExtractedRelation
+    #     records from the previous index instead of calling the
+    #     extractor at all. This keeps incremental updates fast even
+    #     when the on-disk extraction cache is disabled (e.g. in tests).
+    fresh_results = extract_corpus(fresh_chunks, extractor, cache=cache)
+    reused_results: list[LightExtractionResult] = []
+    if previous_index is not None and reused_chunks:
+        reused_results = _replay_extraction_from_previous_index(
+            previous_index=previous_index,
+            reused_chunks=reused_chunks,
+        )
+    extraction_results = [*reused_results, *fresh_results]
     extracted_entity_count = sum(len(r.entities) for r in extraction_results)
     extracted_relation_count = sum(len(r.relations) for r in extraction_results)
 
@@ -268,21 +307,57 @@ def build_lightgraph_index(
                 requires_review=True,
             )
 
-    # Embedding step. Always fit a BM25 fallback on the union of
-    # entity+relation embedding texts so we have a baseline vector space.
-    embedding_provider = embedding_provider or _fit_default_embedder(
-        [p.embedding_text for p in entity_profiles]
-        + [p.embedding_text for p in relation_profiles]
-    )
-    entity_vectors = embedding_provider.embed_texts(
-        [p.embedding_text or p.canonical_name for p in entity_profiles]
-    )
-    relation_vectors = embedding_provider.embed_texts(
-        [p.embedding_text or p.relation_type for p in relation_profiles]
-    )
-    chunk_vectors: list[list[float]] | None = None
-    if opts.embed_chunks:
-        chunk_vectors = embedding_provider.embed_texts([c.text for c in chunks])
+    # Embedding step. The default tier is BM25 fallback (Tier C), but
+    # callers can supply either a pre-built ``embedding_provider`` or a
+    # full ``embedding_resolution`` (preferred) to opt into Tier A
+    # provider-backed embeddings.
+    embedding_tier = "fallback"
+    embedding_tier_reason = "BM25 fallback (no embedding resolution supplied)"
+    if embedding_resolution is not None:
+        embedding_tier = embedding_resolution.tier
+        embedding_tier_reason = embedding_resolution.reason
+        if embedding_resolution.provider is not None and embedding_provider is None:
+            embedding_provider = embedding_resolution.provider
+    if embedding_provider is None:
+        embedding_provider = _fit_default_embedder(
+            [p.embedding_text for p in entity_profiles]
+            + [p.embedding_text for p in relation_profiles]
+        )
+        if embedding_resolution is None:
+            embedding_tier_reason = (
+                "BM25 fallback (no embedding_provider or resolution supplied)"
+            )
+
+    try:
+        entity_vectors = embedding_provider.embed_texts(
+            [p.embedding_text or p.canonical_name for p in entity_profiles]
+        )
+        relation_vectors = embedding_provider.embed_texts(
+            [p.embedding_text or p.relation_type for p in relation_profiles]
+        )
+        chunk_vectors: list[list[float]] | None = None
+        if opts.embed_chunks:
+            chunk_vectors = embedding_provider.embed_texts([c.text for c in chunks])
+    except RuntimeError as exc:
+        # Strict provider failed at embed-time (e.g. revoked API key).
+        # Degrade to BM25 with a clear diagnostic rather than crashing.
+        embedding_provider = _fit_default_embedder(
+            [p.embedding_text for p in entity_profiles]
+            + [p.embedding_text for p in relation_profiles]
+        )
+        embedding_tier = "fallback"
+        embedding_tier_reason = (
+            f"provider call failed ({exc}); degraded to BM25 fallback"
+        )
+        entity_vectors = embedding_provider.embed_texts(
+            [p.embedding_text or p.canonical_name for p in entity_profiles]
+        )
+        relation_vectors = embedding_provider.embed_texts(
+            [p.embedding_text or p.relation_type for p in relation_profiles]
+        )
+        chunk_vectors = None
+        if opts.embed_chunks:
+            chunk_vectors = embedding_provider.embed_texts([c.text for c in chunks])
 
     manifest = LightGraphBuildManifest(
         built_at=utc_now_iso(),
@@ -296,8 +371,22 @@ def build_lightgraph_index(
         embedding_provider=getattr(embedding_provider, "model_name", "bm25"),
         embedding_model=getattr(embedding_provider, "model_name", "bm25-fallback"),
         embedding_dimension=int(getattr(embedding_provider, "dimension", 0)),
+        embedding_tier=embedding_tier,
+        embedding_tier_reason=embedding_tier_reason,
         extractor=extractor.name,
         index_schema_version=1,
+        missing_sources=[
+            {
+                "source_id": cid,
+                "status": "missing",
+                "requires_review": True,
+            }
+            for cid in sorted(
+                contributions[cid].source_id
+                for cid in contributions
+                if contributions[cid].status == "missing"
+            )
+        ],
     )
 
     index = LightGraphIndex(
@@ -356,7 +445,11 @@ def build_lightgraph_index(
         extractor=extractor.name,
         embedding_provider=manifest.embedding_provider,
         embedding_model=manifest.embedding_model,
+        embedding_tier=embedding_tier,
+        embedding_tier_reason=embedding_tier_reason,
         incremental=incremental,
+        reused_source_count=len(reused_source_ids),
+        reprocessed_source_count=len(reprocessed_source_ids),
         artifacts=artifacts,
         warnings=warnings,
     )
@@ -367,3 +460,78 @@ def _fit_default_embedder(corpus: list[str]) -> EmbeddingProvider:
     provider = BM25SparseEmbeddingProvider()
     provider.fit(corpus or [""])
     return provider
+
+
+def _replay_extraction_from_previous_index(
+    *,
+    previous_index: LightGraphIndex,
+    reused_chunks: list,
+) -> list[LightExtractionResult]:
+    """Reconstruct per-chunk extraction results from a previous index.
+
+    For each reused chunk we synthesise one :class:`ExtractedEntity`
+    per :class:`EntityProfile` that references the chunk (and similarly
+    for relations). This is structurally equivalent to what the
+    extractor would have produced and lets the deduper rebuild the
+    canonical id set without re-running the extractor on unchanged
+    sources — the incremental-update guarantee the LightRAG paper
+    emphasises (avoid full index rebuilds when new data arrives).
+    """
+    reused_chunk_ids = {chunk.id for chunk in reused_chunks}
+    if not reused_chunk_ids:
+        return []
+    entities_by_chunk: dict[str, list[ExtractedEntity]] = {
+        cid: [] for cid in reused_chunk_ids
+    }
+    for profile in previous_index.entities:
+        relevant = [cid for cid in profile.chunk_ids if cid in reused_chunk_ids]
+        for chunk_id in relevant:
+            entities_by_chunk[chunk_id].append(
+                ExtractedEntity(
+                    name=profile.canonical_name,
+                    type=profile.type,
+                    description=profile.description,
+                    aliases=list(profile.aliases),
+                    chunk_ids=[chunk_id],
+                    source_ids=list(profile.source_ids),
+                    confidence=0.99,
+                )
+            )
+    relations_by_chunk: dict[str, list[ExtractedRelation]] = {
+        cid: [] for cid in reused_chunk_ids
+    }
+    entity_id_to_name = {
+        profile.id: profile.canonical_name for profile in previous_index.entities
+    }
+    for profile in previous_index.relations:
+        relevant = [cid for cid in profile.chunk_ids if cid in reused_chunk_ids]
+        source_name = entity_id_to_name.get(
+            profile.source_entity_id, profile.source_entity_id
+        )
+        target_name = entity_id_to_name.get(
+            profile.target_entity_id, profile.target_entity_id
+        )
+        for chunk_id in relevant:
+            relations_by_chunk[chunk_id].append(
+                ExtractedRelation(
+                    source=source_name,
+                    target=target_name,
+                    relation_type=profile.relation_type,
+                    description=profile.description,
+                    keywords=list(profile.keywords),
+                    chunk_ids=[chunk_id],
+                    source_ids=list(profile.source_ids),
+                    weight=profile.weight,
+                    confidence=0.99,
+                )
+            )
+    return [
+        LightExtractionResult(
+            chunk_id=chunk_id,
+            entities=entities_by_chunk.get(chunk_id, []),
+            relations=relations_by_chunk.get(chunk_id, []),
+            warnings=[],
+            extractor="replay-previous-index",
+        )
+        for chunk_id in sorted(reused_chunk_ids)
+    ]
