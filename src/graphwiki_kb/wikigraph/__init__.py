@@ -30,6 +30,24 @@ The high-level CLI wiring lives in
 
 from __future__ import annotations
 
+from graphwiki_kb.wikigraph.light_models import (
+    EntityProfile,
+    LightChunk,
+    LightGraphBuildManifest,
+    LightGraphBuildReport,
+    LightGraphIndex,
+    LightQueryMethod,
+    LightRetrievedBundle,
+    LightRetrievedContext,
+    RelationProfile,
+    SourceContribution,
+)
+from graphwiki_kb.wikigraph.light_models import (
+    ExtractedEntity as LightExtractedEntity,
+)
+from graphwiki_kb.wikigraph.light_models import (
+    ExtractedRelation as LightExtractedRelation,
+)
 from graphwiki_kb.wikigraph.models import (
     EVIDENCE_NODE_KINDS,
     STRUCTURAL_NODE_KINDS,
@@ -46,6 +64,18 @@ from graphwiki_kb.wikigraph.models import (
 __all__ = [
     "EVIDENCE_NODE_KINDS",
     "STRUCTURAL_NODE_KINDS",
+    "EntityProfile",
+    "LightChunk",
+    "LightExtractedEntity",
+    "LightExtractedRelation",
+    "LightGraphBuildManifest",
+    "LightGraphBuildReport",
+    "LightGraphIndex",
+    "LightQueryMethod",
+    "LightRetrievedBundle",
+    "LightRetrievedContext",
+    "RelationProfile",
+    "SourceContribution",
     "WikiGraphAnswer",
     "WikiGraphBuildReport",
     "WikiGraphCommunity",
