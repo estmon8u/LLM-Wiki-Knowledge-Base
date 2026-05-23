@@ -1,0 +1,211 @@
+version: 1
+name: cross-corpus-synthesis
+description: |
+  Cross-corpus synthesis benchmark that does NOT map each question to
+  a single paper slug. These questions force any backend to combine
+  evidence from 3+ sources, which is the workload LightRAG-style
+  dual-level retrieval is designed for and where the classic
+  wiki-page-first retriever's title-driven advantages are minimised.
+
+  This benchmark complements ``benchmark.yaml`` (the original
+  paper-name-driven set). Run both and compare the deltas — the
+  gap between backends should narrow or invert on this file.
+source_project: 10-paper arXiv corpus (same as benchmark.yaml)
+notes:
+  - Every question lists 3+ expected_sources to discourage title-only
+    retrieval wins.
+  - expected_answer_terms are deliberately abstract (e.g. "trade-off",
+    "objective", "evaluation protocol") so a backend cannot game them
+    by pattern-matching paper titles.
+  - For comparison and global questions, expected_methods is set to
+    "drift-lite" / "global" so classic and lightrag are scored against
+    the routing each is engineered for.
+questions:
+  - id: retriever_training_strategies
+    question: >-
+      Across the retrieval-augmented-LM corpus, what training strategies
+      do papers use to update the retriever itself, and how do they differ
+      in supervision signal?
+    category: synthesis
+    intent: Compare retriever-training signals across multiple systems.
+    expected_method: drift-lite
+    expected_sources:
+      - realm
+      - dpr
+      - rag
+      - atlas
+      - replug
+    expected_entities:
+      - retriever
+      - pretraining
+    expected_answer_terms:
+      - retriever training
+      - supervision
+      - objective
+    expected_methods:
+      wikigraph: drift-lite
+      graphrag: drift
+  - id: black_box_vs_jointly_trained
+    question: >-
+      Compare retrieval-augmented systems that treat the language model
+      as a frozen black box against systems that jointly train the
+      generator and the retriever. What are the key design tradeoffs?
+    category: synthesis
+    intent: Cross-paper tradeoff question that requires both REPLUG-style
+      and Atlas/REALM-style perspectives.
+    expected_method: drift-lite
+    expected_sources:
+      - replug
+      - rag
+      - realm
+      - atlas
+    expected_entities:
+      - retriever
+      - language model
+      - generator
+    expected_answer_terms:
+      - trade-off
+      - black-box
+      - joint
+    expected_methods:
+      wikigraph: drift-lite
+      graphrag: drift
+  - id: open_domain_qa_benchmarks
+    question: >-
+      Which open-domain QA benchmarks recur most often in this corpus,
+      and which systems report results on each?
+    category: synthesis
+    intent: Map systems to evaluation datasets across the corpus.
+    expected_method: drift-lite
+    expected_sources:
+      - dpr
+      - fid
+      - rag
+      - realm
+      - atlas
+      - orqa
+    expected_entities:
+      - Natural Questions
+      - TriviaQA
+    expected_answer_terms:
+      - benchmark
+      - evaluation
+    expected_methods:
+      wikigraph: drift-lite
+      graphrag: drift
+  - id: passage_ranking_vs_generation
+    question: >-
+      Across the corpus, how do papers split the responsibility between
+      passage scoring/ranking and answer generation? Identify the two
+      ends of the spectrum and the systems that occupy each.
+    category: synthesis
+    intent: Synthesis question that needs both ranker-heavy (DPR/ORQA)
+      and generator-heavy (FiD/RAG) papers.
+    expected_method: drift-lite
+    expected_sources:
+      - dpr
+      - orqa
+      - fid
+      - rag
+      - self-rag
+    expected_entities:
+      - passage
+      - generator
+      - retriever
+    expected_answer_terms:
+      - ranker
+      - generation
+      - architecture
+    expected_methods:
+      wikigraph: drift-lite
+      graphrag: drift
+  - id: hallucination_mitigation_synthesis
+    question: >-
+      How do papers in this corpus reduce hallucinations or improve
+      faithfulness of the generated text, and which mechanisms are
+      shared across multiple systems?
+    category: synthesis
+    intent: Cross-paper theme synthesis on a recurring concern.
+    expected_method: drift-lite
+    expected_sources:
+      - self-rag
+      - rag
+      - atlas
+      - realm
+    expected_entities:
+      - hallucination
+      - faithful
+    expected_answer_terms:
+      - faithfulness
+      - mitigation
+      - critique
+    expected_methods:
+      wikigraph: drift-lite
+      graphrag: drift
+  - id: global_corpus_themes
+    question: >-
+      Summarise the top three recurring themes across this corpus,
+      naming the papers that support each theme.
+    category: global
+    intent: Pure global / theme question with no single canonical source.
+    expected_method: global
+    expected_sources:
+      - rag
+      - dpr
+      - realm
+      - atlas
+      - self-rag
+      - fid
+    expected_entities:
+      - retrieval
+      - generation
+    expected_answer_terms:
+      - theme
+      - across
+    expected_methods:
+      wikigraph: global
+      graphrag: global
+  - id: inference_time_retrieval_styles
+    question: >-
+      How do retrieval-augmented systems differ in WHERE retrieval
+      happens at inference time (per token, per query, per chunk),
+      and what cost / quality tradeoff does each style produce?
+    category: synthesis
+    intent: Synthesis question that crosses RAG token-level,
+      In-Context RALM chunk-level, and REPLUG black-box styles.
+    expected_method: drift-lite
+    expected_sources:
+      - rag
+      - in-context-ralm
+      - replug
+      - fid
+    expected_entities:
+      - inference
+      - retrieval
+    expected_answer_terms:
+      - cost
+      - trade-off
+    expected_methods:
+      wikigraph: drift-lite
+      graphrag: drift
+  - id: retriever_index_refresh
+    question: >-
+      Which systems describe how they update or refresh their retrieval
+      index over time, and what frequency do they use?
+    category: synthesis
+    intent: Synthesis question that primarily lives in REALM and
+      Atlas-style discussions; tests less-popular sources.
+    expected_method: drift-lite
+    expected_sources:
+      - realm
+      - atlas
+      - replug
+    expected_entities:
+      - index
+      - refresh
+    expected_answer_terms:
+      - update
+      - frequency
+    expected_methods:
+      wikigraph: drift-lite
+      graphrag: drift
