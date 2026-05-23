@@ -16,6 +16,22 @@ WikiGraphRAG CLI flags defer to `wikigraph.enabled` and
 and `kb ask --engine wikigraph --show-source-trace` prints retrieved seed
 entities, communities, sub-questions, per-context traces, and provider status.
 
+WikiGraphRAG has two backend modes selected via `wikigraph.mode` in
+`kb.config.yaml` (or `kb update --wikigraph-mode classic|lightrag` for a
+one-off override):
+
+* `classic` (default) — the wiki-page-first backend with Louvain communities
+  and lexical retrieval that has shipped to date.
+* `lightrag` — a LightRAG-style backend that builds a token-aware entity /
+  relation graph index from `raw/normalized/*` instead of compiled wiki
+  summaries. It exposes `local`, `global`, `hybrid`, `basic`, and `auto`
+  retrieval methods over BM25-fit embeddings of entity and relation
+  profiles, persists under `graph/wikigraph/lightrag/`, and falls back to
+  a deterministic offline extractor so it runs without API keys. See
+  the LightRAG mode pull request for the full architecture and the
+  Tier A (strict LightRAG, provider-required) / Tier B (cached) /
+  Tier C (fallback diagnostic) execution tiers.
+
 WikiGraphRAG is the current default `kb ask` engine because it is local, inspectable, and can run provider-free; Microsoft GraphRAG remains available explicitly with `kb ask --engine graphrag` for provider-backed graph queries and side-by-side comparison. The existing SQLite FTS5 search and source-grounded ask workflow is explicit source-page-only legacy behavior under `kb find --engine legacy` and `kb ask --engine legacy` with deprecation warnings. Top-level `kb find` is a non-generative search over direct GraphRAG entity/relationship artifacts, the maintained wiki index, and WikiGraphRAG contexts, including generated graph pages when they exist. GraphRAG setup and maintenance are folded into the main command surface: `kb init` creates the graph workspace, `kb update` syncs input, indexes when needed, and exports graph wiki pages from complete graph output even when indexing is skipped as current, `kb status` reports graph health, and `kb export` refreshes graph inspection pages when complete graph output exists. The old `kb graph` command group has been removed. See [docs/graphrag-pivot.md](docs/graphrag-pivot.md) for the pivot rationale and target architecture.
 
 ## Requirements
