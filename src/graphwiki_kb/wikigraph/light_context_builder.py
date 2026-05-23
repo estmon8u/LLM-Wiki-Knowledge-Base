@@ -98,6 +98,9 @@ class LightContextBuilder:
     config: LightContextBuilderConfig = field(default_factory=LightContextBuilderConfig)
     embedding_provider: EmbeddingProvider | None = None
     keyword_provider: LightKeywordProvider | None = None
+    precomputed_entity_vectors: list[tuple[str, list[float]]] | None = None
+    precomputed_relation_vectors: list[tuple[str, list[float]]] | None = None
+    precomputed_chunk_vectors: list[tuple[str, list[float]]] | None = None
 
     def __post_init__(self) -> None:
         if self.embedding_provider is None:
@@ -121,24 +124,47 @@ class LightContextBuilder:
 
     def _fit_vectors(self) -> None:
         assert self.embedding_provider is not None
-        if self.index.entities:
+        # Persisted vectors short-circuit the embed step entirely. This
+        # is the path the production query service takes after loading
+        # the LightGraph index from disk — kills the per-call BM25
+        # refit that made lightrag retrieval ~30x slower than classic.
+        if self.precomputed_entity_vectors is not None:
+            self._load_precomputed(self._entity_store, self.precomputed_entity_vectors)
+        elif self.index.entities:
             ent_vectors = self.embedding_provider.embed_texts(
                 [e.embedding_text or e.canonical_name for e in self.index.entities]
             )
             for entity, vec in zip(self.index.entities, ent_vectors, strict=True):
                 self._entity_store.add(entity.id, vec)
-        if self.index.relations:
+
+        if self.precomputed_relation_vectors is not None:
+            self._load_precomputed(
+                self._relation_store, self.precomputed_relation_vectors
+            )
+        elif self.index.relations:
             rel_vectors = self.embedding_provider.embed_texts(
                 [r.embedding_text or r.relation_type for r in self.index.relations]
             )
             for relation, vec in zip(self.index.relations, rel_vectors, strict=True):
                 self._relation_store.add(relation.id, vec)
-        if self.index.chunks:
+
+        if self.precomputed_chunk_vectors is not None:
+            self._load_precomputed(self._chunk_store, self.precomputed_chunk_vectors)
+        elif self.index.chunks:
             chunk_vectors = self.embedding_provider.embed_texts(
                 [c.text for c in self.index.chunks]
             )
             for chunk, vec in zip(self.index.chunks, chunk_vectors, strict=True):
                 self._chunk_store.add(chunk.id, vec)
+
+    @staticmethod
+    def _load_precomputed(
+        store: LightVectorStore, vectors: list[tuple[str, list[float]]]
+    ) -> None:
+        """Bulk-load persisted ``(id, vector)`` pairs into ``store``."""
+        for item_id, vector in vectors:
+            if vector:
+                store.add(item_id, vector)
 
     # ---------------------------------------------------------------- #
     # Routing                                                           #
@@ -308,13 +334,34 @@ class LightContextBuilder:
             vectors = self.embedding_provider.embed_texts([text])
         except RuntimeError:
             return []
-        return vectors[0] if vectors else []
+        if not vectors:
+            return []
+        return vectors[0]
+
+    def _query_vector_for_store(
+        self, store: LightVectorStore, question: str, keywords_text: str = ""
+    ) -> list[float]:
+        """Return a query vector with the right dimension for ``store``.
+
+        When the caller supplied precomputed vectors built by a
+        different embedder (e.g. OpenAI 3072-dim vectors persisted on
+        disk while the in-memory ``embedding_provider`` defaults to
+        BM25), the query embedding can have a different dimension.
+        Returning an empty vector tells :meth:`LightVectorStore.search`
+        to short-circuit instead of raising.
+        """
+        if store.dimension == 0:
+            return []
+        vector = self._vector_for_query(question, keywords_text)
+        if not vector or len(vector) != store.dimension:
+            return []
+        return vector
 
     def _local_entities(
         self, keywords: QueryKeywords, question: str
     ) -> tuple[list[EntityProfile], list[LightRetrievedContext]]:
         query_text = " ".join(keywords.low_level_keywords) or question
-        vector = self._vector_for_query(question, query_text)
+        vector = self._query_vector_for_store(self._entity_store, question, query_text)
         hits = self._entity_store.search(vector, top_k=self.config.top_k_entities)
         entities: list[EntityProfile] = []
         contexts: list[LightRetrievedContext] = []
@@ -343,7 +390,9 @@ class LightContextBuilder:
         self, keywords: QueryKeywords, question: str
     ) -> tuple[list[RelationProfile], list[LightRetrievedContext]]:
         query_text = " ".join(keywords.high_level_keywords) or question
-        vector = self._vector_for_query(question, query_text)
+        vector = self._query_vector_for_store(
+            self._relation_store, question, query_text
+        )
         hits = self._relation_store.search(vector, top_k=self.config.top_k_relations)
         relations: list[RelationProfile] = []
         contexts: list[LightRetrievedContext] = []
@@ -467,7 +516,7 @@ class LightContextBuilder:
     def _chunk_search(
         self, question: str
     ) -> tuple[list[LightChunk], list[LightRetrievedContext]]:
-        vector = self._vector_for_query(question)
+        vector = self._query_vector_for_store(self._chunk_store, question)
         hits = self._chunk_store.search(vector, top_k=self.config.top_k_chunks)
         chunks: list[LightChunk] = []
         contexts: list[LightRetrievedContext] = []

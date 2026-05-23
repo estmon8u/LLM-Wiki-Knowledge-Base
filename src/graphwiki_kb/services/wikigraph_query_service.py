@@ -9,6 +9,10 @@ from typing import Any
 
 from graphwiki_kb.providers.base import TextProvider
 from graphwiki_kb.services.config_service import resolve_wikigraph_config
+from graphwiki_kb.services.embedding_service import (
+    build_embedding_provider,
+    resolve_lightrag_embedding_config,
+)
 from graphwiki_kb.services.project_service import (
     ProjectPaths,
     atomic_write_text,
@@ -47,6 +51,14 @@ class WikiGraphQueryService:
     index_service: WikiGraphIndexService
     provider: TextProvider | None = None
     config: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # Cache the LightRAG engine across queries so the corpus
+        # embedder is built (or vectors loaded) exactly once per
+        # service instance — the per-call refit was the dominant
+        # latency cost in the real-corpus eval.
+        self._light_engine: LightGraphQueryEngine | None = None
+        self._light_engine_index_built_at: str | None = None
 
     def _context_builder_config(self) -> ContextBuilderConfig:
         try:
@@ -108,10 +120,55 @@ class WikiGraphQueryService:
                 "WikiGraphRAG LightRAG index is missing. Set "
                 "`wikigraph.mode: lightrag` and run `kb update`."
             )
-        return LightGraphQueryEngine(
+        if (
+            self._light_engine is not None
+            and self._light_engine_index_built_at == light_index.built_at
+        ):
+            return self._light_engine
+
+        # Load persisted vectors AND construct the matching embedding
+        # provider so query-time vectors live in the same space as the
+        # stored vectors. This kills the per-call BM25 refit on the
+        # strict tier and gives Tier A its full retrieval quality.
+        #
+        # On the fallback tier the stored vectors come from a BM25
+        # vocabulary that no longer exists in-memory, so a fresh
+        # corpus refit would produce a different feature space; in that
+        # case we deliberately skip the precomputed-vector path and
+        # let the LightContextBuilder rebuild a fresh BM25 from the
+        # corpus once per service instance.
+        embedding_provider = None
+        precomputed_entity = None
+        precomputed_relation = None
+        precomputed_chunk = None
+        if light_index.manifest.embedding_tier == "strict":
+            try:
+                runtime = resolve_lightrag_embedding_config(self.config or {})
+                resolved = build_embedding_provider(runtime)
+                if resolved.tier == "strict":
+                    embedding_provider = resolved.provider
+                    store = self.index_service.light_store
+                    precomputed_entity = store.load_vectors("entity") or None
+                    precomputed_relation = store.load_vectors("relation") or None
+                    precomputed_chunk = store.load_vectors("chunk") or None
+            except (ValueError, RuntimeError):
+                embedding_provider = None
+
+        self._light_engine = LightGraphQueryEngine(
             index=light_index,
             config=self._light_context_builder_config(),
+            embedding_provider=embedding_provider,
+            precomputed_entity_vectors=precomputed_entity,
+            precomputed_relation_vectors=precomputed_relation,
+            precomputed_chunk_vectors=precomputed_chunk,
         )
+        self._light_engine_index_built_at = light_index.built_at
+        return self._light_engine
+
+    def invalidate_lightgraph_cache(self) -> None:
+        """Drop the cached LightGraph engine. Call after rebuilding."""
+        self._light_engine = None
+        self._light_engine_index_built_at = None
 
     def find(
         self, question: str, *, method: QueryMethod = "auto"

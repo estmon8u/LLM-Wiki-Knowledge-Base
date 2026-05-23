@@ -85,13 +85,39 @@ def _context_to_classic(ctx: LightRetrievedContext) -> WikiGraphRetrievedContext
 
 @dataclass
 class LightGraphQueryEngine:
-    """Provider-free retrieval-only wrapper around :class:`LightContextBuilder`."""
+    """Provider-free retrieval-only wrapper around :class:`LightContextBuilder`.
+
+    When the caller supplies ``precomputed_*_vectors`` (typically loaded
+    from :class:`LightGraphStore.load_vectors`) the underlying builder
+    skips the corpus embed step entirely; this is the path the
+    production query service takes after the strict-tier index build.
+    """
 
     index: LightGraphIndex
     config: LightContextBuilderConfig = field(default_factory=LightContextBuilderConfig)
+    embedding_provider: object | None = None
+    precomputed_entity_vectors: list[tuple[str, list[float]]] | None = None
+    precomputed_relation_vectors: list[tuple[str, list[float]]] | None = None
+    precomputed_chunk_vectors: list[tuple[str, list[float]]] | None = None
 
     def __post_init__(self) -> None:
-        self._builder = LightContextBuilder(index=self.index, config=self.config)
+        from graphwiki_kb.providers.embedding_base import (
+            EmbeddingProvider,
+        )
+
+        provider: EmbeddingProvider | None = None
+        if self.embedding_provider is not None and isinstance(
+            self.embedding_provider, EmbeddingProvider
+        ):
+            provider = self.embedding_provider
+        self._builder = LightContextBuilder(
+            index=self.index,
+            config=self.config,
+            embedding_provider=provider,
+            precomputed_entity_vectors=self.precomputed_entity_vectors,
+            precomputed_relation_vectors=self.precomputed_relation_vectors,
+            precomputed_chunk_vectors=self.precomputed_chunk_vectors,
+        )
 
     @property
     def builder(self) -> LightContextBuilder:
