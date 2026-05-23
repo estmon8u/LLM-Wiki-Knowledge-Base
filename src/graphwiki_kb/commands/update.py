@@ -185,6 +185,19 @@ def create_command() -> click.Command:
             "--export-wikigraph-artifacts is on."
         ),
     )
+    @click.option(
+        "--wikigraph-mode",
+        "wikigraph_mode",
+        type=click.Choice(["classic", "lightrag"]),
+        default=None,
+        show_default=False,
+        help=(
+            "Backend mode for the custom WikiGraphRAG build. When omitted, "
+            "`wikigraph.mode` from kb.config.yaml drives the behavior "
+            "(defaults to classic). `lightrag` enables the LightRAG-style "
+            "entity/relation graph backend."
+        ),
+    )
     @click.pass_obj
     def command(
         command_context: CommandContext,
@@ -201,6 +214,7 @@ def create_command() -> click.Command:
         wikigraph_normalized_text: bool | None,
         export_wikigraph_artifacts: bool | None,
         artifact_types: str | None,
+        wikigraph_mode: str | None,
     ) -> None:
         """Command.
 
@@ -240,6 +254,7 @@ def create_command() -> click.Command:
                 if artifact_types
                 else None
             ),
+            wikigraph_mode=wikigraph_mode,
         )
 
         console.print(f"Mode: {_mode_label(options)}")

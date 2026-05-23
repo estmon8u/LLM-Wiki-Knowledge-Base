@@ -39,7 +39,7 @@ from graphwiki_kb.services.project_service import (
     utc_now_iso,
 )
 
-CURRENT_CONFIG_VERSION = 8
+CURRENT_CONFIG_VERSION = 9
 PROVIDER_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh"}
 GEMINI_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high"}
 ANTHROPIC_THINKING_EFFORTS = {"low", "medium", "high", "xhigh", "max"}
@@ -176,6 +176,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "wikigraph": {
         "enabled": True,
+        "mode": "classic",
         "include_graphrag_export_pages": False,
         "include_normalized_text_units": True,
         "text_unit_char_limit": 4800,
@@ -196,6 +197,55 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "section_title_overlap_boost": 0.10,
         "export_generated_artifacts": False,
         "export_text_unit_artifacts": False,
+        "lightrag": {
+            "chunk_token_size": 1200,
+            "overlap_tokens": 100,
+            "min_chunk_tokens": 30,
+            "fuzzy_match_threshold": 88,
+            "max_description_chars": 600,
+            "embed_chunks": False,
+            "extraction_min_occurrences": 1,
+            "entity_types": [
+                "MODEL",
+                "METHOD",
+                "DATASET",
+                "METRIC",
+                "TASK",
+                "PAPER",
+                "TOOL",
+                "ORGANIZATION",
+                "PERSON",
+                "CLAIM",
+            ],
+            "relation_types": [
+                "USES",
+                "EVALUATES_ON",
+                "IMPROVES_OVER",
+                "COMPARES_TO",
+                "INTRODUCES",
+                "DEPENDS_ON",
+                "TRADEOFF_WITH",
+                "CONTRADICTS",
+                "SUPPORTS",
+            ],
+            "retrieval": {
+                "default_method": "hybrid",
+                "top_k_entities": 12,
+                "top_k_relations": 16,
+                "top_k_chunks": 8,
+                "max_entity_tokens": 6000,
+                "max_relation_tokens": 8000,
+                "max_chunk_tokens": 8000,
+                "max_total_tokens": 24000,
+                "rrf_k": 60,
+            },
+            "embeddings": {
+                "provider": "bm25",
+                "model": "bm25-fallback",
+                "dimension": 0,
+                "local_fallback": "bm25",
+            },
+        },
     },
     "extensions": {},
 }
@@ -427,6 +477,11 @@ def _apply_config_migrations(config: dict[str, Any]) -> tuple[dict[str, Any], bo
             changed = True
             version = _config_version(migrated)
             continue
+        if version == 8:
+            migrated = _migrate_v8_to_v9(migrated)
+            changed = True
+            version = _config_version(migrated)
+            continue
         raise ValueError(f"Unsupported kb.config.yaml version: {version}")
 
     return migrated, changed
@@ -583,6 +638,23 @@ def _migrate_v7_to_v8(config: dict[str, Any]) -> dict[str, Any]:
     migrated["research"] = research_config
 
     migrated["version"] = 8
+    return migrated
+
+
+def _migrate_v8_to_v9(config: dict[str, Any]) -> dict[str, Any]:
+    """Introduce ``wikigraph.mode`` and the ``wikigraph.lightrag`` section.
+
+    Existing configs always migrate to ``mode: classic`` so the live
+    behavior is unchanged until the user opts in to ``lightrag``.
+    """
+    migrated = deepcopy(config)
+    existing_wikigraph = migrated.get("wikigraph", {})
+    wikigraph_defaults = deepcopy(DEFAULT_CONFIG["wikigraph"])
+    if isinstance(existing_wikigraph, dict):
+        wikigraph_defaults = _deep_merge(wikigraph_defaults, existing_wikigraph)
+        wikigraph_defaults["mode"] = existing_wikigraph.get("mode", "classic")
+    migrated["wikigraph"] = wikigraph_defaults
+    migrated["version"] = 9
     return migrated
 
 
@@ -856,12 +928,81 @@ class _ConversionConfig(_StrictConfigModel):
     fallbacks: _FallbacksConfig
 
 
+class _LightRagRetrievalConfig(_StrictConfigModel):
+    """Validated LightRAG retrieval settings."""
+
+    default_method: Literal["local", "global", "hybrid", "basic", "auto"] = "hybrid"
+    top_k_entities: StrictInt = Field(default=12, ge=1, le=200)
+    top_k_relations: StrictInt = Field(default=16, ge=1, le=200)
+    top_k_chunks: StrictInt = Field(default=8, ge=1, le=200)
+    max_entity_tokens: StrictInt = Field(default=6000, ge=100, le=64000)
+    max_relation_tokens: StrictInt = Field(default=8000, ge=100, le=64000)
+    max_chunk_tokens: StrictInt = Field(default=8000, ge=100, le=64000)
+    max_total_tokens: StrictInt = Field(default=24000, ge=500, le=128000)
+    rrf_k: StrictInt = Field(default=60, ge=1, le=1000)
+
+
+class _LightRagEmbeddingConfig(_StrictConfigModel):
+    """Validated LightRAG embedding provider settings."""
+
+    provider: StrictStr = "bm25"
+    model: StrictStr = "bm25-fallback"
+    dimension: StrictInt = Field(default=0, ge=0, le=16384)
+    local_fallback: Literal["bm25", "hashing"] = "bm25"
+
+
+class _LightRagConfig(_StrictConfigModel):
+    """Validated LightRAG-style WikiGraphRAG settings."""
+
+    chunk_token_size: StrictInt = Field(default=1200, ge=64, le=8192)
+    overlap_tokens: StrictInt = Field(default=100, ge=0, le=2048)
+    min_chunk_tokens: StrictInt = Field(default=30, ge=1, le=4096)
+    fuzzy_match_threshold: StrictInt = Field(default=88, ge=50, le=100)
+    max_description_chars: StrictInt = Field(default=600, ge=64, le=8000)
+    embed_chunks: StrictBool = False
+    extraction_min_occurrences: StrictInt = Field(default=1, ge=1, le=10)
+    entity_types: list[StrictStr] = Field(
+        default_factory=lambda: [
+            "MODEL",
+            "METHOD",
+            "DATASET",
+            "METRIC",
+            "TASK",
+            "PAPER",
+            "TOOL",
+            "ORGANIZATION",
+            "PERSON",
+            "CLAIM",
+        ]
+    )
+    relation_types: list[StrictStr] = Field(
+        default_factory=lambda: [
+            "USES",
+            "EVALUATES_ON",
+            "IMPROVES_OVER",
+            "COMPARES_TO",
+            "INTRODUCES",
+            "DEPENDS_ON",
+            "TRADEOFF_WITH",
+            "CONTRADICTS",
+            "SUPPORTS",
+        ]
+    )
+    retrieval: _LightRagRetrievalConfig = Field(
+        default_factory=_LightRagRetrievalConfig
+    )
+    embeddings: _LightRagEmbeddingConfig = Field(
+        default_factory=_LightRagEmbeddingConfig
+    )
+
+
 class _WikiGraphConfig(BaseModel):
     """Validated WikiGraphRAG runtime settings."""
 
     model_config = ConfigDict(extra="forbid")
 
     enabled: StrictBool = True
+    mode: Literal["classic", "lightrag"] = "classic"
     include_graphrag_export_pages: StrictBool = False
     include_normalized_text_units: StrictBool = True
     text_unit_char_limit: StrictInt = Field(default=4800, ge=500, le=20000)
@@ -888,6 +1029,49 @@ class _WikiGraphConfig(BaseModel):
     section_title_overlap_boost: float = Field(default=0.10, ge=0.0, le=2.0)
     export_generated_artifacts: StrictBool = False
     export_text_unit_artifacts: StrictBool = False
+    lightrag: _LightRagConfig = Field(default_factory=_LightRagConfig)
+
+
+@dataclass(frozen=True)
+class LightRagRetrievalRuntimeConfig:
+    """Resolved LightRAG retrieval settings."""
+
+    default_method: str
+    top_k_entities: int
+    top_k_relations: int
+    top_k_chunks: int
+    max_entity_tokens: int
+    max_relation_tokens: int
+    max_chunk_tokens: int
+    max_total_tokens: int
+    rrf_k: int
+
+
+@dataclass(frozen=True)
+class LightRagEmbeddingRuntimeConfig:
+    """Resolved LightRAG embedding provider settings."""
+
+    provider: str
+    model: str
+    dimension: int
+    local_fallback: str
+
+
+@dataclass(frozen=True)
+class LightRagRuntimeConfig:
+    """Resolved LightRAG-style WikiGraphRAG settings."""
+
+    chunk_token_size: int
+    overlap_tokens: int
+    min_chunk_tokens: int
+    fuzzy_match_threshold: int
+    max_description_chars: int
+    embed_chunks: bool
+    extraction_min_occurrences: int
+    entity_types: tuple[str, ...]
+    relation_types: tuple[str, ...]
+    retrieval: LightRagRetrievalRuntimeConfig
+    embeddings: LightRagEmbeddingRuntimeConfig
 
 
 @dataclass(frozen=True)
@@ -895,6 +1079,7 @@ class WikiGraphRuntimeConfig:
     """Resolved WikiGraphRAG runtime settings."""
 
     enabled: bool
+    mode: str
     include_graphrag_export_pages: bool
     include_normalized_text_units: bool
     text_unit_char_limit: int
@@ -915,6 +1100,7 @@ class WikiGraphRuntimeConfig:
     section_title_overlap_boost: float
     export_generated_artifacts: bool
     export_text_unit_artifacts: bool
+    lightrag: LightRagRuntimeConfig
 
 
 class _KbConfigModel(BaseModel):
@@ -1025,8 +1211,40 @@ def resolve_wikigraph_config(config: dict[str, Any]) -> WikiGraphRuntimeConfig:
                 f"kb.config.yaml 'wikigraph' contains unknown keys: {key}."
             ) from exc
         raise ValueError(_format_config_validation_error(exc)) from exc
+    lightrag_section = validated["lightrag"]
+    retrieval_section = lightrag_section["retrieval"]
+    embeddings_section = lightrag_section["embeddings"]
+    lightrag_runtime = LightRagRuntimeConfig(
+        chunk_token_size=int(lightrag_section["chunk_token_size"]),
+        overlap_tokens=int(lightrag_section["overlap_tokens"]),
+        min_chunk_tokens=int(lightrag_section["min_chunk_tokens"]),
+        fuzzy_match_threshold=int(lightrag_section["fuzzy_match_threshold"]),
+        max_description_chars=int(lightrag_section["max_description_chars"]),
+        embed_chunks=bool(lightrag_section["embed_chunks"]),
+        extraction_min_occurrences=int(lightrag_section["extraction_min_occurrences"]),
+        entity_types=tuple(lightrag_section["entity_types"]),
+        relation_types=tuple(lightrag_section["relation_types"]),
+        retrieval=LightRagRetrievalRuntimeConfig(
+            default_method=str(retrieval_section["default_method"]),
+            top_k_entities=int(retrieval_section["top_k_entities"]),
+            top_k_relations=int(retrieval_section["top_k_relations"]),
+            top_k_chunks=int(retrieval_section["top_k_chunks"]),
+            max_entity_tokens=int(retrieval_section["max_entity_tokens"]),
+            max_relation_tokens=int(retrieval_section["max_relation_tokens"]),
+            max_chunk_tokens=int(retrieval_section["max_chunk_tokens"]),
+            max_total_tokens=int(retrieval_section["max_total_tokens"]),
+            rrf_k=int(retrieval_section["rrf_k"]),
+        ),
+        embeddings=LightRagEmbeddingRuntimeConfig(
+            provider=str(embeddings_section["provider"]),
+            model=str(embeddings_section["model"]),
+            dimension=int(embeddings_section["dimension"]),
+            local_fallback=str(embeddings_section["local_fallback"]),
+        ),
+    )
     return WikiGraphRuntimeConfig(
         enabled=bool(validated["enabled"]),
+        mode=str(validated["mode"]),
         include_graphrag_export_pages=bool(validated["include_graphrag_export_pages"]),
         include_normalized_text_units=bool(validated["include_normalized_text_units"]),
         text_unit_char_limit=int(validated["text_unit_char_limit"]),
@@ -1049,6 +1267,7 @@ def resolve_wikigraph_config(config: dict[str, Any]) -> WikiGraphRuntimeConfig:
         section_title_overlap_boost=float(validated["section_title_overlap_boost"]),
         export_generated_artifacts=bool(validated["export_generated_artifacts"]),
         export_text_unit_artifacts=bool(validated["export_text_unit_artifacts"]),
+        lightrag=lightrag_runtime,
     )
 
 

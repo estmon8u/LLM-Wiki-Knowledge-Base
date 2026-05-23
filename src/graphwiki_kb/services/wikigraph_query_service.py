@@ -20,6 +20,13 @@ from graphwiki_kb.services.wikigraph_index_service import (
 )
 from graphwiki_kb.wikigraph.answer_service import WikiGraphAnswerService
 from graphwiki_kb.wikigraph.context_builder import ContextBuilderConfig
+from graphwiki_kb.wikigraph.light_context_builder import (
+    LightContextBuilderConfig,
+)
+from graphwiki_kb.wikigraph.light_query_service import (
+    LightAnswerService,
+    LightGraphQueryEngine,
+)
 from graphwiki_kb.wikigraph.models import (
     QueryMethod,
     WikiGraphAnswer,
@@ -58,6 +65,30 @@ class WikiGraphQueryService:
             section_title_overlap_boost=runtime.section_title_overlap_boost,
         )
 
+    def _resolved_mode(self) -> str:
+        try:
+            runtime = resolve_wikigraph_config(self.config or {})
+        except ValueError:
+            runtime = resolve_wikigraph_config({})
+        return runtime.mode
+
+    def _light_context_builder_config(self) -> LightContextBuilderConfig:
+        try:
+            runtime = resolve_wikigraph_config(self.config or {})
+        except ValueError:
+            runtime = resolve_wikigraph_config({})
+        retrieval = runtime.lightrag.retrieval
+        return LightContextBuilderConfig(
+            top_k_entities=retrieval.top_k_entities,
+            top_k_relations=retrieval.top_k_relations,
+            top_k_chunks=retrieval.top_k_chunks,
+            max_entity_tokens=retrieval.max_entity_tokens,
+            max_relation_tokens=retrieval.max_relation_tokens,
+            max_chunk_tokens=retrieval.max_chunk_tokens,
+            max_total_tokens=retrieval.max_total_tokens,
+            rrf_k=retrieval.rrf_k,
+        )
+
     def _ensure_engine(self) -> WikiGraphQueryEngine:
         index = self.index_service.load()
         if index is None:
@@ -70,10 +101,26 @@ class WikiGraphQueryService:
             config=self._context_builder_config(),
         )
 
+    def _ensure_light_engine(self) -> LightGraphQueryEngine:
+        light_index = self.index_service.load_lightgraph()
+        if light_index is None:
+            raise WikiGraphQueryError(
+                "WikiGraphRAG LightRAG index is missing. Set "
+                "`wikigraph.mode: lightrag` and run `kb update`."
+            )
+        return LightGraphQueryEngine(
+            index=light_index,
+            config=self._light_context_builder_config(),
+        )
+
     def find(
         self, question: str, *, method: QueryMethod = "auto"
     ) -> WikiGraphFindResult:
         """Run a provider-free retrieval and return a :class:`WikiGraphFindResult`."""
+        if self._resolved_mode() == "lightrag":
+            light_engine = self._ensure_light_engine()
+            light_method = _classic_method_to_light(method)
+            return light_engine.find(question, method=light_method)
         engine = self._ensure_engine()
         return engine.find(question, method=method)
 
@@ -87,13 +134,23 @@ class WikiGraphQueryService:
         save_as: str | None = None,
     ) -> WikiGraphAnswer:
         """Run a full WikiGraphRAG answer pipeline for ``question``."""
-        engine = self._ensure_engine()
-        service = WikiGraphAnswerService(engine=engine, provider=self.provider)
-        answer = service.ask(
-            question,
-            method=method,
-            require_provider=require_provider,
-        )
+        if self._resolved_mode() == "lightrag":
+            light_engine = self._ensure_light_engine()
+            light_service = LightAnswerService(
+                engine=light_engine, provider=self.provider
+            )
+            light_method = _classic_method_to_light(method)
+            answer = light_service.ask(
+                question, method=light_method, require_provider=require_provider
+            )
+        else:
+            engine = self._ensure_engine()
+            service = WikiGraphAnswerService(engine=engine, provider=self.provider)
+            answer = service.ask(
+                question,
+                method=method,
+                require_provider=require_provider,
+            )
         if save or save_as:
             saved_path = self.save_answer(question, answer, slug=save_as)
             answer = answer.model_copy(update={"saved_path": saved_path})
@@ -164,3 +221,21 @@ class WikiGraphQueryService:
 
 def _safe_timestamp(timestamp: str) -> str:
     return "".join(c if c.isalnum() else "-" for c in timestamp).strip("-") or "unknown"
+
+
+def classic_method_to_light(method: QueryMethod) -> Any:
+    """Public alias for :func:`_classic_method_to_light` (for tests)."""
+    return _classic_method_to_light(method)
+
+
+def _classic_method_to_light(method: QueryMethod) -> Any:
+    """Map a classic :class:`QueryMethod` to its LightRAG equivalent.
+
+    The classic ``QueryMethod`` literal doesn't have a ``hybrid`` slot,
+    so callers that want LightRAG's hybrid retrieval should pass it as
+    ``drift-lite`` (the legacy hybrid analog). Everything else maps
+    one-to-one. Method routing remains identical for ``auto``.
+    """
+    if method == "drift-lite":
+        return "hybrid"
+    return method

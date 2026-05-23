@@ -53,6 +53,9 @@ class UpdateOptions:
     # Tri-state: ``None`` means "use
     # ``wikigraph.include_normalized_text_units`` from config".
     wikigraph_include_normalized_text_units: bool | None = None
+    # Override the WikiGraphRAG backend mode for this run only. ``None``
+    # falls back to ``wikigraph.mode`` from config.
+    wikigraph_mode: str | None = None
 
 
 @dataclass
@@ -440,6 +443,7 @@ class UpdateService:
                 include_normalized_text_units=(
                     options.wikigraph_include_normalized_text_units
                 ),
+                mode=options.wikigraph_mode,
             )
         except Exception as exc:
             if options.allow_partial:
