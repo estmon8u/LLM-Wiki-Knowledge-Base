@@ -8628,4 +8628,4 @@ wikigraph-eval = ["bm25s", "networkx", "scikit-learn"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.13"
-content-hash = "dbd5e9592b0190798b0835775ca09131d23613840f734aa13f271f172219cb0d"
+content-hash = "537304606af174aadcb34aaa570835abc6a8d401b2394c1bbe966790af8441ac"

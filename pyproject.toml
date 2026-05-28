@@ -61,6 +61,8 @@ all = [
 	"networkx",
 	"bm25s",
 	"scikit-learn",
+	"numpy",
+	"tiktoken",
 ]
 
 [tool.poetry.group.dev.dependencies]
