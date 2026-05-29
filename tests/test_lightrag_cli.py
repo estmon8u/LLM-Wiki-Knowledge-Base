@@ -176,3 +176,29 @@ def test_cli_find_json_lightrag_mode(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output + result.stderr
     payload = json.loads(result.output)
     assert payload["wikigraph"]["mode"] == "lightrag"
+
+
+def test_cli_find_method_passthrough_lightrag(tmp_path: Path) -> None:
+    """``kb find --method local`` is honored for the wikigraph engine."""
+    paths, config, manifest = _lightrag_project(tmp_path)
+    ConfigService(paths).save(config)
+    WikiGraphIndexService(paths=paths, config=config, manifest_service=manifest).build()
+
+    runner = CliRunner(mix_stderr=False)
+    result = runner.invoke(
+        cli_main,
+        [
+            "--project-root",
+            str(paths.root),
+            "find",
+            "Dense Passage Retrieval",
+            "--engine",
+            "wikigraph",
+            "--method",
+            "local",
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0, result.output + result.stderr
+    payload = json.loads(result.output)
+    assert payload["wikigraph"]["method"] == "local"

@@ -66,6 +66,16 @@ def create_command() -> click.Command:
             "index, and WikiGraphRAG via reciprocal rank fusion."
         ),
     )
+    @click.option(
+        "--method",
+        type=click.Choice(["auto", "basic", "local", "global", "hybrid", "drift-lite"]),
+        default="auto",
+        show_default=True,
+        help=(
+            "Retrieval method for the WikiGraphRAG engine "
+            "(ignored by graphrag/wiki/legacy)."
+        ),
+    )
     @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
     @click.pass_obj
     def command(
@@ -73,6 +83,7 @@ def create_command() -> click.Command:
         query_terms: tuple[str, ...],
         limit: int,
         engine: str,
+        method: str,
         as_json: bool,
     ) -> None:
         """Command.
@@ -122,7 +133,7 @@ def create_command() -> click.Command:
             )
         if run_wikigraph:
             try:
-                find_result = wikigraph_query_service.find(query, method="auto")
+                find_result = wikigraph_query_service.find(query, method=method)
                 wikigraph_find = find_result
                 wikigraph_contexts = find_result.contexts
                 wikigraph_results = [
