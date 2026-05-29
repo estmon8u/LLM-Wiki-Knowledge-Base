@@ -50,6 +50,10 @@ class WikiGraphQueryService:
     provider: TextProvider | None = None
     config: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        self._light_engine: LightQueryEngine | None = None
+        self._light_engine_built_at: str | None = None
+
     def _context_builder_config(self) -> ContextBuilderConfig:
         try:
             runtime = resolve_wikigraph_config(self.config or {})
@@ -85,11 +89,34 @@ class WikiGraphQueryService:
         except ValueError:
             return resolve_wikigraph_config({})
 
-    def _lightrag_engine(self) -> LightQueryEngine:
-        runtime = self._runtime()
-        store = LightGraphStore(
+    def _lightrag_store(self) -> LightGraphStore:
+        return LightGraphStore(
             LightGraphStorePaths(self.paths.graph_dir / "wikigraph" / "lightrag")
         )
+
+    def invalidate_lightgraph_cache(self) -> None:
+        """Drop the cached LightGraph query engine.
+
+        Call after rebuilding the index so a long-lived process (agent loop,
+        evaluator) picks up the fresh artifacts instead of stale ones.
+        """
+        self._light_engine = None
+        self._light_engine_built_at = None
+
+    def _lightrag_engine(self) -> LightQueryEngine:
+        runtime = self._runtime()
+        store = self._lightrag_store()
+        # Cheaply read the persisted build timestamp to decide whether the
+        # cached engine is still valid (avoids re-loading the full index and
+        # re-fitting BM25 lexical indices on every find/ask call).
+        manifest = store.load_build_manifest() or {}
+        built_at = str(manifest.get("built_at", "")) or None
+        if (
+            self._light_engine is not None
+            and self._light_engine_built_at == built_at
+            and built_at is not None
+        ):
+            return self._light_engine
         engine = LightQueryEngine.from_store(
             store,
             config=runtime.lightrag,
@@ -101,6 +128,8 @@ class WikiGraphQueryService:
                 "WikiGraphRAG (lightrag) index is missing. Run "
                 "`kb update --wikigraph-mode lightrag` to build it."
             )
+        self._light_engine = engine
+        self._light_engine_built_at = built_at
         return engine
 
     def find(
