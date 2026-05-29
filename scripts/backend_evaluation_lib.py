@@ -269,6 +269,66 @@ class WikiGraphRunner:
             )
 
 
+class LightWikiGraphRunner(WikiGraphRunner):
+    """WikiGraphRAG runner pinned to the LightRAG backend (ablation variants).
+
+    Reuses the classic :class:`WikiGraphRunner` retrieve/answer logic but points
+    at a dedicated :class:`WikiGraphQueryService` whose config forces
+    ``wikigraph.mode = lightrag``. The ``no_vectors`` flag forces the BM25
+    fallback (no embedding vectors) so the ``wikigraph-light-no-vectors-bm25``
+    ablation can be measured against the embedded variants.
+    """
+
+    def __init__(
+        self,
+        context: CommandContext,
+        *,
+        method: str = "auto",
+        name: str = "wikigraph-light",
+        no_vectors: bool = False,
+    ) -> None:
+        from copy import deepcopy
+
+        from graphwiki_kb.services.wikigraph_query_service import (
+            WikiGraphQueryService,
+        )
+
+        self.context = context
+        self.method = method
+        self.name = name
+        config = deepcopy(context.config)
+        config.setdefault("wikigraph", {})["mode"] = "lightrag"
+        if no_vectors:
+            # An unsupported embedding provider resolves to None -> BM25.
+            config.setdefault("embeddings", {})["provider"] = "bm25"
+        index_service = context.services.wikigraph_index
+        self.query_service = WikiGraphQueryService(
+            paths=index_service.paths,
+            index_service=index_service,
+            provider=context.services.wikigraph_query.provider,
+            config=config,
+        )
+
+
+# Backend id -> (method, no_vectors) for the LightRAG ablation matrix.
+LIGHT_BACKEND_SPECS: dict[str, tuple[str, bool]] = {
+    "wikigraph-light": ("auto", False),
+    "wikigraph-light-local": ("local", False),
+    "wikigraph-light-global": ("global", False),
+    "wikigraph-light-hybrid": ("hybrid", False),
+    "wikigraph-light-basic": ("basic", False),
+    "wikigraph-light-no-vectors-bm25": ("hybrid", True),
+}
+
+
+def make_light_runner(context: CommandContext, backend_id: str) -> LightWikiGraphRunner:
+    """Construct a LightRAG ablation runner for ``backend_id``."""
+    method, no_vectors = LIGHT_BACKEND_SPECS[backend_id]
+    return LightWikiGraphRunner(
+        context, method=method, name=backend_id, no_vectors=no_vectors
+    )
+
+
 class GraphRAGRunner:
     """Backend runner for Microsoft GraphRAG (kb ask / kb find paths)."""
 

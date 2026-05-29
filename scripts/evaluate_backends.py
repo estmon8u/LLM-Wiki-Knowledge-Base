@@ -34,6 +34,7 @@ from scripts.backend_evaluation_lib import (  # noqa: E402
     ANSWER_COLUMNS,
     ARTIFACTS_SUBDIR,
     DEFAULT_RESULTS_DIR,
+    LIGHT_BACKEND_SPECS,
     RETRIEVAL_COLUMNS,
     GraphRAGRunner,
     LegacyRunner,
@@ -41,6 +42,7 @@ from scripts.backend_evaluation_lib import (  # noqa: E402
     answer_metrics,
     build_command_context,
     load_benchmark,
+    make_light_runner,
     retrieval_metrics,
     write_csv,
     write_json,
@@ -80,9 +82,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--backends",
         nargs="+",
-        choices=["legacy", "graphrag", "wikigraph"],
+        choices=["legacy", "graphrag", "wikigraph", *sorted(LIGHT_BACKEND_SPECS)],
         default=["wikigraph", "graphrag"],
-        help="Subset of backends to evaluate.",
+        help=(
+            "Subset of backends to evaluate. LightRAG ablation ids "
+            "(wikigraph-light, -local, -global, -hybrid, -basic, "
+            "-no-vectors-bm25) require an index built with "
+            "`kb update --wikigraph-mode lightrag`."
+        ),
     )
     parser.add_argument(
         "--wikigraph-methods",
@@ -181,6 +188,9 @@ def main() -> int:
                     retrieve_mode=args.graphrag_retrieve_mode,
                 )
             )
+    for backend_id in args.backends:
+        if backend_id in LIGHT_BACKEND_SPECS:
+            backends.append(make_light_runner(context, backend_id))
     if "legacy" in args.backends:
         backends.append(LegacyRunner(context=context))
 

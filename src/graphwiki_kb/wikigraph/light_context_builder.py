@@ -375,6 +375,7 @@ def _rrf_extend(
 
 
 def _to_context(chunk: LightChunk, score: float) -> WikiGraphRetrievedContext:
+    metadata: dict[str, object]
     if chunk.compiled_page_path:
         node_kind = "chunk"
         path = chunk.compiled_page_path
