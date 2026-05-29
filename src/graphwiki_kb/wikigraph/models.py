@@ -57,7 +57,7 @@ EdgeKind = Literal[
     "cites",
 ]
 
-QueryMethod = Literal["basic", "local", "global", "drift-lite", "auto"]
+QueryMethod = Literal["basic", "local", "global", "hybrid", "drift-lite", "auto"]
 
 
 class WikiGraphNode(BaseModel):
