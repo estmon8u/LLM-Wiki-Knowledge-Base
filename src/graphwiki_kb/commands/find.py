@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import cast
 
 import click
 
@@ -15,7 +16,7 @@ from graphwiki_kb.commands.common import (
 from graphwiki_kb.models.command_models import CommandContext, CommandSpec
 from graphwiki_kb.models.wiki_models import SearchResult
 from graphwiki_kb.services.wikigraph_query_service import WikiGraphQueryError
-from graphwiki_kb.wikigraph.models import WikiGraphRetrievedContext
+from graphwiki_kb.wikigraph.models import QueryMethod, WikiGraphRetrievedContext
 
 SUMMARY = (
     "Search direct GraphRAG artifacts, the maintained wiki index, the "
@@ -133,7 +134,9 @@ def create_command() -> click.Command:
             )
         if run_wikigraph:
             try:
-                find_result = wikigraph_query_service.find(query, method=method)
+                find_result = wikigraph_query_service.find(
+                    query, method=cast(QueryMethod, method)
+                )
                 wikigraph_find = find_result
                 wikigraph_contexts = find_result.contexts
                 wikigraph_results = [

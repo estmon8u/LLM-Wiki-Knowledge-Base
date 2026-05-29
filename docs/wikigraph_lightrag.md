@@ -56,6 +56,8 @@ wikigraph:
     chunk_token_size: 1200
     chunk_overlap_tokens: 100
     entity_extract_max_gleaning: 1
+    extraction:
+      extractor: deterministic   # deterministic (default, no LLM cost) | llm
     entity_types: [MODEL, METHOD, DATASET, METRIC, TASK, PAPER, TOOL,
                    ORGANIZATION, PERSON, CLAIM]
     relation_types: [USES, EVALUATES_ON, IMPROVES_OVER, COMPARES_TO,
@@ -138,3 +140,35 @@ python scripts/evaluate_backends.py --allow-provider-calls \
 
 LightRAG ablation backends require an index built with
 `kb update --wikigraph-mode lightrag`.
+
+
+## Extraction tier is opt-in
+
+`wikigraph.lightrag.extraction.extractor` controls extraction:
+
+- `deterministic` (default) — provider-free heuristic extraction. `kb update
+  --wikigraph-mode lightrag` makes **no LLM calls** by default, so a routine
+  update never incurs surprise token cost.
+- `llm` — provider-backed structured extraction (Tier A strict). Opt in
+  explicitly when you want the higher-fidelity entity/relation graph.
+
+## Incremental updates
+
+Re-running `kb update --wikigraph-mode lightrag` is a **source-level incremental
+update**: unchanged sources reuse their previous chunks (no re-chunk) and their
+previous embedding vectors (no re-embed); only new/changed sources are
+re-extracted and re-embedded. The build report surfaces `reused_source_count` /
+`reprocessed_source_count`, and sources that disappear from the manifest are
+flagged `missing` / `requires_review` in `source_contributions.json` (and
+`kb lint`) rather than being silently deleted.
+
+The query engine is cached in `WikiGraphQueryService` keyed by the index
+`built_at`, so repeated `kb find` / `kb ask` calls within a long-lived process
+(agent loop, evaluator) skip reloading the index and re-fitting BM25.
+
+## Cross-corpus synthesis benchmark
+
+`eval/benchmark_synthesis.yaml` complements `eval/benchmark.yaml`: every question
+requires 3+ source papers, which is the multi-hop workload dual-level retrieval
+targets. Run both and compare deltas across the `wikigraph-light*` ablation
+backends.
