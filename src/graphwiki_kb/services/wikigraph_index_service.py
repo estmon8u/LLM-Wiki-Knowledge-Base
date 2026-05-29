@@ -162,13 +162,19 @@ class WikiGraphIndexService:
             if self.manifest_service is not None
             else []
         )
-        provider = build_lazy_provider(config)
+        # Extraction tier is opt-in: only build/pass an LLM provider when
+        # `wikigraph.lightrag.extraction.extractor == "llm"`. Otherwise the
+        # deterministic (provider-free) extractor runs, so `kb update
+        # --wikigraph-mode lightrag` never makes surprise LLM calls by default.
+        use_llm_extractor = runtime.lightrag.extraction_mode == "llm"
+        provider = build_lazy_provider(config) if use_llm_extractor else None
         embedding_provider = build_embedding_provider(config)
         identity = "deterministic"
-        resolved = resolve_provider_settings(config)
-        if resolved is not None:
-            name, provider_cfg = resolved
-            identity = f"{name}:{provider_cfg.get('model', '')}"
+        if use_llm_extractor:
+            resolved = resolve_provider_settings(config)
+            if resolved is not None:
+                name, provider_cfg = resolved
+                identity = f"{name}:{provider_cfg.get('model', '')}"
         store = self.lightrag_store()
         previous_index = store.load()
         report = build_lightgraph_index(

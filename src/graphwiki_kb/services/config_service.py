@@ -202,6 +202,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "chunk_token_size": 1200,
             "chunk_overlap_tokens": 100,
             "entity_extract_max_gleaning": 1,
+            "extraction": {"extractor": "deterministic"},
             "entity_types": [
                 "MODEL",
                 "METHOD",
@@ -984,6 +985,12 @@ class _LightRagEmbeddingsConfig(_StrictConfigModel):
     local_fallback: Literal["bm25", "none"] = "bm25"
 
 
+class _LightRagExtractionConfig(_StrictConfigModel):
+    """Validated LightRAG extractor selection (deterministic vs LLM)."""
+
+    extractor: Literal["deterministic", "llm"] = "deterministic"
+
+
 class _LightRagConfig(_StrictConfigModel):
     """Validated LightRAG-style WikiGraphRAG backend settings."""
 
@@ -1001,6 +1008,9 @@ class _LightRagConfig(_StrictConfigModel):
     )
     embeddings: _LightRagEmbeddingsConfig = Field(
         default_factory=_LightRagEmbeddingsConfig
+    )
+    extraction: _LightRagExtractionConfig = Field(
+        default_factory=_LightRagExtractionConfig
     )
 
     @field_validator("entity_types", "relation_types")
@@ -1112,6 +1122,7 @@ class LightRagRuntimeConfig:
     retrieval: LightRagRetrievalRuntimeConfig
     embeddings_required_for_strict: bool
     local_fallback: str
+    extraction_mode: str
 
 
 @dataclass(frozen=True)
@@ -1313,6 +1324,7 @@ def _resolve_lightrag_runtime(validated: dict[str, Any]) -> LightRagRuntimeConfi
         ),
         embeddings_required_for_strict=bool(embeddings["required_for_strict_lightrag"]),
         local_fallback=str(embeddings["local_fallback"]),
+        extraction_mode=str(validated["extraction"]["extractor"]),
     )
 
 
