@@ -50,7 +50,7 @@ SUMMARY = (
 SINGLE_ENGINE_CHOICES = ("wikigraph", "graphrag", "legacy")
 ALL_ENGINE_TOKEN = "all"
 DEFAULT_ENGINE = "wikigraph"
-WIKIGRAPH_METHODS = ("auto", "basic", "local", "global", "drift-lite")
+WIKIGRAPH_METHODS = ("auto", "basic", "local", "global", "hybrid", "drift-lite")
 ALL_METHOD_CHOICES = tuple(sorted(set(GRAPH_ASK_METHODS).union(WIKIGRAPH_METHODS)))
 LEGACY_DEPRECATION_NOTE = (
     "Deprecated: SQLite FTS5 retrieval is legacy-only. "

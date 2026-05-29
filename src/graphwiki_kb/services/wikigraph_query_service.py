@@ -8,7 +8,10 @@ from pathlib import Path
 from typing import Any
 
 from graphwiki_kb.providers.base import TextProvider
-from graphwiki_kb.services.config_service import resolve_wikigraph_config
+from graphwiki_kb.services.config_service import (
+    resolve_wikigraph_config,
+)
+from graphwiki_kb.services.embedding_service import build_embedding_provider
 from graphwiki_kb.services.project_service import (
     ProjectPaths,
     atomic_write_text,
@@ -20,6 +23,12 @@ from graphwiki_kb.services.wikigraph_index_service import (
 )
 from graphwiki_kb.wikigraph.answer_service import WikiGraphAnswerService
 from graphwiki_kb.wikigraph.context_builder import ContextBuilderConfig
+from graphwiki_kb.wikigraph.light_answer_service import LightAnswerService
+from graphwiki_kb.wikigraph.light_graph_store import (
+    LightGraphStore,
+    LightGraphStorePaths,
+)
+from graphwiki_kb.wikigraph.light_query_service import LightQueryEngine
 from graphwiki_kb.wikigraph.models import (
     QueryMethod,
     WikiGraphAnswer,
@@ -40,6 +49,10 @@ class WikiGraphQueryService:
     index_service: WikiGraphIndexService
     provider: TextProvider | None = None
     config: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        self._light_engine: LightQueryEngine | None = None
+        self._light_engine_built_at: str | None = None
 
     def _context_builder_config(self) -> ContextBuilderConfig:
         try:
@@ -70,12 +83,64 @@ class WikiGraphQueryService:
             config=self._context_builder_config(),
         )
 
+    def _runtime(self):
+        try:
+            return resolve_wikigraph_config(self.config or {})
+        except ValueError:
+            return resolve_wikigraph_config({})
+
+    def _lightrag_store(self) -> LightGraphStore:
+        return LightGraphStore(
+            LightGraphStorePaths(self.paths.graph_dir / "wikigraph" / "lightrag")
+        )
+
+    def invalidate_lightgraph_cache(self) -> None:
+        """Drop the cached LightGraph query engine.
+
+        Call after rebuilding the index so a long-lived process (agent loop,
+        evaluator) picks up the fresh artifacts instead of stale ones.
+        """
+        self._light_engine = None
+        self._light_engine_built_at = None
+
+    def _lightrag_engine(self) -> LightQueryEngine:
+        runtime = self._runtime()
+        store = self._lightrag_store()
+        # Cheaply read the persisted build timestamp to decide whether the
+        # cached engine is still valid (avoids re-loading the full index and
+        # re-fitting BM25 lexical indices on every find/ask call).
+        manifest = store.load_build_manifest() or {}
+        built_at = str(manifest.get("built_at", "")) or None
+        if (
+            self._light_engine is not None
+            and self._light_engine_built_at == built_at
+            and built_at is not None
+        ):
+            return self._light_engine
+        engine = LightQueryEngine.from_store(
+            store,
+            config=runtime.lightrag,
+            provider=self.provider,
+            embedding_provider=build_embedding_provider(self.config or {}),
+        )
+        if engine is None:
+            raise WikiGraphQueryError(
+                "WikiGraphRAG (lightrag) index is missing. Run "
+                "`kb update --wikigraph-mode lightrag` to build it."
+            )
+        self._light_engine = engine
+        self._light_engine_built_at = built_at
+        return engine
+
     def find(
         self, question: str, *, method: QueryMethod = "auto"
     ) -> WikiGraphFindResult:
         """Run a provider-free retrieval and return a :class:`WikiGraphFindResult`."""
+        if self._runtime().mode == "lightrag":
+            return self._lightrag_engine().find_result(question, method=method)
         engine = self._ensure_engine()
-        return engine.find(question, method=method)
+        classic_method = "drift-lite" if method == "hybrid" else method
+        return engine.find(question, method=classic_method)
 
     def ask(
         self,
@@ -87,13 +152,20 @@ class WikiGraphQueryService:
         save_as: str | None = None,
     ) -> WikiGraphAnswer:
         """Run a full WikiGraphRAG answer pipeline for ``question``."""
-        engine = self._ensure_engine()
-        service = WikiGraphAnswerService(engine=engine, provider=self.provider)
-        answer = service.ask(
-            question,
-            method=method,
-            require_provider=require_provider,
-        )
+        if self._runtime().mode == "lightrag":
+            light_engine = self._lightrag_engine()
+            answer = LightAnswerService(
+                engine=light_engine, provider=self.provider
+            ).ask(question, method=method, require_provider=require_provider)
+        else:
+            engine = self._ensure_engine()
+            classic_method = "drift-lite" if method == "hybrid" else method
+            service = WikiGraphAnswerService(engine=engine, provider=self.provider)
+            answer = service.ask(
+                question,
+                method=classic_method,
+                require_provider=require_provider,
+            )
         if save or save_as:
             saved_path = self.save_answer(question, answer, slug=save_as)
             answer = answer.model_copy(update={"saved_path": saved_path})

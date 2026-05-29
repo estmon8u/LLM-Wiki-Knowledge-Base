@@ -6,10 +6,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from graphwiki_kb.providers import build_lazy_provider, resolve_provider_settings
 from graphwiki_kb.services.config_service import (
     WikiGraphRuntimeConfig,
+    resolve_embeddings_config,
     resolve_wikigraph_config,
 )
+from graphwiki_kb.services.embedding_service import build_embedding_provider
 from graphwiki_kb.services.manifest_service import ManifestService
 from graphwiki_kb.services.project_service import ProjectPaths
 from graphwiki_kb.wikigraph.graph_store import (
@@ -20,6 +23,12 @@ from graphwiki_kb.wikigraph.index_builder import (
     BuildOptions,
     build_wikigraph_index,
 )
+from graphwiki_kb.wikigraph.light_graph_store import (
+    LightGraphStore,
+    LightGraphStorePaths,
+)
+from graphwiki_kb.wikigraph.light_index_builder import build_lightgraph_index
+from graphwiki_kb.wikigraph.light_models import LightGraphBuildReport
 from graphwiki_kb.wikigraph.models import (
     WikiGraphBuildReport,
     WikiGraphIndex,
@@ -73,6 +82,8 @@ class WikiGraphIndexService:
             runtime = self.runtime_config
         except ValueError:
             runtime = resolve_wikigraph_config({})
+        if runtime.mode == "lightrag":
+            return self._build_lightrag(runtime)
         effective_include = (
             include_graphrag_export_pages
             if include_graphrag_export_pages is not None
@@ -134,6 +145,54 @@ class WikiGraphIndexService:
             warnings=warnings,
         )
 
+    def lightrag_store(self) -> LightGraphStore:
+        """Return the LightRAG store under ``graph/wikigraph/lightrag``."""
+        return LightGraphStore(
+            LightGraphStorePaths(self.paths.graph_dir / "wikigraph" / "lightrag")
+        )
+
+    def build_lightrag_report(self) -> LightGraphBuildReport | None:
+        """Return the most recent LightRAG build report, if any."""
+        return getattr(self, "_last_light_report", None)
+
+    def _build_lightrag(self, runtime: WikiGraphRuntimeConfig) -> WikiGraphBuildReport:
+        config = self.config or {}
+        sources = (
+            self.manifest_service.list_sources()
+            if self.manifest_service is not None
+            else []
+        )
+        # Extraction tier is opt-in: only build/pass an LLM provider when
+        # `wikigraph.lightrag.extraction.extractor == "llm"`. Otherwise the
+        # deterministic (provider-free) extractor runs, so `kb update
+        # --wikigraph-mode lightrag` never makes surprise LLM calls by default.
+        use_llm_extractor = runtime.lightrag.extraction_mode == "llm"
+        provider = build_lazy_provider(config) if use_llm_extractor else None
+        embedding_provider = build_embedding_provider(config)
+        identity = "deterministic"
+        if use_llm_extractor:
+            resolved = resolve_provider_settings(config)
+            if resolved is not None:
+                name, provider_cfg = resolved
+                identity = f"{name}:{provider_cfg.get('model', '')}"
+        store = self.lightrag_store()
+        previous_index = store.load()
+        report = build_lightgraph_index(
+            self.paths.root,
+            sources,
+            store=store,
+            lightrag_config=runtime.lightrag,
+            embeddings_config=resolve_embeddings_config(config),
+            provider=provider,
+            embedding_provider=embedding_provider,
+            provider_identity=identity,
+            previous_index=previous_index,
+            previous_entity_vectors=store.load_entity_vectors(),
+            previous_relation_vectors=store.load_relation_vectors(),
+        )
+        self._last_light_report = report
+        return _lightrag_to_build_report(report)
+
     def load(self) -> WikiGraphIndex | None:
         """Load the persisted index from disk."""
         return self._store.load()
@@ -168,6 +227,18 @@ class WikiGraphIndexService:
                 built yet.
             ValueError: When ``types`` contains an unknown value.
         """
+        try:
+            runtime = self.runtime_config
+        except ValueError:
+            runtime = resolve_wikigraph_config({})
+        if runtime.mode == "lightrag":
+            from graphwiki_kb.services.wikigraph_light_export_service import (
+                WikiGraphLightExportService,
+            )
+
+            return WikiGraphLightExportService(
+                paths=self.paths, store=self.lightrag_store()
+            ).export()
         if types is not None:
             unknown = [t for t in types if t not in self.SUPPORTED_ARTIFACT_TYPES]
             if unknown:
@@ -334,8 +405,93 @@ class WikiGraphIndexService:
         atomic_write_text(path, body)
         return rel
 
+    def _lightrag_status(self, runtime: WikiGraphRuntimeConfig) -> dict[str, object]:
+        from graphwiki_kb.providers import resolve_provider_settings
+        from graphwiki_kb.services.config_service import resolve_embeddings_config
+        from graphwiki_kb.wikigraph.light_extractor import (
+            ExtractionConfig,
+            extraction_prompt_hash,
+        )
+
+        config = self.config or {}
+        store = self.lightrag_store()
+        sources = (
+            self.manifest_service.list_sources()
+            if self.manifest_service is not None
+            else []
+        )
+        current = {source.source_id: source.content_hash for source in sources}
+        provider_ready = resolve_provider_settings(config) is not None
+        provider_required = runtime.lightrag.embeddings_required_for_strict
+        if not store.exists():
+            return {
+                "mode": "lightrag",
+                "initialized": False,
+                "fresh": False,
+                "source_count": len(sources),
+                "provider_required": provider_required,
+                "provider_ready": provider_ready,
+                "stale_reasons": ["index not built"],
+            }
+        index = store.load()
+        manifest = store.load_build_manifest() or {}
+        previous = dict(manifest.get("source_hashes", {}))
+        stale_reasons: list[str] = []
+        new = [sid for sid in current if sid not in previous]
+        changed = [
+            sid for sid in current if sid in previous and previous[sid] != current[sid]
+        ]
+        missing = [sid for sid in previous if sid not in current]
+        if new:
+            stale_reasons.append(f"{len(new)} new source(s) not yet indexed")
+        if changed:
+            stale_reasons.append(f"{len(changed)} changed source(s)")
+        if missing:
+            stale_reasons.append(f"{len(missing)} missing source(s) require review")
+        current_prompt = extraction_prompt_hash(
+            ExtractionConfig(
+                entity_types=tuple(runtime.lightrag.entity_types),
+                relation_types=tuple(runtime.lightrag.relation_types),
+                max_gleaning=runtime.lightrag.entity_extract_max_gleaning,
+            )
+        )
+        if (
+            manifest.get("extraction_prompt_hash")
+            and manifest["extraction_prompt_hash"] != current_prompt
+        ):
+            stale_reasons.append("extraction prompt changed")
+        embeddings_cfg = resolve_embeddings_config(config)
+        if (
+            index is not None
+            and index.embedding_model
+            and index.embedding_model != embeddings_cfg.model
+        ):
+            stale_reasons.append("embedding model changed")
+        return {
+            "mode": "lightrag",
+            "initialized": True,
+            "fresh": not stale_reasons,
+            "built_at": index.built_at if index else "",
+            "tier": index.tier if index else "",
+            "source_count": len(sources),
+            "chunk_count": index.chunk_count if index else 0,
+            "entity_count": index.entity_count if index else 0,
+            "relation_count": index.relation_count if index else 0,
+            "embedding_model": (index.embedding_model if index else "")
+            or "bm25-fallback",
+            "provider_required": provider_required,
+            "provider_ready": provider_ready,
+            "stale_reasons": stale_reasons,
+        }
+
     def status(self) -> dict[str, object]:
         """Return a quick-look status payload for ``kb wikigraph status``."""
+        try:
+            runtime = self.runtime_config
+        except ValueError:
+            runtime = resolve_wikigraph_config({})
+        if runtime.mode == "lightrag":
+            return self._lightrag_status(runtime)
         if not self._store.exists():
             return {
                 "initialized": False,
@@ -369,3 +525,24 @@ class WikiGraphIndexService:
             "include_graphrag_export_pages": index.include_graphrag_export_pages,
             "include_normalized_text_units": index.include_normalized_text_units,
         }
+
+
+def _lightrag_to_build_report(
+    report: LightGraphBuildReport,
+) -> WikiGraphBuildReport:
+    """Adapt a LightRAG build report to the classic WikiGraphBuildReport shape."""
+    return WikiGraphBuildReport(
+        built_at=report.built_at,
+        node_count=report.entity_count,
+        edge_count=report.relation_count,
+        chunk_count=0,
+        text_unit_count=report.chunk_count,
+        document_count=report.source_count,
+        entity_count=report.entity_count,
+        community_count=0,
+        source_count=report.source_count,
+        include_graphrag_export_pages=False,
+        include_normalized_text_units=True,
+        artifacts=report.artifacts,
+        warnings=[f"lightrag tier: {report.tier}", *report.warnings],
+    )

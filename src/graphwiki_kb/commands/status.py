@@ -147,6 +147,7 @@ def create_command(
                     "index_status": snapshot.index_status,
                     "export_status": snapshot.export_status,
                     "graph_status": graph_status,
+                    "wikigraph_status": snapshot.wikigraph_status,
                     "strict_ok": not strict_failures,
                     "strict_failures": strict_failures,
                 }
@@ -230,6 +231,30 @@ def create_command(
                     )
                     console.print(f"  [yellow]Artifact health: {details}[/yellow]")
             console.print(f"  Next action: {graph.get('next_action')}")
+            console.print("")
+
+        wikigraph_status = (
+            snapshot.wikigraph_status
+            if isinstance(snapshot.wikigraph_status, dict)
+            else {}
+        )
+        if wikigraph_status.get("mode") == "lightrag":
+            echo_section("WikiGraphRAG (LightRAG)")
+            wg = wikigraph_status
+            if not wg.get("initialized"):
+                console.print("  Index: not built")
+            else:
+                fresh = "fresh" if wg.get("fresh") else "stale"
+                console.print(f"  Index: {fresh} (tier: {wg.get('tier', 'unknown')})")
+                console.print(
+                    f"  Chunks: {wg.get('chunk_count', 0)}  "
+                    f"Entities: {wg.get('entity_count', 0)}  "
+                    f"Relations: {wg.get('relation_count', 0)}"
+                )
+                console.print(f"  Embedding model: {wg.get('embedding_model')}")
+                stale_reasons = wg.get("stale_reasons") or []
+                for reason in stale_reasons:
+                    console.print(f"  [yellow]stale: {reason}[/yellow]")
             console.print("")
 
         # Suggest what to do next

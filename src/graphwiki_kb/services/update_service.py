@@ -53,6 +53,8 @@ class UpdateOptions:
     # Tri-state: ``None`` means "use
     # ``wikigraph.include_normalized_text_units`` from config".
     wikigraph_include_normalized_text_units: bool | None = None
+    # Optional per-run override of ``wikigraph.mode`` (classic|lightrag).
+    wikigraph_mode: str | None = None
 
 
 @dataclass
@@ -412,6 +414,16 @@ class UpdateService:
         ``wikigraph.export_generated_artifacts`` when set; otherwise the
         config value drives the behavior.
         """
+        if options.wikigraph_mode is not None:
+            wikigraph_section = self._config.setdefault("wikigraph", {})
+            if isinstance(wikigraph_section, dict):
+                wikigraph_section["mode"] = options.wikigraph_mode
+            if self._wikigraph_index is not None and isinstance(
+                getattr(self._wikigraph_index, "config", None), dict
+            ):
+                self._wikigraph_index.config.setdefault("wikigraph", {})[
+                    "mode"
+                ] = options.wikigraph_mode
         try:
             wg_config = resolve_wikigraph_config(self._config)
         except ValueError:

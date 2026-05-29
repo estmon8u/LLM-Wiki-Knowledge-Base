@@ -109,6 +109,7 @@ class StatusSnapshot:
     index_status: str
     export_status: str
     graph_status: dict[str, Any] = field(default_factory=dict)
+    wikigraph_status: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

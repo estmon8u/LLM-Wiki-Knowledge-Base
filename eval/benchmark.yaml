@@ -1,24 +1,30 @@
-version: 3
+version: 4
 name: graphrag-pivot-evaluation
-description: |
-  Benchmark questions for the 10-PDF arXiv corpus used to verify
+description: 'Benchmark questions for the 10-PDF arXiv corpus used to verify
+
   WikiGraphRAG vs Microsoft GraphRAG after the Phase 2/3 harness fixes
+
   and the Phase 4 retrieval improvements. Each ground-truth question
+
   has expected_sources tied to actual paper slug fragments present in
+
   the corpus so word-boundary matching is meaningful for both
+
   backends.
+
+  '
 source_project: ~/wgr-eval-project (10-paper arXiv corpus)
 corpus:
-  - 2002.08909 — REALM
-  - 2005.11401 — RAG (Lewis et al.)
-  - 2004.04906 — DPR
-  - 2007.01282 — FiD
-  - 2301.12652 — REPLUG
-  - 2310.11511 — Self-RAG
-  - 2208.03299 — Atlas
-  - 2302.00083 — In-Context RALM
-  - 1906.00300 — ORQA
-  - 2404.16130 — Microsoft GraphRAG
+- 2002.08909 — REALM
+- 2005.11401 — RAG (Lewis et al.)
+- 2004.04906 — DPR
+- 2007.01282 — FiD
+- 2301.12652 — REPLUG
+- 2310.11511 — Self-RAG
+- 2208.03299 — Atlas
+- 2302.00083 — In-Context RALM
+- 1906.00300 — ORQA
+- 2404.16130 — Microsoft GraphRAG
 retrievers:
   graphrag_basic:
     command: kb ask --engine graphrag --method basic
@@ -37,271 +43,363 @@ retrievers:
     purpose: WikiGraphRAG backend built from wiki artifacts and normalized TextUnits.
 metrics:
   retrieval:
-    - recall_at_8
-    - method_fit
-    - latency_seconds
+  - recall_at_8
+  - method_fit
+  - latency_seconds
   answers:
-    - answer_quality_score
-    - grounded_entity_rate
-    - grounded_answer_term_rate
-    - has_supported_citations
-    - citation_ref_valid_rate
-    - insufficient_evidence_behavior
-    - latency_seconds
+  - answer_quality_score
+  - grounded_entity_rate
+  - grounded_answer_term_rate
+  - has_supported_citations
+  - citation_ref_valid_rate
+  - insufficient_evidence_behavior
+  - latency_seconds
 questions:
-  - id: realm_vs_rag
-    question: How does REALM differ from RAG?
-    category: comparison
-    intent: Compare related retrieval-augmented methods across source papers.
-    expected_method: drift
-    expected_sources:
-      - REALM
-      - RAG
-    expected_entities:
-      - REALM
-      - RAG
-    expected_answer_terms:
-      - jointly
-      - retriever
-      - generation
-    expected_methods:
-      wikigraph: drift-lite
-      graphrag: drift
-  - id: fid_generation
-    question: How does FiD combine retrieval with generation?
-    category: local
-    intent: Check whether retrieval can surface generation-specific method details.
-    expected_method: local
-    expected_sources:
-      - FiD
-      - Fusion-in-Decoder
-    expected_entities:
-      - FiD
-      - Fusion-in-Decoder
-    expected_answer_terms:
-      - retrieved passages
-      - decoder
-      - generation
-    expected_methods:
-      wikigraph: local
-      graphrag: local
-  - id: dense_passage_retrieval
-    question: What role does dense passage retrieval play in retrieval-augmented generation?
-    category: local
-    intent: Verify entity-specific retrieval for a common RAG component.
-    expected_method: local
-    expected_sources:
-      - Dense Passage Retrieval
-      - DPR
-    expected_entities:
-      - Dense Passage Retrieval
-      - DPR
-    expected_answer_terms:
-      - dense passage
-      - retrieval
-      - passages
-    expected_methods:
-      wikigraph: local
-      graphrag: local
-  - id: rag_fid_comparison
-    question: Compare RAG and FiD for how retrieved documents are used during generation.
-    category: comparison
-    intent: Test multi-source comparison with two related generation architectures.
-    expected_method: drift
-    expected_sources:
-      - RAG
-      - FiD
-    expected_entities:
-      - RAG
-      - FiD
-    expected_answer_terms:
-      - retrieved documents
-      - generation
-      - decoder
-    expected_methods:
-      wikigraph: drift-lite
-      graphrag: drift
-  - id: corpus_retrieval_patterns
-    question: What are the main retrieval patterns across the corpus?
-    category: global
-    intent: Evaluate whole-corpus synthesis from community summaries.
-    expected_method: global
-    expected_sources:
-      - REALM
-      - RAG
-      - DPR
-      - FiD
-    expected_entities:
-      - REALM
-      - RAG
-      - DPR
-      - FiD
-    expected_answer_terms:
-      - retrieval
-      - retriever
-    expected_methods:
-      wikigraph: global
-      graphrag: global
-  - id: hallucination_mitigation
-    question: What patterns does the corpus show for reducing hallucinations in retrieval-augmented systems?
-    category: global
-    intent: Evaluate cross-source theme coverage for answer faithfulness.
-    expected_method: global
-    expected_sources:
-      - Self-RAG
-      - REPLUG
-      - Atlas
-    expected_entities:
-      - Self-RAG
-      - REPLUG
-    expected_answer_terms:
-      - retrieval
-      - evidence
-    expected_methods:
-      wikigraph: global
-      graphrag: global
-  - id: self_rag_reflection
-    question: How does Self-RAG use reflection or critique signals?
-    category: local
-    intent: Test method-specific local retrieval for a named system.
-    expected_method: local
-    expected_sources:
-      - Self-RAG
-    expected_entities:
-      - Self-RAG
-      - reflection
-    expected_answer_terms:
-      - reflection
-      - critique
-      - retrieval
-    expected_methods:
-      wikigraph: local
-      graphrag: local
-  - id: graph_query_modes
-    question: Compare local, global, DRIFT, and basic GraphRAG query modes.
-    category: comparison
-    intent: Check whether the system can explain the GraphRAG retrieval modes from the Microsoft GraphRAG paper.
-    expected_method: drift
-    expected_sources:
-      - GraphRAG
-    expected_entities:
-      - GraphRAG
-      - local
-      - global
-    expected_answer_terms:
-      - local
-      - global
-    expected_methods:
-      wikigraph: drift-lite
-      graphrag: drift
-  - id: orqa_inverse_cloze
-    question: How does ORQA pretrain its retriever?
-    category: local
-    intent: Verify entity-specific retrieval for a single named system.
-    expected_method: local
-    expected_sources:
-      - ORQA
-      - Latent Retrieval
-      - Inverse Cloze
-    expected_entities:
-      - ORQA
-      - Inverse Cloze Task
-    expected_answer_terms:
-      - inverse cloze
-      - retriever
-      - pretrain
-    expected_methods:
-      wikigraph: local
-      graphrag: local
-  - id: replug_black_box
-    question: How does REPLUG augment a black-box language model with retrieval?
-    category: local
-    intent: Verify a named-system question whose answer relies on body details.
-    expected_method: local
-    expected_sources:
-      - REPLUG
-    expected_entities:
-      - REPLUG
-      - black-box
-    expected_answer_terms:
-      - retrieved documents
-      - language model
-    expected_methods:
-      wikigraph: local
-      graphrag: local
-  - id: in_context_ralm
-    question: How does In-Context RALM use retrieved documents at inference time?
-    category: local
-    intent: Verify the in-context retrieval variant question.
-    expected_method: local
-    expected_sources:
-      - In-Context
-      - RALM
-    expected_entities:
-      - In-Context RALM
-      - retrieval
-    expected_answer_terms:
-      - retrieved
-      - language model
-      - in-context
-    expected_methods:
-      wikigraph: local
-      graphrag: local
-  - id: atlas_few_shot
-    question: How does Atlas combine retrieval with few-shot learning?
-    category: local
-    intent: Verify a named-system question that combines two topics from the paper.
-    expected_method: local
-    expected_sources:
-      - Atlas
-    expected_entities:
-      - Atlas
-      - retrieval
-    expected_answer_terms:
-      - retrieval
-      - few-shot
-    expected_methods:
-      wikigraph: local
-      graphrag: local
-  - id: graphrag_community_summaries
-    question: How does Microsoft GraphRAG use community summaries for global queries?
-    category: local
-    intent: Pull a method detail from the Microsoft GraphRAG paper specifically.
-    expected_method: local
-    expected_sources:
-      - GraphRAG
-      - community
-    expected_entities:
-      - GraphRAG
-      - community
-    expected_answer_terms:
-      - community
-      - summaries
-      - global
-    expected_methods:
-      wikigraph: local
-      graphrag: local
-  - id: unsupported_claim
-    question: What does the corpus say about quantum-resistant retrieval memories?
-    category: insufficient_evidence
-    intent: Confirm weak-evidence questions produce cautious or insufficient-evidence behavior.
-    expected_method: basic
-    expected_sources: []
-    expected_behaviors:
-      - insufficient_evidence
-    expected_entities:
-      - quantum-resistant retrieval memories
-    expected_answer_terms:
-      - insufficient evidence
-      - not enough evidence
-      - cannot determine
-    expected_methods:
-      wikigraph: basic
-      graphrag: basic
-    insufficient_evidence_expected: true
-    forbidden_answer_terms:
-      - quantum-resistant retrieval memories are supported
+- id: realm_vs_rag
+  question: How does REALM differ from RAG?
+  category: comparison
+  intent: Compare related retrieval-augmented methods across source papers.
+  expected_method: drift
+  expected_sources:
+  - REALM
+  - RAG
+  expected_entities:
+  - REALM
+  - RAG
+  expected_answer_terms:
+  - jointly
+  - retriever
+  - generation
+  expected_methods:
+    wikigraph: drift-lite
+    graphrag: drift
+  reference_answer: REALM jointly pre-trains a neural retriever with a masked language model end-to-end,
+    backpropagating through retrieval over the whole corpus, whereas RAG combines a (largely pre-trained)
+    DPR retriever with a seq2seq generator and marginalizes over a few retrieved documents during generation
+    rather than learning the retriever during pre-training.
+  expected_source_ids:
+  - REALM
+  - RAG
+- id: fid_generation
+  question: How does FiD combine retrieval with generation?
+  category: local
+  intent: Check whether retrieval can surface generation-specific method details.
+  expected_method: local
+  expected_sources:
+  - FiD
+  - Fusion-in-Decoder
+  expected_entities:
+  - FiD
+  - Fusion-in-Decoder
+  expected_answer_terms:
+  - retrieved passages
+  - decoder
+  - generation
+  expected_methods:
+    wikigraph: local
+    graphrag: local
+  reference_answer: Fusion-in-Decoder (FiD) encodes each retrieved passage independently together with
+    the question in the encoder, then concatenates all passage representations so the decoder can attend
+    over them jointly when generating the answer; retrieval scales in the encoder while fusion of evidence
+    happens in the decoder.
+  expected_source_ids:
+  - FiD
+  - Fusion-in-Decoder
+- id: dense_passage_retrieval
+  question: What role does dense passage retrieval play in retrieval-augmented generation?
+  category: local
+  intent: Verify entity-specific retrieval for a common RAG component.
+  expected_method: local
+  expected_sources:
+  - Dense Passage Retrieval
+  - DPR
+  expected_entities:
+  - Dense Passage Retrieval
+  - DPR
+  expected_answer_terms:
+  - dense passage
+  - retrieval
+  - passages
+  expected_methods:
+    wikigraph: local
+    graphrag: local
+  reference_answer: Dense Passage Retrieval (DPR) uses a BERT dual-encoder to embed questions and passages
+    into dense vectors and retrieves by maximum inner-product search; it supplies the relevant passages
+    that retrieval-augmented generators condition on, replacing sparse methods like BM25.
+  expected_source_ids:
+  - Dense Passage Retrieval
+  - DPR
+- id: rag_fid_comparison
+  question: Compare RAG and FiD for how retrieved documents are used during generation.
+  category: comparison
+  intent: Test multi-source comparison with two related generation architectures.
+  expected_method: drift
+  expected_sources:
+  - RAG
+  - FiD
+  expected_entities:
+  - RAG
+  - FiD
+  expected_answer_terms:
+  - retrieved documents
+  - generation
+  - decoder
+  expected_methods:
+    wikigraph: drift-lite
+    graphrag: drift
+  reference_answer: RAG marginalizes a seq2seq generator over a handful of retrieved documents (per-token
+    or per-sequence), while FiD encodes many retrieved passages separately and fuses them only in the
+    decoder's cross-attention, letting FiD scale to far more passages and typically improving open-domain
+    QA accuracy.
+  expected_source_ids:
+  - RAG
+  - FiD
+- id: corpus_retrieval_patterns
+  question: What are the main retrieval patterns across the corpus?
+  category: global
+  intent: Evaluate whole-corpus synthesis from community summaries.
+  expected_method: global
+  expected_sources:
+  - REALM
+  - RAG
+  - DPR
+  - FiD
+  expected_entities:
+  - REALM
+  - RAG
+  - DPR
+  - FiD
+  expected_answer_terms:
+  - retrieval
+  - retriever
+  expected_methods:
+    wikigraph: global
+    graphrag: global
+  reference_answer: Across the corpus the recurring pattern is a retriever (sparse BM25 or dense dual-encoders
+    such as DPR) supplying external passages to a generator or LM, with systems differing in whether the
+    retriever is trained jointly (REALM, Atlas), kept frozen (REPLUG, In-Context RALM), or critiqued (Self-RAG),
+    and in how retrieved evidence is fused (marginalization in RAG vs decoder fusion in FiD).
+  expected_source_ids:
+  - REALM
+  - RAG
+  - DPR
+  - FiD
+- id: hallucination_mitigation
+  question: What patterns does the corpus show for reducing hallucinations in retrieval-augmented systems?
+  category: global
+  intent: Evaluate cross-source theme coverage for answer faithfulness.
+  expected_method: global
+  expected_sources:
+  - Self-RAG
+  - REPLUG
+  - Atlas
+  expected_entities:
+  - Self-RAG
+  - REPLUG
+  expected_answer_terms:
+  - retrieval
+  - evidence
+  expected_methods:
+    wikigraph: global
+    graphrag: global
+  reference_answer: The corpus reduces hallucination by grounding generation in retrieved evidence and
+    adding mechanisms such as self-reflection and critique tokens that decide when to retrieve and verify
+    support (Self-RAG), ensembling over retrieved documents (REPLUG), and retrieval-augmented training
+    (Atlas), so answers stay conditioned on and attributable to sources.
+  expected_source_ids:
+  - Self-RAG
+  - REPLUG
+  - Atlas
+- id: self_rag_reflection
+  question: How does Self-RAG use reflection or critique signals?
+  category: local
+  intent: Test method-specific local retrieval for a named system.
+  expected_method: local
+  expected_sources:
+  - Self-RAG
+  expected_entities:
+  - Self-RAG
+  - reflection
+  expected_answer_terms:
+  - reflection
+  - critique
+  - retrieval
+  expected_methods:
+    wikigraph: local
+    graphrag: local
+  reference_answer: Self-RAG trains a single LM to emit reflection tokens that decide on demand whether
+    to retrieve and critique tokens that assess whether retrieved passages are relevant and whether the
+    generated answer is supported, enabling adaptive retrieval and self-verification of factuality.
+  expected_source_ids:
+  - Self-RAG
+- id: graph_query_modes
+  question: Compare local, global, DRIFT, and basic GraphRAG query modes.
+  category: comparison
+  intent: Check whether the system can explain the GraphRAG retrieval modes from the Microsoft GraphRAG
+    paper.
+  expected_method: drift
+  expected_sources:
+  - GraphRAG
+  expected_entities:
+  - GraphRAG
+  - local
+  - global
+  expected_answer_terms:
+  - local
+  - global
+  expected_methods:
+    wikigraph: drift-lite
+    graphrag: drift
+  reference_answer: Microsoft GraphRAG supports local search (entity-centric, drilling into a specific
+    entity's neighborhood), global search (map-reduce over community summaries for whole-corpus or thematic
+    questions), DRIFT (global community context plus local follow-ups), and basic vector search; local
+    and basic suit specific questions while global suits sensemaking over the whole corpus.
+  expected_source_ids:
+  - GraphRAG
+- id: orqa_inverse_cloze
+  question: How does ORQA pretrain its retriever?
+  category: local
+  intent: Verify entity-specific retrieval for a single named system.
+  expected_method: local
+  expected_sources:
+  - ORQA
+  - Latent Retrieval
+  - Inverse Cloze
+  expected_entities:
+  - ORQA
+  - Inverse Cloze Task
+  expected_answer_terms:
+  - inverse cloze
+  - retriever
+  - pretrain
+  expected_methods:
+    wikigraph: local
+    graphrag: local
+  reference_answer: ORQA pre-trains its retriever with the Inverse Cloze Task (ICT), treating a sentence
+    as a pseudo-question and its surrounding context as the passage to retrieve, an unsupervised signal
+    that lets the retriever and reader be learned jointly without relying on BM25.
+  expected_source_ids:
+  - ORQA
+  - Latent Retrieval
+  - Inverse Cloze
+- id: replug_black_box
+  question: How does REPLUG augment a black-box language model with retrieval?
+  category: local
+  intent: Verify a named-system question whose answer relies on body details.
+  expected_method: local
+  expected_sources:
+  - REPLUG
+  expected_entities:
+  - REPLUG
+  - black-box
+  expected_answer_terms:
+  - retrieved documents
+  - language model
+  expected_methods:
+    wikigraph: local
+    graphrag: local
+  reference_answer: REPLUG treats the language model as a frozen black box, prepends retrieved documents
+    to the input, and ensembles the LM's output distributions over separately retrieved documents; it
+    can also train the retriever using the LM's own likelihood as the supervision signal, all without
+    changing LM weights.
+  expected_source_ids:
+  - REPLUG
+- id: in_context_ralm
+  question: How does In-Context RALM use retrieved documents at inference time?
+  category: local
+  intent: Verify the in-context retrieval variant question.
+  expected_method: local
+  expected_sources:
+  - In-Context
+  - RALM
+  expected_entities:
+  - In-Context RALM
+  - retrieval
+  expected_answer_terms:
+  - retrieved
+  - language model
+  - in-context
+  expected_methods:
+    wikigraph: local
+    graphrag: local
+  reference_answer: In-Context RALM keeps the LM frozen and simply prepends retrieved documents to the
+    input context at inference time, optionally re-ranking which document to include and retrieving periodically
+    as generation proceeds, improving language modeling and QA without any LM fine-tuning.
+  expected_source_ids:
+  - In-Context
+  - RALM
+- id: atlas_few_shot
+  question: How does Atlas combine retrieval with few-shot learning?
+  category: local
+  intent: Verify a named-system question that combines two topics from the paper.
+  expected_method: local
+  expected_sources:
+  - Atlas
+  expected_entities:
+  - Atlas
+  - retrieval
+  expected_answer_terms:
+  - retrieval
+  - few-shot
+  expected_methods:
+    wikigraph: local
+    graphrag: local
+  reference_answer: Atlas pairs a Fusion-in-Decoder generator with a learned dense retriever and jointly
+    trains them, making the system sample-efficient and achieving strong few-shot performance on knowledge-intensive
+    tasks by retrieving from a large corpus rather than storing facts in parameters.
+  expected_source_ids:
+  - Atlas
+- id: graphrag_community_summaries
+  question: How does Microsoft GraphRAG use community summaries for global queries?
+  category: local
+  intent: Pull a method detail from the Microsoft GraphRAG paper specifically.
+  expected_method: local
+  expected_sources:
+  - GraphRAG
+  - community
+  expected_entities:
+  - GraphRAG
+  - community
+  expected_answer_terms:
+  - community
+  - summaries
+  - global
+  expected_methods:
+    wikigraph: local
+    graphrag: local
+  reference_answer: Microsoft GraphRAG builds an entity knowledge graph, detects hierarchical communities,
+    and pre-generates LLM summaries for each community; for a global query it map-reduces over these community
+    summaries, producing partial answers from each and combining them to answer whole-corpus sensemaking
+    questions.
+  expected_source_ids:
+  - GraphRAG
+  - community
+- id: unsupported_claim
+  question: What does the corpus say about quantum-resistant retrieval memories?
+  category: insufficient_evidence
+  intent: Confirm weak-evidence questions produce cautious or insufficient-evidence behavior.
+  expected_method: basic
+  expected_sources: []
+  expected_behaviors:
+  - insufficient_evidence
+  expected_entities:
+  - quantum-resistant retrieval memories
+  expected_answer_terms:
+  - insufficient evidence
+  - not enough evidence
+  - cannot determine
+  expected_methods:
+    wikigraph: basic
+    graphrag: basic
+  insufficient_evidence_expected: true
+  forbidden_answer_terms:
+  - quantum-resistant retrieval memories are supported
+  reference_answer: The corpus does not discuss quantum-resistant retrieval memories; there is no supporting
+    evidence for this topic, so a faithful system should state that the information is insufficient or
+    unavailable rather than fabricate an answer.
+  expected_source_ids: []
 notes:
-  - This benchmark targets the 10-paper arXiv corpus listed under `corpus:` and is paper-name-driven.
-  - For comparison/global questions, expected_sources are real paper slug fragments so both backends can be scored fairly.
-  - Provider-backed answers run via `kb ask --engine {wikigraph|graphrag}` and require `OPENAI_API_KEY`.
+- This benchmark targets the 10-paper arXiv corpus listed under `corpus:` and is paper-name-driven.
+- For comparison/global questions, expected_sources are real paper slug fragments so both backends can
+  be scored fairly.
+- Provider-backed answers run via `kb ask --engine {wikigraph|graphrag}` and require `OPENAI_API_KEY`.

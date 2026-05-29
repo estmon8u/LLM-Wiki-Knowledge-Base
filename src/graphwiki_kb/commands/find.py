@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import cast
 
 import click
 
@@ -15,7 +16,7 @@ from graphwiki_kb.commands.common import (
 from graphwiki_kb.models.command_models import CommandContext, CommandSpec
 from graphwiki_kb.models.wiki_models import SearchResult
 from graphwiki_kb.services.wikigraph_query_service import WikiGraphQueryError
-from graphwiki_kb.wikigraph.models import WikiGraphRetrievedContext
+from graphwiki_kb.wikigraph.models import QueryMethod, WikiGraphRetrievedContext
 
 SUMMARY = (
     "Search direct GraphRAG artifacts, the maintained wiki index, the "
@@ -66,6 +67,16 @@ def create_command() -> click.Command:
             "index, and WikiGraphRAG via reciprocal rank fusion."
         ),
     )
+    @click.option(
+        "--method",
+        type=click.Choice(["auto", "basic", "local", "global", "hybrid", "drift-lite"]),
+        default="auto",
+        show_default=True,
+        help=(
+            "Retrieval method for the WikiGraphRAG engine "
+            "(ignored by graphrag/wiki/legacy)."
+        ),
+    )
     @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
     @click.pass_obj
     def command(
@@ -73,6 +84,7 @@ def create_command() -> click.Command:
         query_terms: tuple[str, ...],
         limit: int,
         engine: str,
+        method: str,
         as_json: bool,
     ) -> None:
         """Command.
@@ -109,6 +121,7 @@ def create_command() -> click.Command:
         wiki_results: list[SearchResult] = []
         wikigraph_results: list[SearchResult] = []
         wikigraph_contexts: list[WikiGraphRetrievedContext] = []
+        wikigraph_find = None
         legacy_results: list[SearchResult] = []
 
         if run_graph:
@@ -121,7 +134,10 @@ def create_command() -> click.Command:
             )
         if run_wikigraph:
             try:
-                find_result = wikigraph_query_service.find(query, method="auto")
+                find_result = wikigraph_query_service.find(
+                    query, method=cast(QueryMethod, method)
+                )
+                wikigraph_find = find_result
                 wikigraph_contexts = find_result.contexts
                 wikigraph_results = [
                     _wikigraph_to_search_result(ctx) for ctx in wikigraph_contexts
@@ -156,6 +172,16 @@ def create_command() -> click.Command:
                 "diagnostics": diagnostics,
                 "results": [_search_result_payload(result) for result in results],
                 "wikigraph": {
+                    "mode": wikigraph_find.mode if wikigraph_find else "classic",
+                    "method": wikigraph_find.method if wikigraph_find else None,
+                    "low_level_keywords": (
+                        wikigraph_find.low_level_keywords if wikigraph_find else []
+                    ),
+                    "high_level_keywords": (
+                        wikigraph_find.high_level_keywords if wikigraph_find else []
+                    ),
+                    "entities": wikigraph_find.entities if wikigraph_find else [],
+                    "relations": wikigraph_find.relations if wikigraph_find else [],
                     "contexts": [ctx.model_dump() for ctx in wikigraph_contexts],
                 },
             }

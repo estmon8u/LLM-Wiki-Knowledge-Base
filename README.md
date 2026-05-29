@@ -4,6 +4,10 @@ A CLI-first GraphRAG research-memory system for ingesting technical documents, b
 
 The wiki is the human-readable artifact layer. Microsoft GraphRAG and the custom WikiGraphRAG backend are retrieval/synthesis engines; choose explicitly with `kb ask --engine graphrag` or `kb ask --engine wikigraph` when comparing them.
 
+Backends are compared with a research-grounded RAG evaluation harness (rank-aware retrieval metrics + RAGAS + bias-mitigated LLM judge + bootstrap CIs) — see [docs/rag_evaluation.md](docs/rag_evaluation.md) and `scripts/evaluate_rag.py`.
+
+WikiGraphRAG ships two engines selected by `wikigraph.mode`: the default `classic` wiki-page-first graph, and a new LightRAG-style `lightrag` backend (source-chunk-first entity/relation graph with dual-level local/global/hybrid retrieval). Switch with `kb update --wikigraph-mode lightrag` and see [docs/wikigraph_lightrag.md](docs/wikigraph_lightrag.md).
+
 WikiGraphRAG is integrated into the main CLI instead of a sidecar command group.
 It enters through `kb update`, `kb find --engine wikigraph|all`, and
 `kb ask --engine wikigraph`. The backend is config-driven and optional-extra
