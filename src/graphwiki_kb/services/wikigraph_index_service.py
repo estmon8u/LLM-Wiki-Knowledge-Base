@@ -6,10 +6,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from graphwiki_kb.providers import build_lazy_provider, resolve_provider_settings
 from graphwiki_kb.services.config_service import (
     WikiGraphRuntimeConfig,
+    resolve_embeddings_config,
     resolve_wikigraph_config,
 )
+from graphwiki_kb.services.embedding_service import build_embedding_provider
 from graphwiki_kb.services.manifest_service import ManifestService
 from graphwiki_kb.services.project_service import ProjectPaths
 from graphwiki_kb.wikigraph.graph_store import (
@@ -20,6 +23,12 @@ from graphwiki_kb.wikigraph.index_builder import (
     BuildOptions,
     build_wikigraph_index,
 )
+from graphwiki_kb.wikigraph.light_graph_store import (
+    LightGraphStore,
+    LightGraphStorePaths,
+)
+from graphwiki_kb.wikigraph.light_index_builder import build_lightgraph_index
+from graphwiki_kb.wikigraph.light_models import LightGraphBuildReport
 from graphwiki_kb.wikigraph.models import (
     WikiGraphBuildReport,
     WikiGraphIndex,
@@ -73,6 +82,8 @@ class WikiGraphIndexService:
             runtime = self.runtime_config
         except ValueError:
             runtime = resolve_wikigraph_config({})
+        if runtime.mode == "lightrag":
+            return self._build_lightrag(runtime)
         effective_include = (
             include_graphrag_export_pages
             if include_graphrag_export_pages is not None
@@ -133,6 +144,43 @@ class WikiGraphIndexService:
             artifacts=written,
             warnings=warnings,
         )
+
+    def lightrag_store(self) -> LightGraphStore:
+        """Return the LightRAG store under ``graph/wikigraph/lightrag``."""
+        return LightGraphStore(
+            LightGraphStorePaths(self.paths.graph_dir / "wikigraph" / "lightrag")
+        )
+
+    def build_lightrag_report(self) -> LightGraphBuildReport | None:
+        """Return the most recent LightRAG build report, if any."""
+        return getattr(self, "_last_light_report", None)
+
+    def _build_lightrag(self, runtime: WikiGraphRuntimeConfig) -> WikiGraphBuildReport:
+        config = self.config or {}
+        sources = (
+            self.manifest_service.list_sources()
+            if self.manifest_service is not None
+            else []
+        )
+        provider = build_lazy_provider(config)
+        embedding_provider = build_embedding_provider(config)
+        identity = "deterministic"
+        resolved = resolve_provider_settings(config)
+        if resolved is not None:
+            name, provider_cfg = resolved
+            identity = f"{name}:{provider_cfg.get('model', '')}"
+        report = build_lightgraph_index(
+            self.paths.root,
+            sources,
+            store=self.lightrag_store(),
+            lightrag_config=runtime.lightrag,
+            embeddings_config=resolve_embeddings_config(config),
+            provider=provider,
+            embedding_provider=embedding_provider,
+            provider_identity=identity,
+        )
+        self._last_light_report = report
+        return _lightrag_to_build_report(report)
 
     def load(self) -> WikiGraphIndex | None:
         """Load the persisted index from disk."""
@@ -369,3 +417,24 @@ class WikiGraphIndexService:
             "include_graphrag_export_pages": index.include_graphrag_export_pages,
             "include_normalized_text_units": index.include_normalized_text_units,
         }
+
+
+def _lightrag_to_build_report(
+    report: LightGraphBuildReport,
+) -> WikiGraphBuildReport:
+    """Adapt a LightRAG build report to the classic WikiGraphBuildReport shape."""
+    return WikiGraphBuildReport(
+        built_at=report.built_at,
+        node_count=report.entity_count,
+        edge_count=report.relation_count,
+        chunk_count=0,
+        text_unit_count=report.chunk_count,
+        document_count=report.source_count,
+        entity_count=report.entity_count,
+        community_count=0,
+        source_count=report.source_count,
+        include_graphrag_export_pages=False,
+        include_normalized_text_units=True,
+        artifacts=report.artifacts,
+        warnings=[f"lightrag tier: {report.tier}", *report.warnings],
+    )
