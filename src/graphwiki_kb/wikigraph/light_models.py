@@ -198,6 +198,8 @@ class LightGraphBuildReport(BaseModel):
     new_source_ids: list[str] = Field(default_factory=list)
     changed_source_ids: list[str] = Field(default_factory=list)
     missing_source_ids: list[str] = Field(default_factory=list)
+    reused_source_count: int = 0
+    reprocessed_source_count: int = 0
     embedding_model: str = ""
     embedding_dimension: int = 0
     incremental: bool = False

@@ -108,8 +108,18 @@ def build_lightgraph_index(
     provider_identity: str = "deterministic",
     tokenizer: Tokenizer | None = None,
     force: bool = False,
+    previous_index: LightGraphIndex | None = None,
+    previous_entity_vectors: LightVectorStore | None = None,
+    previous_relation_vectors: LightVectorStore | None = None,
 ) -> LightGraphBuildReport:
-    """Build and persist the LightRAG index; return a build report."""
+    """Build and persist the LightRAG index; return a build report.
+
+    When ``previous_index`` is supplied and the build is incremental
+    (unchanged extraction/embedding contract, not forced), unchanged sources
+    reuse their previous chunks (skipping re-chunking) and unchanged
+    entity/relation profiles reuse their previous embedding vectors (skipping
+    re-embedding) -- a source-level incremental update per LightRAG's design.
+    """
     tok = tokenizer or get_default_tokenizer()
     built_at = utc_now_iso()
 
@@ -134,13 +144,39 @@ def build_lightgraph_index(
         embedding_identity=embedding_identity,
     )
 
-    chunks = build_light_chunks(
-        root,
-        sources,
-        tokenizer=tok,
-        chunk_token_size=lightrag_config.chunk_token_size,
-        overlap_tokens=lightrag_config.chunk_overlap_tokens,
-    )
+    incremental = plan.incremental and previous_index is not None
+    reprocessed_ids = set(plan.new_source_ids) | set(plan.changed_source_ids)
+    if incremental:
+        assert previous_index is not None
+        reused_ids = {
+            source.source_id
+            for source in sources
+            if source.source_id not in reprocessed_ids
+        }
+        reused_chunks = [
+            chunk for chunk in previous_index.chunks if chunk.source_id in reused_ids
+        ]
+        sources_to_chunk = [
+            source for source in sources if source.source_id in reprocessed_ids
+        ]
+        fresh_chunks = build_light_chunks(
+            root,
+            sources_to_chunk,
+            tokenizer=tok,
+            chunk_token_size=lightrag_config.chunk_token_size,
+            overlap_tokens=lightrag_config.chunk_overlap_tokens,
+        )
+        chunks = [*reused_chunks, *fresh_chunks]
+    else:
+        reused_ids = set()
+        reprocessed_ids = {source.source_id for source in sources}
+        chunks = build_light_chunks(
+            root,
+            sources,
+            tokenizer=tok,
+            chunk_token_size=lightrag_config.chunk_token_size,
+            overlap_tokens=lightrag_config.chunk_overlap_tokens,
+        )
 
     cache = ExtractionCache(store.paths.extraction_cache_dir)
     run = run_extraction(
@@ -159,11 +195,29 @@ def build_lightgraph_index(
     )
     profile_index(entity_profiles, relation_profiles, chunks, updated_at=built_at)
 
-    entity_vectors, relation_vectors, embed_ok, embed_warnings = _embed(
-        entity_profiles,
-        relation_profiles,
-        embedding_provider=embedding_provider,
-        embeddings_config=embeddings_config,
+    reuse_entity_vectors = (
+        _vectors_by_text(previous_index.entities, previous_entity_vectors)
+        if incremental
+        and previous_index is not None
+        and previous_entity_vectors is not None
+        else {}
+    )
+    reuse_relation_vectors = (
+        _vectors_by_text(previous_index.relations, previous_relation_vectors)
+        if incremental
+        and previous_index is not None
+        and previous_relation_vectors is not None
+        else {}
+    )
+    entity_vectors, relation_vectors, embed_ok, embed_warnings, reused_vec_count = (
+        _embed(
+            entity_profiles,
+            relation_profiles,
+            embedding_provider=embedding_provider,
+            embeddings_config=embeddings_config,
+            reuse_entity_vectors=reuse_entity_vectors,
+            reuse_relation_vectors=reuse_relation_vectors,
+        )
     )
 
     embedding_tier = "embedded" if embed_ok else "bm25"
@@ -187,7 +241,12 @@ def build_lightgraph_index(
     )
 
     source_contributions = _build_source_contributions(
-        chunks, entity_profiles, relation_profiles
+        chunks,
+        entity_profiles,
+        relation_profiles,
+        reused_source_ids=reused_ids,
+        reprocessed_source_ids=reprocessed_ids,
+        missing_source_ids=plan.missing_source_ids,
     )
     build_manifest = {
         "built_at": built_at,
@@ -219,6 +278,13 @@ def build_lightgraph_index(
     )
 
     warnings = list(run.warnings) + embed_warnings
+    if incremental:
+        warnings.append(
+            "incremental update: "
+            f"{len(reused_ids)} source(s) reused, "
+            f"{len(reprocessed_ids)} reprocessed, "
+            f"{reused_vec_count} embedding vector(s) reused"
+        )
     if plan.missing_source_ids:
         warnings.append(
             "Sources removed from the manifest are retained and flagged for "
@@ -238,11 +304,30 @@ def build_lightgraph_index(
         embedding_model=embedding_model,
         embedding_dimension=embedding_dimension,
         incremental=plan.incremental,
+        reused_source_count=len(reused_ids),
+        reprocessed_source_count=len(reprocessed_ids),
         extraction_cache_hits=run.cache_hits,
         extraction_cache_misses=run.cache_misses,
         artifacts=artifacts,
         warnings=warnings,
     )
+
+
+def _vectors_by_text(
+    profiles: list,
+    vector_store: LightVectorStore | None,
+) -> dict[str, list[float]]:
+    """Map ``embedding_text -> vector`` from a previous index + its vectors."""
+    if vector_store is None:
+        return {}
+    vec_by_id = dict(zip(vector_store.ids, vector_store.vectors, strict=False))
+    mapping: dict[str, list[float]] = {}
+    for profile in profiles:
+        text = getattr(profile, "embedding_text", "")
+        vector = vec_by_id.get(profile.id)
+        if text and vector is not None:
+            mapping.setdefault(text, vector)
+    return mapping
 
 
 def _embed(
@@ -251,64 +336,107 @@ def _embed(
     *,
     embedding_provider: EmbeddingProvider | None,
     embeddings_config: EmbeddingsRuntimeConfig,
-) -> tuple[LightVectorStore | None, LightVectorStore | None, bool, list[str]]:
-    """Embed entity/relation profiles; fall back to BM25 (no vectors) on error."""
+    reuse_entity_vectors: dict[str, list[float]] | None = None,
+    reuse_relation_vectors: dict[str, list[float]] | None = None,
+) -> tuple[LightVectorStore | None, LightVectorStore | None, bool, list[str], int]:
+    """Embed entity/relation profiles; fall back to BM25 (no vectors) on error.
+
+    Reuses vectors for profiles whose ``embedding_text`` is unchanged (passed in
+    ``reuse_*`` maps), so an incremental build only embeds new/changed profiles.
+    """
     if embedding_provider is None:
-        return None, None, False, []
+        return None, None, False, [], 0
     ensure = getattr(embedding_provider, "ensure_available", None)
     if callable(ensure):
         try:
             ensure()
         except EmbeddingError as exc:
-            return None, None, False, [f"embeddings unavailable, using BM25: {exc}"]
+            return None, None, False, [f"embeddings unavailable, using BM25: {exc}"], 0
     try:
-        entity_vectors = _embed_profiles(
+        entity_vectors, entity_reused = _embed_profiles(
             embedding_provider,
-            [profile.id for profile in entity_profiles],
-            [profile.embedding_text for profile in entity_profiles],
+            entity_profiles,
             embeddings_config,
+            reuse_entity_vectors or {},
         )
-        relation_vectors = _embed_profiles(
+        relation_vectors, relation_reused = _embed_profiles(
             embedding_provider,
-            [profile.id for profile in relation_profiles],
-            [profile.embedding_text for profile in relation_profiles],
+            relation_profiles,
             embeddings_config,
+            reuse_relation_vectors or {},
         )
     except EmbeddingError as exc:
-        return None, None, False, [f"embedding call failed, using BM25: {exc}"]
-    return entity_vectors, relation_vectors, True, []
+        return None, None, False, [f"embedding call failed, using BM25: {exc}"], 0
+    return entity_vectors, relation_vectors, True, [], entity_reused + relation_reused
 
 
 def _embed_profiles(
     embedding_provider: EmbeddingProvider,
-    ids: list[str],
-    texts: list[str],
+    profiles: list,
     embeddings_config: EmbeddingsRuntimeConfig,
-) -> LightVectorStore:
-    if not ids:
-        return LightVectorStore(
-            model=embeddings_config.model,
-            dimension=embeddings_config.dimension,
-            ids=[],
-            vectors=[],
+    reuse: dict[str, list[float]],
+) -> tuple[LightVectorStore, int]:
+    if not profiles:
+        return (
+            LightVectorStore(
+                model=embeddings_config.model,
+                dimension=embeddings_config.dimension,
+                ids=[],
+                vectors=[],
+            ),
+            0,
         )
-    vectors = embedding_provider.embed_texts(texts)
-    return LightVectorStore.from_embeddings(
+    ids = [profile.id for profile in profiles]
+    vectors_by_index: dict[int, list[float]] = {}
+    to_embed_indices: list[int] = []
+    to_embed_texts: list[str] = []
+    reused = 0
+    for index, profile in enumerate(profiles):
+        cached = reuse.get(profile.embedding_text)
+        if cached is not None:
+            vectors_by_index[index] = cached
+            reused += 1
+        else:
+            to_embed_indices.append(index)
+            to_embed_texts.append(profile.embedding_text)
+    if to_embed_texts:
+        embedded = embedding_provider.embed_texts(to_embed_texts)
+        for position, index in enumerate(to_embed_indices):
+            vectors_by_index[index] = embedded[position]
+    ordered = [vectors_by_index[index] for index in range(len(profiles))]
+    store = LightVectorStore.from_embeddings(
         ids,
-        vectors,
+        ordered,
         model=embeddings_config.model,
         dimension=embeddings_config.dimension,
     )
+    return store, reused
 
 
 def _build_source_contributions(
     chunks: list[LightChunk],
     entities: list[EntityProfile],
     relations: list[RelationProfile],
+    *,
+    reused_source_ids: set[str] | None = None,
+    reprocessed_source_ids: set[str] | None = None,
+    missing_source_ids: list[str] | None = None,
 ) -> dict[str, Any]:
+    reused = reused_source_ids or set()
+    reprocessed = reprocessed_source_ids or set()
     chunk_source = {chunk.id: chunk.source_id for chunk in chunks}
+
+    def _status_for(source_id: str) -> str:
+        if source_id in reprocessed:
+            return "reprocessed"
+        if source_id in reused:
+            return "reused"
+        return "fresh"
+
     contrib: dict[str, dict[str, Any]] = defaultdict(
         lambda: {
+            "status": "fresh",
+            "requires_review": False,
             "chunk_ids": [],
             "entity_ids": [],
             "relation_ids": [],
@@ -340,4 +468,18 @@ def _build_source_contributions(
             bucket["relation_contributions"].setdefault(relation.id, [])
             if chunk_id not in bucket["relation_contributions"][relation.id]:
                 bucket["relation_contributions"][relation.id].append(chunk_id)
+    for source_id, bucket in contrib.items():
+        bucket["status"] = _status_for(source_id)
+    # Missing sources (in the previous index but gone now) are retained and
+    # flagged for review -- never silently deleted (LightRAG §11).
+    for source_id in missing_source_ids or []:
+        contrib[source_id] = {
+            "status": "missing",
+            "requires_review": True,
+            "chunk_ids": [],
+            "entity_ids": [],
+            "relation_ids": [],
+            "entity_contributions": {},
+            "relation_contributions": {},
+        }
     return dict(contrib)

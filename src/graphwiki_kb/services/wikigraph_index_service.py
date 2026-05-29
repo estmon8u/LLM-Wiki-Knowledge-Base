@@ -169,15 +169,20 @@ class WikiGraphIndexService:
         if resolved is not None:
             name, provider_cfg = resolved
             identity = f"{name}:{provider_cfg.get('model', '')}"
+        store = self.lightrag_store()
+        previous_index = store.load()
         report = build_lightgraph_index(
             self.paths.root,
             sources,
-            store=self.lightrag_store(),
+            store=store,
             lightrag_config=runtime.lightrag,
             embeddings_config=resolve_embeddings_config(config),
             provider=provider,
             embedding_provider=embedding_provider,
             provider_identity=identity,
+            previous_index=previous_index,
+            previous_entity_vectors=store.load_entity_vectors(),
+            previous_relation_vectors=store.load_relation_vectors(),
         )
         self._last_light_report = report
         return _lightrag_to_build_report(report)
