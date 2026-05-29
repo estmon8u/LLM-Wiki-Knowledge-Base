@@ -6,21 +6,27 @@ answering methods** fairly and rigorously, and is hard to game.
 ```bash
 # Offline, free: rank-aware retrieval metrics across backends
 python scripts/evaluate_rag.py --retrieval-only \
-    --methods legacy graphrag wikigraph
+    --methods legacy graphrag wikigraph-classic wikigraph-lightrag
 
 # Full provider-backed run with RAGAS + bias-mitigated judge (costs tokens)
 python scripts/evaluate_rag.py --allow-provider-calls --ragas --judge \
-    --methods direct legacy graphrag wikigraph
+    --methods legacy graphrag wikigraph-classic wikigraph-lightrag
 ```
 
-## The four methods
+## The four methods (default)
 
 | Method | What it is |
 |---|---|
-| `direct` | LLM-only baseline, **no retrieval** (parametric knowledge) |
 | `legacy` | deprecated SQLite FTS retrieval + grounded answer |
 | `graphrag` | Microsoft GraphRAG retrieval + ask controller |
-| `wikigraph` | custom WikiGraphRAG (classic/lightrag, method-aware) |
+| `wikigraph-classic` | custom WikiGraphRAG in **classic** mode (wiki-page-first graph) |
+| `wikigraph-lightrag` | custom WikiGraphRAG in **lightrag** mode (LightRAG-style) |
+
+Two extra backends are also available: `direct` (LLM-only, no retrieval — a
+contamination-sensitive baseline) and `wikigraph` (config-driven mode). The
+`wikigraph-classic` / `wikigraph-lightrag` backends each build a dedicated query
+service with `wikigraph.mode` overridden, so both modes are compared in one run
+(each requires its own index to be built).
 
 Every backend emits the same `RagSample` (question, retrieved contexts with
 source ids + refs, answer, citations, latency), so metrics are computed

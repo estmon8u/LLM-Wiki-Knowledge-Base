@@ -77,8 +77,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--methods",
         nargs="+",
-        default=["direct", "legacy", "graphrag", "wikigraph"],
-        choices=["direct", "legacy", "graphrag", "wikigraph"],
+        default=["legacy", "graphrag", "wikigraph-classic", "wikigraph-lightrag"],
+        choices=[
+            "direct",
+            "legacy",
+            "graphrag",
+            "wikigraph",
+            "wikigraph-classic",
+            "wikigraph-lightrag",
+        ],
     )
     parser.add_argument("--wikigraph-method", default="auto")
     parser.add_argument("--graphrag-method", default="auto")

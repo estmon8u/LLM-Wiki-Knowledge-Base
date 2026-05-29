@@ -215,16 +215,47 @@ class GraphRAGBackend:
 
 
 class WikiGraphBackend:
-    """Custom WikiGraphRAG backend (classic/lightrag, method-aware)."""
+    """Custom WikiGraphRAG backend (classic/lightrag, method-aware).
+
+    When ``mode`` is given, a dedicated :class:`WikiGraphQueryService` is built
+    with ``wikigraph.mode`` overridden, so ``wikigraph-classic`` and
+    ``wikigraph-lightrag`` can be compared side by side in one process.
+    """
 
     name = "wikigraph"
 
-    def __init__(self, context: CommandContext, *, method: str = "auto") -> None:
+    def __init__(
+        self,
+        context: CommandContext,
+        *,
+        method: str = "auto",
+        mode: str | None = None,
+        name: str = "wikigraph",
+    ) -> None:
         self.context = context
         self.method = method
+        self.name = name
+        if mode is None:
+            self._query = context.services.wikigraph_query
+        else:
+            from copy import deepcopy
+
+            from graphwiki_kb.services.wikigraph_query_service import (
+                WikiGraphQueryService,
+            )
+
+            config = deepcopy(context.config)
+            config.setdefault("wikigraph", {})["mode"] = mode
+            index_service = context.services.wikigraph_index
+            self._query = WikiGraphQueryService(
+                paths=index_service.paths,
+                index_service=index_service,
+                provider=context.services.wikigraph_query.provider,
+                config=config,
+            )
 
     def retrieve(self, question: EvalQuestion) -> list[RetrievedContext]:
-        find = self.context.services.wikigraph_query.find(
+        find = self._query.find(
             question.question, method=cast(QueryMethod, self.method)
         )
         return [
@@ -241,7 +272,7 @@ class WikiGraphBackend:
         start = time.perf_counter()
         try:
             contexts = self.retrieve(question)
-            answer = self.context.services.wikigraph_query.ask(
+            answer = self._query.ask(
                 question.question, method=cast(QueryMethod, self.method)
             )
             citations = [c.get("ref", "") for c in answer.citations]
@@ -298,6 +329,24 @@ def build_backends(
             backends.append(GraphRAGBackend(context, method=graphrag_method))
         elif name == "wikigraph":
             backends.append(WikiGraphBackend(context, method=wikigraph_method))
+        elif name == "wikigraph-classic":
+            backends.append(
+                WikiGraphBackend(
+                    context,
+                    method=wikigraph_method,
+                    mode="classic",
+                    name="wikigraph-classic",
+                )
+            )
+        elif name == "wikigraph-lightrag":
+            backends.append(
+                WikiGraphBackend(
+                    context,
+                    method=wikigraph_method,
+                    mode="lightrag",
+                    name="wikigraph-lightrag",
+                )
+            )
         else:
             raise ValueError(f"Unknown backend: {name}")
     return backends
