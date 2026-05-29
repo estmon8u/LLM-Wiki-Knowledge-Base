@@ -216,6 +216,18 @@ class WikiGraphIndexService:
                 built yet.
             ValueError: When ``types`` contains an unknown value.
         """
+        try:
+            runtime = self.runtime_config
+        except ValueError:
+            runtime = resolve_wikigraph_config({})
+        if runtime.mode == "lightrag":
+            from graphwiki_kb.services.wikigraph_light_export_service import (
+                WikiGraphLightExportService,
+            )
+
+            return WikiGraphLightExportService(
+                paths=self.paths, store=self.lightrag_store()
+            ).export()
         if types is not None:
             unknown = [t for t in types if t not in self.SUPPORTED_ARTIFACT_TYPES]
             if unknown:
