@@ -212,7 +212,7 @@ def _provider_backed_answer(
             ProviderRequest(
                 prompt=_build_prompt(bundle),
                 system_prompt=_SYSTEM_PROMPT,
-                max_tokens=4096,
+                max_tokens=8000,
                 response_schema=_RESPONSE_SCHEMA,
                 response_schema_name="lightrag_answer",
                 reasoning_effort="low",
