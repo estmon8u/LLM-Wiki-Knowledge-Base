@@ -314,8 +314,106 @@ class LintService:
             issues.extend(self._lint_manifest_state(source))
 
         issues.extend(self._lint_graph_staleness())
+        issues.extend(self._lint_lightrag())
 
         return LintReport(issues=issues)
+
+    def _lint_lightrag(self) -> list[LintIssue]:
+        """Lint checks specific to the LightRAG WikiGraphRAG backend."""
+        from graphwiki_kb.services.config_service import resolve_wikigraph_config
+        from graphwiki_kb.services.wikigraph_index_service import (
+            WikiGraphIndexService,
+        )
+
+        try:
+            runtime = resolve_wikigraph_config(self.config or {})
+        except ValueError:
+            return []
+        if runtime.mode != "lightrag":
+            return []
+
+        issues: list[LintIssue] = []
+        service = WikiGraphIndexService(
+            paths=self.paths,
+            config=self.config,
+            manifest_service=self.manifest_service,
+        )
+        store = service.lightrag_store()
+        rel = "graph/wikigraph/lightrag/index.json"
+        if not store.exists():
+            issues.append(
+                LintIssue(
+                    severity="error",
+                    code="wikigraph-lightrag-missing-index",
+                    path=rel,
+                    message=(
+                        "WikiGraphRAG mode is 'lightrag' but no index was found. "
+                        "Run `kb update --wikigraph-mode lightrag`."
+                    ),
+                )
+            )
+            return issues
+        index = store.load()
+        if index is None:
+            issues.append(
+                LintIssue(
+                    severity="error",
+                    code="wikigraph-lightrag-unreadable-index",
+                    path=rel,
+                    message="LightRAG index files exist but failed to load.",
+                )
+            )
+            return issues
+        entity_ids = {entity.id for entity in index.entities}
+        for entity in index.entities:
+            if not entity.chunk_ids:
+                issues.append(
+                    LintIssue(
+                        severity="warning",
+                        code="wikigraph-entity-no-source-chunks",
+                        path=rel,
+                        message=(
+                            f"Entity {entity.canonical_name!r} has no source chunks."
+                        ),
+                    )
+                )
+        for relation in index.relations:
+            if not relation.chunk_ids:
+                issues.append(
+                    LintIssue(
+                        severity="warning",
+                        code="wikigraph-relation-no-source-chunks",
+                        path=rel,
+                        message=f"Relation {relation.id!r} has no source chunks.",
+                    )
+                )
+            if (
+                relation.source_entity_id not in entity_ids
+                or relation.target_entity_id not in entity_ids
+            ):
+                issues.append(
+                    LintIssue(
+                        severity="error",
+                        code="wikigraph-relation-endpoint-missing",
+                        path=rel,
+                        message=(
+                            f"Relation {relation.id!r} references an entity that is "
+                            "not in the index."
+                        ),
+                    )
+                )
+        status = service.status()
+        stale_reasons = status.get("stale_reasons", [])
+        for reason in stale_reasons if isinstance(stale_reasons, list) else []:
+            issues.append(
+                LintIssue(
+                    severity="warning",
+                    code="wikigraph-lightrag-stale",
+                    path=rel,
+                    message=f"LightRAG index is stale: {reason}.",
+                )
+            )
+        return issues
 
     def _source_type_issue(
         self,

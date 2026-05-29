@@ -93,12 +93,28 @@ class StatusService:
             index_status=self._index_status(),
             export_status=self._export_status(last_compile_at),
             graph_status=self._graph_status(),
+            wikigraph_status=self._wikigraph_status(),
         )
 
     def _graph_status(self) -> dict[str, Any]:
         if self._graphrag_status is None:
             return {}
         return self._graphrag_status.status().to_dict(self.paths.root)
+
+    def _wikigraph_status(self) -> dict[str, Any]:
+        from graphwiki_kb.services.wikigraph_index_service import (
+            WikiGraphIndexService,
+        )
+
+        try:
+            service = WikiGraphIndexService(
+                paths=self.paths,
+                config=self._config,
+                manifest_service=self.manifest_service,
+            )
+            return dict(service.status())
+        except Exception:
+            return {}
 
     def _provider_summary(self) -> str:
         resolved = resolve_provider_settings(

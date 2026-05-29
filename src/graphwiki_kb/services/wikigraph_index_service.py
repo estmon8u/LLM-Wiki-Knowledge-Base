@@ -394,8 +394,93 @@ class WikiGraphIndexService:
         atomic_write_text(path, body)
         return rel
 
+    def _lightrag_status(self, runtime: WikiGraphRuntimeConfig) -> dict[str, object]:
+        from graphwiki_kb.providers import resolve_provider_settings
+        from graphwiki_kb.services.config_service import resolve_embeddings_config
+        from graphwiki_kb.wikigraph.light_extractor import (
+            ExtractionConfig,
+            extraction_prompt_hash,
+        )
+
+        config = self.config or {}
+        store = self.lightrag_store()
+        sources = (
+            self.manifest_service.list_sources()
+            if self.manifest_service is not None
+            else []
+        )
+        current = {source.source_id: source.content_hash for source in sources}
+        provider_ready = resolve_provider_settings(config) is not None
+        provider_required = runtime.lightrag.embeddings_required_for_strict
+        if not store.exists():
+            return {
+                "mode": "lightrag",
+                "initialized": False,
+                "fresh": False,
+                "source_count": len(sources),
+                "provider_required": provider_required,
+                "provider_ready": provider_ready,
+                "stale_reasons": ["index not built"],
+            }
+        index = store.load()
+        manifest = store.load_build_manifest() or {}
+        previous = dict(manifest.get("source_hashes", {}))
+        stale_reasons: list[str] = []
+        new = [sid for sid in current if sid not in previous]
+        changed = [
+            sid for sid in current if sid in previous and previous[sid] != current[sid]
+        ]
+        missing = [sid for sid in previous if sid not in current]
+        if new:
+            stale_reasons.append(f"{len(new)} new source(s) not yet indexed")
+        if changed:
+            stale_reasons.append(f"{len(changed)} changed source(s)")
+        if missing:
+            stale_reasons.append(f"{len(missing)} missing source(s) require review")
+        current_prompt = extraction_prompt_hash(
+            ExtractionConfig(
+                entity_types=tuple(runtime.lightrag.entity_types),
+                relation_types=tuple(runtime.lightrag.relation_types),
+                max_gleaning=runtime.lightrag.entity_extract_max_gleaning,
+            )
+        )
+        if (
+            manifest.get("extraction_prompt_hash")
+            and manifest["extraction_prompt_hash"] != current_prompt
+        ):
+            stale_reasons.append("extraction prompt changed")
+        embeddings_cfg = resolve_embeddings_config(config)
+        if (
+            index is not None
+            and index.embedding_model
+            and index.embedding_model != embeddings_cfg.model
+        ):
+            stale_reasons.append("embedding model changed")
+        return {
+            "mode": "lightrag",
+            "initialized": True,
+            "fresh": not stale_reasons,
+            "built_at": index.built_at if index else "",
+            "tier": index.tier if index else "",
+            "source_count": len(sources),
+            "chunk_count": index.chunk_count if index else 0,
+            "entity_count": index.entity_count if index else 0,
+            "relation_count": index.relation_count if index else 0,
+            "embedding_model": (index.embedding_model if index else "")
+            or "bm25-fallback",
+            "provider_required": provider_required,
+            "provider_ready": provider_ready,
+            "stale_reasons": stale_reasons,
+        }
+
     def status(self) -> dict[str, object]:
         """Return a quick-look status payload for ``kb wikigraph status``."""
+        try:
+            runtime = self.runtime_config
+        except ValueError:
+            runtime = resolve_wikigraph_config({})
+        if runtime.mode == "lightrag":
+            return self._lightrag_status(runtime)
         if not self._store.exists():
             return {
                 "initialized": False,
