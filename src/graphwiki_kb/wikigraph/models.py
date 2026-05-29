@@ -158,6 +158,10 @@ class WikiGraphFindResult(BaseModel):
     communities: list[str] = Field(default_factory=list)
     trace: list[dict[str, Any]] = Field(default_factory=list)
     diagnostics: list[str] = Field(default_factory=list)
+    mode: str = "classic"
+    low_level_keywords: list[str] = Field(default_factory=list)
+    high_level_keywords: list[str] = Field(default_factory=list)
+    relations: list[str] = Field(default_factory=list)
 
 
 class WikiGraphAnswer(BaseModel):

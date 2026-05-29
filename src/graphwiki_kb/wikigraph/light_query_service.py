@@ -99,6 +99,13 @@ class LightQueryEngine:
         """Return a classic :class:`WikiGraphFindResult` for CLI/JSON parity."""
         bundle = self.find(question, method=method)
         method_value: QueryMethod = bundle.method
+        name_by_id = {e.id: e.canonical_name for e in bundle.entities}
+        relations = [
+            f"{name_by_id.get(r.source_entity_id, r.source_entity_id)} "
+            f"{r.relation_type} "
+            f"{name_by_id.get(r.target_entity_id, r.target_entity_id)}"
+            for r in bundle.relations
+        ]
         return WikiGraphFindResult(
             query=question,
             method=method_value,
@@ -107,4 +114,8 @@ class LightQueryEngine:
             communities=[],
             trace=bundle.trace,
             diagnostics=bundle.diagnostics,
+            mode="lightrag",
+            low_level_keywords=bundle.low_level_keywords,
+            high_level_keywords=bundle.high_level_keywords,
+            relations=relations,
         )

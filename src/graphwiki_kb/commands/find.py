@@ -109,6 +109,7 @@ def create_command() -> click.Command:
         wiki_results: list[SearchResult] = []
         wikigraph_results: list[SearchResult] = []
         wikigraph_contexts: list[WikiGraphRetrievedContext] = []
+        wikigraph_find = None
         legacy_results: list[SearchResult] = []
 
         if run_graph:
@@ -122,6 +123,7 @@ def create_command() -> click.Command:
         if run_wikigraph:
             try:
                 find_result = wikigraph_query_service.find(query, method="auto")
+                wikigraph_find = find_result
                 wikigraph_contexts = find_result.contexts
                 wikigraph_results = [
                     _wikigraph_to_search_result(ctx) for ctx in wikigraph_contexts
@@ -156,6 +158,16 @@ def create_command() -> click.Command:
                 "diagnostics": diagnostics,
                 "results": [_search_result_payload(result) for result in results],
                 "wikigraph": {
+                    "mode": wikigraph_find.mode if wikigraph_find else "classic",
+                    "method": wikigraph_find.method if wikigraph_find else None,
+                    "low_level_keywords": (
+                        wikigraph_find.low_level_keywords if wikigraph_find else []
+                    ),
+                    "high_level_keywords": (
+                        wikigraph_find.high_level_keywords if wikigraph_find else []
+                    ),
+                    "entities": wikigraph_find.entities if wikigraph_find else [],
+                    "relations": wikigraph_find.relations if wikigraph_find else [],
                     "contexts": [ctx.model_dump() for ctx in wikigraph_contexts],
                 },
             }

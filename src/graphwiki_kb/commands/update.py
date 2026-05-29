@@ -144,6 +144,16 @@ def create_command() -> click.Command:
         ),
     )
     @click.option(
+        "--wikigraph-mode",
+        type=click.Choice(["classic", "lightrag"]),
+        default=None,
+        help=(
+            "Override wikigraph.mode for this run (classic|lightrag). When "
+            "unset, the `wikigraph.mode` config value drives the behavior "
+            "(defaults to classic)."
+        ),
+    )
+    @click.option(
         "--wikigraph-include-graphrag-export-pages",
         is_flag=True,
         help=(
@@ -197,6 +207,7 @@ def create_command() -> click.Command:
         allow_partial: bool,
         concepts: bool | None,
         wikigraph: bool | None,
+        wikigraph_mode: str | None,
         wikigraph_include_graphrag_export_pages: bool,
         wikigraph_normalized_text: bool | None,
         export_wikigraph_artifacts: bool | None,
@@ -228,6 +239,7 @@ def create_command() -> click.Command:
             allow_partial=allow_partial,
             concepts=concepts,
             wikigraph=wikigraph,
+            wikigraph_mode=wikigraph_mode,
             wikigraph_include_graphrag_export_pages=(
                 wikigraph_include_graphrag_export_pages
             ),
