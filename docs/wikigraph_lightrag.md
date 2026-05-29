@@ -124,51 +124,13 @@ silently deleted.
 
 ## Evaluation
 
-`scripts/evaluate_backends.py` adds the full LightRAG ablation matrix:
+Backends (including `wikigraph` with `--wikigraph-method local|global|hybrid`) are compared with the research-grounded RAG evaluation harness:
 
 ```bash
-# Retrieval-only (provider-free / BM25 fallback is safe)
-python scripts/evaluate_backends.py --retrieval-only \
-  --backends wikigraph-light wikigraph-light-local wikigraph-light-global \
-             wikigraph-light-hybrid wikigraph-light-basic \
-             wikigraph-light-no-vectors-bm25 graphrag legacy
-
-# Provider-backed (strict tier; costs tokens)
-python scripts/evaluate_backends.py --allow-provider-calls \
-  --backends wikigraph-light graphrag
+python scripts/evaluate_rag.py --retrieval-only \
+    --methods direct legacy graphrag wikigraph
+python scripts/evaluate_rag.py --allow-provider-calls --ragas --judge \
+    --methods direct legacy graphrag wikigraph
 ```
 
-LightRAG ablation backends require an index built with
-`kb update --wikigraph-mode lightrag`.
-
-
-## Extraction tier is opt-in
-
-`wikigraph.lightrag.extraction.extractor` controls extraction:
-
-- `deterministic` (default) — provider-free heuristic extraction. `kb update
-  --wikigraph-mode lightrag` makes **no LLM calls** by default, so a routine
-  update never incurs surprise token cost.
-- `llm` — provider-backed structured extraction (Tier A strict). Opt in
-  explicitly when you want the higher-fidelity entity/relation graph.
-
-## Incremental updates
-
-Re-running `kb update --wikigraph-mode lightrag` is a **source-level incremental
-update**: unchanged sources reuse their previous chunks (no re-chunk) and their
-previous embedding vectors (no re-embed); only new/changed sources are
-re-extracted and re-embedded. The build report surfaces `reused_source_count` /
-`reprocessed_source_count`, and sources that disappear from the manifest are
-flagged `missing` / `requires_review` in `source_contributions.json` (and
-`kb lint`) rather than being silently deleted.
-
-The query engine is cached in `WikiGraphQueryService` keyed by the index
-`built_at`, so repeated `kb find` / `kb ask` calls within a long-lived process
-(agent loop, evaluator) skip reloading the index and re-fitting BM25.
-
-## Cross-corpus synthesis benchmark
-
-`eval/benchmark_synthesis.yaml` complements `eval/benchmark.yaml`: every question
-requires 3+ source papers, which is the multi-hop workload dual-level retrieval
-targets. Run both and compare deltas across the `wikigraph-light*` ablation
-backends.
+See [docs/rag_evaluation.md](rag_evaluation.md) for metrics (rank-aware retrieval, RAGAS, anti-gaming generation, bias-mitigated judge) and the fairness/contamination methodology.
