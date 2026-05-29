@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 from graphwiki_kb.models.command_models import CommandContext
 from graphwiki_kb.providers import build_provider
@@ -22,6 +22,7 @@ from graphwiki_kb.providers.base import ProviderRequest, TextProvider
 from graphwiki_kb.services import build_services
 from graphwiki_kb.services.config_service import ConfigService
 from graphwiki_kb.services.project_service import build_project_paths
+from graphwiki_kb.wikigraph.models import QueryMethod
 from scripts.rag_eval.dataset import EvalQuestion
 from scripts.rag_eval.types import RagSample, RetrievedContext
 
@@ -224,7 +225,7 @@ class WikiGraphBackend:
 
     def retrieve(self, question: EvalQuestion) -> list[RetrievedContext]:
         find = self.context.services.wikigraph_query.find(
-            question.question, method=self.method
+            question.question, method=cast(QueryMethod, self.method)
         )
         return [
             RetrievedContext(
@@ -241,7 +242,7 @@ class WikiGraphBackend:
         try:
             contexts = self.retrieve(question)
             answer = self.context.services.wikigraph_query.ask(
-                question.question, method=self.method
+                question.question, method=cast(QueryMethod, self.method)
             )
             citations = [c.get("ref", "") for c in answer.citations]
             return RagSample(
