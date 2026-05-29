@@ -180,6 +180,54 @@ def test_lazy_provider_updates_metadata_on_resolve() -> None:
     assert lazy.dimension == 4
 
 
+def test_gemini_embedding_provider_embeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from graphwiki_kb.providers import gemini_embedding
+
+    class _FakeEmbeddingObj:
+        def __init__(self, values: list[float]) -> None:
+            self.values = values
+
+    class _FakeResponse:
+        def __init__(self, embeddings: list[_FakeEmbeddingObj]) -> None:
+            self.embeddings = embeddings
+
+    class _FakeModels:
+        def embed_content(self, *, model: str, contents: list[str], config: Any) -> Any:
+            return _FakeResponse([_FakeEmbeddingObj([0.1, 0.2]) for _ in contents])
+
+    class _FakeGenaiClient:
+        def __init__(self, *, api_key: str) -> None:
+            self.models = _FakeModels()
+
+    class _FakeGenai:
+        Client = _FakeGenaiClient
+
+    monkeypatch.setenv("GEMINI_API_KEY", "g-test")
+    monkeypatch.setattr(gemini_embedding, "genai", _FakeGenai)
+
+    cfg = deepcopy(DEFAULT_CONFIG)
+    cfg["embeddings"]["provider"] = "gemini"
+    cfg["embeddings"]["model"] = "text-embedding-004"
+    cfg["embeddings"]["dimension"] = 2
+    provider = build_embedding_provider(cfg)
+    assert provider is not None
+    vectors = provider.embed_texts(["a", "b"])
+    assert vectors == [[0.1, 0.2], [0.1, 0.2]]
+    assert provider.embed_texts([]) == []
+
+
+def test_gemini_missing_api_key_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    cfg = deepcopy(DEFAULT_CONFIG)
+    cfg["embeddings"]["provider"] = "gemini"
+    provider = build_embedding_provider(cfg)
+    assert provider is not None
+    with pytest.raises(EmbeddingConfigurationError):
+        provider.embed_texts(["x"])
+
+
 def test_embedding_provider_protocol_runtime_checkable() -> None:
     class _Concrete:
         name = "x"
