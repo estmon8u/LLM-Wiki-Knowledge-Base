@@ -161,9 +161,9 @@ def test_citation_anchor_uses_chunk_for_compiled_pages(tmp_path: Path) -> None:
 
 
 def test_synthesis_benchmark_is_multi_source() -> None:
-    from scripts.backend_evaluation_lib import load_benchmark
+    from scripts.rag_eval.dataset import load_benchmark
 
     questions = load_benchmark(Path("eval") / "benchmark_synthesis.yaml")
     assert len(questions) >= 8
     # Every synthesis question forces 3+ source coverage.
-    assert all(len(q.expected_sources) >= 3 for q in questions)
+    assert all(len(q.expected_source_ids) >= 3 for q in questions)
