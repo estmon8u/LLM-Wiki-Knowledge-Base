@@ -17,7 +17,7 @@ The project has moved from scaffold+implementation through the GraphRAG pivot in
 8. `kb find` searches direct GraphRAG entity/relationship artifacts plus the maintained wiki index, then deduplicates and ranks the combined results.
 9. `kb update` and `kb export` export GraphRAG output tables into generated markdown pages under `wiki/graph/`.
 10. `kb status`, `kb doctor`, and `kb lint` include GraphRAG readiness, vector-store health, freshness, stale input/index/export checks, and strict readiness modes.
-11. Phase 8 evaluation scripts compare deprecated FTS against GraphRAG Basic, Local, Global, and DRIFT with local-safe defaults and opt-in provider-backed answer runs.
+11. The current RAG evaluation harness compares deprecated FTS, Microsoft GraphRAG, WikiGraphRAG classic, and WikiGraphRAG LightRAG with local-safe retrieval defaults and opt-in provider, RAGAS, and LLM-judge answer runs.
 12. `kb agent` is implemented as a bounded natural-language control plane over existing services, including local KB ask/find/status/lint/review, web-backed research, durable source recommendations, approved recommendation ingestion, and approved `kb update`.
 13. State hardening now protects config migrations, manifest writes, compile-run state, graph index-run state, wiki logs, and GraphRAG workspace operations.
 14. Wiki artifacts remain the inspectable provenance, maintenance, and export layer.
@@ -63,7 +63,7 @@ Microsoft GraphRAG and WikiGraphRAG are the retrieval/synthesis engines.
 - Explicit GraphRAG ask controller through `kb ask --engine graphrag --method auto|basic|local|global|drift`, with readiness checks, deterministic routing, explicit provider credential validation, and graph-backed saved analysis metadata.
 - GraphRAG hardening for active-output selection, vector-store state checks, method-specific query readiness, runtime/settings/prompt digest freshness, unique saved-analysis filenames, blank-answer refusal, and raw stdout/stderr preservation.
 - Graph-aware top-level `kb find`, which searches direct graph entities/relationships plus maintained wiki pages with bounded streamed Parquet scans, graph artifact diagnostics, stable deduplication, and global ranking of merged candidates.
-- Phase 8 benchmark and runners: `eval/benchmark.yaml`, `scripts/evaluate_graph_modes.py`, `scripts/evaluate_retrieval.py`, and `scripts/evaluate_answers.py` write `eval/results/summary.md`, `retrieval_metrics.csv`, and `answer_metrics.csv`.
+- Current benchmark and runners: `eval/benchmark.yaml`, `scripts/rag_eval/`, and `scripts/evaluate_rag.py` write raw rows, bootstrap summaries, optional RAGAS/judge rows, and a leaderboard under `eval/rag_eval/`.
 - Provider-backed `kb ask --engine legacy` and `kb review` with explicit failure semantics.
 - Structured provider review output: `kb review` requires JSON/schema-backed findings and rejects malformed legacy pipe-style output instead of treating it as a compatibility fallback.
 - Answer persistence with `kb ask --engine legacy --save` and `--save-as`; saved analysis pages are indexed immediately.
@@ -80,12 +80,12 @@ Microsoft GraphRAG and WikiGraphRAG are the retrieval/synthesis engines.
 ## In Progress Now
 
 - Turning the final verification evidence into the presentation narrative: Effective Recall@8 ties at 0.827, WikiGraphRAG is faster with strict citation refs, and Microsoft GraphRAG leads on answer quality plus refusal calibration.
-- Keeping provider-backed reruns explicit because they consume model budget and the tracked `eval/results/verification_report.md` is now the source-of-truth comparison.
+- Keeping provider-backed reruns explicit because they consume model budget and the tracked `eval/rag_eval/` outputs are now the source-of-truth comparison artifacts.
 - Keeping the agent demo bounded around service-backed KB operations, research recommendations, and explicit write approvals.
 
 ## Next Regular Work
 
-- Use Phase 8 outputs and real-data runs to support the Update 3 and final comparison narrative.
+- Use the current RAG evaluation outputs and real-data runs to support the Update 3 and final comparison narrative.
 - Freeze or clearly define the final benchmark subset so retrieval, answer-quality, speed, and cost numbers remain comparable.
 - Report the GraphRAG tradeoff honestly: stronger synthesis and inspection, but slower indexing and provider budget.
 

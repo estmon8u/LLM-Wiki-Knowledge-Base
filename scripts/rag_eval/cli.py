@@ -97,7 +97,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ragas", action="store_true", help="Run RAGAS metrics.")
     parser.add_argument("--judge", action="store_true", help="Run the LLM judge.")
     parser.add_argument("--judge-model", default=None)
+    parser.add_argument(
+        "--ragas-provider",
+        default="openai",
+        choices=["openai", "gemini"],
+        help="LangChain provider to use for RAGAS scoring.",
+    )
     parser.add_argument("--ragas-model", default="gpt-5.4-nano")
+    parser.add_argument("--ragas-embedding-model", default="text-embedding-3-large")
+    parser.add_argument("--ragas-embedding-dimension", type=int, default=0)
+    parser.add_argument("--ragas-api-key-env", default="OPENAI_API_KEY")
     parser.add_argument("--label", default=None)
     return parser
 
@@ -200,7 +209,15 @@ def run_eval(args: argparse.Namespace) -> int:
             samples_by_backend.setdefault(backend.name, []).append((question, sample))
 
     if not args.retrieval_only and args.allow_provider_calls and args.ragas:
-        _apply_ragas(rows, samples_by_backend, model=args.ragas_model)
+        _apply_ragas(
+            rows,
+            samples_by_backend,
+            provider=args.ragas_provider,
+            model=args.ragas_model,
+            embedding_model=args.ragas_embedding_model,
+            embedding_dimension=args.ragas_embedding_dimension,
+            api_key_env=args.ragas_api_key_env,
+        )
     if not args.retrieval_only and args.allow_provider_calls and args.judge:
         _apply_judge(rows, samples_by_backend, context, judge_model=args.judge_model)
 
@@ -216,8 +233,25 @@ def run_eval(args: argparse.Namespace) -> int:
     return 0
 
 
-def _apply_ragas(rows, samples_by_backend, *, model: str) -> None:
-    scorer = RagasScorer(config=RagasConfig(model=model))
+def _apply_ragas(
+    rows,
+    samples_by_backend,
+    *,
+    provider: str,
+    model: str,
+    embedding_model: str,
+    embedding_dimension: int,
+    api_key_env: str,
+) -> None:
+    scorer = RagasScorer(
+        config=RagasConfig(
+            provider=provider,
+            model=model,
+            embedding_model=embedding_model,
+            embedding_dimension=embedding_dimension,
+            api_key_env=api_key_env,
+        )
+    )
     row_index = {(r["backend"], r["question_id"]): r for r in rows}
     for backend, pairs in samples_by_backend.items():
         items = [

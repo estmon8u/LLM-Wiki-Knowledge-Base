@@ -10,6 +10,11 @@ from google.genai import types
 from graphwiki_kb.providers.embedding_base import EmbeddingExecutionError
 from graphwiki_kb.providers.retry import provider_retry
 
+# Gemini's embed_content endpoint caps batch size; keep the provider boundary
+# responsible for chunking so callers can pass any list length and still get a
+# one-vector-per-input result in the original order.
+_MAX_BATCH_SIZE = 100
+
 
 class GeminiEmbeddingProvider:
     """Embeddings via the google-genai ``embed_content`` endpoint."""
@@ -41,12 +46,23 @@ class GeminiEmbeddingProvider:
         config = None
         if self.dimension > 0:
             config = types.EmbedContentConfig(output_dimensionality=self.dimension)
-        response = self._client.models.embed_content(
-            model=self.model_name,
-            contents=list(texts),
-            config=config,
-        )
-        vectors = [list(embedding.values) for embedding in response.embeddings]
+        vectors: list[list[float]] = []
+        for start in range(0, len(texts), _MAX_BATCH_SIZE):
+            batch = list(texts[start : start + _MAX_BATCH_SIZE])
+            response = self._client.models.embed_content(
+                model=self.model_name,
+                contents=batch,
+                config=config,
+            )
+            batch_vectors = [
+                list(embedding.values) for embedding in response.embeddings
+            ]
+            if len(batch_vectors) != len(batch):
+                raise EmbeddingExecutionError(
+                    "Gemini returned a different number of embeddings than inputs "
+                    f"({len(batch_vectors)} != {len(batch)})."
+                )
+            vectors.extend(batch_vectors)
         if len(vectors) != len(texts):
             raise EmbeddingExecutionError(
                 "Gemini returned a different number of embeddings than inputs "

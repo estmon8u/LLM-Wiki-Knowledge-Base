@@ -12,8 +12,10 @@ WikiGraphRAG is integrated into the main CLI instead of a sidecar command group.
 It enters through `kb update`, `kb find --engine wikigraph|all`, and
 `kb ask --engine wikigraph`. The backend is config-driven and optional-extra
 safe: non-WikiGraphRAG commands can run without NetworkX installed, while
-`kb update --export-wikigraph-artifacts` writes generated entity, community, and
-chunk cards under `wiki/wikigraph/` when artifact export is enabled. Unset
+`kb update --export-wikigraph-artifacts` writes generated inspection cards
+under `wiki/wikigraph/` when artifact export is enabled: classic mode exports
+entity, community, chunk, and TextUnit cards; LightRAG mode exports entity,
+relation, source-chunk, index, and diagnostics pages. Unset
 WikiGraphRAG CLI flags defer to `wikigraph.enabled` and
 `wikigraph.export_generated_artifacts`, context assembly honors
 `max_context_tokens`, `lexical_backend: simple` forces the pure-Python ranker,
@@ -34,7 +36,7 @@ cd LLM-Wiki-Knowledge-Base
 poetry install --with dev --all-extras
 ```
 
-This creates a local `.venv` with the development tools and optional provider/converter/export dependencies used by the full test and real-document workflows. Minimal package installs can choose extras such as `graphwiki-kb[openai]`, `graphwiki-kb[agent]`, `graphwiki-kb[pdf]`, `graphwiki-kb[wikigraph]`, `graphwiki-kb[wikigraph-eval]`, or `graphwiki-kb[all]`. The CLI entrypoint is registered as `kb`.
+This creates a local `.venv` with the development tools and optional provider/converter/export dependencies used by the full test and real-document workflows. Minimal package installs can choose extras such as `graphwiki-kb[openai]`, `graphwiki-kb[agent]`, `graphwiki-kb[pdf]`, `graphwiki-kb[wikigraph]`, `graphwiki-kb[wikigraph-eval]`, or `graphwiki-kb[all]`; the `wikigraph` extras include the NetworkX/BM25, NumPy, and tiktoken dependencies needed by the classic and LightRAG backends. The CLI entrypoint is registered as `kb`.
 
 ## GraphRAG Workspace
 
@@ -62,28 +64,26 @@ GraphWiki KB currently pins Microsoft GraphRAG to `>=3.0.9,<3.1` and supports Gr
 
 The benchmark in `eval/benchmark.yaml` now supports two complementary evaluation paths:
 
-1. `scripts/evaluate_graph_modes.py` verifies GraphRAG mode routing and the deprecated legacy FTS comparator.
-2. `scripts/evaluate_backends.py` compares WikiGraphRAG, Microsoft GraphRAG, and legacy FTS retrieval/answer rows with stricter expected entities, backend-specific expected methods, expected answer terms, forbidden answer terms, citation/reference validity, insufficient-evidence behavior, provider-mode metadata, and grounded term rates.
+1. `scripts/evaluate_rag.py` compares legacy, Microsoft GraphRAG, `wikigraph-classic`, and `wikigraph-lightrag` with rank-aware retrieval metrics plus optional provider-backed RAGAS and judge scoring.
+2. `scripts/evaluate_backends.py` remains as a thin compatibility wrapper for older `--backends ...` invocations.
 
-The three-way evaluator includes Microsoft GraphRAG as a first-class backend
-rather than comparing only WikiGraphRAG against legacy FTS. Microsoft GraphRAG
-retrieval is provider-free in the harness, while GraphRAG and legacy answer rows
-stay opt-in behind `--allow-provider-calls`.
+The evaluator includes Microsoft GraphRAG as a first-class backend rather than
+comparing only WikiGraphRAG against legacy FTS. The split WikiGraphRAG backends
+let the classic and LightRAG-style modes run side by side when both indexes are
+built. GraphRAG, legacy, and direct answer rows stay opt-in behind
+`--allow-provider-calls`.
 
 ```bash
-# Local-safe baseline: legacy find + auto-router fit, provider-backed rows skipped
-poetry run python scripts/evaluate_graph_modes.py
-
 # Local-safe cross-backend retrieval comparison
-poetry run python scripts/evaluate_backends.py --retrieval-only \
-  --backends wikigraph graphrag legacy
+poetry run python scripts/evaluate_rag.py --retrieval-only \
+  --methods legacy graphrag wikigraph-classic wikigraph-lightrag
 
 # Provider-backed answer comparison when the graph provider/API key is ready
-poetry run python scripts/evaluate_backends.py --backends wikigraph graphrag \
-  --allow-provider-calls
+poetry run python scripts/evaluate_rag.py --allow-provider-calls --ragas --judge \
+  --methods legacy graphrag wikigraph-classic wikigraph-lightrag
 ```
 
-Default/local-safe runs do not prove answer superiority: GraphRAG and legacy answer rows are skipped unless `--allow-provider-calls` is passed, while WikiGraphRAG provider-free rows are marked as provider-free diagnostics. Treat headline answer comparisons as valid only when both WikiGraphRAG and Microsoft GraphRAG have successful comparable rows. Per-question JSON artifacts are written under `eval/results/artifacts/`, which is ignored by Git.
+Default/local-safe runs do not prove answer superiority: provider answer rows are skipped unless `--allow-provider-calls` is passed, while retrieval-only rows are diagnostics for source selection and routing. Treat headline answer comparisons as valid only when WikiGraphRAG and Microsoft GraphRAG both have successful comparable provider-backed rows. Per-run outputs are written under `eval/rag_eval/`.
 
 ## Quick Start
 
@@ -242,7 +242,7 @@ Creates:
 - `vault/obsidian/` — directory for vault export
 
 Running `init` again is safe — it skips files that already exist. If an existing config file is malformed, `init` writes a timestamped `kb.config.yaml.bak.*` copy before regenerating the default file.
-The scaffold writes `kb.config.yaml` at config version 8. Older configs are migrated in place on load so deprecated fields are removed and newer sections such as `providers`, `conversion`, `graph.routing`, `agent`, `research`, `conversion.html.allow_local_file_access`, and `storage.raw_normalized_dir` are persisted automatically.
+The scaffold writes `kb.config.yaml` at config version 9. Older configs are migrated in place on load so deprecated fields are removed and newer sections such as `providers`, `conversion`, `graph.routing`, `agent`, `research`, `conversion.html.allow_local_file_access`, `storage.raw_normalized_dir`, `wikigraph.mode`, `wikigraph.lightrag`, and top-level `embeddings` are persisted automatically.
 
 ### `kb doctor`
 
@@ -320,7 +320,7 @@ The `kb graph` command group has been removed. GraphRAG setup, input sync, index
 | `kb update` | Syncs normalized sources, auto-selects the graph index action, runs GraphRAG indexing when credentials are present, records run metadata, prints the graph output path after indexing, warns on skipped missing normalized inputs or legacy search fallback, and exports graph wiki pages from complete output even when indexing is skipped. |
 | `kb update --force` | Rebuilds source pages and forces a full GraphRAG rebuild. |
 | `kb update --no-graph` | Updates the wiki and legacy index without syncing or indexing GraphRAG. |
-| `kb status` / `kb status --json` / `kb status --strict` | Includes GraphRAG workspace, input, active output directory, output-table, vector-store, freshness, last-index-run, row-count, strict-readiness, and next-action fields. |
+| `kb status` / `kb status --json` / `kb status --strict` | Includes GraphRAG workspace, input, active output directory, output-table, vector-store, freshness, last-index-run, row-count, strict-readiness, and next-action fields; in `wikigraph.mode: lightrag`, JSON also includes `wikigraph_status` and terminal output reports LightRAG tier, freshness, and graph counts. |
 | `kb ask --engine graphrag --method auto|basic|local|global|drift` | Queries Microsoft GraphRAG after method-specific readiness checks. |
 | `kb agent "..."` | Natural-language KB control plane backed by the OpenAI Agents SDK. Routes requests to `ask_kb`, `find_kb`, `status`, `lint`, `review`, `research`, `list_recommendations`, `ingest_recommendation`, and `update_kb` tools. Read-only by default; write tools require `--yes` or an interactive approval prompt. Web research uses the OpenAI Responses `web_search` tool and produces durable, numbered source recommendations under `graph/runs/agent/` without ingesting them. One-shot calls are sessionless; pass `--session ID` to share conversation state across runs. Install with `poetry install -E agent`. |
 | `kb export` | Exports the vault and refreshes `wiki/graph/` when GraphRAG output exists. |
@@ -362,19 +362,25 @@ Troubleshooting paths:
 
 Searches direct GraphRAG entity and relationship artifacts and the maintained
 wiki index, then deduplicates and ranks all candidates together so weak graph
-hits do not hide stronger wiki pages. Use
+hits do not hide stronger wiki pages. In `--engine wikigraph` mode,
+`--method auto|basic|local|global|hybrid|drift-lite` controls the
+WikiGraphRAG retrieval path, including LightRAG dual-level retrieval when
+`wikigraph.mode: lightrag` is active. Use
 `kb find --engine legacy` only when you specifically need the deprecated source-page-only
 FTS5 comparator path.
 
 ```bash
 poetry run kb find "traceability citation"
 poetry run kb find --limit 10 "agent architecture"
+poetry run kb find --engine wikigraph --method hybrid --json "REALM vs RAG"
 poetry run kb find --json "REALM vs RAG"
 ```
 
 | Option | Default | Description |
 | --- | --- | --- |
 | `--limit` | 5 | Maximum number of results to return. |
+| `--engine` | `auto` | Search `auto`, `graphrag`, `wiki`, `wikigraph`, `legacy`, or `all`. |
+| `--method` | `auto` | WikiGraphRAG retrieval method; ignored by GraphRAG artifact, wiki, and legacy search. |
 | `--json` | off | Output results as JSON for scripting. |
 
 This is non-generative navigation over the maintained wiki search index. JSON
@@ -413,13 +419,14 @@ Ask a question through the GraphRAG-aware answer controller.
 ```bash
 poetry run kb ask "How does REALM differ from RAG?"
 poetry run kb ask --method global "What are the main retrieval themes across the corpus?"
-poetry run kb ask --method drift --save "Compare RAG, REALM, FiD, Self-RAG, and GraphRAG."
+poetry run kb ask --method hybrid --save "Compare RAG, REALM, FiD, Self-RAG, and GraphRAG."
+poetry run kb ask --engine graphrag --method drift "Compare graph communities across the corpus."
 poetry run kb ask --show-source-trace "How does the graph index support source traceability?"
 ```
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--method` | `auto` | Use deterministic auto-routing or force `basic`, `local`, `global`, or `drift`. |
+| `--method` | `auto` | Use backend-specific routing or force a supported method. WikiGraphRAG supports `basic`, `local`, `global`, `hybrid`, and `drift-lite`; Microsoft GraphRAG supports `basic`, `local`, `global`, and `drift`. |
 | `--community-level` | | Forward GraphRAG's community-level option. |
 | `--dynamic-community-selection` / `--no-dynamic-selection` | GraphRAG default | Forward GraphRAG dynamic community selection behavior. |
 | `--response-type` | GraphRAG default | Forward GraphRAG's response type option when the installed entrypoint accepts it; GraphRAG Basic Search builds that omit this argument are handled automatically. |
@@ -699,17 +706,17 @@ visible-output budgets where needed. OpenAI reasoning arguments are sent only to
 known reasoning-capable model families, and configured effort names are
 validated before SDK calls. Anthropic schema-bound requests use
 `output_config.format` instead of prompt-only JSON instructions. Gemini
-preserves supported JSON Schema keys such as `additionalProperties`, recursively
-resolves local schema definitions where possible, removes unsupported keywords,
-and records a schema-transformation report whenever the provider schema is
-weakened for Gemini compatibility.
+recursively resolves local schema definitions where possible, strips unsupported
+JSON Schema keywords such as `additionalProperties`, and records a
+schema-transformation report whenever the provider schema is weakened for Gemini
+compatibility.
 
 Provider configuration lives entirely in `kb.config.yaml`. The top-level
 `provider.name` selects the active provider, and the `providers` section holds
 the built-in settings for `openai`, `anthropic`, and `gemini`:
 
 ```yaml
-version: 8
+version: 9
 provider:
   name: openai
 providers:
@@ -727,6 +734,23 @@ providers:
     model: gemini-2.5-flash
     api_key_env: GEMINI_API_KEY
     reasoning_effort: high
+wikigraph:
+  mode: classic
+  lightrag:
+    chunk_token_size: 1200
+    chunk_overlap_tokens: 100
+    extraction:
+      extractor: deterministic
+    retrieval:
+      default_method: hybrid
+    embeddings:
+      required_for_strict_lightrag: true
+      local_fallback: bm25
+embeddings:
+  provider: openai
+  model: text-embedding-3-large
+  dimension: 3072
+  api_key_env: null
 conversion:
   mistral_ocr:
     model: mistral-ocr-latest

@@ -36,6 +36,8 @@ pyarrow = ">=16,<23"
 networkx = { version = "^3.2", optional = true }
 bm25s = { version = "^0.2", optional = true }
 scikit-learn = { version = "^1.4", optional = true }
+numpy = { version = "^2.4", optional = true }
+tiktoken = { version = "^0.12", optional = true }
 
 [tool.poetry.extras]
 openai = ["openai"]
@@ -47,8 +49,8 @@ markitdown = ["markitdown"]
 mistral = ["mistralai"]
 html = ["pdfkit", "xhtml2pdf"]
 pdf = ["docling", "markitdown", "mistralai", "pdfkit", "xhtml2pdf"]
-wikigraph = ["networkx", "bm25s"]
-wikigraph-eval = ["networkx", "bm25s", "scikit-learn"]
+wikigraph = ["networkx", "bm25s", "numpy", "tiktoken"]
+wikigraph-eval = ["networkx", "bm25s", "scikit-learn", "numpy", "tiktoken"]
 all = [
 	"anthropic",
 	"docling",

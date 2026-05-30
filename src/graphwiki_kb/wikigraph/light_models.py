@@ -202,6 +202,8 @@ class LightGraphBuildReport(BaseModel):
     reprocessed_source_count: int = 0
     embedding_model: str = ""
     embedding_dimension: int = 0
+    embedding_tier: Literal["strict", "fallback"] = "fallback"
+    embedding_tier_reason: str = ""
     incremental: bool = False
     extraction_cache_hits: int = 0
     extraction_cache_misses: int = 0

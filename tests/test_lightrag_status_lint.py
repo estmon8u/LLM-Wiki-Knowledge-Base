@@ -57,6 +57,7 @@ def test_status_reports_fresh_lightrag_index(tmp_path: Path) -> None:
     assert status["fresh"] is True
     assert status["chunk_count"] >= 1
     assert status["embedding_model"] == "bm25-fallback"
+    assert status["embedding_tier"] == "fallback"
     assert status["provider_required"] is True
 
 

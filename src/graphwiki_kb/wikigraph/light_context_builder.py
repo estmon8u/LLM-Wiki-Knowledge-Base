@@ -310,6 +310,15 @@ class LightRetriever:
             self.diagnostics.append(f"query embedding failed, using BM25: {exc}")
             self._embeddings_ready = False
             return None
+        if not query_vector or (
+            store.dimension > 0 and len(query_vector) != store.dimension
+        ):
+            self.diagnostics.append(
+                "query embedding dimension mismatch, using BM25: "
+                f"expected {store.dimension}, got {len(query_vector) if query_vector else 0}"
+            )
+            self._embeddings_ready = False
+            return None
         return store.search(query_vector, top_k)
 
     def _budget_chunks(self, chunks: list[LightChunk]) -> list[LightChunk]:

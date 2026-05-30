@@ -118,6 +118,8 @@ def test_strict_tier_has_provider_extraction_and_vectors(tmp_path: Path) -> None
         tokenizer=RegexWordTokenizer(),
     )
     assert report.tier == "provider+embedded"
+    assert report.embedding_tier == "strict"
+    assert store.load_build_manifest()["embedding_tier"] == "strict"
     assert store.load_entity_vectors() is not None
     assert store.load_relation_vectors() is not None
 
@@ -135,6 +137,8 @@ def test_fallback_tier_is_deterministic_bm25(tmp_path: Path) -> None:
         tokenizer=RegexWordTokenizer(),
     )
     assert report.tier == "fallback+bm25"
+    assert report.embedding_tier == "fallback"
+    assert store.load_build_manifest()["embedding_tier"] == "fallback"
     assert store.load_entity_vectors() is None
 
 

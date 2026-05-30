@@ -730,8 +730,8 @@ def test_gemini_provider_uses_thinking_level_for_gemini_3_models() -> None:
     assert call_kwargs["config"].thinking_config.thinking_budget is None
 
 
-def test_gemini_response_schema_preserves_additional_properties() -> None:
-    """Verifies current Gemini JSON Schema support preserves object strictness."""
+def test_gemini_response_schema_removes_additional_properties() -> None:
+    """Gemini rejects additionalProperties, so object strictness is weakened."""
     from graphwiki_kb.providers.gemini_provider import (
         _gemini_response_schema,
         _gemini_response_schema_with_report,
@@ -755,10 +755,25 @@ def test_gemini_response_schema_preserves_additional_properties() -> None:
     converted = _gemini_response_schema(schema)
     converted_with_report, report = _gemini_response_schema_with_report(schema)
 
-    assert converted == schema
-    assert converted_with_report == schema
-    assert report.removed_keywords == ()
-    assert report.weakened is False
+    expected = {
+        "type": "object",
+        "properties": {
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {"name": {"type": "string"}},
+                },
+            }
+        },
+    }
+    assert converted == expected
+    assert converted_with_report == expected
+    assert report.removed_keywords == (
+        "$.additionalProperties",
+        "$.properties.items.items.additionalProperties",
+    )
+    assert report.weakened is True
 
 
 def test_gemini_response_schema_removes_unsupported_keywords() -> None:
@@ -793,8 +808,8 @@ def test_gemini_response_schema_removes_unsupported_keywords() -> None:
     assert "$.properties.name.pattern" in report.removed_keywords
 
 
-def test_gemini_provider_sends_strict_schema_without_downgrade_warning(caplog) -> None:
-    """Verifies Gemini receives current strict JSON Schema payloads."""
+def test_gemini_provider_removes_strict_schema_with_downgrade_warning(caplog) -> None:
+    """Verifies Gemini receives only the provider-supported schema subset."""
     with patch.dict("os.environ", {"GEMINI_API_KEY": "test"}):
         with patch("graphwiki_kb.providers.gemini_provider.genai") as mock_genai:
             from graphwiki_kb.providers.gemini_provider import GeminiProvider
@@ -819,11 +834,8 @@ def test_gemini_provider_sends_strict_schema_without_downgrade_warning(caplog) -
     call_kwargs = (
         mock_genai.Client.return_value.models.generate_content.call_args.kwargs
     )
-    assert call_kwargs["config"].response_schema == {
-        "type": "object",
-        "additionalProperties": False,
-    }
-    assert "weakened" not in caplog.text
+    assert call_kwargs["config"].response_schema == {"type": "object"}
+    assert "weakened" in caplog.text
 
 
 def test_gemini_provider_generate_without_system_prompt() -> None:

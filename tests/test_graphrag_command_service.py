@@ -757,6 +757,67 @@ def test_run_query_entrypoint_preserves_zero_community_level(
     assert "dynamic_community_selection" not in calls
 
 
+def test_run_query_entrypoint_defaults_required_dynamic_selection(
+    monkeypatch,
+    test_project,
+) -> None:
+    """Regression: newer global search entrypoints require this flag."""
+    calls = {}
+    graph_module = types.ModuleType("graphrag")
+    cli_module = types.ModuleType("graphrag.cli")
+    query_module = types.ModuleType("graphrag.cli.query")
+
+    def fake_global_search(
+        *,
+        config_filepath,
+        data_dir,
+        root_dir,
+        query,
+        verbose,
+        community_level,
+        response_type,
+        dynamic_community_selection,
+    ):
+        calls.update(
+            {
+                "config_filepath": config_filepath,
+                "data_dir": data_dir,
+                "root_dir": root_dir,
+                "query": query,
+                "verbose": verbose,
+                "community_level": community_level,
+                "response_type": response_type,
+                "dynamic_community_selection": dynamic_community_selection,
+            }
+        )
+        return "answer"
+
+    query_module.run_basic_search = fake_global_search
+    query_module.run_drift_search = fake_global_search
+    query_module.run_global_search = fake_global_search
+    query_module.run_local_search = fake_global_search
+    cli_module.query = query_module
+    graph_module.cli = cli_module
+    monkeypatch.setitem(sys.modules, "graphrag", graph_module)
+    monkeypatch.setitem(sys.modules, "graphrag.cli", cli_module)
+    monkeypatch.setitem(sys.modules, "graphrag.cli.query", query_module)
+
+    result = command_module._run_query_entrypoint(
+        workspace_dir=test_project.paths.graph_dir / "graphrag",
+        data_dir=test_project.paths.graph_dir / "graphrag" / "output",
+        method="global",
+        community_level=None,
+        dynamic_community_selection=None,
+        response_type=None,
+        streaming=False,
+        question="What is RAG?",
+        verbose=False,
+    )
+
+    assert result == "answer"
+    assert calls["dynamic_community_selection"] is False
+
+
 def test_run_query_entrypoint_defaults_response_type_for_basic(
     monkeypatch,
     test_project,

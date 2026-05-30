@@ -218,6 +218,54 @@ def test_gemini_embedding_provider_embeds(
     assert provider.embed_texts([]) == []
 
 
+def test_gemini_embedding_provider_chunks_large_batches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from graphwiki_kb.providers import gemini_embedding
+
+    calls: list[list[str]] = []
+
+    class _FakeEmbeddingObj:
+        def __init__(self, values: list[float]) -> None:
+            self.values = values
+
+    class _FakeResponse:
+        def __init__(self, embeddings: list[_FakeEmbeddingObj]) -> None:
+            self.embeddings = embeddings
+
+    class _FakeModels:
+        def embed_content(self, *, model: str, contents: list[str], config: Any) -> Any:
+            calls.append(list(contents))
+            embeddings = [
+                _FakeEmbeddingObj([float(text.removeprefix("t")), 1.0])
+                for text in contents
+            ]
+            return _FakeResponse(embeddings)
+
+    class _FakeGenaiClient:
+        def __init__(self, *, api_key: str) -> None:
+            self.models = _FakeModels()
+
+    class _FakeGenai:
+        Client = _FakeGenaiClient
+
+    monkeypatch.setenv("GEMINI_API_KEY", "g-test")
+    monkeypatch.setattr(gemini_embedding, "genai", _FakeGenai)
+
+    cfg = deepcopy(DEFAULT_CONFIG)
+    cfg["embeddings"]["provider"] = "gemini"
+    cfg["embeddings"]["model"] = "gemini-embedding-001"
+    cfg["embeddings"]["dimension"] = 2
+    provider = build_embedding_provider(cfg)
+    assert provider is not None
+
+    vectors = provider.embed_texts([f"t{i}" for i in range(205)])
+
+    assert [len(call) for call in calls] == [100, 100, 5]
+    assert vectors[0] == [0.0, 1.0]
+    assert vectors[204] == [204.0, 1.0]
+
+
 def test_gemini_missing_api_key_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     cfg = deepcopy(DEFAULT_CONFIG)

@@ -44,6 +44,10 @@ truth are excluded from these averages (not scored 0).
 automatic and fair: context-dependent metrics are skipped for the no-retrieval
 `direct` backend, and reference-dependent metrics are skipped when a question
 has no reference answer.
+RAGAS scoring can use OpenAI or Gemini through `--ragas-provider`; pair it with
+`--ragas-model`, `--ragas-embedding-model`, `--ragas-embedding-dimension`, and
+`--ragas-api-key-env` when the scoring provider differs from the project
+generator.
 
 **Generation (deterministic, anti-gaming)** — `citation_validity` (against the
 *returned* contexts), `grounded`, `refusal_correct` (rewards correct refusal on
@@ -74,7 +78,8 @@ insufficient-evidence questions), `token_f1`/`rouge_l` vs the reference, and
 ## RAGAS dependency note
 
 `ragas` is a normal project dependency (`^0.2.0`). It pulls the LangChain stack
-and required relaxing two pins (`rich` 15→14, `tenacity` 9→8; `openai` 2 kept).
+and required relaxing two pins (`rich >=13.7,<16`, `tenacity >=8.2.3,<10`;
+`openai` 2.x kept).
 A tiny import-time shim (`scripts/rag_eval/_compat.py`) stubs the removed
 `langchain_community.chat_models.vertexai.ChatVertexAI` (an unused VertexAI
 wrapper) so `import ragas` succeeds in this environment.
@@ -91,6 +96,8 @@ Provider/LLM-judge/RAGAS calls are gated behind `--allow-provider-calls` so the
 deterministic retrieval layer stays offline and reproducible. `--seed` and a
 fixed bootstrap make aggregation deterministic. The benchmark
 (`eval/benchmark.yaml`, schema v4) carries `reference_answer` and
-`expected_source_ids`; `eval/benchmark_synthesis.yaml` adds cross-corpus
-(3+ source) synthesis questions.
+`expected_source_ids`, plus backend-specific `expected_methods` for
+`graphrag`, `wikigraph-classic`, and `wikigraph-lightrag`;
+`eval/benchmark_synthesis.yaml` adds cross-corpus (3+ source) synthesis
+questions.
 ```

@@ -473,6 +473,8 @@ class WikiGraphIndexService:
             "fresh": not stale_reasons,
             "built_at": index.built_at if index else "",
             "tier": index.tier if index else "",
+            "embedding_tier": str(manifest.get("embedding_tier", "fallback")),
+            "embedding_tier_reason": str(manifest.get("embedding_tier_reason", "")),
             "source_count": len(sources),
             "chunk_count": index.chunk_count if index else 0,
             "entity_count": index.entity_count if index else 0,

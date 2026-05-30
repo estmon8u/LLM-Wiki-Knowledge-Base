@@ -106,6 +106,67 @@ def test_leaderboard_markdown(tmp_path: Path) -> None:
     assert "recall_at_k" in text and "wikigraph" in text and "caveat" in text
 
 
+def test_evaluate_backends_wrapper_translates_backends(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import scripts.evaluate_backends as wrapper
+
+    seen = {}
+
+    def _fake_run_eval(args) -> int:
+        seen["methods"] = args.methods
+        seen["retrieval_only"] = args.retrieval_only
+        seen["results_dir"] = args.results_dir
+        return 0
+
+    monkeypatch.setattr(wrapper, "run_eval", _fake_run_eval)
+
+    code = wrapper.main(
+        [
+            "--backends",
+            "wikigraph-classic",
+            "wikigraph-lightrag",
+            "--retrieval-only",
+            "--results-dir",
+            str(tmp_path),
+        ]
+    )
+
+    assert code == 0
+    assert seen == {
+        "methods": ["wikigraph-classic", "wikigraph-lightrag"],
+        "retrieval_only": True,
+        "results_dir": tmp_path,
+    }
+
+
+def test_rag_eval_parser_accepts_gemini_ragas_options() -> None:
+    from scripts.rag_eval.cli import build_parser
+
+    args = build_parser().parse_args(
+        [
+            "--allow-provider-calls",
+            "--ragas",
+            "--ragas-provider",
+            "gemini",
+            "--ragas-model",
+            "gemini-3.1-flash-lite-preview",
+            "--ragas-embedding-model",
+            "gemini-embedding-001",
+            "--ragas-embedding-dimension",
+            "768",
+            "--ragas-api-key-env",
+            "GEMINI_API_KEY",
+        ]
+    )
+
+    assert args.ragas_provider == "gemini"
+    assert args.ragas_model == "gemini-3.1-flash-lite-preview"
+    assert args.ragas_embedding_model == "gemini-embedding-001"
+    assert args.ragas_embedding_dimension == 768
+    assert args.ragas_api_key_env == "GEMINI_API_KEY"
+
+
 # --------------------------------------------------------------------------- #
 # Retrieval-only end-to-end (offline; classic wikigraph + legacy)             #
 # --------------------------------------------------------------------------- #

@@ -72,6 +72,8 @@ questions:
   - generation
   expected_methods:
     wikigraph: drift-lite
+    wikigraph-classic: drift-lite
+    wikigraph-lightrag: hybrid
     graphrag: drift
   reference_answer: REALM jointly pre-trains a neural retriever with a masked language model end-to-end,
     backpropagating through retrieval over the whole corpus, whereas RAG combines a (largely pre-trained)
@@ -97,6 +99,8 @@ questions:
   - generation
   expected_methods:
     wikigraph: local
+    wikigraph-classic: local
+    wikigraph-lightrag: local
     graphrag: local
   reference_answer: Fusion-in-Decoder (FiD) encodes each retrieved passage independently together with
     the question in the encoder, then concatenates all passage representations so the decoder can attend
@@ -122,6 +126,8 @@ questions:
   - passages
   expected_methods:
     wikigraph: local
+    wikigraph-classic: local
+    wikigraph-lightrag: local
     graphrag: local
   reference_answer: Dense Passage Retrieval (DPR) uses a BERT dual-encoder to embed questions and passages
     into dense vectors and retrieves by maximum inner-product search; it supplies the relevant passages
@@ -146,6 +152,8 @@ questions:
   - decoder
   expected_methods:
     wikigraph: drift-lite
+    wikigraph-classic: drift-lite
+    wikigraph-lightrag: hybrid
     graphrag: drift
   reference_answer: RAG marginalizes a seq2seq generator over a handful of retrieved documents (per-token
     or per-sequence), while FiD encodes many retrieved passages separately and fuses them only in the
@@ -174,6 +182,8 @@ questions:
   - retriever
   expected_methods:
     wikigraph: global
+    wikigraph-classic: global
+    wikigraph-lightrag: global
     graphrag: global
   reference_answer: Across the corpus the recurring pattern is a retriever (sparse BM25 or dense dual-encoders
     such as DPR) supplying external passages to a generator or LM, with systems differing in whether the
@@ -201,6 +211,8 @@ questions:
   - evidence
   expected_methods:
     wikigraph: global
+    wikigraph-classic: global
+    wikigraph-lightrag: global
     graphrag: global
   reference_answer: The corpus reduces hallucination by grounding generation in retrieved evidence and
     adding mechanisms such as self-reflection and critique tokens that decide when to retrieve and verify
@@ -226,6 +238,8 @@ questions:
   - retrieval
   expected_methods:
     wikigraph: local
+    wikigraph-classic: local
+    wikigraph-lightrag: local
     graphrag: local
   reference_answer: Self-RAG trains a single LM to emit reflection tokens that decide on demand whether
     to retrieve and critique tokens that assess whether retrieved passages are relevant and whether the
@@ -249,6 +263,8 @@ questions:
   - global
   expected_methods:
     wikigraph: drift-lite
+    wikigraph-classic: drift-lite
+    wikigraph-lightrag: hybrid
     graphrag: drift
   reference_answer: Microsoft GraphRAG supports local search (entity-centric, drilling into a specific
     entity's neighborhood), global search (map-reduce over community summaries for whole-corpus or thematic
@@ -274,6 +290,8 @@ questions:
   - pretrain
   expected_methods:
     wikigraph: local
+    wikigraph-classic: local
+    wikigraph-lightrag: local
     graphrag: local
   reference_answer: ORQA pre-trains its retriever with the Inverse Cloze Task (ICT), treating a sentence
     as a pseudo-question and its surrounding context as the passage to retrieve, an unsupervised signal
@@ -297,6 +315,8 @@ questions:
   - language model
   expected_methods:
     wikigraph: local
+    wikigraph-classic: local
+    wikigraph-lightrag: local
     graphrag: local
   reference_answer: REPLUG treats the language model as a frozen black box, prepends retrieved documents
     to the input, and ensembles the LM's output distributions over separately retrieved documents; it
@@ -321,6 +341,8 @@ questions:
   - in-context
   expected_methods:
     wikigraph: local
+    wikigraph-classic: local
+    wikigraph-lightrag: local
     graphrag: local
   reference_answer: In-Context RALM keeps the LM frozen and simply prepends retrieved documents to the
     input context at inference time, optionally re-ranking which document to include and retrieving periodically
@@ -343,6 +365,8 @@ questions:
   - few-shot
   expected_methods:
     wikigraph: local
+    wikigraph-classic: local
+    wikigraph-lightrag: local
     graphrag: local
   reference_answer: Atlas pairs a Fusion-in-Decoder generator with a learned dense retriever and jointly
     trains them, making the system sample-efficient and achieving strong few-shot performance on knowledge-intensive
@@ -366,6 +390,8 @@ questions:
   - global
   expected_methods:
     wikigraph: local
+    wikigraph-classic: local
+    wikigraph-lightrag: local
     graphrag: local
   reference_answer: Microsoft GraphRAG builds an entity knowledge graph, detects hierarchical communities,
     and pre-generates LLM summaries for each community; for a global query it map-reduces over these community
@@ -390,6 +416,8 @@ questions:
   - cannot determine
   expected_methods:
     wikigraph: basic
+    wikigraph-classic: basic
+    wikigraph-lightrag: basic
     graphrag: basic
   insufficient_evidence_expected: true
   forbidden_answer_terms:
@@ -402,4 +430,6 @@ notes:
 - This benchmark targets the 10-paper arXiv corpus listed under `corpus:` and is paper-name-driven.
 - For comparison/global questions, expected_sources are real paper slug fragments so both backends can
   be scored fairly.
+- Backend-specific expected_methods distinguish `wikigraph-classic` drift-lite routing from
+  `wikigraph-lightrag` hybrid routing so LightRAG hybrid is not mislabeled as DRIFT-lite.
 - Provider-backed answers run via `kb ask --engine {wikigraph|graphrag}` and require `OPENAI_API_KEY`.

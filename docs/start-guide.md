@@ -140,8 +140,10 @@ index used by `kb find`, and refreshes the deprecated legacy comparator index.
 only through `kb find/ask --engine legacy`. WikiGraphRAG build defaults live in
 the typed `wikigraph` config section, optional NetworkX-backed dependencies load
 lazily, and `--export-wikigraph-artifacts` writes generated entity, community,
-and chunk cards under `wiki/wikigraph/` without allowing those generated cards
-to feed back into the next graph build. Unless `--no-wikigraph-normalized-text`
+chunk, and TextUnit cards under `wiki/wikigraph/` in classic mode, or entity,
+relation, source-chunk, index, and diagnostics pages in LightRAG mode, without
+allowing those generated cards to feed back into the next graph build. Unless
+`--no-wikigraph-normalized-text`
 or config disables it, WikiGraphRAG creates source-document and TextUnit nodes
 from `raw/normalized/`, persists `documents.json` and `text_units.json`, and
 reports the included document and TextUnit counts in the update summary.

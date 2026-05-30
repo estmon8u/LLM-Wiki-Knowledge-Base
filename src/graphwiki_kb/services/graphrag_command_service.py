@@ -24,8 +24,12 @@ StatusCallback = Callable[[str], None] | None
 MAX_PROGRESS_LABEL_LENGTH = 120
 DEFAULT_QUERY_RESPONSE_TYPE = "Multiple Paragraphs"
 DEFAULT_QUERY_COMMUNITY_LEVEL = 2
+# GraphRAG's Python entrypoints add required kwargs over time. These defaults
+# keep our adapter explicit and stable when callers intentionally leave a
+# tri-state CLI option unset.
 _KNOWN_GRAPHRAG_ENTRYPOINT_DEFAULTS: dict[str, Any] = {
     "config_filepath": None,
+    "dynamic_community_selection": False,
     "memprofile": False,
     "output_dir": None,
     "streaming": False,

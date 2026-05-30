@@ -34,13 +34,15 @@ _SUPPORTED_SCHEMA_TYPES = {
     "array",
     "null",
 }
+# Keep this allowlist deliberately narrow. Gemini's schema dialect is not full
+# JSON Schema; unsupported keys such as additionalProperties are stripped and
+# reported so callers still get native structured output where the API accepts it.
 _SUPPORTED_SCHEMA_KEYS = {
     "type",
     "title",
     "description",
     "properties",
     "required",
-    "additionalProperties",
     "enum",
     "format",
     "minimum",
@@ -247,17 +249,6 @@ def _normalize_gemini_schema(
                 for index, item in enumerate(value)
                 if isinstance(item, (dict, bool))
             ]
-        elif key == "additionalProperties" and isinstance(value, (dict, bool)):
-            normalized[key] = (
-                _normalize_gemini_schema(
-                    value,
-                    root=root,
-                    removed=removed,
-                    path=f"{path}.additionalProperties",
-                )
-                if isinstance(value, dict)
-                else value
-            )
         else:
             normalized[key] = deepcopy(value)
     return normalized

@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
+import graphwiki_kb.wikigraph.light_index_builder as light_index_builder
 from graphwiki_kb.models.source_models import RawSourceRecord
 from graphwiki_kb.services.config_service import (
     DEFAULT_CONFIG,
@@ -123,6 +124,45 @@ def test_incremental_reuses_unchanged_and_embeds_only_changed(tmp_path: Path) ->
     # Embedding reuse: the incremental build embeds fewer texts than a full
     # build because s1's unchanged profiles reuse their previous vectors.
     assert len(emb2.embedded_texts) < first_embed_count
+
+
+def test_incremental_replays_unchanged_chunks_without_extractor(
+    tmp_path: Path, monkeypatch
+) -> None:
+    s1 = _source(tmp_path, "s1", "dpr", "Dense Passage Retrieval dual encoder.", "h1")
+    s2 = _source(
+        tmp_path, "s2", "realm", "REALM retrieval augmented pretraining.", "h2"
+    )
+    store = _store(tmp_path)
+    _build(tmp_path, store, [s1, s2], _CountingEmbedder())
+    prev_index = store.load()
+    prev_e = store.load_entity_vectors()
+    prev_r = store.load_relation_vectors()
+
+    calls: list[list[str]] = []
+    original = light_index_builder.run_extraction
+
+    def _counting_run(chunks, *args, **kwargs):
+        calls.append([chunk.source_id for chunk in chunks])
+        return original(chunks, *args, **kwargs)
+
+    monkeypatch.setattr(light_index_builder, "run_extraction", _counting_run)
+    s2v2 = _source(
+        tmp_path, "s2", "realm", "REALM updated retrieval method here now.", "h2v2"
+    )
+    second = _build(
+        tmp_path,
+        store,
+        [s1, s2v2],
+        _CountingEmbedder(),
+        previous_index=prev_index,
+        prev_e=prev_e,
+        prev_r=prev_r,
+    )
+
+    assert calls == [["s2"]]
+    assert second.extraction_cache_hits == 0
+    assert second.extraction_cache_misses == 1
 
 
 def test_incremental_missing_source_flagged_not_deleted(tmp_path: Path) -> None:

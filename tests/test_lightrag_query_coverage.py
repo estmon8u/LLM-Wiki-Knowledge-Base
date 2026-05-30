@@ -69,6 +69,7 @@ def _index() -> LightGraphIndex:
             id="entity:dpr",
             canonical_name="Dense Passage Retrieval",
             type="METHOD",
+            aliases=["DPR"],
             chunk_ids=["chunk-0", "chunk-1"],
             embedding_text="Dense Passage Retrieval dense retriever",
         ),
@@ -154,6 +155,37 @@ def test_vector_search_failure_falls_back_to_bm25() -> None:
     )
     # Falls back; diagnostics record the failure.
     assert any("BM25" in d for d in bundle.diagnostics)
+    assert bundle.entities
+
+
+def test_vector_search_dimension_mismatch_falls_back_to_bm25() -> None:
+    idx = _index()
+
+    class _WrongDimEmbedder:
+        name = "x"
+        model_name = "x"
+        dimension = 3
+
+        def embed_texts(self, texts: list[str]) -> list[list[float]]:
+            return [[1.0, 0.0, 0.0] for _ in texts]
+
+    vectors = LightVectorStore.from_embeddings(
+        ["entity:rag", "entity:dpr"], [[1.0, 0.0], [0.0, 1.0]], model="m", dimension=2
+    )
+    retriever = LightRetriever(
+        entities=idx.entities,
+        relations=idx.relations,
+        chunks=idx.chunks,
+        config=_CFG,
+        entity_vectors=vectors,
+        embedding_provider=_WrongDimEmbedder(),
+    )
+
+    bundle = retriever.retrieve(
+        "dpr", QueryKeywords(low_level_keywords=["Dense Passage Retrieval"]), "local"
+    )
+
+    assert any("dimension mismatch" in d for d in bundle.diagnostics)
     assert bundle.entities
 
 

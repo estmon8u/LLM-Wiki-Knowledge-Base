@@ -252,6 +252,9 @@ def create_command(
                     f"Relations: {wg.get('relation_count', 0)}"
                 )
                 console.print(f"  Embedding model: {wg.get('embedding_model')}")
+                console.print(
+                    f"  Embedding tier: {wg.get('embedding_tier', 'fallback')}"
+                )
                 stale_reasons = wg.get("stale_reasons") or []
                 for reason in stale_reasons:
                     console.print(f"  [yellow]stale: {reason}[/yellow]")

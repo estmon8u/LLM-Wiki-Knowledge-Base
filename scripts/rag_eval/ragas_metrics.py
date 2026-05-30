@@ -1,7 +1,7 @@
 """RAGAS metric scoring via the real ``ragas`` library (provider-backed).
 
 Computes faithfulness, answer relevancy, context precision, and context recall
-using ``ragas`` (0.2.x ``evaluate`` API) with the OpenAI provider. Metric
+using ``ragas`` (0.2.x ``evaluate`` API) with a LangChain provider. Metric
 selection is automatic:
 
 * ``answer_relevancy`` — always (needs question + answer + embeddings).
@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 import scripts.rag_eval._compat  # noqa: F401 - install ragas import shims first
 
@@ -39,8 +40,10 @@ class RagasItem:
 class RagasConfig:
     """RAGAS LLM/embedding configuration."""
 
+    provider: str = "openai"
     model: str = "gpt-5.4-nano"
     embedding_model: str = "text-embedding-3-large"
+    embedding_dimension: int = 0
     api_key_env: str = "OPENAI_API_KEY"
     metrics: tuple[str, ...] = (
         "faithfulness",
@@ -89,10 +92,7 @@ class RagasScorer:
     ) -> dict[str, dict[str, float]]:  # pragma: no cover - exercised in the real run
         import math
 
-        from langchain_openai import ChatOpenAI, OpenAIEmbeddings
         from ragas import EvaluationDataset, SingleTurnSample, evaluate
-        from ragas.embeddings import LangchainEmbeddingsWrapper
-        from ragas.llms import LangchainLLMWrapper
         from ragas.metrics import (
             answer_relevancy,
             context_precision,
@@ -107,12 +107,7 @@ class RagasScorer:
             "context_recall": context_recall,
         }
         api_key = os.environ.get(self.config.api_key_env, "")
-        llm = LangchainLLMWrapper(
-            ChatOpenAI(model=self.config.model, api_key=api_key, temperature=0)
-        )
-        embeddings = LangchainEmbeddingsWrapper(
-            OpenAIEmbeddings(model=self.config.embedding_model, api_key=api_key)
-        )
+        llm, embeddings = self._build_langchain_models(api_key)
         selected = [metric_objects[name] for name in metrics]
         samples = [
             SingleTurnSample(
@@ -139,3 +134,42 @@ class RagasScorer:
                         scores[name] = float(value)
             out[item.question_id] = scores
         return out
+
+    def _build_langchain_models(self, api_key: str):
+        from ragas.embeddings import LangchainEmbeddingsWrapper
+        from ragas.llms import LangchainLLMWrapper
+
+        provider = self.config.provider.strip().lower()
+        if provider == "openai":
+            from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+
+            llm = ChatOpenAI(model=self.config.model, api_key=api_key, temperature=0)
+            embeddings = OpenAIEmbeddings(
+                model=self.config.embedding_model,
+                api_key=api_key,
+            )
+            return LangchainLLMWrapper(llm), LangchainEmbeddingsWrapper(embeddings)
+
+        if provider == "gemini":
+            from langchain_google_genai import (
+                ChatGoogleGenerativeAI,
+                GoogleGenerativeAIEmbeddings,
+            )
+
+            llm = ChatGoogleGenerativeAI(
+                model=self.config.model,
+                api_key=api_key,
+                temperature=0,
+            )
+            embedding_kwargs: dict[str, Any] = {
+                "model": self.config.embedding_model,
+                "api_key": api_key,
+            }
+            if self.config.embedding_dimension > 0:
+                embedding_kwargs["output_dimensionality"] = (
+                    self.config.embedding_dimension
+                )
+            embeddings = GoogleGenerativeAIEmbeddings(**embedding_kwargs)
+            return LangchainLLMWrapper(llm), LangchainEmbeddingsWrapper(embeddings)
+
+        raise ValueError(f"Unsupported RAGAS provider: {self.config.provider}")

@@ -21,7 +21,7 @@ In GraphWiki terms:
 
 ```
 normalized source chunks
-  → LLM-extracted entities/relations (cached, structured)
+  → LLM-extracted entities/relations (cached, structured; unchanged chunks replay from the previous index)
   → deduped canonical profiles (acronym/alias/fuzzy merge, provenance preserved)
   → vector retrieval over entity & relation profiles (+ chunk BM25)
   → source-chunk citations
@@ -39,7 +39,7 @@ graph/wikigraph/lightrag/
 ├─ entity_vectors.json     # entity embedding vectors (omitted in BM25 fallback)
 ├─ relation_vectors.json   # relation embedding vectors (omitted in BM25 fallback)
 ├─ source_contributions.json
-├─ build_manifest.json     # freshness digest + missing-source flags
+├─ build_manifest.json     # freshness digest + embedding_tier + missing-source flags
 └─ extraction_cache/<key>.json
 ```
 
@@ -92,8 +92,11 @@ embeddings:
   extraction + BM25 retrieval. Runs are labeled `bm25-fallback`; this is **not**
   strict LightRAG and is intended for local-safe use and tests.
 
-The build report and `kb status` surface the active tier (e.g.
-`provider+embedded`, `fallback+bm25`).
+The build report and `kb status` surface both the overall execution tier (for
+example `provider+embedded`, `fallback+bm25`) and the persisted embedding tier
+(`strict` or `fallback`). Incremental LightRAG builds reuse unchanged chunks by
+replaying their previous extracted entity/relation rows, so unchanged sources do
+not depend on extraction-cache hits to avoid extractor work.
 
 ## CLI
 
@@ -128,9 +131,9 @@ Backends (including `wikigraph` with `--wikigraph-method local|global|hybrid`) a
 
 ```bash
 python scripts/evaluate_rag.py --retrieval-only \
-    --methods direct legacy graphrag wikigraph
+    --methods legacy graphrag wikigraph-classic wikigraph-lightrag
 python scripts/evaluate_rag.py --allow-provider-calls --ragas --judge \
-    --methods direct legacy graphrag wikigraph
+    --methods direct legacy graphrag wikigraph-classic wikigraph-lightrag
 ```
 
 See [docs/rag_evaluation.md](rag_evaluation.md) for metrics (rank-aware retrieval, RAGAS, anti-gaming generation, bias-mitigated judge) and the fairness/contamination methodology.

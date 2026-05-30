@@ -42,6 +42,8 @@ from graphwiki_kb.wikigraph.light_extractor import (
 from graphwiki_kb.wikigraph.light_graph_store import LightGraphStore
 from graphwiki_kb.wikigraph.light_models import (
     EntityProfile,
+    ExtractedEntity,
+    ExtractedRelation,
     LightChunk,
     LightGraphBuildReport,
     LightGraphIndex,
@@ -169,24 +171,33 @@ def build_lightgraph_index(
         chunks = [*reused_chunks, *fresh_chunks]
     else:
         reused_ids = set()
+        reused_chunks = []
         reprocessed_ids = {source.source_id for source in sources}
-        chunks = build_light_chunks(
+        fresh_chunks = build_light_chunks(
             root,
             sources,
             tokenizer=tok,
             chunk_token_size=lightrag_config.chunk_token_size,
             overlap_tokens=lightrag_config.chunk_overlap_tokens,
         )
+        chunks = fresh_chunks
 
     cache = ExtractionCache(store.paths.extraction_cache_dir)
     run = run_extraction(
-        chunks,
+        fresh_chunks,
         config=extraction_config,
         provider=provider,
         provider_identity=provider_identity,
         cache=cache,
         prompt_hash=prompt_hash,
     )
+    if incremental and reused_chunks and previous_index is not None:
+        replay_entities, replay_relations = _replay_extraction_from_previous_index(
+            previous_index=previous_index,
+            reused_chunks=reused_chunks,
+        )
+        run.entities = [*replay_entities, *run.entities]
+        run.relations = [*replay_relations, *run.relations]
 
     entity_profiles, relation_profiles = dedupe_entities_and_relations(
         run.entities,
@@ -220,8 +231,19 @@ def build_lightgraph_index(
         )
     )
 
-    embedding_tier = "embedded" if embed_ok else "bm25"
-    tier = f"{run.tier}+{embedding_tier}"
+    embedding_mode = "embedded" if embed_ok else "bm25"
+    embedding_tier = "strict" if embed_ok else "fallback"
+    if embed_ok:
+        embedding_tier_reason = (
+            f"{embeddings_config.provider}:{embeddings_config.model} embeddings active"
+        )
+    elif embedding_provider is None:
+        embedding_tier_reason = "BM25 fallback (no embedding provider configured)"
+    else:
+        embedding_tier_reason = (
+            embed_warnings[-1] if embed_warnings else "BM25 fallback active"
+        )
+    tier = f"{run.tier}+{embedding_mode}"
     embedding_model = embeddings_config.model if embed_ok else ""
     embedding_dimension = embeddings_config.dimension if embed_ok else 0
 
@@ -260,6 +282,8 @@ def build_lightgraph_index(
         "embedding_provider": embeddings_config.provider if embed_ok else "bm25",
         "embedding_model": embedding_model,
         "embedding_dimension": embedding_dimension,
+        "embedding_tier": embedding_tier,
+        "embedding_tier_reason": embedding_tier_reason,
         "embedding_identity": index.embedding_identity,
         "index_schema_version": 1,
         "tier": tier,
@@ -303,6 +327,8 @@ def build_lightgraph_index(
         missing_source_ids=plan.missing_source_ids,
         embedding_model=embedding_model,
         embedding_dimension=embedding_dimension,
+        embedding_tier=embedding_tier,
+        embedding_tier_reason=embedding_tier_reason,
         incremental=plan.incremental,
         reused_source_count=len(reused_ids),
         reprocessed_source_count=len(reprocessed_ids),
@@ -311,6 +337,64 @@ def build_lightgraph_index(
         artifacts=artifacts,
         warnings=warnings,
     )
+
+
+def _replay_extraction_from_previous_index(
+    *,
+    previous_index: LightGraphIndex,
+    reused_chunks: list[LightChunk],
+) -> tuple[list[ExtractedEntity], list[ExtractedRelation]]:
+    """Reconstruct extracted rows for reused chunks without calling extractors."""
+    chunk_by_id = {chunk.id: chunk for chunk in reused_chunks}
+    entities: list[ExtractedEntity] = []
+    for profile in previous_index.entities:
+        for chunk_id in profile.chunk_ids:
+            chunk = chunk_by_id.get(chunk_id)
+            if chunk is None:
+                continue
+            entities.append(
+                ExtractedEntity(
+                    name=profile.canonical_name,
+                    type=profile.type,
+                    description=profile.description,
+                    aliases=list(profile.aliases),
+                    chunk_ids=[chunk_id],
+                    source_ids=[chunk.source_id],
+                    evidence_quote="",
+                    confidence=0.99,
+                )
+            )
+
+    entity_id_to_name = {
+        profile.id: profile.canonical_name for profile in previous_index.entities
+    }
+    relations: list[ExtractedRelation] = []
+    for profile in previous_index.relations:
+        source_name = entity_id_to_name.get(
+            profile.source_entity_id, profile.source_entity_id
+        )
+        target_name = entity_id_to_name.get(
+            profile.target_entity_id, profile.target_entity_id
+        )
+        for chunk_id in profile.chunk_ids:
+            chunk = chunk_by_id.get(chunk_id)
+            if chunk is None:
+                continue
+            relations.append(
+                ExtractedRelation(
+                    source=source_name,
+                    target=target_name,
+                    relation_type=profile.relation_type,
+                    description=profile.description,
+                    keywords=list(profile.keywords),
+                    chunk_ids=[chunk_id],
+                    source_ids=[chunk.source_id],
+                    evidence_quote="",
+                    weight=profile.weight,
+                    confidence=0.99,
+                )
+            )
+    return entities, relations
 
 
 def _vectors_by_text(
