@@ -18,9 +18,9 @@ from graphwiki_kb.services.config_service import (
 )
 
 
-def test_current_version_is_nine() -> None:
-    """The LightRAG backend bumps the config schema to version 9."""
-    assert CURRENT_CONFIG_VERSION == 9
+def test_current_version_is_ten() -> None:
+    """Config schema v10 adds vault auto-export and enables concepts by default."""
+    assert CURRENT_CONFIG_VERSION == 10
 
 
 def test_default_config_has_lightrag_and_embeddings() -> None:
@@ -39,6 +39,21 @@ def test_default_config_has_lightrag_and_embeddings() -> None:
     assert validated["embeddings"]["provider"] == "openai"
     assert validated["embeddings"]["model"] == "text-embedding-3-large"
     assert validated["embeddings"]["dimension"] == 3072
+
+
+def test_v9_config_migrates_to_v10() -> None:
+    """A v9 config gains auto_export_vault and concept defaults on migration."""
+    old = deepcopy(DEFAULT_CONFIG)
+    old["version"] = 9
+    old["storage"].pop("auto_export_vault", None)
+    old["concepts"] = {"provider_backed": False}
+
+    migrated, changed = _apply_config_migrations(old)
+
+    assert changed is True
+    assert migrated["version"] == CURRENT_CONFIG_VERSION
+    assert migrated["storage"]["auto_export_vault"] is True
+    assert migrated["concepts"]["enabled"] is True
 
 
 def test_v8_config_migrates_to_v9() -> None:

@@ -20,7 +20,9 @@ from graphwiki_kb.services.config_service import (
     concept_provider_backed_enabled,
     resolve_graph_config,
     resolve_wikigraph_config,
+    vault_auto_export_enabled,
 )
+from graphwiki_kb.services.export_service import ExportResult, ExportService
 from graphwiki_kb.services.graphrag_defaults import env_file_has_key
 from graphwiki_kb.services.graphrag_sync_service import GraphRAGSyncResult
 from graphwiki_kb.services.graphrag_wiki_export_service import GraphRAGWikiExportResult
@@ -55,6 +57,8 @@ class UpdateOptions:
     wikigraph_include_normalized_text_units: bool | None = None
     # Optional per-run override of ``wikigraph.mode`` (classic|lightrag).
     wikigraph_mode: str | None = None
+    # Tri-state: ``None`` means "use ``storage.auto_export_vault`` from config".
+    export_vault: bool | None = None
 
 
 @dataclass
@@ -83,6 +87,9 @@ class UpdateResult:
     wikigraph_skipped: bool = False
     wikigraph_skip_reason: str = ""
     wikigraph_artifact_paths: list[str] = field(default_factory=list)
+    vault_export_result: ExportResult | None = None
+    vault_export_skipped: bool = False
+    vault_export_skip_reason: str = ""
 
     @property
     def ok(self) -> bool:
@@ -125,6 +132,7 @@ class UpdateService:
         graphrag_sync_service: Any | None = None,
         graphrag_wiki_export_service: Any | None = None,
         wikigraph_index_service: Any | None = None,
+        export_service: ExportService | None = None,
     ) -> None:
         self._ingest = ingest_service
         self._compile = compile_service
@@ -135,6 +143,7 @@ class UpdateService:
         self._graphrag_sync = graphrag_sync_service
         self._graphrag_wiki_export = graphrag_wiki_export_service
         self._wikigraph_index = wikigraph_index_service
+        self._export = export_service
 
     def preflight(self) -> None:
         """Raise if provider is missing or broken."""
@@ -180,6 +189,7 @@ class UpdateService:
                 options, status_callback=graph_status_callback
             )
             self._maybe_build_wikigraph(options, result)
+            self._maybe_export_vault(options, result)
             return result
 
         self.preflight()
@@ -218,8 +228,8 @@ class UpdateService:
         else:
             result.concepts_skipped = True
             result.concepts_skip_reason = (
-                "disabled by default; set concepts.enabled: true or pass "
-                "--concepts to refresh legacy concept pages"
+                "disabled; set concepts.enabled: true or pass --concepts to "
+                "refresh legacy concept pages"
             )
             result.concept_result = self._concepts.remove_generated_pages()
             if (
@@ -242,9 +252,35 @@ class UpdateService:
 
         self._maybe_build_wikigraph(options, result)
 
+        self._maybe_export_vault(options, result)
+
         return result
 
     # ------------------------------------------------------------------
+
+    def _should_export_vault(self, options: UpdateOptions) -> bool:
+        if options.export_vault is not None:
+            return options.export_vault
+        return vault_auto_export_enabled(self._config)
+
+    def _maybe_export_vault(
+        self,
+        options: UpdateOptions,
+        result: UpdateResult,
+    ) -> None:
+        if not self._should_export_vault(options):
+            result.vault_export_skipped = True
+            result.vault_export_skip_reason = (
+                "--no-export-vault requested."
+                if options.export_vault is False
+                else "Disabled by `storage.auto_export_vault: false` in config."
+            )
+            return
+        if self._export is None:
+            result.vault_export_skipped = True
+            result.vault_export_skip_reason = "Vault export service unavailable."
+            return
+        result.vault_export_result = self._export.export_vault(clean=False)
 
     def _should_generate_concepts(self, options: UpdateOptions) -> bool:
         if options.concepts is not None:

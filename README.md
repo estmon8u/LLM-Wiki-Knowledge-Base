@@ -304,8 +304,9 @@ poetry run kb update --graph-method fast
 | `--graph-method` | `auto` | Request `auto`, `standard`, `fast`, `standard-update`, or `fast-update` for GraphRAG indexing. |
 | `--allow-partial` | off | Treat GraphRAG sync/index/export failures as warnings during a normal update. |
 | `--concepts` / `--no-concepts` | config | Opt in or out of legacy concept page generation for this run. |
+| `--export-vault` / `--no-export-vault` | config | Mirror wiki pages into `vault/obsidian` after update (`storage.auto_export_vault`, default on). |
 
-When source paths are provided, the command adds them first. Legacy concept pages are skipped by default now that GraphRAG is the default cross-document retrieval layer; pass `--concepts` or set `concepts.enabled: true` in `kb.config.yaml` to refresh them.
+When source paths are provided, the command adds them first. Legacy concept pages are enabled by default for Obsidian-friendly topic navigation; pass `--no-concepts` or set `concepts.enabled: false` in `kb.config.yaml` to skip them. When vault auto-export is enabled, `kb update` copies the current wiki into `vault/obsidian`; run `kb export --clean` later to prune stale vault files.
 Compile summaries request structured provider output (`summary`, `key_points`, `open_questions`, and `title_suggestion`) and persist the extra fields when returned. When concept generation is enabled, concept clustering uses deterministic collocation-based grouping by default. Set `concepts.provider_backed: true` to let the configured provider propose clusters; provider output is parsed through the shared structured-output parser, cached by source-page digest, and falls back to deterministic grouping if provider clustering fails.
 
 `kb update` also owns routine GraphRAG maintenance. It prints `Mode: full`, `Mode: graph-only`, or `Mode: wiki-only` at the start, creates the graph workspace if needed, syncs normalized artifacts into `graph/graphrag/input/sources.json`, checks the current GraphRAG output and digest-based run metadata, selects a full `fast` build, `fast-update`, retry after the latest failed attempt, or skip, runs the selected index when graph credentials are available, and exports graph inspection pages under `wiki/graph/` whenever complete output exists. It prints the GraphRAG output path after indexing and surfaces a search warning if the legacy SQLite FTS5 refresh falls back to markdown scanning. Graph indexing is skipped with an explicit warning when provider credentials are missing during a normal update; the compile/wiki update still completes. Normal updates skip isolated missing normalized graph inputs with a warning instead of failing every source; `kb update --graph-only` keeps strict graph-input behavior and treats missing graph credentials as a hard error because no non-graph work was requested.
@@ -317,7 +318,7 @@ The `kb graph` command group has been removed. GraphRAG setup, input sync, index
 | Main command | GraphRAG behavior |
 | --- | --- |
 | `kb init` | Initializes `graph/graphrag/` through GraphRAG's Python initialization entrypoint, then syncs project input, prompt, provider, model, and key-env settings. |
-| `kb update` | Syncs normalized sources, auto-selects the graph index action, runs GraphRAG indexing when credentials are present, records run metadata, prints the graph output path after indexing, warns on skipped missing normalized inputs or legacy search fallback, and exports graph wiki pages from complete output even when indexing is skipped. |
+| `kb update` | Syncs normalized sources, auto-selects the graph index action, runs GraphRAG indexing when credentials are present, records run metadata, prints the graph output path after indexing, warns on skipped missing normalized inputs or legacy search fallback, exports graph wiki pages from complete output even when indexing is skipped, and mirrors the wiki into `vault/obsidian` when `storage.auto_export_vault` is true. |
 | `kb update --force` | Rebuilds source pages and forces a full GraphRAG rebuild. |
 | `kb update --no-graph` | Updates the wiki and legacy index without syncing or indexing GraphRAG. |
 | `kb status` / `kb status --json` / `kb status --strict` | Includes GraphRAG workspace, input, active output directory, output-table, vector-store, freshness, last-index-run, row-count, strict-readiness, and next-action fields; in `wikigraph.mode: lightrag`, JSON also includes `wikigraph_status` and terminal output reports LightRAG tier, freshness, and graph counts. |
@@ -616,7 +617,9 @@ poetry run kb export --clean
 | --- | --- | --- |
 | `--clean` | off | Remove stale vault markdown files that were not exported from the current wiki set. |
 
-Copies compiled wiki pages into `vault/obsidian/` in a format compatible with [Obsidian](https://obsidian.md/). With `--clean`, stale markdown files are deleted only after the current export set is built, so the cleanup decision uses the exact destination paths created by the run.
+Copies compiled wiki pages into `vault/obsidian/` in a format compatible with [Obsidian](https://obsidian.md/). Graph entity and relationship pages use `[[wikilinks]]` so Obsidian graph view can follow the exported GraphRAG structure. With `--clean`, stale markdown files are deleted only after the current export set is built, so the cleanup decision uses the exact destination paths created by the run.
+
+`kb update` mirrors the wiki into `vault/obsidian` automatically when `storage.auto_export_vault` is true (the default). Pass `--no-export-vault` to skip that step, or run `kb export --clean` later to refresh and prune stale vault files.
 
 
 ### `kb config`

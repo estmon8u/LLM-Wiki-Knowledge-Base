@@ -40,7 +40,7 @@ from graphwiki_kb.services.project_service import (
     utc_now_iso,
 )
 
-CURRENT_CONFIG_VERSION = 9
+CURRENT_CONFIG_VERSION = 10
 PROVIDER_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh"}
 GEMINI_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high"}
 ANTHROPIC_THINKING_EFFORTS = {"low", "medium", "high", "xhigh", "max"}
@@ -75,12 +75,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "wiki_sources_dir": "wiki/sources",
         "wiki_concepts_dir": "wiki/concepts",
         "vault_dir": "vault/obsidian",
+        "auto_export_vault": True,
     },
     "compile": {
         "excerpt_character_limit": 900,
     },
     "concepts": {
-        "enabled": False,
+        "enabled": True,
         "provider_backed": False,
     },
     "lint": {
@@ -483,6 +484,11 @@ def _apply_config_migrations(config: dict[str, Any]) -> tuple[dict[str, Any], bo
             changed = True
             version = _config_version(migrated)
             continue
+        if version == 9:
+            migrated = _migrate_v9_to_v10(migrated)
+            changed = True
+            version = _config_version(migrated)
+            continue
         raise ValueError(f"Unsupported kb.config.yaml version: {version}")
 
     return migrated, changed
@@ -665,6 +671,34 @@ def _migrate_v8_to_v9(config: dict[str, Any]) -> dict[str, Any]:
 
     migrated["version"] = 9
     return migrated
+
+
+def _migrate_v9_to_v10(config: dict[str, Any]) -> dict[str, Any]:
+    """Enable Obsidian-friendly defaults: auto vault export and concept pages."""
+    migrated = deepcopy(config)
+
+    storage = migrated.setdefault("storage", {})
+    if isinstance(storage, dict):
+        storage.setdefault(
+            "auto_export_vault",
+            DEFAULT_CONFIG["storage"]["auto_export_vault"],
+        )
+
+    concepts = migrated.get("concepts")
+    if not isinstance(concepts, dict):
+        migrated["concepts"] = deepcopy(DEFAULT_CONFIG["concepts"])
+    elif "enabled" not in concepts:
+        concepts["enabled"] = DEFAULT_CONFIG["concepts"]["enabled"]
+
+    migrated["version"] = 10
+    return migrated
+
+
+def vault_auto_export_enabled(config: dict[str, Any]) -> bool:
+    storage = config.get("storage", DEFAULT_CONFIG["storage"])
+    if not isinstance(storage, dict):
+        return True
+    return bool(storage.get("auto_export_vault", True))
 
 
 class _StrictConfigModel(BaseModel):
@@ -1399,7 +1433,7 @@ def concept_generation_enabled(config: dict[str, Any]) -> bool:
     concepts = config.get("concepts", DEFAULT_CONFIG["concepts"])
     if not isinstance(concepts, dict):
         return False
-    return bool(concepts.get("enabled", False))
+    return bool(concepts.get("enabled", True))
 
 
 def concept_provider_backed_enabled(config: dict[str, Any]) -> bool:

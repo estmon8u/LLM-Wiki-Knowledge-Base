@@ -350,6 +350,10 @@ poetry run kb --project-root $projectRoot export
 poetry run kb --project-root $projectRoot export --clean
 ```
 
+`kb update` mirrors the wiki into `vault/obsidian` automatically when
+`storage.auto_export_vault` is true (the default). Pass `--no-export-vault` to
+skip that step during update.
+
 `--clean` deletes vault markdown only after building the current export set, so
 cleanup uses the exact destination paths exported by that run.
 

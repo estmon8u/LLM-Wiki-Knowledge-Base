@@ -56,6 +56,7 @@ def _build_update_service(runtime: AgentRuntimeContext) -> UpdateService:
         graphrag_sync_service=services.graphrag_sync,
         graphrag_wiki_export_service=services.graphrag_wiki_export,
         wikigraph_index_service=services.wikigraph_index,
+        export_service=services.export,
     )
 
 

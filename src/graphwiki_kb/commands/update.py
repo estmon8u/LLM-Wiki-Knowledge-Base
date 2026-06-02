@@ -60,6 +60,7 @@ def _get_update_service(command_context: CommandContext) -> UpdateService:
         graphrag_sync_service=command_context.services.graphrag_sync,
         graphrag_wiki_export_service=command_context.services.graphrag_wiki_export,
         wikigraph_index_service=command_context.services.wikigraph_index,
+        export_service=command_context.services.export,
     )
 
 
@@ -195,6 +196,16 @@ def create_command() -> click.Command:
             "--export-wikigraph-artifacts is on."
         ),
     )
+    @click.option(
+        "--export-vault/--no-export-vault",
+        default=None,
+        show_default=False,
+        help=(
+            "Mirror wiki pages into vault/obsidian after update. When neither "
+            "flag is passed, storage.auto_export_vault from config drives the "
+            "behavior (defaults to true)."
+        ),
+    )
     @click.pass_obj
     def command(
         command_context: CommandContext,
@@ -212,6 +223,7 @@ def create_command() -> click.Command:
         wikigraph_normalized_text: bool | None,
         export_wikigraph_artifacts: bool | None,
         artifact_types: str | None,
+        export_vault: bool | None,
     ) -> None:
         """Command.
 
@@ -252,6 +264,7 @@ def create_command() -> click.Command:
                 if artifact_types
                 else None
             ),
+            export_vault=export_vault,
         )
 
         console.print(f"Mode: {_mode_label(options)}")
@@ -408,5 +421,21 @@ def create_command() -> click.Command:
                     echo_bullet(f"{per_type[bucket]} {bucket} card(s)")
         else:
             console.print("WikiGraphRAG build did not run.")
+
+        console.print("")
+        echo_section("Vault Export")
+        if result.vault_export_skipped:
+            console.print(
+                f"Skipped: {result.vault_export_skip_reason or 'unknown reason'}"
+            )
+        elif result.vault_export_result is not None:
+            vault_result = result.vault_export_result
+            console.print(
+                f"Exported {len(vault_result.exported_paths)} markdown file(s) "
+                "to vault/obsidian"
+            )
+            console.print(
+                "[dim]Run `kb export --clean` to remove stale vault files.[/dim]"
+            )
 
     return command
