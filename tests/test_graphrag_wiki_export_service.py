@@ -26,6 +26,7 @@ from graphwiki_kb.services.graphrag_wiki_export_service import (
     _findings_markdown,
     _first_number,
     _first_text,
+    _GraphLinkRegistry,
     _relationship_table,
     _relationships_by_entity,
     _relationships_for_entity,
@@ -190,6 +191,12 @@ def test_export_wiki_writes_graph_pages_and_preserves_legacy_concepts(
     assert entity_frontmatter["generated"] is True
     assert entity_frontmatter["entity_title"] == "Retrieval-Augmented Generation"
     assert "uses dense retrieval" in entity_text
+    assert (
+        "[[graph/entities/retrieval-augmented-generation|Retrieval-Augmented Generation]]"
+        in entity_text
+    )
+    assert "[[graph/relationships/" in entity_text
+    assert "[[graph/entities/dense-passage-retrieval|" not in entity_text
     community_pages = list(
         (test_project.paths.wiki_dir / "graph" / "communities").glob("*.md")
     )
@@ -505,7 +512,9 @@ def test_export_wiki_caps_relationship_pages_and_entity_tables(test_project) -> 
         test_project.paths.wiki_dir / "graph" / "entities" / "hub.md"
     ).read_text(encoding="utf-8")
     connected_rows = [
-        line for line in entity_text.splitlines() if line.startswith("| Hub -> Target")
+        line
+        for line in entity_text.splitlines()
+        if line.startswith("| [[graph/entities/hub|Hub]] ->")
     ]
     assert len(connected_rows) == MAX_ENTITY_RELATIONSHIP_ROWS
     assert f"relationship {relationship_count - 1}" in entity_text
@@ -627,8 +636,15 @@ def test_graph_wiki_export_helpers_handle_sparse_values() -> None:
     assert '- `payload`: {"a": 1, "b": 2}' in metadata
     assert _field_list({"none": None, "empty": ""}) == "No additional metadata."
 
-    assert _relationship_table([]) == "No relationships listed."
-    assert "A -> B" in _relationship_table([{"source": "A", "target": "B"}])
+    empty_registry = _GraphLinkRegistry.from_tables([], [])
+    assert _relationship_table([], empty_registry) == "No relationships listed."
+    registry = _GraphLinkRegistry.from_tables(
+        [{"id": "e1", "title": "A"}, {"id": "e2", "title": "B"}],
+        [{"source": "A", "target": "B", "description": "rel"}],
+    )
+    table = _relationship_table([{"source": "A", "target": "B"}], registry)
+    assert "[[graph/entities/" in table
+    assert "A" in table and "B" in table
     assert _fenced_text("before\n```text\ninside") == (
         "````text\nbefore\n```text\ninside\n````"
     )

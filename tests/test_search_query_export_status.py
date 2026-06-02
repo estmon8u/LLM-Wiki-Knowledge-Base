@@ -1353,6 +1353,52 @@ def test_export_service_copies_all_markdown_files(test_project) -> None:
     }
 
 
+def test_update_auto_exports_vault_when_enabled(test_project) -> None:
+    """kb update mirrors wiki pages into vault/obsidian when auto export is on."""
+    from graphwiki_kb.services.update_service import UpdateOptions, UpdateService
+
+    test_project.write_file("wiki/sources/current.md", "Current")
+    test_project.write_file("wiki/index.md", "Index")
+    update_service = UpdateService(
+        ingest_service=test_project.services["ingest"],
+        compile_service=test_project.services["compile"],
+        concept_service=test_project.services["concepts"],
+        search_service=test_project.services["search"],
+        config=test_project.command_context.config,
+        export_service=test_project.services["export"],
+    )
+
+    result = update_service.run(UpdateOptions(graph_only=True, export_vault=True))
+
+    assert result.vault_export_result is not None
+    assert (test_project.root / "vault/obsidian/sources/current.md").exists()
+    assert (test_project.root / "vault/obsidian/index.md").exists()
+
+
+def test_update_skips_vault_export_when_disabled(test_project) -> None:
+    """export_vault=False leaves vault/obsidian unchanged during update."""
+    from copy import deepcopy
+
+    from graphwiki_kb.services.update_service import UpdateOptions, UpdateService
+
+    test_project.write_file("wiki/sources/current.md", "Current")
+    config = deepcopy(test_project.command_context.config)
+    config["storage"]["auto_export_vault"] = False
+    update_service = UpdateService(
+        ingest_service=test_project.services["ingest"],
+        compile_service=test_project.services["compile"],
+        concept_service=test_project.services["concepts"],
+        search_service=test_project.services["search"],
+        config=config,
+        export_service=test_project.services["export"],
+    )
+
+    result = update_service.run(UpdateOptions(graph_only=True, export_vault=False))
+
+    assert result.vault_export_skipped is True
+    assert not (test_project.root / "vault/obsidian/sources/current.md").exists()
+
+
 def test_export_clean_removes_only_unexported_vault_markdown(test_project) -> None:
     """Verifies clean uses the exported file set, not stale wiki path checks."""
     test_project.write_file("wiki/sources/current.md", "Current")

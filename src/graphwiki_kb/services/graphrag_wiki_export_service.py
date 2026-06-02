@@ -98,6 +98,10 @@ class GraphRAGWikiExportService:
         exported_paths: list[str] = []
         index_run_id = status.last_index_run_id
         relationships = tables.get("relationships", [])
+        link_registry = _GraphLinkRegistry.from_tables(
+            tables.get("entities", []),
+            relationships,
+        )
         context = _ExportContext(
             index_run_id=index_run_id,
             graph_output_dir=_relative_path(status.active_output_dir, self.paths.root),
@@ -108,6 +112,7 @@ class GraphRAGWikiExportService:
             relationships_by_entity=_relationships_by_entity(relationships),
             community_reports=tables.get("community_reports", []),
             generated_at=utc_now_iso(),
+            link_registry=link_registry,
         )
 
         exported_paths.extend(
@@ -263,14 +268,19 @@ class GraphRAGWikiExportService:
         self, records: list[dict[str, Any]], context: _ExportContext
     ) -> list[str]:
         exported: list[str] = []
-        used: set[str] = set()
+        registry = context.link_registry
         for record in records:
             title = _first_text(record, "title", "name", "id", default="Entity")
-            slug = _unique_slug(slugify(title), used, prefix="entity")
+            slug = registry.entity_slug_for_title(title)
+            aliases = [title]
+            human_id = _first_text(record, "human_readable_id")
+            if human_id and human_id not in aliases:
+                aliases.append(human_id)
             frontmatter = {
                 "type": "graph_entity",
                 "entity_id": _first_text(record, "id"),
                 "entity_title": title,
+                "aliases": aliases,
                 "frequency": _sequence_count(record.get("text_unit_ids")),
                 "degree": _first_number(record, "degree", "rank", "combined_degree"),
                 "source_document_ids": _source_document_ids(record),
@@ -281,6 +291,7 @@ class GraphRAGWikiExportService:
                 title,
                 limit=MAX_ENTITY_RELATIONSHIP_ROWS,
             )
+            relationship_links = _relationship_wikilink_lines(relationships, registry)
             body = [
                 f"# {title}",
                 "",
@@ -300,15 +311,22 @@ class GraphRAGWikiExportService:
                 "",
                 "## Connected Entities",
                 "",
-                _relationship_table(relationships),
-                "",
-                "## Metadata",
-                "",
-                _field_list(
-                    record,
-                    exclude={"description", "title", "name", "raw_data"},
-                ),
+                _relationship_table(relationships, registry),
             ]
+            if relationship_links:
+                body.extend(["", "## Related Relationship Pages", ""])
+                body.extend(relationship_links)
+            body.extend(
+                [
+                    "",
+                    "## Metadata",
+                    "",
+                    _field_list(
+                        record,
+                        exclude={"description", "title", "name", "raw_data"},
+                    ),
+                ]
+            )
             exported.append(
                 self._write_page("entities", slug, frontmatter, "\n".join(body))
             )
@@ -318,15 +336,11 @@ class GraphRAGWikiExportService:
         self, records: list[dict[str, Any]], context: _ExportContext
     ) -> list[str]:
         exported: list[str] = []
-        used: set[str] = set()
+        registry = context.link_registry
         for record in _top_relationships(records, MAX_EXPORTED_RELATIONSHIP_PAGES):
             source = _first_text(record, "source", "source_title", default="source")
             target = _first_text(record, "target", "target_title", default="target")
-            slug = _unique_slug(
-                slugify(f"{source}--{target}"),
-                used,
-                prefix="relationship",
-            )
+            slug = registry.relationship_slug_for_pair(source, target)
             frontmatter = {
                 "type": "graph_relationship",
                 "relationship_id": _first_text(record, "id", "human_readable_id"),
@@ -338,6 +352,11 @@ class GraphRAGWikiExportService:
             }
             body = [
                 f"# {source} -> {target}",
+                "",
+                "## Linked Entities",
+                "",
+                f"- Source: {registry.entity_wikilink(source)}",
+                f"- Target: {registry.entity_wikilink(target)}",
                 "",
                 "## Description",
                 "",
@@ -407,7 +426,11 @@ class GraphRAGWikiExportService:
                 "",
                 "## Entities",
                 "",
-                _bullet_values(merged.get("entity_ids"), empty="No entities listed."),
+                _linked_entity_references(
+                    merged.get("entity_ids"),
+                    context.link_registry,
+                    empty="No entities listed.",
+                ),
                 "",
                 "## Source Text Units",
                 "",
@@ -520,6 +543,85 @@ class _ExportContext:
     relationships_by_entity: dict[str, list[dict[str, Any]]]
     community_reports: list[dict[str, Any]]
     generated_at: str
+    link_registry: _GraphLinkRegistry
+
+
+@dataclass
+class _GraphLinkRegistry:
+    """Maps GraphRAG entity/relationship titles to vault-friendly wiki paths."""
+
+    entity_title_to_slug: dict[str, str] = field(default_factory=dict)
+    entity_id_to_slug: dict[str, str] = field(default_factory=dict)
+    relationship_pair_to_slug: dict[tuple[str, str], str] = field(default_factory=dict)
+
+    @classmethod
+    def from_tables(
+        cls,
+        entities: list[dict[str, Any]],
+        relationships: list[dict[str, Any]],
+    ) -> _GraphLinkRegistry:
+        """Pre-compute slugs so page bodies can cross-link consistently."""
+        registry = cls()
+        used_entities: set[str] = set()
+        for record in entities:
+            title = _first_text(record, "title", "name", "id", default="Entity")
+            slug = _unique_slug(slugify(title), used_entities, prefix="entity")
+            registry.entity_title_to_slug[title.casefold()] = slug
+            entity_id = _first_text(record, "id")
+            if entity_id:
+                registry.entity_id_to_slug[entity_id.casefold()] = slug
+        used_relationships: set[str] = set()
+        for record in _top_relationships(
+            relationships, MAX_EXPORTED_RELATIONSHIP_PAGES
+        ):
+            source = _first_text(record, "source", "source_title", default="source")
+            target = _first_text(record, "target", "target_title", default="target")
+            slug = _unique_slug(
+                slugify(f"{source}--{target}"),
+                used_relationships,
+                prefix="relationship",
+            )
+            registry.relationship_pair_to_slug[
+                (source.casefold(), target.casefold())
+            ] = slug
+        return registry
+
+    def entity_slug_for_title(self, title: str) -> str:
+        slug = self.entity_title_to_slug.get(title.casefold())
+        if slug is None:
+            raise KeyError(f"Unknown graph entity title: {title}")
+        return slug
+
+    def relationship_slug_for_pair(self, source: str, target: str) -> str:
+        slug = self.relationship_pair_to_slug.get(
+            (source.casefold(), target.casefold())
+        )
+        if slug is None:
+            raise KeyError(f"Unknown graph relationship: {source} -> {target}")
+        return slug
+
+    def entity_wikilink(self, title: str) -> str:
+        slug = self.entity_title_to_slug.get(title.casefold())
+        if slug:
+            return f"[[graph/entities/{slug}|{_markdown_inline(title)}]]"
+        return _markdown_inline(title)
+
+    def relationship_wikilink(self, source: str, target: str) -> str | None:
+        slug = self.relationship_pair_to_slug.get(
+            (source.casefold(), target.casefold())
+        )
+        if slug is None:
+            return None
+        label = f"{source} -> {target}"
+        return f"[[graph/relationships/{slug}|{_markdown_inline(label)}]]"
+
+    def entity_reference_link(self, ref: str) -> str:
+        key = ref.strip().casefold()
+        slug = self.entity_id_to_slug.get(key) or self.entity_title_to_slug.get(key)
+        if slug:
+            display = ref.strip()
+            return f"[[graph/entities/{slug}|{_markdown_inline(display)}]]"
+        return f"`{_markdown_inline(ref.strip())}`"
 
 
 def _read_parquet_records(path: Path) -> list[dict[str, Any]]:
@@ -704,7 +806,10 @@ def _relationship_sort_key(relationship: dict[str, Any]) -> float:
     return float(score) if score is not None else 0.0
 
 
-def _relationship_table(relationships: list[dict[str, Any]]) -> str:
+def _relationship_table(
+    relationships: list[dict[str, Any]],
+    registry: _GraphLinkRegistry,
+) -> str:
     if not relationships:
         return "No relationships listed."
     lines = ["| Entity | Relationship |", "| --- | --- |"]
@@ -712,9 +817,37 @@ def _relationship_table(relationships: list[dict[str, Any]]) -> str:
         source = _first_text(relationship, "source", "source_title")
         target = _first_text(relationship, "target", "target_title")
         description = _first_text(relationship, "description", default="related")
-        pair = f"{_markdown_table_cell(source)} -> {_markdown_table_cell(target)}"
+        pair = (
+            f"{registry.entity_wikilink(source)} -> "
+            f"{registry.entity_wikilink(target)}"
+        )
         lines.append(f"| {pair} | {_markdown_table_cell(description)} |")
     return "\n".join(lines)
+
+
+def _relationship_wikilink_lines(
+    relationships: list[dict[str, Any]],
+    registry: _GraphLinkRegistry,
+) -> list[str]:
+    lines: list[str] = []
+    for relationship in relationships:
+        source = _first_text(relationship, "source", "source_title")
+        target = _first_text(relationship, "target", "target_title")
+        link = registry.relationship_wikilink(source, target)
+        if link:
+            lines.append(f"- {link}")
+    return lines
+
+
+def _linked_entity_references(
+    value: Any,
+    registry: _GraphLinkRegistry,
+    *,
+    empty: str,
+) -> str:
+    if not isinstance(value, (list, tuple, set)) or not value:
+        return empty
+    return "\n".join(f"- {registry.entity_reference_link(str(item))}" for item in value)
 
 
 def _findings_markdown(record: dict[str, Any]) -> str:
