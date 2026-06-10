@@ -1,0 +1,91 @@
+version: 1
+name: openai-three-engine-mixed-corpus-20260610
+description: >
+  Real mixed-corpus benchmark for comparing the legacy FTS query path,
+  WikiGraphRAG classic, and WikiGraphRAG LightRAG on the disposable
+  OpenAI-backed project rooted at
+  ../kb-openai-three-engine-e2e-20260610.
+corpus:
+  - 2025.findings-emnlp.568.pdf
+  - Guidelines_paper_software_review.pdf
+  - PaperReview1_RAG_Lewis202_Final.docx
+  - PaperReview2_GraphRAG_Edge2024_Final.docx
+  - PaperReview3_LightRAG_Guo2025_Final.docx
+  - Review_RAG_Lewis_2020.md
+  - Review_GraphRAG_Edge_2024.md
+questions:
+  - id: rag_retrieval_generation
+    question: How does retrieval-augmented generation combine retrieved evidence with generated answers?
+    category: local
+    expected_source_ids:
+      - review-of-retrieval-augmented-generation-for-knowledge-intensive-nlp-tasks
+      - review-of-retrieval-augmented-generation-for-knowledge-intensive-nlp-tasks-2
+    expected_entities:
+      - Retrieval-Augmented Generation
+      - RAG
+      - retrieved evidence
+    reference_answer: >
+      RAG retrieves relevant external passages or documents, conditions a
+      generator on that retrieved context, and produces answers that can be
+      grounded in the evidence rather than relying only on model parameters.
+  - id: graphrag_communities
+    question: What role do graph communities play in GraphRAG query-focused summarization?
+    category: local
+    expected_source_ids:
+      - review-of-from-local-to-global-a-graph-rag-approach-to-query-focused-summarization
+      - review-of-from-local-to-global-a-graph-rag-approach-to-query-focused-summarization-2
+    expected_entities:
+      - GraphRAG
+      - graph communities
+      - query-focused summarization
+    reference_answer: >
+      GraphRAG uses entity and relationship graphs to organize source material
+      into communities, summarizes those communities, and uses the summaries as
+      structured evidence for broader query-focused synthesis.
+  - id: lightrag_tradeoffs
+    question: What does LightRAG change compared with heavier graph RAG approaches?
+    category: comparison
+    expected_source_ids:
+      - lightrag-simple-and-fast-retrieval-augmented-generation
+      - review-of-lightrag-simple-and-fast
+    expected_entities:
+      - LightRAG
+      - retrieval
+      - graph
+    reference_answer: >
+      LightRAG emphasizes simpler, faster graph-based retrieval by combining
+      lightweight entity/relation structures with lexical or vector retrieval,
+      aiming to preserve useful graph grounding while reducing indexing and
+      query overhead compared with heavier graph RAG pipelines.
+  - id: software_review_guidelines
+    question: What criteria should a software paper review apply when judging this kind of RAG system?
+    category: rubric
+    expected_source_ids:
+      - csc-675-capstone-in-ai-spring-2026
+    expected_entities:
+      - software review
+      - evaluation
+      - criteria
+    reference_answer: >
+      A software review should judge whether the system is clearly motivated,
+      technically sound, reproducible, appropriately evaluated, grounded in
+      evidence, and explicit about limitations, tradeoffs, and implementation
+      quality.
+  - id: three_system_comparison
+    question: Compare RAG, GraphRAG, and LightRAG in terms of retrieval structure and evidence synthesis.
+    category: global
+    expected_source_ids:
+      - review-of-retrieval-augmented-generation-for-knowledge-intensive-nlp-tasks
+      - review-of-from-local-to-global-a-graph-rag-approach-to-query-focused-summarization
+      - lightrag-simple-and-fast-retrieval-augmented-generation
+      - review-of-lightrag-simple-and-fast
+    expected_entities:
+      - RAG
+      - GraphRAG
+      - LightRAG
+      - evidence synthesis
+    reference_answer: >
+      RAG retrieves passages or documents directly for generation, GraphRAG
+      adds graph/community structure to support broader synthesis over entity
+      relationships, and LightRAG keeps graph-style evidence organization while
+      using a lighter retrieval design intended to lower complexity and latency.

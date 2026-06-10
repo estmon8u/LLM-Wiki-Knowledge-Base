@@ -108,19 +108,44 @@ def test_export_writes_all_card_types(tmp_path: Path) -> None:
     written = service.export()
 
     base = paths.wiki_dir / "wikigraph"
+    relation_slug = WikiGraphLightExportService._relation_slug(
+        _index().relations[0],
+        {
+            "entity:rag": "Retrieval-Augmented Generation",
+            "entity:dpr": "Dense Passage Retrieval",
+        },
+    )
     assert (base / "index.md").exists()
     assert (base / "entities" / "retrieval-augmented-generation.md").exists()
-    assert (
-        base
-        / "relations"
-        / "retrieval-augmented-generation-uses-dense-passage-retrieval.md"
-    ).exists()
+    assert (base / "relations" / f"{relation_slug}.md").exists()
     assert (base / "sources" / "rag-chunks.md").exists()
     assert (base / "diagnostics" / "extraction-warnings.md").exists()
     assert (base / "diagnostics" / "stale-sources.md").exists()
     # Returned relative paths are sorted and rooted in the project.
     assert written == sorted(written)
     assert all(rel.startswith("wiki/wikigraph/") for rel in written)
+
+
+def test_lightrag_relation_slug_caps_long_names() -> None:
+    relation = RelationProfile(
+        id="relation:long",
+        source_entity_id="entity:long-source",
+        target_entity_id="entity:long-target",
+        relation_type="SUPPORTS",
+        updated_at="t",
+    )
+    name_by_id = {
+        "entity:long-source": "A Very Long Source Entity Name " * 8,
+        "entity:long-target": "A Very Long Target Entity Name " * 8,
+    }
+
+    slug = WikiGraphLightExportService._relation_slug(relation, name_by_id)
+
+    assert len(slug) <= 99
+    assert slug.startswith("a-very-long-source-entity-name")
+    suffix = slug.rsplit("-", 1)[-1]
+    assert len(suffix) == 8
+    assert all(char in "0123456789abcdef" for char in suffix)
 
 
 def test_entity_card_content(tmp_path: Path) -> None:
@@ -141,12 +166,8 @@ def test_relation_card_content(tmp_path: Path) -> None:
     paths = build_project_paths(tmp_path)
     store = _store(tmp_path)
     WikiGraphLightExportService(paths=paths, store=store).export()
-    card = (
-        paths.wiki_dir
-        / "wikigraph"
-        / "relations"
-        / "retrieval-augmented-generation-uses-dense-passage-retrieval.md"
-    ).read_text()
+    relation_path = next((paths.wiki_dir / "wikigraph" / "relations").glob("*.md"))
+    card = relation_path.read_text()
     assert "relation_type: USES" in card
     assert "wiki/sources/rag.md#chunk-0" in card
 
@@ -216,3 +237,18 @@ def test_index_service_export_artifacts_routes_to_lightrag(tmp_path: Path) -> No
     written = service.export_artifacts()
     assert any("wiki/wikigraph/index.md" in rel for rel in written)
     assert (paths.wiki_dir / "wikigraph" / "index.md").exists()
+
+
+def test_lightrag_export_accepts_mode_separated_base(tmp_path: Path) -> None:
+    paths = build_project_paths(tmp_path)
+    store = _store(tmp_path)
+    service = WikiGraphLightExportService(
+        paths=paths,
+        store=store,
+        base_subdir="wikigraph/lightrag",
+    )
+
+    written = service.export()
+
+    assert any("wiki/wikigraph/lightrag/index.md" in rel for rel in written)
+    assert (paths.wiki_dir / "wikigraph" / "lightrag" / "index.md").exists()

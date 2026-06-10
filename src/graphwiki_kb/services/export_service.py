@@ -11,6 +11,9 @@ from dataclasses import dataclass, field
 
 from graphwiki_kb.services.project_service import ProjectPaths, atomic_copy_file
 
+VAULT_EXPORT_SUFFIXES = {".md", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"}
+VAULT_CLEAN_SUFFIXES = {".md"}
+
 
 @dataclass
 class ExportResult:
@@ -46,8 +49,12 @@ class ExportService:
         exported_paths: list[str] = []
         removed_paths: list[str] = []
         exported_set: set[str] = set()
-        # Copy current wiki pages into the vault.
-        for file_path in sorted(self.paths.wiki_dir.rglob("*.md")):
+        # Copy current wiki pages and display assets into the vault.
+        for file_path in sorted(self.paths.wiki_dir.rglob("*")):
+            if not file_path.is_file():
+                continue
+            if file_path.suffix.lower() not in VAULT_EXPORT_SUFFIXES:
+                continue
             relative = file_path.relative_to(self.paths.wiki_dir)
             destination = self.paths.vault_obsidian_dir / relative
             atomic_copy_file(file_path, destination)
@@ -55,7 +62,11 @@ class ExportService:
             exported_paths.append(destination.relative_to(self.paths.root).as_posix())
         # Remove stale vault files that no longer exist in wiki.
         if clean and self.paths.vault_obsidian_dir.exists():
-            for vault_file in sorted(self.paths.vault_obsidian_dir.rglob("*.md")):
+            for vault_file in sorted(self.paths.vault_obsidian_dir.rglob("*")):
+                if not vault_file.is_file():
+                    continue
+                if vault_file.suffix.lower() not in VAULT_CLEAN_SUFFIXES:
+                    continue
                 rel = vault_file.relative_to(self.paths.vault_obsidian_dir).as_posix()
                 if rel not in exported_set:
                     vault_file.unlink()

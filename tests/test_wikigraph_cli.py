@@ -114,6 +114,29 @@ def test_wikigraph_command_group_removed() -> None:
     assert "wikigraph" not in list_command_names()
 
 
+def test_export_wikigraph_modes_selector() -> None:
+    """``kb export --wikigraph-modes`` expands only the requested modes."""
+    from graphwiki_kb.commands.export_cmd import _wikigraph_modes
+
+    assert _wikigraph_modes("none") == ()
+    assert _wikigraph_modes("current") == ("current",)
+    assert _wikigraph_modes("classic") == ("classic",)
+    assert _wikigraph_modes("lightrag") == ("lightrag",)
+    assert _wikigraph_modes("all") == ("classic", "lightrag")
+
+
+def test_wikigraph_artifact_filename_caps_long_stems() -> None:
+    """Generated cards keep deterministic, Windows-friendly filenames."""
+    from graphwiki_kb.services.wikigraph_index_service import _artifact_filename
+
+    long_slug = "chunk-" + ("very-long-source-title-" * 12) + "chunk-0"
+    filename = _artifact_filename(long_slug, lambda value: value, fallback="chunk")
+
+    assert filename.endswith(".md")
+    assert len(filename) <= 102
+    assert filename.startswith("chunk-very-long-source-title")
+
+
 def test_kb_update_builds_wikigraph_index(test_project) -> None:
     """``kb update``'s service path builds the WikiGraphRAG index by default."""
     _seed_project(test_project)

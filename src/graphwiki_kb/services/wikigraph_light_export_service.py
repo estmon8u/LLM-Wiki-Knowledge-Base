@@ -8,6 +8,7 @@ export like any other wiki page.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 
 from slugify import slugify
@@ -21,11 +22,31 @@ from graphwiki_kb.wikigraph.light_models import (
     RelationProfile,
 )
 
+ARTIFACT_FILENAME_STEM_LIMIT = 88
+
 
 def _yaml_list(values: list[str]) -> str:
     if not values:
         return " []"
     return "\n" + "\n".join(f"  - {value}" for value in values)
+
+
+def _artifact_slug(value: str, *, fallback: str) -> str:
+    stem = slugify(str(value)) or fallback
+    if len(stem) <= ARTIFACT_FILENAME_STEM_LIMIT:
+        return stem
+    digest = hashlib.sha1(stem.encode("utf-8")).hexdigest()[:10]
+    prefix = stem[:ARTIFACT_FILENAME_STEM_LIMIT].rstrip("-")
+    return f"{prefix}-{digest}"
+
+
+def _relation_slug(value: str, relation_id: str) -> str:
+    stem = slugify(str(value)) or "relation"
+    suffix = hashlib.sha1(relation_id.encode("utf-8")).hexdigest()[:8]
+    stem_limit = ARTIFACT_FILENAME_STEM_LIMIT - len(suffix) - 1
+    if len(stem) > stem_limit:
+        stem = stem[:stem_limit].rstrip("-")
+    return f"{stem}-{suffix}"
 
 
 @dataclass
@@ -34,6 +55,7 @@ class WikiGraphLightExportService:
 
     paths: ProjectPaths
     store: LightGraphStore
+    base_subdir: str = "wikigraph"
 
     def export(self) -> list[str]:
         """Export all cards; returns relative paths in deterministic order.
@@ -47,9 +69,12 @@ class WikiGraphLightExportService:
                 "LightRAG index is not built. Run `kb update "
                 "--wikigraph-mode lightrag` first."
             )
-        base = self.paths.wiki_dir / "wikigraph"
+        base = self.paths.wiki_dir / self.base_subdir
         for sub in ("entities", "relations", "sources", "diagnostics"):
-            (base / sub).mkdir(parents=True, exist_ok=True)
+            artifact_dir = base / sub
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            for stale in artifact_dir.glob("*.md"):
+                stale.unlink()
 
         chunk_by_id = {chunk.id: chunk for chunk in index.chunks}
         name_by_id = {entity.id: entity.canonical_name for entity in index.entities}
@@ -84,7 +109,10 @@ class WikiGraphLightExportService:
     def _relation_slug(relation: RelationProfile, name_by_id: dict[str, str]) -> str:
         src = name_by_id.get(relation.source_entity_id, relation.source_entity_id)
         tgt = name_by_id.get(relation.target_entity_id, relation.target_entity_id)
-        return slugify(f"{src}-{relation.relation_type}-{tgt}") or "relation"
+        return _relation_slug(
+            f"{src}-{relation.relation_type}-{tgt}",
+            relation.id,
+        )
 
     def _chunk_refs(
         self, chunk_ids: list[str], chunk_by_id: dict[str, LightChunk]
@@ -104,7 +132,7 @@ class WikiGraphLightExportService:
         relation_slug_by_id: dict[str, str],
         index: LightGraphIndex,
     ) -> str:
-        filename = f"{slugify(entity.canonical_name) or entity.id}.md"
+        filename = f"{_artifact_slug(entity.canonical_name, fallback=entity.id)}.md"
         path = base / "entities" / filename
         chunk_refs = self._chunk_refs(entity.chunk_ids, chunk_by_id)
         evidence_rows = "\n".join(
@@ -181,7 +209,10 @@ class WikiGraphLightExportService:
         written: list[str] = []
         for slug in sorted(by_slug):
             chunks = sorted(by_slug[slug], key=lambda c: c.chunk_index)
-            path = base / "sources" / f"{slugify(slug) or slug}-chunks.md"
+            filename = (
+                f"{_artifact_slug(f'{slug}-chunks', fallback='source-chunks')}.md"
+            )
+            path = base / "sources" / filename
             lines = [
                 "---",
                 "kind: wikigraph_source_chunks",

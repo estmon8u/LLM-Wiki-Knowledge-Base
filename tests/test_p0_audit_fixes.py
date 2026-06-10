@@ -270,6 +270,21 @@ def test_export_vault_without_clean_keeps_stale_files(test_project) -> None:
     assert result.removed_paths == []
 
 
+def test_export_vault_copies_wiki_image_assets(test_project) -> None:
+    """Vault export should include images referenced by wiki pages."""
+    image_path = test_project.paths.wiki_dir / "assets" / "summary.svg"
+    image_path.parent.mkdir(parents=True, exist_ok=True)
+    image_path.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" />',
+        encoding="utf-8",
+    )
+
+    result = test_project.services["export"].export_vault()
+
+    assert "vault/obsidian/assets/summary.svg" in result.exported_paths
+    assert (test_project.paths.vault_obsidian_dir / "assets" / "summary.svg").exists()
+
+
 # ── Diff/Status: file-based hash recomputation ──────────────────────
 
 

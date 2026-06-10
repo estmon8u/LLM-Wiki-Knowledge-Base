@@ -1,0 +1,324 @@
+{
+  "benchmark": "eval\\results\\openai_three_engine_mixed_benchmark_20260610.yaml",
+  "methods": [
+    "legacy",
+    "wikigraph-classic",
+    "wikigraph-lightrag"
+  ],
+  "retrieval_only": false,
+  "k": 8,
+  "summaries": [
+    {
+      "backend": "legacy",
+      "metric": "recall_at_k",
+      "n": 5,
+      "mean": 1.0,
+      "ci_low": 1.0,
+      "ci_high": 1.0
+    },
+    {
+      "backend": "legacy",
+      "metric": "precision_at_k",
+      "n": 5,
+      "mean": 0.325,
+      "ci_low": 0.175,
+      "ci_high": 0.525
+    },
+    {
+      "backend": "legacy",
+      "metric": "ndcg_at_k",
+      "n": 5,
+      "mean": 0.8151263151841077,
+      "ci_low": 0.6251187284644649,
+      "ci_high": 0.9839441578296375
+    },
+    {
+      "backend": "legacy",
+      "metric": "mrr",
+      "n": 5,
+      "mean": 0.7666666666666666,
+      "ci_low": 0.5,
+      "ci_high": 1.0
+    },
+    {
+      "backend": "legacy",
+      "metric": "hit_at_k",
+      "n": 5,
+      "mean": 1.0,
+      "ci_low": 1.0,
+      "ci_high": 1.0
+    },
+    {
+      "backend": "legacy",
+      "metric": "citation_validity",
+      "n": 5,
+      "mean": 0.8,
+      "ci_low": 0.4,
+      "ci_high": 1.0
+    },
+    {
+      "backend": "legacy",
+      "metric": "grounded",
+      "n": 5,
+      "mean": 0.2,
+      "ci_low": 0.0,
+      "ci_high": 0.6
+    },
+    {
+      "backend": "legacy",
+      "metric": "refusal_correct",
+      "n": 5,
+      "mean": 0.2,
+      "ci_low": 0.0,
+      "ci_high": 0.6
+    },
+    {
+      "backend": "legacy",
+      "metric": "token_f1",
+      "n": 1,
+      "mean": 0.463768115942029,
+      "ci_low": 0.463768115942029,
+      "ci_high": 0.463768115942029
+    },
+    {
+      "backend": "legacy",
+      "metric": "rouge_l",
+      "n": 1,
+      "mean": 0.2608695652173913,
+      "ci_low": 0.2608695652173913,
+      "ci_high": 0.2608695652173913
+    },
+    {
+      "backend": "legacy",
+      "metric": "entity_coverage",
+      "n": 1,
+      "mean": 1.0,
+      "ci_low": 1.0,
+      "ci_high": 1.0
+    },
+    {
+      "backend": "legacy",
+      "metric": "latency_seconds",
+      "n": 5,
+      "mean": 5.323338079999848,
+      "ci_low": 2.7604736199997206,
+      "ci_high": 8.309371680000003
+    },
+    {
+      "backend": "legacy",
+      "metric": "answer_token_length",
+      "n": 5,
+      "mean": 126.4,
+      "ci_low": 73.6,
+      "ci_high": 181.0
+    },
+    {
+      "backend": "wikigraph-classic",
+      "metric": "recall_at_k",
+      "n": 5,
+      "mean": 0.95,
+      "ci_low": 0.9,
+      "ci_high": 1.0
+    },
+    {
+      "backend": "wikigraph-classic",
+      "metric": "precision_at_k",
+      "n": 5,
+      "mean": 0.75,
+      "ci_low": 0.525,
+      "ci_high": 0.925
+    },
+    {
+      "backend": "wikigraph-classic",
+      "metric": "ndcg_at_k",
+      "n": 5,
+      "mean": 0.9917264480380592,
+      "ci_low": 0.9816236291807744,
+      "ci_high": 0.9990176768378711
+    },
+    {
+      "backend": "wikigraph-classic",
+      "metric": "mrr",
+      "n": 5,
+      "mean": 1.0,
+      "ci_low": 1.0,
+      "ci_high": 1.0
+    },
+    {
+      "backend": "wikigraph-classic",
+      "metric": "hit_at_k",
+      "n": 5,
+      "mean": 1.0,
+      "ci_low": 1.0,
+      "ci_high": 1.0
+    },
+    {
+      "backend": "wikigraph-classic",
+      "metric": "citation_validity",
+      "n": 5,
+      "mean": 1.0,
+      "ci_low": 1.0,
+      "ci_high": 1.0
+    },
+    {
+      "backend": "wikigraph-classic",
+      "metric": "grounded",
+      "n": 5,
+      "mean": 1.0,
+      "ci_low": 1.0,
+      "ci_high": 1.0
+    },
+    {
+      "backend": "wikigraph-classic",
+      "metric": "refusal_correct",
+      "n": 5,
+      "mean": 1.0,
+      "ci_low": 1.0,
+      "ci_high": 1.0
+    },
+    {
+      "backend": "wikigraph-classic",
+      "metric": "token_f1",
+      "n": 5,
+      "mean": 0.22380895735307926,
+      "ci_low": 0.14837427179912874,
+      "ci_high": 0.3225182962798293
+    },
+    {
+      "backend": "wikigraph-classic",
+      "metric": "rouge_l",
+      "n": 5,
+      "mean": 0.14545793794461245,
+      "ci_low": 0.10947670356341707,
+      "ci_high": 0.18278495547803134
+    },
+    {
+      "backend": "wikigraph-classic",
+      "metric": "entity_coverage",
+      "n": 5,
+      "mean": 0.7333333333333333,
+      "ci_low": 0.4666666666666666,
+      "ci_high": 1.0
+    },
+    {
+      "backend": "wikigraph-classic",
+      "metric": "latency_seconds",
+      "n": 5,
+      "mean": 5.348933619999843,
+      "ci_low": 3.4279277800002093,
+      "ci_high": 7.9289418999997
+    },
+    {
+      "backend": "wikigraph-classic",
+      "metric": "answer_token_length",
+      "n": 5,
+      "mean": 154.4,
+      "ci_low": 94.4,
+      "ci_high": 246.4
+    },
+    {
+      "backend": "wikigraph-lightrag",
+      "metric": "recall_at_k",
+      "n": 5,
+      "mean": 0.55,
+      "ci_low": 0.25,
+      "ci_high": 0.85
+    },
+    {
+      "backend": "wikigraph-lightrag",
+      "metric": "precision_at_k",
+      "n": 5,
+      "mean": 0.475,
+      "ci_low": 0.2,
+      "ci_high": 0.7
+    },
+    {
+      "backend": "wikigraph-lightrag",
+      "metric": "ndcg_at_k",
+      "n": 5,
+      "mean": 0.7025617482127371,
+      "ci_low": 0.3101619188008205,
+      "ci_high": 0.9923998294119165
+    },
+    {
+      "backend": "wikigraph-lightrag",
+      "metric": "mrr",
+      "n": 5,
+      "mean": 0.65,
+      "ci_low": 0.25,
+      "ci_high": 1.0
+    },
+    {
+      "backend": "wikigraph-lightrag",
+      "metric": "hit_at_k",
+      "n": 5,
+      "mean": 0.8,
+      "ci_low": 0.4,
+      "ci_high": 1.0
+    },
+    {
+      "backend": "wikigraph-lightrag",
+      "metric": "citation_validity",
+      "n": 5,
+      "mean": 1.0,
+      "ci_low": 1.0,
+      "ci_high": 1.0
+    },
+    {
+      "backend": "wikigraph-lightrag",
+      "metric": "grounded",
+      "n": 5,
+      "mean": 1.0,
+      "ci_low": 1.0,
+      "ci_high": 1.0
+    },
+    {
+      "backend": "wikigraph-lightrag",
+      "metric": "refusal_correct",
+      "n": 5,
+      "mean": 1.0,
+      "ci_low": 1.0,
+      "ci_high": 1.0
+    },
+    {
+      "backend": "wikigraph-lightrag",
+      "metric": "token_f1",
+      "n": 5,
+      "mean": 0.25705101931084295,
+      "ci_low": 0.18890916748560999,
+      "ci_high": 0.3371289479181833
+    },
+    {
+      "backend": "wikigraph-lightrag",
+      "metric": "rouge_l",
+      "n": 5,
+      "mean": 0.18128823519895182,
+      "ci_low": 0.12508275496301174,
+      "ci_high": 0.2446455505279035
+    },
+    {
+      "backend": "wikigraph-lightrag",
+      "metric": "entity_coverage",
+      "n": 5,
+      "mean": 0.8,
+      "ci_low": 0.4,
+      "ci_high": 1.0
+    },
+    {
+      "backend": "wikigraph-lightrag",
+      "metric": "latency_seconds",
+      "n": 5,
+      "mean": 9.373046520000026,
+      "ci_low": 8.381433199999993,
+      "ci_high": 10.298658400000203
+    },
+    {
+      "backend": "wikigraph-lightrag",
+      "metric": "answer_token_length",
+      "n": 5,
+      "mean": 133.0,
+      "ci_low": 55.4,
+      "ci_high": 252.2
+    }
+  ]
+}

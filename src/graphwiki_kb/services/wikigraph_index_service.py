@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,17 @@ from graphwiki_kb.wikigraph.models import (
     WikiGraphIndex,
     WikiGraphNode,
 )
+
+ARTIFACT_FILENAME_STEM_LIMIT = 88
+
+
+def _artifact_filename(value: str, slug: Any, *, fallback: str) -> str:
+    stem = slug(str(value)) or fallback
+    if len(stem) <= ARTIFACT_FILENAME_STEM_LIMIT:
+        return f"{stem}.md"
+    digest = hashlib.sha1(stem.encode("utf-8")).hexdigest()[:10]
+    prefix = stem[:ARTIFACT_FILENAME_STEM_LIMIT].rstrip("-")
+    return f"{prefix}-{digest}.md"
 
 
 @dataclass
@@ -204,7 +216,12 @@ class WikiGraphIndexService:
         "text_units",
     )
 
-    def export_artifacts(self, *, types: tuple[str, ...] | None = None) -> list[str]:
+    def export_artifacts(
+        self,
+        *,
+        types: tuple[str, ...] | None = None,
+        base_subdir: str = "wikigraph",
+    ) -> list[str]:
         """Write generated wiki artifact pages under ``wiki/wikigraph/``.
 
         Produces one markdown card per ``entity``, ``community``, and
@@ -218,6 +235,10 @@ class WikiGraphIndexService:
         Args:
             types: Optional subset of ``{"entities", "communities",
                 "chunks"}`` to write. Unknown types raise ``ValueError``.
+            base_subdir: Wiki-relative directory where cards are written.
+                Defaults to ``wikigraph`` for the existing layout. Callers that
+                need both WikiGraph modes side by side can pass names such as
+                ``wikigraph/classic`` or ``wikigraph/lightrag``.
 
         Returns:
             The list of relative paths written, in deterministic order.
@@ -237,7 +258,9 @@ class WikiGraphIndexService:
             )
 
             return WikiGraphLightExportService(
-                paths=self.paths, store=self.lightrag_store()
+                paths=self.paths,
+                store=self.lightrag_store(),
+                base_subdir=base_subdir,
             ).export()
         if types is not None:
             unknown = [t for t in types if t not in self.SUPPORTED_ARTIFACT_TYPES]
@@ -259,23 +282,34 @@ class WikiGraphIndexService:
             utc_now_iso,
         )
 
-        base = self.paths.wiki_dir / "wikigraph"
+        base = self.paths.wiki_dir / base_subdir
         for subdir in selected:
-            (base / subdir).mkdir(parents=True, exist_ok=True)
+            artifact_dir = base / subdir
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            for stale in artifact_dir.glob("*.md"):
+                stale.unlink()
         timestamp = utc_now_iso()
         written: list[str] = []
         for node in index.nodes:
             if node.kind == "entity" and "entities" in selected:
-                rel = self._write_entity_card(base, node, timestamp, slugify)
+                rel = self._write_entity_card(
+                    base, base_subdir, node, timestamp, slugify
+                )
                 written.append(rel)
             elif node.kind == "community" and "communities" in selected:
-                rel = self._write_community_card(base, node, timestamp, slugify)
+                rel = self._write_community_card(
+                    base, base_subdir, node, timestamp, slugify
+                )
                 written.append(rel)
             elif node.kind == "chunk" and "chunks" in selected:
-                rel = self._write_chunk_card(base, node, timestamp, slugify)
+                rel = self._write_chunk_card(
+                    base, base_subdir, node, timestamp, slugify
+                )
                 written.append(rel)
             elif node.kind == "text_unit" and "text_units" in selected:
-                rel = self._write_text_unit_card(base, node, timestamp, slugify)
+                rel = self._write_text_unit_card(
+                    base, base_subdir, node, timestamp, slugify
+                )
                 written.append(rel)
         written.sort()
         return written
@@ -283,15 +317,15 @@ class WikiGraphIndexService:
     def _write_entity_card(
         self,
         base: Path,
+        base_subdir: str,
         node: WikiGraphNode,
         timestamp: str,
         slug: Any,
     ) -> str:
         from graphwiki_kb.services.project_service import atomic_write_text
 
-        slugify_fn = slug
-        filename = f"{slugify_fn(node.title)}.md"
-        rel = f"wiki/wikigraph/entities/{filename}"
+        filename = _artifact_filename(node.title, slug, fallback="entity")
+        rel = f"wiki/{base_subdir}/entities/{filename}"
         path = self.paths.root / rel
         sources_block = "\n".join(f"  - {sid}" for sid in node.source_ids[:8])
         aliases_block = "\n".join(f"  - {alias}" for alias in node.aliases[:8])
@@ -315,15 +349,15 @@ class WikiGraphIndexService:
     def _write_community_card(
         self,
         base: Path,
+        base_subdir: str,
         node: WikiGraphNode,
         timestamp: str,
         slug: Any,
     ) -> str:
         from graphwiki_kb.services.project_service import atomic_write_text
 
-        slugify_fn = slug
-        filename = f"{slugify_fn(node.id)}.md"
-        rel = f"wiki/wikigraph/communities/{filename}"
+        filename = _artifact_filename(node.id, slug, fallback="community")
+        rel = f"wiki/{base_subdir}/communities/{filename}"
         path = self.paths.root / rel
         top_entities = node.metadata.get("top_entities") or []
         top_block = "\n".join(f"- {item}" for item in top_entities[:10])
@@ -346,15 +380,15 @@ class WikiGraphIndexService:
     def _write_chunk_card(
         self,
         base: Path,
+        base_subdir: str,
         node: WikiGraphNode,
         timestamp: str,
         slug: Any,
     ) -> str:
         from graphwiki_kb.services.project_service import atomic_write_text
 
-        slugify_fn = slug
-        filename = f"{slugify_fn(node.id)}.md"
-        rel = f"wiki/wikigraph/chunks/{filename}"
+        filename = _artifact_filename(node.id, slug, fallback="chunk")
+        rel = f"wiki/{base_subdir}/chunks/{filename}"
         path = self.paths.root / rel
         body = (
             "---\n"
@@ -375,15 +409,15 @@ class WikiGraphIndexService:
     def _write_text_unit_card(
         self,
         base: Path,
+        base_subdir: str,
         node: WikiGraphNode,
         timestamp: str,
         slug: Any,
     ) -> str:
         from graphwiki_kb.services.project_service import atomic_write_text
 
-        slugify_fn = slug
-        filename = f"{slugify_fn(node.id)}.md"
-        rel = f"wiki/wikigraph/text_units/{filename}"
+        filename = _artifact_filename(node.id, slug, fallback="text-unit")
+        rel = f"wiki/{base_subdir}/text_units/{filename}"
         path = self.paths.root / rel
         metadata = node.metadata or {}
         body = (

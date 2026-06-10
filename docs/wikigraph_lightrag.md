@@ -117,13 +117,19 @@ kb ask "How does REALM differ from RAG?" --engine wikigraph --method hybrid \
     --show-source-trace
 
 # Export inspectable graph cards into the wiki (+ vault)
-kb export
+kb export --wikigraph-modes all
 ```
 
 Every answer claim must cite a source chunk/TextUnit (entity/relation profiles
 are retrieval scaffolding, not standalone evidence). Missing sources are flagged
 for review (`wiki/wikigraph/diagnostics/stale-sources.md`, `kb lint`), never
 silently deleted.
+
+`kb export --wikigraph-modes all` writes classic and LightRAG inspection cards
+side by side under `wiki/wikigraph/classic/` and `wiki/wikigraph/lightrag/`
+before copying the wiki into `vault/obsidian/`. This keeps the current
+config-selected `wikigraph` query mode separate from the vault evidence needed
+for side-by-side demos and evaluation reviews.
 
 ## Evaluation
 

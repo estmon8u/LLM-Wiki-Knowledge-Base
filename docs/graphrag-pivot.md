@@ -108,7 +108,7 @@ CLI design guardrails:
 - `kb ask --engine graphrag --method local|global|drift|basic` exposes explicit Microsoft GraphRAG method control.
 - `kb ask --engine legacy` and `kb find --engine legacy` are the only legacy FTS surfaces; the standalone `kb legacy` command group is not part of the current CLI.
 - `kb find` is graph-aware but non-generative: it searches direct GraphRAG entity/relationship artifacts before falling back to maintained wiki pages.
-- `kb export` refreshes graph artifact pages when complete GraphRAG output exists, so inspection pages can be regenerated without rerunning GraphRAG.
+- `kb export` refreshes graph artifact pages when complete GraphRAG output exists, can refresh mode-separated WikiGraphRAG cards with `--wikigraph-modes`, and copies wiki display assets into the Obsidian vault so inspection pages and visuals can be regenerated without rerunning GraphRAG.
 - Old FTS5 behavior should not be available through a normal `--retriever lexical` option.
 - Old FTS5 behavior is exposed only through source-only `kb find --engine legacy` and `kb ask --engine legacy`.
 - Legacy commands should print deprecation warnings to stderr for human output and keep primary answer/search output on stdout.

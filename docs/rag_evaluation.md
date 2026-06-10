@@ -90,6 +90,31 @@ Written under `--results-dir` (default `eval/rag_eval/`):
 `rag_eval_rows.csv` (raw per-question rows), `rag_eval_summary.json`
 (per-backend metric summaries with CIs), and `rag_eval_leaderboard.md`.
 
+## OpenAI mixed-corpus run (2026-06-10)
+
+The real three-engine OpenAI run used a disposable project outside the repo:
+`../kb-openai-three-engine-e2e-20260610`, populated from a mixed corpus of PDF,
+DOCX, and Markdown files under `../kb-openai-three-engine-corpus-20260610`.
+
+```bash
+python scripts/evaluate_rag.py \
+    --project-root ../kb-openai-three-engine-e2e-20260610 \
+    --benchmark eval/results/openai_three_engine_mixed_benchmark_20260610.yaml \
+    --results-dir eval/results/openai_three_engine_20260610 \
+    --methods legacy wikigraph-classic wikigraph-lightrag \
+    --allow-provider-calls \
+    --label openai_mixed_three_engine \
+    --bootstrap 200
+```
+
+The run writes `rag_eval_rows_openai_mixed_three_engine.csv`,
+`rag_eval_summary_openai_mixed_three_engine.json`, and
+`rag_eval_leaderboard_openai_mixed_three_engine.md`. The matching Obsidian
+export lives under `../kb-openai-three-engine-e2e-20260610/vault/obsidian/` and
+includes `analysis/openai-three-engine-evaluation.md`, a PNG leaderboard, an
+SVG vault overview, and mode-separated `wikigraph/classic/` and
+`wikigraph/lightrag/` generated cards.
+
 ## Reproducibility / gating
 
 Provider/LLM-judge/RAGAS calls are gated behind `--allow-provider-calls` so the

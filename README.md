@@ -15,7 +15,10 @@ safe: non-WikiGraphRAG commands can run without NetworkX installed, while
 `kb update --export-wikigraph-artifacts` writes generated inspection cards
 under `wiki/wikigraph/` when artifact export is enabled: classic mode exports
 entity, community, chunk, and TextUnit cards; LightRAG mode exports entity,
-relation, source-chunk, index, and diagnostics pages. Unset
+relation, source-chunk, index, and diagnostics pages. `kb export
+--wikigraph-modes all` can refresh both modes into
+`wiki/wikigraph/classic/` and `wiki/wikigraph/lightrag/` before vault export
+so their inspection cards can coexist in one Obsidian vault. Unset
 WikiGraphRAG CLI flags defer to `wikigraph.enabled` and
 `wikigraph.export_generated_artifacts`, context assembly honors
 `max_context_tokens`, `lexical_backend: simple` forces the pure-Python ranker,
@@ -107,7 +110,7 @@ poetry run kb status
 poetry run kb doctor
 
 # 6. Export to Obsidian vault
-poetry run kb export
+poetry run kb export --wikigraph-modes all
 ```
 
 Use `kb add` when you want to stage one or more files or folders before running
@@ -610,13 +613,15 @@ Export the compiled wiki to the configured target (defaults to Obsidian vault).
 ```bash
 poetry run kb export
 poetry run kb export --clean
+poetry run kb export --wikigraph-modes all
 ```
 
 | Option | Default | Description |
 | --- | --- | --- |
 | `--clean` | off | Remove stale vault markdown files that were not exported from the current wiki set. |
+| `--wikigraph-modes` | `none` | Refresh generated WikiGraphRAG cards before vault export. Use `current` for `wiki/wikigraph/`, `classic` or `lightrag` for one mode under `wiki/wikigraph/<mode>/`, or `all` for both mode-separated artifact sets. |
 
-Copies compiled wiki pages into `vault/obsidian/` in a format compatible with [Obsidian](https://obsidian.md/). With `--clean`, stale markdown files are deleted only after the current export set is built, so the cleanup decision uses the exact destination paths created by the run.
+Copies compiled wiki pages and common display assets (`.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`) into `vault/obsidian/` in a format compatible with [Obsidian](https://obsidian.md/). With `--clean`, stale markdown files are deleted only after the current export set is built, so the cleanup decision uses the exact destination paths created by the run.
 
 
 ### `kb config`

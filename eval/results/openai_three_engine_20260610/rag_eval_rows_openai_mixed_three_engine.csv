@@ -1,0 +1,16 @@
+question_id,category,backend,method,recall_at_k,precision_at_k,ndcg_at_k,mrr,hit_at_k,retrieved_count,latency_seconds,error,citation_validity,citation_count,grounded,refusal_correct,token_f1,rouge_l,entity_coverage,answer_token_length,insufficient_evidence,provider_mode
+rag_retrieval_generation,local,legacy,fts,1.0,0.25,0.5249810332008933,0.3333333333333333,1.0,6,10.120902199999364,,1.0,2,0.0,0.0,,,,126,True,provider
+rag_retrieval_generation,local,wikigraph-classic,basic,1.0,0.625,0.9747429528567879,1.0,1.0,7,4.849851699999817,,1.0,2,1.0,1.0,0.38167938931297707,0.19847328244274812,1.0,100,False,provider
+rag_retrieval_generation,local,wikigraph-lightrag,local,1.0,0.5,0.9619991470595832,1.0,1.0,8,9.590379199999916,,1.0,2,1.0,1.0,0.23611111111111113,0.1527777777777778,1.0,113,False,provider
+graphrag_communities,local,legacy,fts,1.0,0.25,1.0,1.0,1.0,3,1.6906828000001042,,0.0,0,0.0,0.0,,,,88,True,provider
+graphrag_communities,local,wikigraph-classic,local,1.0,0.875,0.9950883841893561,1.0,1.0,11,2.84810650000054,,1.0,1,1.0,1.0,0.26530612244897955,0.1836734693877551,0.3333333333333333,71,False,provider
+graphrag_communities,local,wikigraph-lightrag,local,0.5,0.375,0.5508095940041026,0.25,1.0,7,10.04373889999988,,1.0,1,1.0,1.0,0.43589743589743585,0.2820512820512821,1.0,51,False,provider
+lightrag_tradeoffs,comparison,legacy,fts,1.0,0.25,0.9197207891481876,1.0,1.0,6,2.063103699999374,,1.0,2,1.0,1.0,0.463768115942029,0.2608695652173913,1.0,33,False,provider
+lightrag_tradeoffs,comparison,wikigraph-classic,drift-lite,1.0,0.875,0.9888009031441519,1.0,1.0,9,5.226582699999199,,1.0,5,1.0,1.0,0.20224719101123592,0.1348314606741573,1.0,142,False,provider
+lightrag_tradeoffs,comparison,wikigraph-lightrag,hybrid,0.5,0.75,1.0,1.0,1.0,6,8.231389800000215,,1.0,3,1.0,1.0,0.2586206896551724,0.15517241379310345,1.0,80,False,provider
+software_review_guidelines,rubric,legacy,fts,1.0,0.125,0.6309297535714575,0.5,1.0,7,4.17894939999951,,1.0,3,0.0,0.0,,,,197,True,provider
+software_review_guidelines,rubric,wikigraph-classic,local,1.0,0.375,1.0,1.0,1.0,8,3.296787100000074,,1.0,1,1.0,1.0,0.15492957746478875,0.12676056338028172,0.3333333333333333,115,False,provider
+software_review_guidelines,rubric,wikigraph-lightrag,local,0.0,0.0,0.0,0.0,0.0,8,7.927003599999807,,1.0,1,1.0,1.0,0.23529411764705882,0.23529411764705882,0.0,41,False,provider
+three_system_comparison,global,legacy,fts,1.0,0.75,1.0,1.0,1.0,6,8.56305230000089,,1.0,3,0.0,0.0,,,,188,True,provider
+three_system_comparison,global,wikigraph-classic,drift-lite,0.75,1.0,1.0,1.0,1.0,9,10.523340099999587,,1.0,5,1.0,1.0,0.11488250652741515,0.0835509138381201,1.0,344,False,provider
+three_system_comparison,global,wikigraph-lightrag,hybrid,0.75,0.75,1.0,1.0,1.0,6,11.072721100000308,,1.0,4,1.0,1.0,0.11933174224343676,0.08114558472553698,1.0,380,False,provider

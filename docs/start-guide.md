@@ -148,6 +148,12 @@ or config disables it, WikiGraphRAG creates source-document and TextUnit nodes
 from `raw/normalized/`, persists `documents.json` and `text_units.json`, and
 reports the included document and TextUnit counts in the update summary.
 
+When you need an Obsidian vault that shows both WikiGraph query modes, run
+`kb export --wikigraph-modes all` after building both `classic` and `lightrag`
+indexes. That writes mode-separated cards under `wiki/wikigraph/classic/` and
+`wiki/wikigraph/lightrag/` before copying the wiki and display assets into
+`vault/obsidian/`.
+
 If a run is interrupted, resume it:
 
 ```powershell

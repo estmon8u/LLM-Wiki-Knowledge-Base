@@ -22,13 +22,13 @@ The product goal is not to act like a general-purpose coding agent. The goal is 
 8. Evaluate deprecated FTS versus GraphRAG Basic, Local, Global, and DRIFT modes against the benchmark.
 9. Lint the maintained knowledge base for broken structure or stale content (deterministic), including manifest artifact drift and GraphRAG input/index/export staleness.
 10. Review the maintained knowledge base for contradictions, terminology drift, and topic overlap (semantic; requires a configured provider and combines deterministic overlap checks with provider-backed review).
-11. Export the wiki into an Obsidian-friendly vault and refresh graph inspection pages when graph output exists.
+11. Export the wiki and display assets into an Obsidian-friendly vault, refresh graph inspection pages when graph output exists, and optionally refresh mode-separated WikiGraphRAG cards for side-by-side vault review.
 
 ## Data Domains
 
 - `raw/` stores source-of-truth input files, normalized canonical artifacts, and manifest metadata.
 - `wiki/` stores generated source pages, legacy concept pages, GraphRAG-derived graph pages, saved analysis pages, index data, and compile logs.
-- `vault/` stores export-ready Obsidian-friendly markdown.
+- `vault/` stores export-ready Obsidian-friendly markdown and copied display assets.
 - `graph/` stores the SQLite FTS5 search index and compile-run state under `graph/exports/`, the initialized Microsoft GraphRAG workspace under `graph/graphrag/`, generated GraphRAG input under `graph/graphrag/input/sources.json`, WikiGraphRAG JSON graph/source-document/TextUnit artifacts under `graph/wikigraph/`, and ignored `kb agent` sessions, research runs, recommendation pointers, and run traces under `graph/runs/agent/`.
 
 ## System Boundaries
