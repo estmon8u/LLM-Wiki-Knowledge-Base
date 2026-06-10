@@ -11,6 +11,7 @@ from scripts.rag_eval.aggregate import (
     summarize,
     write_leaderboard_markdown,
 )
+from scripts.rag_eval.backends import _graph_data_reference_contexts
 from scripts.rag_eval.cli import main
 
 REALM_PAGE = textwrap.dedent(
@@ -63,6 +64,18 @@ TINY_BENCHMARK = textwrap.dedent(
         reference_answer: RAG conditions a seq2seq generator on retrieved docs.
     """
 )
+
+
+class _FakeGraphStatus:
+    def __init__(self, root: Path) -> None:
+        self.input_path = root / "sources.json"
+        self._tables = {
+            "text_units": root / "text_units.parquet",
+            "entities": root / "entities.parquet",
+        }
+
+    def table_path(self, table_name: str) -> Path | None:
+        return self._tables.get(table_name)
 
 
 # --------------------------------------------------------------------------- #
@@ -256,3 +269,71 @@ def test_provider_gating_skips_provider_backends_without_flag(tmp_path: Path) ->
     payload = json.loads((results_dir / "rag_eval_summary.json").read_text())
     backends = {s["backend"] for s in payload["summaries"]}
     assert backends == {"wikigraph"}
+
+
+def test_graphrag_data_refs_become_cited_evidence(tmp_path: Path) -> None:
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    (tmp_path / "sources.json").write_text(
+        json.dumps(
+            [
+                {
+                    "id": "doc-1",
+                    "source_id": "doc-1",
+                    "slug": "rag-paper",
+                    "raw_path": "raw/sources/rag-paper.pdf",
+                    "normalized_path": "raw/normalized/rag-paper.md",
+                    "title": "RAG Paper",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    pq.write_table(
+        pa.Table.from_pylist(
+            [
+                {
+                    "id": "tu-7",
+                    "human_readable_id": 7,
+                    "text": (
+                        "source_id: doc-1.\n"
+                        "slug: rag-paper.\n"
+                        "raw_path: raw/sources/rag-paper.pdf.\n"
+                        "normalized_path: raw/normalized/rag-paper.md.\n"
+                        "RAG conditions generation on retrieved evidence."
+                    ),
+                    "document_id": "doc-1",
+                }
+            ]
+        ),
+        tmp_path / "text_units.parquet",
+    )
+    pq.write_table(
+        pa.Table.from_pylist(
+            [
+                {
+                    "id": "entity-2",
+                    "human_readable_id": 2,
+                    "title": "RAG",
+                    "description": "Retrieval augmented generation.",
+                    "text_unit_ids": ["tu-7"],
+                }
+            ]
+        ),
+        tmp_path / "entities.parquet",
+    )
+
+    contexts = _graph_data_reference_contexts(
+        _FakeGraphStatus(tmp_path),
+        [
+            {"kind": "source", "ids": ["7"], "raw": "Sources (7)"},
+            {"kind": "entity", "ids": ["2"], "raw": "Entities (2)"},
+        ],
+    )
+
+    by_ref = {context.ref: context for context in contexts}
+    assert set(by_ref) == {"graph://source/7", "graph://entity/2"}
+    assert "rag-paper" in by_ref["graph://source/7"].source_id
+    assert "RAG conditions generation" in by_ref["graph://source/7"].text
+    assert "rag-paper" in by_ref["graph://entity/2"].source_id
